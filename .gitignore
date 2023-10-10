@@ -1,0 +1,17 @@
+# This sets the `.gitignore` to be a *whitelist* by default.
+**/**
+!*/
+
+
+# Whitelist
+!*.md
+!LICENSE
+!.gitignore
+!assets/**
+!go.mod
+!go.sum
+
+!*.go
+
+# Blacklist (overrides Whitelist)
+*.exe
