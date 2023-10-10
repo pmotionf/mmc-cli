@@ -12,7 +12,7 @@ var (
 	cfgFile string
 
 	rootCmd = &cobra.Command{
-		Use:   "mcs",
+		Use:   "mcs-cli",
 		Short: "PMF MCS (Motion Control Software).",
 		Long:  "",
 		// Run: func (cmd *cobra.Command, args []string) {

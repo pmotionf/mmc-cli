@@ -1,4 +1,4 @@
-module github.com/pmotionf/mcs-cli/mcs
+module github.com/pmotionf/mcs-cli
 
 go 1.21.2
 
