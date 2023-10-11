@@ -8,10 +8,12 @@
 !LICENSE
 !.gitignore
 !assets/**
-!go.mod
-!go.sum
+!build.zig
+!build.zig.zon
+!lib/**
 
-!*.go
+!*.zig
 
 # Blacklist (overrides Whitelist)
-*.exe
+zig-out/**
+zig-cache/**
