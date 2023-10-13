@@ -1,6 +1,6 @@
 .{
     .name = "mcs-cli",
-    .version = "0.0.1",
+    .version = "0.0.2",
     .dependencies = .{
         .network = .{
             .url = "git+https://github.com/MasterQ32/zig-network#cdff53a2527598112a02b442045d4aef39a2e5e2",
