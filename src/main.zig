@@ -1,3 +1,4 @@
+const builtin = @import("builtin");
 const std = @import("std");
 const network = @import("network");
 const command = @import("command.zig");
@@ -15,14 +16,16 @@ fn stopCommand(
     dwCtrlType: std.os.windows.DWORD,
 ) callconv(std.os.windows.WINAPI) std.os.windows.BOOL {
     if (dwCtrlType == std.os.windows.CTRL_C_EVENT) {
-        command.stop = true;
+        command.stop.store(true, .Monotonic);
         std.io.getStdIn().sync() catch {};
     }
     return 1;
 }
 
 pub fn main() !void {
-    try std.os.windows.SetConsoleCtrlHandler(&stopCommand, true);
+    if (builtin.os.tag == .windows) {
+        try std.os.windows.SetConsoleCtrlHandler(&stopCommand, true);
+    }
 
     try command.init();
     defer command.deinit();
@@ -33,9 +36,9 @@ pub fn main() !void {
 
     command_loop: while (true) {
         std.io.getStdIn().sync() catch {};
-        if (command.stop) {
+        if (command.stop.load(.Monotonic)) {
             command.queueClear();
-            command.stop = false;
+            command.stop.store(false, .Monotonic);
         }
         if (command.queueEmpty()) {
             var input_buffer: [1024]u8 = .{0} ** 1024;

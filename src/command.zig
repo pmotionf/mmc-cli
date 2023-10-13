@@ -1,7 +1,7 @@
 const std = @import("std");
 
 pub var registry: std.StringArrayHashMap(Command) = undefined;
-pub var stop: bool = false;
+pub var stop: std.atomic.Atomic(bool) = std.atomic.Atomic(bool).init(false);
 
 var variables: std.BufMap = undefined;
 var command_queue: std.ArrayList(CommandString) = undefined;
