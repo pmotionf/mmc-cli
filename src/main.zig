@@ -2,6 +2,7 @@ const builtin = @import("builtin");
 const std = @import("std");
 const network = @import("network");
 const command = @import("command.zig");
+const return_demo2 = @import("command/return_demo2.zig");
 
 fn nextLine(reader: anytype, buffer: []u8) !?[]const u8 {
     var line = (try reader.readUntilDelimiterOrEof(
@@ -29,6 +30,9 @@ pub fn main() !void {
 
     try command.init();
     defer command.deinit();
+
+    try return_demo2.init();
+    defer return_demo2.deinit();
 
     const standard_in = std.io.getStdIn();
     var buffered_reader = std.io.bufferedReader(standard_in.reader());

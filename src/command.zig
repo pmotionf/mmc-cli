@@ -1,3 +1,7 @@
+//! This module defines the necessary types and functions to declare, queue,
+//! and execute commands. Furthermore, it includes the implementations of a few
+//! general purpose commands that facilitate easier use of the MCS CLI utility.
+
 const std = @import("std");
 
 pub var registry: std.StringArrayHashMap(Command) = undefined;
@@ -38,6 +42,7 @@ pub fn init() !void {
     registry = std.StringArrayHashMap(Command).init(allocator);
     variables = std.BufMap.init(allocator);
     command_queue = std.ArrayList(CommandString).init(allocator);
+    stop.store(false, .Monotonic);
 
     try registry.put("HELP", .{
         .name = "HELP",
@@ -113,6 +118,8 @@ pub fn init() !void {
 }
 
 pub fn deinit() void {
+    stop.store(true, .Monotonic);
+    defer stop.store(false, .Monotonic);
     variables.deinit();
     command_queue.deinit();
     registry.deinit();
@@ -125,6 +132,15 @@ pub fn queueEmpty() bool {
 
 pub fn queueClear() void {
     command_queue.clearRetainingCapacity();
+}
+
+/// Checks if the `stop` flag is set, and if so returns an error.
+pub fn checkCommandInterrupt() !void {
+    if (stop.load(.Monotonic)) {
+        defer stop.store(false, .Monotonic);
+        queueClear();
+        return error.CommandStopped;
+    }
 }
 
 pub fn enqueue(input: []const u8) !void {
@@ -185,6 +201,7 @@ fn parseAndRun(input: []const u8) !void {
                 const start_ind: usize = token_iterator.index + 1;
                 var len: usize = 0;
                 while (token_iterator.next()) |tok| {
+                    try checkCommandInterrupt();
                     if (tok[tok.len - 1] == '"') {
                         // 2 subtracted from length to account for the two
                         // quotation marks.
@@ -246,6 +263,7 @@ fn help(params: [][]const u8) !void {
         });
     } else {
         for (registry.values()) |c| {
+            try checkCommandInterrupt();
             var params_buffer: [512]u8 = .{0} ** 512;
             var params_len: usize = 0;
             for (c.parameters) |param| {
@@ -295,6 +313,7 @@ fn file(params: [][]const u8) !void {
         &new_line.buffer,
         '\n',
     )) |_line| {
+        try checkCommandInterrupt();
         const line = std.mem.trimRight(u8, _line, "\r");
         new_line.len = line.len;
         try command_queue.insert(current_len, new_line);
