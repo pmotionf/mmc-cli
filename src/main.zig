@@ -42,7 +42,7 @@ pub fn main() !void {
         }
         if (command.queueEmpty()) {
             var input_buffer: [1024]u8 = .{0} ** 1024;
-            std.log.info("Please enter a command: ", .{});
+            std.log.info("Please enter a command (HELP for info): ", .{});
 
             if (try nextLine(reader, &input_buffer)) |line| {
                 try command.enqueue(line);

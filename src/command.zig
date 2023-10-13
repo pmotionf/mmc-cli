@@ -42,12 +42,13 @@ pub fn init() !void {
     try registry.put("HELP", .{
         .name = "HELP",
         .parameters = &[_]Command.Parameter{
-            .{ .name = "Command", .resolve = false },
+            .{ .name = "Command", .optional = true, .resolve = false },
         },
         .short_description = "Display detailed information about a command.",
         .long_description =
         \\Print a detailed description of a command's purpose, use, and other
         \\such aspects of consideration. A valid command name must be provided.
+        \\If no command is provided, a list of all commands will be shown.
         ,
         .execute = &help,
     });
@@ -84,6 +85,21 @@ pub fn init() !void {
         \\Variable names are case sensitive.
         ,
         .execute = &get,
+    });
+    try registry.put("FILE", .{
+        .name = "FILE",
+        .parameters = &[_]Command.Parameter{.{ .name = "Path" }},
+        .short_description = "Queue commands listed in the provided file.",
+        .long_description =
+        \\Add commands listed in the provided file to the front of the command
+        \\queue. All queued commands will run first before the user is prompted
+        \\to enter a new manual command. The queue of commands will be cleared
+        \\if interrupted with the `Ctrl-C` hotkey. The file path provided for
+        \\this command must be either an absolute file path or relative to the
+        \\executable's directory. If the path contains spaces, it should be
+        \\enclosed in double quotes (e.g. "my file path").
+        ,
+        .execute = &file,
     });
     try registry.put("EXIT", .{
         .name = "EXIT",
@@ -152,6 +168,7 @@ fn parseAndRun(input: []const u8) !void {
         if (_token == null) {
             if (param.optional) {
                 params[i] = "";
+                continue;
             } else return error.MissingParameter;
         }
         var token = _token.?;
@@ -192,21 +209,44 @@ var arena: std.heap.ArenaAllocator = undefined;
 var allocator: std.mem.Allocator = undefined;
 
 fn help(params: [][]const u8) !void {
-    var command: *Command = undefined;
-    var command_buf: [32]u8 = undefined;
+    if (params[0].len > 0) {
+        var command: *Command = undefined;
+        var command_buf: [32]u8 = undefined;
 
-    if (params[0].len > 32) return error.InvalidCommand;
+        if (params[0].len > 32) return error.InvalidCommand;
 
-    if (registry.getPtr(std.ascii.upperString(
-        &command_buf,
-        params[0],
-    ))) |c| {
-        command = c;
-    } else return error.InvalidCommand;
-    std.log.info("\nDetailed information for command {s}:\n{s}\n", .{
-        command.name,
-        command.long_description,
-    });
+        if (registry.getPtr(std.ascii.upperString(
+            &command_buf,
+            params[0],
+        ))) |c| {
+            command = c;
+        } else return error.InvalidCommand;
+        std.log.info("\nDetailed information for command {s}:\n{s}\n", .{
+            command.name,
+            command.long_description,
+        });
+    } else {
+        for (registry.values()) |c| {
+            var params_buffer: [512]u8 = .{0} ** 512;
+            var params_len: usize = 0;
+            for (c.parameters) |param| {
+                params_len += (try std.fmt.bufPrint(
+                    params_buffer[params_len..],
+                    " {s}{s}{s}",
+                    .{
+                        if (param.optional) "[" else "(",
+                        param.name,
+                        if (param.optional) "]" else ")",
+                    },
+                )).len;
+            }
+            std.log.info("\t{s}{s}: {s}", .{
+                c.name,
+                params_buffer[0..params_len],
+                c.short_description,
+            });
+        }
+    }
 }
 
 fn version(_: [][]const u8) !void {
@@ -225,6 +265,21 @@ fn get(params: [][]const u8) !void {
             value,
         });
     } else return error.UndefinedVariable;
+}
+
+fn file(params: [][]const u8) !void {
+    var f = try std.fs.cwd().openFile(params[0], .{});
+    var reader = f.reader();
+    const current_len: usize = command_queue.items.len;
+    var new_line: CommandString = .{ .buffer = undefined, .len = 0 };
+    while (try reader.readUntilDelimiterOrEof(
+        &new_line.buffer,
+        '\n',
+    )) |_line| {
+        const line = std.mem.trimRight(u8, _line, "\r");
+        new_line.len = line.len;
+        try command_queue.insert(current_len, new_line);
+    }
 }
 
 fn exit(_: [][]const u8) !void {
