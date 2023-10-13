@@ -6,13 +6,6 @@ pub var stop: bool = false;
 var variables: std.BufMap = undefined;
 var command_queue: std.ArrayList(CommandString) = undefined;
 
-pub const Parameter = struct {
-    name: []const u8,
-    optional: bool = false,
-    quotable: bool = true,
-    resolve: bool = true,
-};
-
 const CommandString = struct {
     buffer: [1024]u8,
     len: usize,
@@ -23,12 +16,19 @@ pub const Command = struct {
     name: []const u8,
     /// List of argument names. Each argument should be wrapped in a "()" for
     /// required arguments, or "[]" for optional arguments.
-    parameter_list: []const Parameter,
+    parameters: []const Parameter = &[_]Command.Parameter{},
     /// Short description of command.
     short_description: []const u8,
     /// Long description of command.
     long_description: []const u8,
     execute: *const fn ([][]const u8) anyerror!void,
+
+    pub const Parameter = struct {
+        name: []const u8,
+        optional: bool = false,
+        quotable: bool = true,
+        resolve: bool = true,
+    };
 };
 
 pub fn init() !void {
@@ -41,7 +41,7 @@ pub fn init() !void {
 
     try registry.put("HELP", .{
         .name = "HELP",
-        .parameter_list = &[_]Parameter{
+        .parameters = &[_]Command.Parameter{
             .{ .name = "Command", .resolve = false },
         },
         .short_description = "Display detailed information about a command.",
@@ -53,7 +53,6 @@ pub fn init() !void {
     });
     try registry.put("VERSION", .{
         .name = "VERSION",
-        .parameter_list = &[_]Parameter{},
         .short_description = "Display the version of the MCS CLI.",
         .long_description =
         \\Print the currently running version of the Motion Control Software
@@ -63,7 +62,7 @@ pub fn init() !void {
     });
     try registry.put("SET", .{
         .name = "SET",
-        .parameter_list = &[_]Parameter{
+        .parameters = &[_]Command.Parameter{
             .{ .name = "Variable", .resolve = false },
             .{ .name = "Value" },
         },
@@ -76,7 +75,7 @@ pub fn init() !void {
     });
     try registry.put("GET", .{
         .name = "GET",
-        .parameter_list = &[_]Parameter{
+        .parameters = &[_]Command.Parameter{
             .{ .name = "Variable", .resolve = false },
         },
         .short_description = "Retrieve the value of a variable.",
@@ -88,7 +87,6 @@ pub fn init() !void {
     });
     try registry.put("EXIT", .{
         .name = "EXIT",
-        .parameter_list = &[_]Parameter{},
         .short_description = "Exit the MCS command line utility.",
         .long_description =
         \\Gracefully terminate the PMF Motion Control Software command line
@@ -144,11 +142,11 @@ fn parseAndRun(input: []const u8) !void {
 
     var params: [][]const u8 = try allocator.alloc(
         []const u8,
-        command.parameter_list.len,
+        command.parameters.len,
     );
     defer allocator.free(params);
 
-    for (command.parameter_list, 0..) |param, i| {
+    for (command.parameters, 0..) |param, i| {
         const _token = token_iterator.peek();
         defer _ = token_iterator.next();
         if (_token == null) {
