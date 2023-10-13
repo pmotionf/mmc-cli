@@ -288,7 +288,7 @@ fn help(params: [][]const u8) !void {
 
 fn version(_: [][]const u8) !void {
     // TODO: Figure out better way to get version from `build.zig.zon`.
-    std.log.info("MCS CLI: {s}", .{"0.0.2"});
+    std.log.info("MCS CLI: {s}\n", .{"0.0.2"});
 }
 
 fn set(params: [][]const u8) !void {
@@ -297,7 +297,7 @@ fn set(params: [][]const u8) !void {
 
 fn get(params: [][]const u8) !void {
     if (variables.get(params[0])) |value| {
-        std.log.info("Variable \"{s}\": {s}", .{
+        std.log.info("Variable \"{s}\": {s}\n", .{
             params[0],
             value,
         });
