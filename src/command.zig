@@ -42,7 +42,7 @@ pub fn init() !void {
     try registry.put("HELP", .{
         .name = "HELP",
         .parameters = &[_]Command.Parameter{
-            .{ .name = "Command", .optional = true, .resolve = false },
+            .{ .name = "command", .optional = true, .resolve = false },
         },
         .short_description = "Display detailed information about a command.",
         .long_description =
@@ -64,8 +64,8 @@ pub fn init() !void {
     try registry.put("SET", .{
         .name = "SET",
         .parameters = &[_]Command.Parameter{
-            .{ .name = "Variable", .resolve = false },
-            .{ .name = "Value" },
+            .{ .name = "variable", .resolve = false },
+            .{ .name = "value" },
         },
         .short_description = "Set a variable equal to a value.",
         .long_description =
@@ -77,7 +77,7 @@ pub fn init() !void {
     try registry.put("GET", .{
         .name = "GET",
         .parameters = &[_]Command.Parameter{
-            .{ .name = "Variable", .resolve = false },
+            .{ .name = "variable", .resolve = false },
         },
         .short_description = "Retrieve the value of a variable.",
         .long_description =
@@ -88,7 +88,7 @@ pub fn init() !void {
     });
     try registry.put("FILE", .{
         .name = "FILE",
-        .parameters = &[_]Command.Parameter{.{ .name = "Path" }},
+        .parameters = &[_]Command.Parameter{.{ .name = "path" }},
         .short_description = "Queue commands listed in the provided file.",
         .long_description =
         \\Add commands listed in the provided file to the front of the command
@@ -139,7 +139,7 @@ pub fn enqueue(input: []const u8) !void {
 
 pub fn execute() !void {
     const cb = command_queue.pop();
-    std.log.info("Running command: {s}", .{cb.buffer[0..cb.len]});
+    std.log.info("Running command: {s}\n", .{cb.buffer[0..cb.len]});
     try parseAndRun(cb.buffer[0..cb.len]);
 }
 
@@ -221,9 +221,28 @@ fn help(params: [][]const u8) !void {
         ))) |c| {
             command = c;
         } else return error.InvalidCommand;
-        std.log.info("\nDetailed information for command {s}:\n{s}\n", .{
+
+        var params_buffer: [512]u8 = .{0} ** 512;
+        var params_len: usize = 0;
+        for (command.parameters) |param| {
+            params_len += (try std.fmt.bufPrint(
+                params_buffer[params_len..],
+                " {s}{s}{s}",
+                .{
+                    if (param.optional) "[" else "(",
+                    param.name,
+                    if (param.optional) "]" else ")",
+                },
+            )).len;
+        }
+        std.log.info("\n\n{s}{s}:\n{s}{s}\n{s}\n{s}{s}\n\n", .{
             command.name,
+            params_buffer[0..params_len],
+            "====================================",
+            "====================================",
             command.long_description,
+            "====================================",
+            "====================================",
         });
     } else {
         for (registry.values()) |c| {
@@ -240,7 +259,7 @@ fn help(params: [][]const u8) !void {
                     },
                 )).len;
             }
-            std.log.info("\t{s}{s}: {s}", .{
+            std.log.info("{s}{s}:\n\t{s}\n", .{
                 c.name,
                 params_buffer[0..params_len],
                 c.short_description,
