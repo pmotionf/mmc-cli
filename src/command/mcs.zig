@@ -309,7 +309,7 @@ fn mcsWaitHomeSlider(params: [][]const u8) !void {
                 var int_buf: [8]u8 = undefined;
                 try command.variables.put(
                     params[0],
-                    try std.fmt.bufPrint(&int_buf, "{d}", .{params[0]}),
+                    try std.fmt.bufPrint(&int_buf, "{d}", .{slider_id}),
                 );
             }
             break;
