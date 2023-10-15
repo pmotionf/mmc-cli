@@ -91,6 +91,14 @@ pub fn init() !void {
         ,
         .execute = &get,
     });
+    try registry.put("VARIABLES", .{
+        .name = "VARIABLES",
+        .short_description = "Display all variables with their values.",
+        .long_description =
+        \\Print all currently set variable names along with their values.
+        ,
+        .execute = &printVariables,
+    });
     try registry.put("FILE", .{
         .name = "FILE",
         .parameters = &[_]Command.Parameter{.{ .name = "path" }},
@@ -288,7 +296,7 @@ fn help(params: [][]const u8) !void {
 
 fn version(_: [][]const u8) !void {
     // TODO: Figure out better way to get version from `build.zig.zon`.
-    std.log.info("MCS CLI Version: {s}\n", .{"0.0.2"});
+    std.log.info("MCS CLI Version: {s}\n", .{"0.0.3"});
 }
 
 fn set(params: [][]const u8) !void {
@@ -304,6 +312,14 @@ fn get(params: [][]const u8) !void {
     } else return error.UndefinedVariable;
 }
 
+fn printVariables(_: [][]const u8) !void {
+    var variables_it = variables.iterator();
+    while (variables_it.next()) |entry| {
+        try checkCommandInterrupt();
+        std.log.info("\t{s}: {s}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
+    }
+}
+
 fn file(params: [][]const u8) !void {
     var f = try std.fs.cwd().openFile(params[0], .{});
     var reader = f.reader();
@@ -316,6 +332,7 @@ fn file(params: [][]const u8) !void {
         try checkCommandInterrupt();
         const line = std.mem.trimRight(u8, _line, "\r");
         new_line.len = line.len;
+        std.log.info("Queueing command: {s}", .{line});
         try command_queue.insert(current_len, new_line);
     }
 }
