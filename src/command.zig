@@ -6,8 +6,8 @@ const std = @import("std");
 
 pub var registry: std.StringArrayHashMap(Command) = undefined;
 pub var stop: std.atomic.Atomic(bool) = std.atomic.Atomic(bool).init(false);
+pub var variables: std.BufMap = undefined;
 
-var variables: std.BufMap = undefined;
 var command_queue: std.ArrayList(CommandString) = undefined;
 
 const CommandString = struct {
@@ -288,7 +288,7 @@ fn help(params: [][]const u8) !void {
 
 fn version(_: [][]const u8) !void {
     // TODO: Figure out better way to get version from `build.zig.zon`.
-    std.log.info("MCS CLI: {s}\n", .{"0.0.2"});
+    std.log.info("MCS CLI Version: {s}\n", .{"0.0.2"});
 }
 
 fn set(params: [][]const u8) !void {

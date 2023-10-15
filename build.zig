@@ -1,8 +1,32 @@
 const std = @import("std");
 
-pub fn build(b: *std.Build) void {
+pub const McsCliBuildOptions = struct {
+    mcs_library_path: []const u8,
+    mcs_header_path: []const u8,
+};
+
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+
+    if (target.getOsTag() != .windows) {
+        return error.WindowsRequired;
+    }
+
+    const mcs_library_path = b.option(
+        []const u8,
+        "mcs_library_path",
+        "Specify the path to the directory containing the static MCS library.",
+    );
+    const mcs_header_path = b.option(
+        []const u8,
+        "mcs_header_path",
+        "Specify the path to the directory containing the MCS library header.",
+    );
+    const mcs_cli_build_options: McsCliBuildOptions = .{
+        .mcs_library_path = mcs_library_path orelse "lib/MCS/lib",
+        .mcs_header_path = mcs_header_path orelse "lib/MCS/include",
+    };
 
     const network_dep = b.dependency("network", .{});
 
@@ -13,6 +37,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     exe.addModule("network", network_dep.module("network"));
+    exe.addIncludePath(.{ .path = mcs_cli_build_options.mcs_header_path });
+    exe.addLibraryPath(.{ .path = mcs_cli_build_options.mcs_library_path });
+    exe.linkSystemLibrary2("MCS", .{ .preferred_link_mode = .Static });
 
     b.installArtifact(exe);
 
