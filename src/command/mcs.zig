@@ -138,11 +138,9 @@ pub fn init() !void {
     });
     try command.registry.put("WAIT_HOME_SLIDER", .{
         .name = "WAIT_HOME_SLIDER",
-        .parameters = &[_]command.Command.Parameter{.{
-            .name = "result variable",
-            .resolve = false,
-            .optional = true,
-        }},
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "result variable", .resolve = false, .optional = true },
+        },
         .short_description = "Wait until homing of slider is complete.",
         .long_description =
         \\Wait until homing is complete and a slider is recognized on the first
@@ -150,6 +148,34 @@ pub fn init() !void {
         \\recognized slider ID in the variable.
         ,
         .execute = &mcsWaitHomeSlider,
+    });
+    try command.registry.put("RECOVER_SLIDER", .{
+        .name = "RECOVER_SLIDER",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "axis" },
+            .{ .name = "new slider ID" },
+        },
+        .short_description = "Recover an unrecognized slider on a given axis.",
+        .long_description =
+        \\Recover an unrecognized slider on a given axis. The provided slider
+        \\ID must be a positive integer from 1 to 127 inclusive, and must be
+        \\unique to other recognized slider IDs.
+        ,
+        .execute = &mcsRecoverSlider,
+    });
+    try command.registry.put("WAIT_RECOVER_SLIDER", .{
+        .name = "WAIT_RECOVER_SLIDER",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "axis" },
+            .{ .name = "result variable", .resolve = false, .optional = true },
+        },
+        .short_description = "Wait until recovery of slider is complete.",
+        .long_description =
+        \\Wait until slider recovery is complete and a slider is recognized. 
+        \\If an optional result variable name is provided, then store the
+        \\recognized slider ID in the variable.
+        ,
+        .execute = &mcsWaitRecoverSlider,
     });
     try command.registry.put("SLIDER_LOCATION", .{
         .name = "SLIDER_LOCATION",
@@ -405,5 +431,40 @@ fn mcsWaitMoveSlider(params: [][]const u8) !void {
         try mcsError(c.mcsPoll());
         try mcsError(c.mcsSliderPosMoveCompleted(slider_id, &completed));
         try mcsError(c.mcsPoll());
+    }
+}
+
+fn mcsRecoverSlider(params: [][]const u8) !void {
+    const axis = try std.fmt.parseUnsigned(c.McsAxisId, params[0], 0);
+    const new_slider_id = try std.fmt.parseUnsigned(
+        c.McsSliderId,
+        params[1],
+        0,
+    );
+    if (new_slider_id < 1 or new_slider_id > 127) return error.InvalidSliderID;
+    try mcsError(c.mcsPoll());
+    try mcsError(c.mcsAxisRecoverSlider(axis, new_slider_id));
+    try mcsError(c.mcsPoll());
+}
+
+fn mcsWaitRecoverSlider(params: [][]const u8) !void {
+    const axis = try std.fmt.parseUnsigned(c.McsAxisId, params[0], 0);
+    var slider_id: c.McsSliderId = 0;
+    while (true) {
+        try command.checkCommandInterrupt();
+        try mcsError(c.mcsPoll());
+        c.mcsAxisSlider(axis, &slider_id);
+        try mcsError(c.mcsPoll());
+        if (slider_id != 0) {
+            std.log.info("Slider {d} recovered.\n", .{slider_id});
+            if (params[0].len > 0) {
+                var int_buf: [8]u8 = undefined;
+                try command.variables.put(
+                    params[0],
+                    try std.fmt.bufPrint(&int_buf, "{d}", .{slider_id}),
+                );
+            }
+            break;
+        }
     }
 }
