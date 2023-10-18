@@ -6,6 +6,8 @@ const command = @import("../command.zig");
 const network = @import("network");
 const Command = command.Command;
 
+pub const Config = struct {};
+
 var arena: std.heap.ArenaAllocator = undefined;
 var allocator: std.mem.Allocator = undefined;
 
@@ -50,7 +52,7 @@ const Client = struct {
     conn: network.Socket,
 };
 
-pub fn init() !void {
+pub fn init(_: Config) !void {
     arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     allocator = arena.allocator();
     server_stop.store(false, .Monotonic);

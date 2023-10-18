@@ -2,10 +2,28 @@ const std = @import("std");
 const c = @cImport(@cInclude("MCS.h"));
 const command = @import("../command.zig");
 
-const Config = @import("../Config.zig");
-
 var slider_speed: u8 = 40;
 var slider_acceleration: u8 = 40;
+
+const Connection = enum(u8) {
+    @"CC-Link Ver.2" = 0,
+};
+
+const Axis = struct {
+    location: f32,
+};
+
+const Driver = struct {
+    axis_1: ?Axis,
+    axis_2: ?Axis,
+    axis_3: ?Axis,
+};
+
+pub const Config = struct {
+    connection: Connection,
+    min_poll_rate: c_ulong,
+    drivers: []Driver,
+};
 
 pub fn init(config: Config) !void {
     if (config.drivers.len == 0) {
@@ -56,8 +74,8 @@ pub fn init(config: Config) !void {
     }
 
     const mcs_conf: c.McsConfig = .{
-        .connection_kind = @intFromEnum(config.mcs_connection),
-        .connection_min_polling_interval = config.mcs_poll_rate,
+        .connection_kind = @intFromEnum(config.connection),
+        .connection_min_polling_interval = config.min_poll_rate,
         .num_drivers = @intCast(config.drivers.len),
         .drivers = @ptrCast((&drivers).ptr),
     };
