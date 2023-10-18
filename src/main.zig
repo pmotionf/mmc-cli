@@ -78,7 +78,7 @@ pub fn main() !void {
             } else continue :command_loop;
         }
         command.execute() catch |e| {
-            std.log.err("Error: {s}", .{@errorName(e)});
+            std.log.err("{s}", .{@errorName(e)});
             command.queueClear();
             continue :command_loop;
         };
