@@ -3,12 +3,6 @@ const std = @import("std");
 const network = @import("network");
 const command = @import("command.zig");
 
-// Command modules.
-const mcs = @import("command/mcs.zig");
-const return_demo2 = @import("command/return_demo2.zig");
-
-const Config = @import("Config.zig");
-
 fn nextLine(reader: anytype, buffer: []u8) !?[]const u8 {
     var line = (try reader.readUntilDelimiterOrEof(
         buffer,
@@ -35,35 +29,6 @@ pub fn main() !void {
 
     try command.init();
     defer command.deinit();
-
-    // Load config file.
-    var config_file = try std.fs.cwd().openFile("config.json", .{});
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    var allocator = arena.allocator();
-    var config = try Config.parse(allocator, config_file);
-
-    // Initialize only the modules specified in config file.
-    const fields = @typeInfo(Config.Module).Enum.fields;
-    for (config.modules()) |module| {
-        switch (@intFromEnum(module)) {
-            inline 0...fields.len - 1 => |i| {
-                try @field(@This(), fields[i].name).init(
-                    @field(module, fields[i].name),
-                );
-            },
-        }
-    }
-    defer {
-        for (config.modules()) |module| {
-            switch (@intFromEnum(module)) {
-                inline 0...fields.len - 1 => |i| {
-                    @field(@This(), fields[i].name).deinit();
-                },
-            }
-        }
-    }
-    config.deinit();
-    arena.deinit();
 
     const standard_in = std.io.getStdIn();
     var buffered_reader = std.io.bufferedReader(standard_in.reader());

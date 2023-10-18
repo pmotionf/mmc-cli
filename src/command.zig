@@ -4,9 +4,27 @@
 
 const std = @import("std");
 
+// Command modules.
+const mcs = @import("command/mcs.zig");
+const return_demo2 = @import("command/return_demo2.zig");
+
+const Config = @import("Config.zig");
+
+// Global registry of all commands, including from other command modules.
 pub var registry: std.StringArrayHashMap(Command) = undefined;
+
+// Global "stop" flag to interrupt command execution. Command modules should
+// not use this atomic flag directly, but instead prefer to use the
+// `checkCommandInterrupt` to check the flag, throw a `CommandStopped` error if
+// set, and then reset the flag.
 pub var stop: std.atomic.Atomic(bool) = std.atomic.Atomic(bool).init(false);
+
+// Global registry of all variables.
 pub var variables: std.BufMap = undefined;
+
+// Flags to keep track of currently initialized modules, so that only
+// initialized will be deinitialized.
+var initialized_modules: std.EnumArray(Config.Module, bool) = undefined;
 
 var command_queue: std.ArrayList(CommandString) = undefined;
 
@@ -39,6 +57,7 @@ pub fn init() !void {
     arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     allocator = arena.allocator();
 
+    initialized_modules = std.EnumArray(Config.Module, bool).initFill(false);
     registry = std.StringArrayHashMap(Command).init(allocator);
     variables = std.BufMap.init(allocator);
     command_queue = std.ArrayList(CommandString).init(allocator);
@@ -65,6 +84,19 @@ pub fn init() !void {
         \\command line utility in Semantic Version format.
         ,
         .execute = &version,
+    });
+    try registry.put("LOAD_CONFIG", .{
+        .name = "LOAD_CONFIG",
+        .parameters = &[_]Command.Parameter{
+            .{ .name = "file path", .optional = true },
+        },
+        .short_description = "Load CLI configuration file.",
+        .long_description =
+        \\Read given configuration file to dynamically load specified command
+        \\modules. This configuration file must be in valid JSON format, with
+        \\configuration parameters according to provided documentation.
+        ,
+        .execute = &loadConfig,
     });
     try registry.put("SET", .{
         .name = "SET",
@@ -130,6 +162,7 @@ pub fn deinit() void {
     defer stop.store(false, .Monotonic);
     variables.deinit();
     command_queue.deinit();
+    deinitModules();
     registry.deinit();
     arena.deinit();
 }
@@ -335,6 +368,50 @@ fn file(params: [][]const u8) !void {
         std.log.info("Queueing command: {s}", .{line});
         try command_queue.insert(current_len, new_line);
     }
+}
+
+fn deinitModules() void {
+    var mod_it = initialized_modules.iterator();
+    const fields = @typeInfo(Config.Module).Enum.fields;
+    while (mod_it.next()) |e| {
+        if (e.value.*) {
+            switch (@intFromEnum(e.key)) {
+                inline 0...fields.len - 1 => |i| {
+                    @field(@This(), fields[i].name).deinit();
+                },
+            }
+        }
+    }
+}
+
+fn loadConfig(params: [][]const u8) !void {
+    // De-initialize any previously initialized modules.
+    deinitModules();
+
+    // Load config file.
+    const file_path = if (params[0].len > 0) params[0] else "config.json";
+    var config_file = try std.fs.cwd().openFile(file_path, .{});
+    var m_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var m_allocator = m_arena.allocator();
+    var config = try Config.parse(m_allocator, config_file);
+
+    // Initialize only the modules specified in config file.
+    const fields = @typeInfo(Config.Module).Enum.fields;
+    for (config.modules()) |module| {
+        switch (@intFromEnum(module)) {
+            inline 0...fields.len - 1 => |i| {
+                try @field(@This(), fields[i].name).init(
+                    @field(module, fields[i].name),
+                );
+                initialized_modules.set(
+                    @field(Config.Module, fields[i].name),
+                    true,
+                );
+            },
+        }
+    }
+    config.deinit();
+    m_arena.deinit();
 }
 
 fn exit(_: [][]const u8) !void {

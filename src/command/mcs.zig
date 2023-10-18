@@ -5,24 +5,24 @@ const command = @import("../command.zig");
 var slider_speed: u8 = 40;
 var slider_acceleration: u8 = 40;
 
-const Connection = enum(u8) {
-    @"CC-Link Ver.2" = 0,
-};
-
-const Axis = struct {
-    location: f32,
-};
-
-const Driver = struct {
-    axis_1: ?Axis,
-    axis_2: ?Axis,
-    axis_3: ?Axis,
-};
-
 pub const Config = struct {
     connection: Connection,
     min_poll_rate: c_ulong,
     drivers: []Driver,
+
+    const Connection = enum(u8) {
+        @"CC-Link Ver.2" = 0,
+    };
+
+    const Driver = struct {
+        axis_1: ?Axis,
+        axis_2: ?Axis,
+        axis_3: ?Axis,
+
+        const Axis = struct {
+            location: f32,
+        };
+    };
 };
 
 pub fn init(config: Config) !void {
