@@ -5,6 +5,8 @@ const command = @import("command.zig");
 const mcs = @import("command/mcs.zig");
 const return_demo2 = @import("command/return_demo2.zig");
 
+const Config = @import("Config.zig");
+
 fn nextLine(reader: anytype, buffer: []u8) !?[]const u8 {
     var line = (try reader.readUntilDelimiterOrEof(
         buffer,
@@ -32,11 +34,30 @@ pub fn main() !void {
     try command.init();
     defer command.deinit();
 
-    try mcs.init();
-    defer mcs.deinit();
+    // Load config file.
+    var config_file = try std.fs.cwd().openFile("config.json", .{});
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var allocator = arena.allocator();
+    var config = try Config.parse(allocator, config_file);
+    defer config.deinit();
 
-    try return_demo2.init();
-    defer return_demo2.deinit();
+    for (config.modules) |module_name| {
+        if (std.mem.eql(u8, module_name, "mcs")) {
+            try mcs.init(config);
+        } else if (std.mem.eql(u8, module_name, "return_demo2")) {
+            try return_demo2.init();
+        }
+    }
+    defer {
+        for (config.modules) |module_name| {
+            if (std.mem.eql(u8, module_name, "mcs")) {
+                mcs.deinit();
+            } else if (std.mem.eql(u8, module_name, "return_demo2")) {
+                return_demo2.deinit();
+            }
+        }
+    }
 
     const standard_in = std.io.getStdIn();
     var buffered_reader = std.io.bufferedReader(standard_in.reader());

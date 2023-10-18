@@ -2,41 +2,63 @@ const std = @import("std");
 const c = @cImport(@cInclude("MCS.h"));
 const command = @import("../command.zig");
 
+const Config = @import("../Config.zig");
+
 var slider_speed: u8 = 40;
 var slider_acceleration: u8 = 40;
 
-pub fn init() !void {
-    // TODO: Allow configuration of drivers from config file.
-    const drivers: [3]c.McsDriverConfig = .{
-        .{
-            .using_axis1 = 1,
+pub fn init(config: Config) !void {
+    if (config.drivers.len == 0) {
+        return error.InvalidDriverConfiguration;
+    }
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var allocator = arena.allocator();
+    var drivers: []c.McsDriverConfig = try allocator.alloc(
+        c.McsDriverConfig,
+        config.drivers.len,
+    );
+    defer allocator.free(drivers);
+
+    for (config.drivers, 0..) |d, i| {
+        drivers[i] = .{
+            .using_axis1 = 0,
             .axis1_position = .{ .mm = 0, .um = 0 },
-            .using_axis2 = 1,
-            .axis2_position = .{ .mm = 630, .um = 0 },
-            .using_axis3 = 1,
-            .axis3_position = .{ .mm = 1260, .um = 0 },
-        },
-        .{
-            .using_axis1 = 1,
-            .axis1_position = .{ .mm = 1890, .um = 0 },
-            .using_axis2 = 1,
-            .axis2_position = .{ .mm = 2520, .um = 0 },
-            .using_axis3 = 1,
-            .axis3_position = .{ .mm = 3150, .um = 0 },
-        },
-        .{
-            .using_axis1 = 1,
-            .axis1_position = .{ .mm = 3780, .um = 0 },
-            .using_axis2 = 1,
-            .axis2_position = .{ .mm = 4410, .um = 0 },
-            .using_axis3 = 1,
-            .axis3_position = .{ .mm = 5040, .um = 0 },
-        },
-    };
+            .using_axis2 = 0,
+            .axis2_position = .{ .mm = 0, .um = 0 },
+            .using_axis3 = 0,
+            .axis3_position = .{ .mm = 0, .um = 0 },
+        };
+        if (d.axis_1) |a| {
+            drivers[i].using_axis1 = 1;
+            const mm: c_short = @intFromFloat(a.location);
+            const um: c_short = @intFromFloat(
+                1000 * (a.location - @trunc(a.location)),
+            );
+            drivers[i].axis1_position = .{ .mm = mm, .um = um };
+        }
+        if (d.axis_2) |a| {
+            drivers[i].using_axis2 = 1;
+            const mm: c_short = @intFromFloat(a.location);
+            const um: c_short = @intFromFloat(
+                1000 * (a.location - @trunc(a.location)),
+            );
+            drivers[i].axis2_position = .{ .mm = mm, .um = um };
+        }
+        if (d.axis_3) |a| {
+            drivers[i].using_axis3 = 1;
+            const mm: c_short = @intFromFloat(a.location);
+            const um: c_short = @intFromFloat(
+                1000 * (a.location - @trunc(a.location)),
+            );
+            drivers[i].axis3_position = .{ .mm = mm, .um = um };
+        }
+    }
+
     const mcs_conf: c.McsConfig = .{
-        .connection_kind = 0,
-        .connection_min_polling_interval = 100_000,
-        .num_drivers = 3,
+        .connection_kind = @intFromEnum(config.mcs_connection),
+        .connection_min_polling_interval = config.mcs_poll_rate,
+        .num_drivers = @intCast(config.drivers.len),
         .drivers = @ptrCast((&drivers).ptr),
     };
     try mcsError(c.mcsInit(&mcs_conf));
