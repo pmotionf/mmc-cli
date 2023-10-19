@@ -329,7 +329,7 @@ fn help(params: [][]const u8) !void {
 
 fn version(_: [][]const u8) !void {
     // TODO: Figure out better way to get version from `build.zig.zon`.
-    std.log.info("CLI Version: {s}\n", .{"0.0.5"});
+    std.log.info("CLI Version: {s}\n", .{"0.0.6"});
 }
 
 fn set(params: [][]const u8) !void {

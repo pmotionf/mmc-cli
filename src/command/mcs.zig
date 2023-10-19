@@ -80,6 +80,7 @@ pub fn init(config: Config) !void {
         .drivers = @ptrCast((&drivers).ptr),
     };
     try mcsError(c.mcsInit(&mcs_conf));
+
     try command.registry.put("MCS_VERSION", .{
         .name = "MCS_VERSION",
         .short_description = "Display the version of the MCS library.",

@@ -15,20 +15,13 @@ var clients_lock: std.Thread.RwLock = .{};
 // All commands will be broadcasted to every client.
 var clients: std.ArrayList(Client) = undefined;
 
+var server: network.Socket = undefined;
 var server_thread: std.Thread = undefined;
 
 // Flag to stop server connection thread. Use `command.stop` for commands.
 var server_stop: std.atomic.Atomic(bool) = std.atomic.Atomic(bool).init(false);
 
 fn acceptClients() !void {
-    var server = try network.Socket.create(.ipv4, .tcp);
-    defer server.close();
-
-    try server.bind(.{
-        .address = try network.Address.parse("127.0.0.1"),
-        .port = 9001,
-    });
-
     try server.listen();
     while (!server_stop.load(.Monotonic)) {
         var new_connection: network.Socket = server.accept() catch |e| {
@@ -60,6 +53,27 @@ pub fn init(_: Config) !void {
     clients = std.ArrayList(Client).init(allocator);
     clients_lock.unlock();
     try network.init();
+
+    server = try network.Socket.create(.ipv4, .tcp);
+    server.bind(.{
+        .address = try network.Address.parse("127.0.0.1"),
+        .port = 9001,
+    }) catch |e| {
+        server.close();
+        server = undefined;
+        return e;
+    };
+    server_thread = std.Thread.spawn(.{}, acceptClients, .{}) catch |e| {
+        server.close();
+        server = undefined;
+        return e;
+    };
+    errdefer {
+        server_stop.store(true, .Monotonic);
+        server.close();
+        server_thread.join();
+        server_stop.store(false, .Monotonic);
+    }
 
     try command.registry.put("HOME_RETURN_SYSTEM", .{
         .name = "HOME_RETURN_SYSTEM",
@@ -132,14 +146,13 @@ pub fn init(_: Config) !void {
         ,
         .execute = &beltMoveEnd,
     });
-
-    server_thread = try std.Thread.spawn(.{}, acceptClients, .{});
 }
 
 pub fn deinit() void {
     server_stop.store(true, .Monotonic);
-    defer server_stop.store(false, .Monotonic);
+    server.close();
     server_thread.join();
+    server_stop.store(false, .Monotonic);
 
     network.deinit();
     clients_lock.lock();

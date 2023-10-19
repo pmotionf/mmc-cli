@@ -50,6 +50,7 @@ pub fn main() !void {
         }
         command.execute() catch |e| {
             std.log.err("{s}", .{@errorName(e)});
+            std.log.debug("{any}", .{@errorReturnTrace()});
             command.queueClear();
             continue :command_loop;
         };
