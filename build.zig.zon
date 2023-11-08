@@ -3,8 +3,8 @@
     .version = "0.0.6",
     .dependencies = .{
         .network = .{
-            .url = "git+https://github.com/mochalins/zig-network#5121effa2204c22223f106260f043216de8b0b4c",
-            .hash = "12208e03d0668fc63fd043b5ea5d4ea4ef37105a007234a037753095bd2e0e43b144",
+            .url = "git+https://github.com/mochalins/zig-network#0cfd894ccacf87056aa158b50363a6e2bbde7347",
+            .hash = "1220f36fca2a3c0f4c2bacd8025820676f44a9bb42a84294f76380b79b2fac1e7572",
         },
     },
     .paths = .{""},
