@@ -5,7 +5,7 @@
 
 # Whitelist
 !*.md
-!LICENSE
+!LICENSE-MIT
 !.gitignore
 !assets/**
 !build.zig
