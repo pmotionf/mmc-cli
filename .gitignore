@@ -16,3 +16,4 @@
 # Blacklist (overrides Whitelist)
 zig-out/**
 zig-cache/**
+vendor/**
