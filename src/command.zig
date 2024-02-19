@@ -5,7 +5,7 @@
 const std = @import("std");
 
 // Command modules.
-const mcs = @import("command/mcs.zig");
+const mcl = @import("command/mcl.zig");
 const return_demo2 = @import("command/return_demo2.zig");
 
 const Config = @import("Config.zig");
@@ -17,7 +17,7 @@ pub var registry: std.StringArrayHashMap(Command) = undefined;
 // not use this atomic flag directly, but instead prefer to use the
 // `checkCommandInterrupt` to check the flag, throw a `CommandStopped` error if
 // set, and then reset the flag.
-pub var stop: std.atomic.Atomic(bool) = std.atomic.Atomic(bool).init(false);
+pub var stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false);
 
 // Global registry of all variables.
 pub var variables: std.BufMap = undefined;
@@ -329,7 +329,7 @@ fn help(params: [][]const u8) !void {
 
 fn version(_: [][]const u8) !void {
     // TODO: Figure out better way to get version from `build.zig.zon`.
-    std.log.info("CLI Version: {s}\n", .{"0.0.6"});
+    std.log.info("CLI Version: {s}\n", .{"0.0.7"});
 }
 
 fn set(params: [][]const u8) !void {
@@ -390,9 +390,9 @@ fn loadConfig(params: [][]const u8) !void {
 
     // Load config file.
     const file_path = if (params[0].len > 0) params[0] else "config.json";
-    var config_file = try std.fs.cwd().openFile(file_path, .{});
+    const config_file = try std.fs.cwd().openFile(file_path, .{});
     var m_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    var m_allocator = m_arena.allocator();
+    const m_allocator = m_arena.allocator();
     var config = try Config.parse(m_allocator, config_file);
 
     // Initialize only the modules specified in config file.

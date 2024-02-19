@@ -1,33 +1,27 @@
 const std = @import("std");
 
-pub const McsCliBuildOptions = struct {
-    mcs_library_path: []const u8,
-    mcs_header_path: []const u8,
-};
-
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    if (target.getOsTag() != .windows) {
+    if (target.result.os.tag != .windows) {
         return error.WindowsRequired;
     }
 
-    const mcs_library_path = b.option(
+    const mdfunc_lib_path = b.option(
         []const u8,
-        "mcs_library_path",
-        "Specify the path to the directory containing the static MCS library.",
-    );
-    const mcs_header_path = b.option(
-        []const u8,
-        "mcs_header_path",
-        "Specify the path to the directory containing the MCS library header.",
-    );
-    const mcs_cli_build_options: McsCliBuildOptions = .{
-        .mcs_library_path = mcs_library_path orelse "lib/MCS/lib",
-        .mcs_header_path = mcs_header_path orelse "lib/MCS/include",
-    };
+        "mdfunc",
+        "Specify the path to the MELSEC static library artifact.",
+    ) orelse if (target.result.cpu.arch == .x86_64)
+        b.pathFromRoot("vendor/mdfunc/lib/x64/MdFunc32.lib")
+    else
+        b.pathFromRoot("vendor/mdfunc/lib/mdfunc32.lib");
 
+    const mcl = b.dependency("mcl", .{
+        .target = target,
+        .optimize = optimize,
+        .mdfunc = mdfunc_lib_path,
+    });
     const network_dep = b.dependency("network", .{});
 
     const exe = b.addExecutable(.{
@@ -36,10 +30,8 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
-    exe.addModule("network", network_dep.module("network"));
-    exe.addIncludePath(.{ .path = mcs_cli_build_options.mcs_header_path });
-    exe.addLibraryPath(.{ .path = mcs_cli_build_options.mcs_library_path });
-    exe.linkSystemLibrary2("MCS", .{ .preferred_link_mode = .Static });
+    exe.root_module.addImport("network", network_dep.module("network"));
+    exe.root_module.addImport("mcl", mcl.module("mcl"));
 
     b.installArtifact(exe);
 

@@ -4,7 +4,7 @@ const network = @import("network");
 const command = @import("command.zig");
 
 fn nextLine(reader: anytype, buffer: []u8) !?[]const u8 {
-    var line = (try reader.readUntilDelimiterOrEof(
+    const line = (try reader.readUntilDelimiterOrEof(
         buffer,
         '\n',
     )) orelse return null;
@@ -32,7 +32,7 @@ pub fn main() !void {
 
     const standard_in = std.io.getStdIn();
     var buffered_reader = std.io.bufferedReader(standard_in.reader());
-    var reader = buffered_reader.reader();
+    const reader = buffered_reader.reader();
 
     command_loop: while (true) {
         std.io.getStdIn().sync() catch {};

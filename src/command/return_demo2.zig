@@ -19,7 +19,7 @@ var server: network.Socket = undefined;
 var server_thread: std.Thread = undefined;
 
 // Flag to stop server connection thread. Use `command.stop` for commands.
-var server_stop: std.atomic.Atomic(bool) = std.atomic.Atomic(bool).init(false);
+var server_stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false);
 
 fn acceptClients() !void {
     try server.listen();

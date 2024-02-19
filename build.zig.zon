@@ -1,10 +1,14 @@
 .{
     .name = "mcs-cli",
-    .version = "0.0.6",
+    .version = "0.0.7",
     .dependencies = .{
         .network = .{
-            .url = "git+https://github.com/mochalins/zig-network#0cfd894ccacf87056aa158b50363a6e2bbde7347",
-            .hash = "1220f36fca2a3c0f4c2bacd8025820676f44a9bb42a84294f76380b79b2fac1e7572",
+            .url = "https://github.com/mochalins/zig-network/archive/3ed765c0a8f5845f4a4fa54d9ae91cf2425e4539.tar.gz",
+            .hash = "122033fba45ac83a780b1db316526158794a7dc184138a57a001a2db0aaa81b9e18c",
+        },
+        .mcl = .{
+            .url = "https://github.com/pmotionf/mcl/archive/f2a85f38fd0469e33e49fa319f63600d7db7c107.tar.gz",
+            .hash = "12205ce6c91b23d9eec957997eed9e44171cc742d81a25270911c63b39fe5a86cad0",
         },
     },
     .paths = .{""},

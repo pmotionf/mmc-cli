@@ -1,6 +1,6 @@
 const std = @import("std");
-const c = @cImport(@cInclude("MCS.h"));
 const command = @import("../command.zig");
+const mcl = @import("mcl");
 
 var slider_speed: u8 = 40;
 var slider_acceleration: u8 = 40;
@@ -32,82 +32,84 @@ pub fn init(config: Config) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     var allocator = arena.allocator();
-    var drivers: []c.McsDriverConfig = try allocator.alloc(
-        c.McsDriverConfig,
+    var drivers: []mcl.DriverConfig = try allocator.alloc(
+        mcl.DriverConfig,
         config.drivers.len,
     );
     defer allocator.free(drivers);
 
     for (config.drivers, 0..) |d, i| {
         drivers[i] = .{
-            .using_axis1 = 0,
-            .axis1_position = .{ .mm = 0, .um = 0 },
-            .using_axis2 = 0,
-            .axis2_position = .{ .mm = 0, .um = 0 },
-            .using_axis3 = 0,
-            .axis3_position = .{ .mm = 0, .um = 0 },
+            .axis1 = null,
+            .axis2 = null,
+            .axis3 = null,
         };
         if (d.axis_1) |a| {
-            drivers[i].using_axis1 = 1;
             const mm: c_short = @intFromFloat(a.location);
             const um: c_short = @intFromFloat(
                 1000 * (a.location - @trunc(a.location)),
             );
-            drivers[i].axis1_position = .{ .mm = mm, .um = um };
+            drivers[i].axis1 = .{
+                .position = .{ .mm = mm, .um = um },
+            };
         }
         if (d.axis_2) |a| {
-            drivers[i].using_axis2 = 1;
             const mm: c_short = @intFromFloat(a.location);
             const um: c_short = @intFromFloat(
                 1000 * (a.location - @trunc(a.location)),
             );
-            drivers[i].axis2_position = .{ .mm = mm, .um = um };
+            drivers[i].axis2 = .{
+                .position = .{ .mm = mm, .um = um },
+            };
         }
         if (d.axis_3) |a| {
-            drivers[i].using_axis3 = 1;
             const mm: c_short = @intFromFloat(a.location);
             const um: c_short = @intFromFloat(
                 1000 * (a.location - @trunc(a.location)),
             );
-            drivers[i].axis3_position = .{ .mm = mm, .um = um };
+            drivers[i].axis3 = .{
+                .position = .{ .mm = mm, .um = um },
+            };
         }
     }
 
-    const mcs_conf: c.McsConfig = .{
-        .connection_kind = @intFromEnum(config.connection),
+    const mcl_conf: mcl.Config = .{
+        .connection_kind = switch (config.connection) {
+            .@"CC-Link Ver.2" => .CcLinkVer2,
+        },
         .connection_min_polling_interval = config.min_poll_rate,
-        .num_drivers = @intCast(config.drivers.len),
-        .drivers = @ptrCast((&drivers).ptr),
+        .drivers = drivers,
     };
-    try mcsError(c.mcsInit(&mcs_conf));
 
-    try command.registry.put("MCS_VERSION", .{
-        .name = "MCS_VERSION",
-        .short_description = "Display the version of the MCS library.",
+    try mcl.init(mcl_conf);
+
+    try command.registry.put("MCL_VERSION", .{
+        .name = "MCL_VERSION",
+        .short_description = "Display the version of MCL.",
         .long_description =
-        \\Print the currently linked version of the Motion Control Software
-        \\library in Semantic Version format.
+        \\Print the currently linked version of the PMF Motion Control Library
+        \\in Semantic Version format.
         ,
-        .execute = &mcsVersion,
+        .execute = &mclVersion,
     });
     try command.registry.put("CONNECT", .{
         .name = "CONNECT",
-        .short_description = "Connect MCS library with motion system.",
+        .short_description = "Connect MCL with motion system.",
         .long_description =
-        \\Initialize the MCS library's connection with the motion system. This
-        \\command should be run before any other MCS command, and also after
-        \\any power cycle of the motion system.
+        \\Initialize MCL's connection with the motion system. This command
+        \\should be run before any other MCL command, and also after any power
+        \\cycle of the motion system.
         ,
-        .execute = &mcsConnect,
+        .execute = &mclConnect,
     });
     try command.registry.put("DISCONNECT", .{
         .name = "DISCONNECT",
-        .short_description = "Disconnect MCS library from motion system.",
+        .short_description = "Disconnect MCL from motion system.",
         .long_description =
-        \\End the MCS library's connection with the motion system. This command
-        \\should be run after other MCS commands are completed.
+        \\End MCL's connection with the motion system. This command should be
+        \\run after other MCL commands are completed.
         ,
-        .execute = &mcsDisconnect,
+        .execute = &mclDisconnect,
     });
     try command.registry.put("SET_SPEED", .{
         .name = "SET_SPEED",
@@ -119,7 +121,7 @@ pub fn init(config: Config) !void {
         \\Set the speed of slider movement. This must be a whole integer number
         \\between 1 and 100, inclusive.
         ,
-        .execute = &mcsSetSpeed,
+        .execute = &mclSetSpeed,
     });
     try command.registry.put("SET_ACCELERATION", .{
         .name = "SET_ACCELERATION",
@@ -131,7 +133,7 @@ pub fn init(config: Config) !void {
         \\Set the acceleration of slider movement. This must be a whole integer
         \\number between 1 and 100, inclusive.
         ,
-        .execute = &mcsSetAcceleration,
+        .execute = &mclSetAcceleration,
     });
     try command.registry.put("AXIS_SLIDER", .{
         .name = "AXIS_SLIDER",
@@ -145,7 +147,7 @@ pub fn init(config: Config) !void {
         \\If a result variable name was provided, also store the slider ID in
         \\the variable.
         ,
-        .execute = &mcsAxisSlider,
+        .execute = &mclAxisSlider,
     });
     try command.registry.put("RELEASE_AXIS_SERVO", .{
         .name = "RELEASE_AXIS_SERVO",
@@ -156,7 +158,7 @@ pub fn init(config: Config) !void {
         \\This command should be run before sliders move within or exit from
         \\the system due to external influence.
         ,
-        .execute = &mcsAxisReleaseServo,
+        .execute = &mclAxisReleaseServo,
     });
     try command.registry.put("WAIT_RELEASE_AXIS_SERVO", .{
         .name = "WAIT_RELEASE_AXIS_SERVO",
@@ -166,7 +168,7 @@ pub fn init(config: Config) !void {
         \\Pause the execution of any further commands until the given axis has
         \\indicated that it has released its servo.
         ,
-        .execute = &mcsAxisWaitReleaseServo,
+        .execute = &mclAxisWaitReleaseServo,
     });
     try command.registry.put("HOME_SLIDER", .{
         .name = "HOME_SLIDER",
@@ -175,7 +177,7 @@ pub fn init(config: Config) !void {
         \\Home an unrecognized slider on the first axis. The unrecognized
         \\slider must be positioned in the correct homing position.
         ,
-        .execute = &mcsHomeSlider,
+        .execute = &mclHomeSlider,
     });
     try command.registry.put("WAIT_HOME_SLIDER", .{
         .name = "WAIT_HOME_SLIDER",
@@ -188,7 +190,7 @@ pub fn init(config: Config) !void {
         \\axis. If an optional result variable name is provided, then store the
         \\recognized slider ID in the variable.
         ,
-        .execute = &mcsWaitHomeSlider,
+        .execute = &mclWaitHomeSlider,
     });
     try command.registry.put("RECOVER_SLIDER", .{
         .name = "RECOVER_SLIDER",
@@ -202,7 +204,7 @@ pub fn init(config: Config) !void {
         \\ID must be a positive integer from 1 to 127 inclusive, and must be
         \\unique to other recognized slider IDs.
         ,
-        .execute = &mcsRecoverSlider,
+        .execute = &mclRecoverSlider,
     });
     try command.registry.put("WAIT_RECOVER_SLIDER", .{
         .name = "WAIT_RECOVER_SLIDER",
@@ -216,7 +218,7 @@ pub fn init(config: Config) !void {
         \\If an optional result variable name is provided, then store the
         \\recognized slider ID in the variable.
         ,
-        .execute = &mcsWaitRecoverSlider,
+        .execute = &mclWaitRecoverSlider,
     });
     try command.registry.put("SLIDER_LOCATION", .{
         .name = "SLIDER_LOCATION",
@@ -230,7 +232,7 @@ pub fn init(config: Config) !void {
         \\motion system. If a result variable name is provided, then store the
         \\slider's location in the variable.
         ,
-        .execute = &mcsSliderLocation,
+        .execute = &mclSliderLocation,
     });
     try command.registry.put("MOVE_SLIDER_AXIS", .{
         .name = "MOVE_SLIDER_AXIS",
@@ -243,7 +245,7 @@ pub fn init(config: Config) !void {
         \\Move given slider to the center of target axis. The slider ID must be
         \\currently recognized within the motion system.
         ,
-        .execute = &mcsSliderPosMoveAxis,
+        .execute = &mclSliderPosMoveAxis,
     });
     try command.registry.put("MOVE_SLIDER_LOCATION", .{
         .name = "MOVE_SLIDER_LOCATION",
@@ -257,7 +259,7 @@ pub fn init(config: Config) !void {
         \\recognized within the motion system, and the target location must be
         \\provided in millimeters as a whole or decimal number.
         ,
-        .execute = &mcsSliderPosMoveLocation,
+        .execute = &mclSliderPosMoveLocation,
     });
     try command.registry.put("MOVE_SLIDER_DISTANCE", .{
         .name = "MOVE_SLIDER_DISTANCE",
@@ -272,7 +274,7 @@ pub fn init(config: Config) !void {
         \\be provided in millimeters as a whole or decimal number. The distance
         \\may be negative for backward movement.
         ,
-        .execute = &mcsSliderPosMoveDistance,
+        .execute = &mclSliderPosMoveDistance,
     });
     try command.registry.put("WAIT_MOVE_SLIDER", .{
         .name = "WAIT_MOVE_SLIDER",
@@ -282,48 +284,38 @@ pub fn init(config: Config) !void {
         \\Pause the execution of any further commands until movement for the
         \\given slider is indicated as complete.
         ,
-        .execute = &mcsWaitMoveSlider,
+        .execute = &mclWaitMoveSlider,
     });
 }
 
 pub fn deinit() void {
-    c.mcsDeinit();
+    mcl.deinit();
 }
 
-fn mcsError(code: c_int) !void {
-    if (code != 0) {
-        std.log.err("MCS Error: {s}", .{c.mcsErrorString(code)});
-        return error.McsError;
-    }
-}
-
-fn mcsVersion(_: [][]const u8) !void {
-    std.log.info("MCS Version: {d}.{d}.{d}\n", .{
-        c.mcsVersionMajor(),
-        c.mcsVersionMinor(),
-        c.mcsVersionPatch(),
+fn mclVersion(_: [][]const u8) !void {
+    std.log.info("MCL Version: {d}.{d}.{d}\n", .{
+        mcl.version().major,
+        mcl.version().minor,
+        mcl.version().patch,
     });
 }
 
-fn mcsConnect(_: [][]const u8) !void {
-    try mcsError(c.mcsConnect());
+fn mclConnect(_: [][]const u8) !void {
+    try mcl.connect();
 }
 
-fn mcsDisconnect(_: [][]const u8) !void {
-    try mcsError(c.mcsDisconnect());
+fn mclDisconnect(_: [][]const u8) !void {
+    try mcl.disconnect();
 }
 
-fn mcsAxisSlider(params: [][]const u8) !void {
-    var slider_id: c.McsSliderId = 0;
-    const axis_id = try std.fmt.parseInt(c.McsAxisId, params[0], 0);
+fn mclAxisSlider(params: [][]const u8) !void {
+    const axis_id = try std.fmt.parseInt(mcl.AxisId, params[0], 0);
 
-    try mcsError(c.mcsPoll());
-    c.mcsAxisSlider(axis_id, &slider_id);
-    try mcsError(c.mcsPoll());
+    try mcl.poll();
+    const slider = mcl.axisSlider(axis_id);
+    try mcl.poll();
 
-    if (slider_id == 0) {
-        std.log.info("No slider recognized on axis {d}.\n", .{axis_id});
-    } else {
+    if (slider) |slider_id| {
         std.log.info("Slider {d} on axis {d}.\n", .{ slider_id, axis_id });
         if (params[1].len > 0) {
             var int_buf: [8]u8 = undefined;
@@ -332,45 +324,44 @@ fn mcsAxisSlider(params: [][]const u8) !void {
                 try std.fmt.bufPrint(&int_buf, "{d}", .{slider_id}),
             );
         }
+    } else {
+        std.log.info("No slider recognized on axis {d}.\n", .{axis_id});
     }
 }
 
-fn mcsAxisReleaseServo(params: [][]const u8) !void {
-    try mcsError(c.mcsPoll());
-    try mcsError(c.mcsAxisServoRelease(
-        try std.fmt.parseInt(c.McsAxisId, params[0], 0),
-    ));
-    try mcsError(c.mcsPoll());
+fn mclAxisReleaseServo(params: [][]const u8) !void {
+    try mcl.poll();
+    try mcl.axisServoRelease(
+        try std.fmt.parseInt(mcl.AxisId, params[0], 0),
+    );
+    try mcl.poll();
 }
 
-fn mcsAxisWaitReleaseServo(params: [][]const u8) !void {
-    var released: c_int = 0;
+fn mclAxisWaitReleaseServo(params: [][]const u8) !void {
     while (true) {
         try command.checkCommandInterrupt();
-        try mcsError(c.mcsPoll());
-        c.mcsAxisServoReleased(
-            try std.fmt.parseInt(c.McsAxisId, params[0], 0),
-            &released,
+        try mcl.poll();
+        const released: bool = mcl.axisServoReleased(
+            try std.fmt.parseInt(mcl.AxisId, params[0], 0),
         );
-        try mcsError(c.mcsPoll());
-        if (released != 0) break;
+        try mcl.poll();
+        if (released) break;
     }
 }
 
-fn mcsHomeSlider(_: [][]const u8) !void {
-    try mcsError(c.mcsPoll());
-    try mcsError(c.mcsHome());
-    try mcsError(c.mcsPoll());
+fn mclHomeSlider(_: [][]const u8) !void {
+    try mcl.poll();
+    try mcl.home();
+    try mcl.poll();
 }
 
-fn mcsWaitHomeSlider(params: [][]const u8) !void {
-    var slider_id: c.McsSliderId = 0;
+fn mclWaitHomeSlider(params: [][]const u8) !void {
     while (true) {
         try command.checkCommandInterrupt();
-        try mcsError(c.mcsPoll());
-        c.mcsAxisSlider(1, &slider_id);
-        try mcsError(c.mcsPoll());
-        if (slider_id != 0) {
+        try mcl.poll();
+        const slider = mcl.axisSlider(1);
+        try mcl.poll();
+        if (slider) |slider_id| {
             std.log.info("Slider {d} homed.\n", .{slider_id});
             if (params[0].len > 0) {
                 var int_buf: [8]u8 = undefined;
@@ -384,25 +375,24 @@ fn mcsWaitHomeSlider(params: [][]const u8) !void {
     }
 }
 
-fn mcsSetSpeed(params: [][]const u8) !void {
+fn mclSetSpeed(params: [][]const u8) !void {
     const _slider_speed = try std.fmt.parseUnsigned(u8, params[0], 0);
     if (_slider_speed == 0 or _slider_speed > 100) return error.InvalidSpeed;
     slider_speed = _slider_speed;
 }
 
-fn mcsSetAcceleration(params: [][]const u8) !void {
+fn mclSetAcceleration(params: [][]const u8) !void {
     const _slider_acceleration = try std.fmt.parseUnsigned(u8, params[0], 0);
     if (_slider_acceleration == 0 or _slider_acceleration > 100)
         return error.InvalidAcceleration;
     slider_acceleration = _slider_acceleration;
 }
 
-fn mcsSliderLocation(params: [][]const u8) !void {
-    const slider_id = try std.fmt.parseInt(c.McsSliderId, params[0], 0);
-    var location: c.McsDistance = .{ .mm = 0, .um = 0 };
-    try mcsError(c.mcsPoll());
-    try mcsError(c.mcsSliderLocation(slider_id, &location));
-    try mcsError(c.mcsPoll());
+fn mclSliderLocation(params: [][]const u8) !void {
+    const slider_id = try std.fmt.parseInt(mcl.SliderId, params[0], 0);
+    try mcl.poll();
+    const location: mcl.Distance = try mcl.sliderLocation(slider_id);
+    try mcl.poll();
     std.log.info(
         "Slider {d} location: {d}.{d}mm",
         .{ slider_id, location.mm, location.um },
@@ -417,86 +407,85 @@ fn mcsSliderLocation(params: [][]const u8) !void {
     }
 }
 
-fn mcsSliderPosMoveAxis(params: [][]const u8) !void {
-    const slider_id = try std.fmt.parseInt(c.McsSliderId, params[0], 0);
-    const axis_id = try std.fmt.parseInt(c.McsAxisId, params[1], 0);
-    try mcsError(c.mcsPoll());
-    try mcsError(c.mcsSliderPosMoveAxis(
+fn mclSliderPosMoveAxis(params: [][]const u8) !void {
+    const slider_id = try std.fmt.parseInt(mcl.SliderId, params[0], 0);
+    const axis_id = try std.fmt.parseInt(mcl.AxisId, params[1], 0);
+    try mcl.poll();
+    try mcl.sliderPosMoveAxis(
         slider_id,
         axis_id,
         slider_speed,
         slider_acceleration,
-    ));
-    try mcsError(c.mcsPoll());
+    );
+    try mcl.poll();
 }
 
-fn mcsSliderPosMoveLocation(params: [][]const u8) !void {
-    const slider_id = try std.fmt.parseInt(c.McsSliderId, params[0], 0);
+fn mclSliderPosMoveLocation(params: [][]const u8) !void {
+    const slider_id = try std.fmt.parseInt(mcl.SliderId, params[0], 0);
     const location_float = try std.fmt.parseFloat(f32, params[1]);
-    const location: c.McsDistance = .{
+    const location: mcl.Distance = .{
         .mm = @intFromFloat(location_float),
         .um = @intFromFloat((location_float - @trunc(location_float)) * 1000),
     };
-    try mcsError(c.mcsPoll());
-    try mcsError(c.mcsSliderPosMoveLocation(
+    try mcl.poll();
+    try mcl.sliderPosMoveLocation(
         slider_id,
         location,
         slider_speed,
         slider_acceleration,
-    ));
-    try mcsError(c.mcsPoll());
+    );
+    try mcl.poll();
 }
 
-fn mcsSliderPosMoveDistance(params: [][]const u8) !void {
-    const slider_id = try std.fmt.parseInt(c.McsSliderId, params[0], 0);
+fn mclSliderPosMoveDistance(params: [][]const u8) !void {
+    const slider_id = try std.fmt.parseInt(mcl.SliderId, params[0], 0);
     const distance_float = try std.fmt.parseFloat(f32, params[1]);
-    const distance: c.McsDistance = .{
+    const distance: mcl.Distance = .{
         .mm = @intFromFloat(distance_float),
         .um = @intFromFloat((distance_float - @trunc(distance_float)) * 1000),
     };
-    try mcsError(c.mcsPoll());
-    try mcsError(c.mcsSliderPosMoveDistance(
+    try mcl.poll();
+    try mcl.sliderPosMoveDistance(
         slider_id,
         distance,
         slider_speed,
         slider_acceleration,
-    ));
-    try mcsError(c.mcsPoll());
+    );
+    try mcl.poll();
 }
 
-fn mcsWaitMoveSlider(params: [][]const u8) !void {
-    const slider_id = try std.fmt.parseInt(c.McsSliderId, params[0], 0);
-    var completed: c_int = 0;
-    while (completed == 0) {
+fn mclWaitMoveSlider(params: [][]const u8) !void {
+    const slider_id = try std.fmt.parseInt(mcl.SliderId, params[0], 0);
+    var completed: bool = false;
+    while (!completed) {
         try command.checkCommandInterrupt();
-        try mcsError(c.mcsPoll());
-        try mcsError(c.mcsSliderPosMoveCompleted(slider_id, &completed));
-        try mcsError(c.mcsPoll());
+        try mcl.poll();
+        completed = try mcl.sliderPosMoveCompleted(slider_id);
+        try mcl.poll();
     }
 }
 
-fn mcsRecoverSlider(params: [][]const u8) !void {
-    const axis = try std.fmt.parseUnsigned(c.McsAxisId, params[0], 0);
+fn mclRecoverSlider(params: [][]const u8) !void {
+    const axis = try std.fmt.parseUnsigned(mcl.AxisId, params[0], 0);
     const new_slider_id = try std.fmt.parseUnsigned(
-        c.McsSliderId,
+        mcl.SliderId,
         params[1],
         0,
     );
     if (new_slider_id < 1 or new_slider_id > 127) return error.InvalidSliderID;
-    try mcsError(c.mcsPoll());
-    try mcsError(c.mcsAxisRecoverSlider(axis, new_slider_id));
-    try mcsError(c.mcsPoll());
+    try mcl.poll();
+    try mcl.axisRecoverSlider(axis, new_slider_id);
+    try mcl.poll();
 }
 
-fn mcsWaitRecoverSlider(params: [][]const u8) !void {
-    const axis = try std.fmt.parseUnsigned(c.McsAxisId, params[0], 0);
-    var slider_id: c.McsSliderId = 0;
+fn mclWaitRecoverSlider(params: [][]const u8) !void {
+    const axis = try std.fmt.parseUnsigned(mcl.AxisId, params[0], 0);
     while (true) {
         try command.checkCommandInterrupt();
-        try mcsError(c.mcsPoll());
-        c.mcsAxisSlider(axis, &slider_id);
-        try mcsError(c.mcsPoll());
-        if (slider_id != 0) {
+        try mcl.poll();
+        const slider = mcl.axisSlider(axis);
+        try mcl.poll();
+        if (slider) |slider_id| {
             std.log.info("Slider {d} recovered.\n", .{slider_id});
             if (params[0].len > 0) {
                 var int_buf: [8]u8 = undefined;
