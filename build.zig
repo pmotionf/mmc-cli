@@ -4,10 +4,6 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    if (target.result.os.tag != .windows) {
-        return error.WindowsRequired;
-    }
-
     const mdfunc_lib_path = b.option(
         []const u8,
         "mdfunc",
