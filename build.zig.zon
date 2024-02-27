@@ -1,6 +1,6 @@
 .{
     .name = "mcl-cli",
-    .version = "0.0.7",
+    .version = "0.0.8",
     .dependencies = .{
         .network = .{
             .url = "https://github.com/MasterQ32/zig-network/archive/e734600daa590ab39d7bb76a5a5054b6efd1f126.tar.gz",
