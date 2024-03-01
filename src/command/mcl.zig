@@ -271,7 +271,6 @@ fn mclConnect(_: [][]const u8) !void {
 
     var station_index: u6 = 0;
     for (config.drivers) |_| {
-        try command.checkCommandInterrupt();
         const y: *mcl.Station.Y = try mcl.getStationY(channel, station_index);
         y.*.cc_link_enable = true;
         station_index = try std.math.add(u6, station_index, 1);
@@ -283,7 +282,6 @@ fn mclConnect(_: [][]const u8) !void {
 fn disconnect() !void {
     var station_index: u6 = 0;
     for (config.drivers) |_| {
-        try command.checkCommandInterrupt();
         const y: *mcl.Station.Y = try mcl.getStationY(channel, station_index);
         y.*.cc_link_enable = false;
         station_index = try std.math.add(u6, station_index, 1);
@@ -304,7 +302,6 @@ fn mclAxisSlider(params: [][]const u8) !void {
     var axis_counter: i16 = 0;
     driver_loop: for (config.drivers, 0..) |driver, _station_index| {
         const station_index: u6 = @intCast(_station_index);
-        try command.checkCommandInterrupt();
         for (0..3) |i| {
             if (driver.axis(@intCast(i))) |_| {
                 axis_counter += 1;
@@ -341,7 +338,6 @@ fn mclAxisReleaseServo(params: [][]const u8) !void {
     var axis_counter: i16 = 0;
     var station_index: u6 = 0;
     driver_loop: for (config.drivers) |driver| {
-        try command.checkCommandInterrupt();
         for (0..3) |i| {
             if (driver.axis(@intCast(i))) |_| {
                 axis_counter += 1;
@@ -386,7 +382,6 @@ fn mclAxisWaitReleaseServo(params: [][]const u8) !void {
     var axis_counter: i16 = 0;
     var station_index: u6 = 0;
     driver_loop: for (config.drivers) |driver| {
-        try command.checkCommandInterrupt();
         for (0..3) |i| {
             if (driver.axis(@intCast(i))) |_| {
                 axis_counter += 1;
@@ -468,7 +463,6 @@ fn mclSliderLocation(params: [][]const u8) !void {
     var station_index: u6 = 0;
     var location: mcl.Station.Distance = .{};
     driver_loop: for (config.drivers) |driver| {
-        try command.checkCommandInterrupt();
         const wr: *mcl.Station.Wr = try mcl.getStationWr(
             channel,
             station_index,
@@ -507,25 +501,23 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
     std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
     try mcl.pollChannel(channel, 0, @truncate(config.drivers.len - 1));
 
-    var last_axis: bool = false;
     var station_index: u6 = 0;
-    var axis_counter: i16 = 0;
-    var axis_station_index: u2 = 0;
-    // Find station of slider.
+    // Index of axis in system.
+    var axis_index: i16 = 0;
+    // Local index of axis per station.
+    var station_axis_index: u2 = undefined;
+    // Whether axis is last axis in station.
+    var last_axis: bool = false;
+    // Find station and axis of slider.
     driver_loop: for (config.drivers) |driver| {
-        try command.checkCommandInterrupt();
         const wr: *mcl.Station.Wr = try mcl.getStationWr(
             channel,
             station_index,
         );
         for (0..3) |_i| {
             const i: u2 = @intCast(_i);
-
-            // Keep track of the last checked axis ID.
-            axis_counter += 1;
-
             if (driver.axis(i) != null and wr.sliderNumber(i) == slider_id) {
-                axis_station_index = i;
+                station_axis_index = i;
                 // Check if axis is last valid in driver.
                 for ((_i + 1)..3) |_j| {
                     const j: u2 = @intCast(_j);
@@ -537,12 +529,14 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
                 }
                 break :driver_loop;
             }
+            axis_index += 1;
         }
-        station_index = try std.math.add(u6, station_index, 1);
+        station_index += 1;
     } else {
         return error.SliderIdNotFound;
     }
 
+    // If slider is between two drivers, stop traffic transmission.
     var stopped_transmission: ?Direction = null;
     if (last_axis and station_index < config.drivers.len - 1) {
         const next_station_index: u6 = station_index + 1;
@@ -550,15 +544,15 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
             channel,
             next_station_index,
         );
+        // Check first axis of next driver to see if slider is between drivers.
         for (0..3) |_i| {
             const i: u2 = @intCast(_i);
-            // Check first axis of next driver to see if slider is
-            // between drivers.
             if (config.drivers[next_station_index].axis(i)) |_| {
                 if (next_wr.sliderNumber(i) == slider_id) {
+                    std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
                     // Destination axis is at or beyond next driver.
                     // Forward movement.
-                    if (axis_id > axis_counter) {
+                    if (axis_id > axis_index + 1) {
                         try stopTrafficTransmission(
                             channel,
                             station_index,
@@ -592,6 +586,7 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
     try sendCommand(channel, station_index);
 
     if (stopped_transmission) |dir| {
+        std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
         try restartTrafficTransmission(channel, station_index, dir);
     }
 }
@@ -610,34 +605,93 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
     try mcl.pollChannel(channel, 0, @truncate(config.drivers.len - 1));
 
     var station_index: u6 = 0;
-    for (config.drivers) |driver| {
-        try command.checkCommandInterrupt();
-        const wr: *mcl.Station.Wr = try mcl.getStationWr(
-            channel,
-            station_index,
-        );
-        if (driver.axis1 != null and wr.slider_number.axis1 == slider_id)
-            break;
-        if (driver.axis2 != null and wr.slider_number.axis2 == slider_id)
-            break;
-        if (driver.axis3 != null and wr.slider_number.axis3 == slider_id)
-            break;
+    // Index of axis in system.
+    var axis_index: i16 = 0;
+    // Local index of axis per station.
+    var station_axis_index: u2 = undefined;
+    // Whether axis is last axis in station.
+    var last_axis: bool = false;
 
-        station_index = try std.math.add(u6, station_index, 1);
+    var wr: *mcl.Station.Wr = undefined;
+    // Find station and axis of slider.
+    driver_loop: for (config.drivers) |driver| {
+        wr = try mcl.getStationWr(channel, station_index);
+        for (0..3) |_i| {
+            const i: u2 = @intCast(_i);
+            if (driver.axis(i) != null and wr.sliderNumber(i) == slider_id) {
+                station_axis_index = i;
+                // Check if axis is last valid in driver.
+                for ((_i + 1)..3) |_j| {
+                    const j: u2 = @intCast(_j);
+                    if (driver.axis(j)) |_| {
+                        break;
+                    }
+                } else {
+                    last_axis = true;
+                }
+                break :driver_loop;
+            }
+            axis_index += 1;
+        }
+        station_index += 1;
     } else {
         return error.SliderIdNotFound;
     }
+    var stopped_transmission: ?Direction = null;
+    if (last_axis and station_index < config.drivers.len - 1) {
+        const next_station_index: u6 = station_index + 1;
+        const next_wr: *mcl.Station.Wr = try mcl.getStationWr(
+            channel,
+            next_station_index,
+        );
+        // Check first axis of next driver to see if slider is between drivers.
+        for (0..3) |_i| {
+            const i: u2 = @intCast(_i);
+            if (config.drivers[next_station_index].axis(i)) |_| {
+                if (next_wr.sliderNumber(i) == slider_id) {
+                    std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
+                    // Destination location is in front of current location.
+                    // Forward movement.
+                    if (location.mm > wr.sliderLocation(i).mm or
+                        (location.mm == wr.sliderLocation(i).mm and
+                        location.um > wr.sliderLocation(i).um))
+                    {
+                        try stopTrafficTransmission(
+                            channel,
+                            station_index,
+                            .forward,
+                        );
+                        stopped_transmission = .forward;
+                    }
+                    // Destination location is behind current location.
+                    // Backward movement.
+                    else {
+                        try stopTrafficTransmission(
+                            channel,
+                            station_index,
+                            .backward,
+                        );
+                        stopped_transmission = .backward;
+                    }
+                }
+                break;
+            }
+        }
+    }
 
     const ww: *mcl.Station.Ww = try mcl.getStationWw(channel, station_index);
-
     try waitCommandReady(channel, station_index);
-
     ww.*.command_code = .MoveSliderToLocationByPosition;
     ww.*.command_slider_number = slider_id;
     ww.*.location_distance = location;
     ww.*.speed_percentage = slider_speed;
     ww.*.acceleration_percentage = slider_acceleration;
     try sendCommand(channel, station_index);
+
+    if (stopped_transmission) |dir| {
+        std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
+        try restartTrafficTransmission(channel, station_index, dir);
+    }
 }
 
 fn mclSliderPosMoveDistance(params: [][]const u8) !void {
@@ -883,12 +937,32 @@ fn stopTrafficTransmission(
             // Stop traffic transmission from current station to previous
             // station.
             try mcl.setStationY(c, station_index - 1, 0xA);
+            const prev_x: *mcl.Station.X = try mcl.getStationX(
+                c,
+                station_index - 1,
+            );
+            while (true) {
+                try command.checkCommandInterrupt();
+                std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
+                try mcl.pollStation(c, station_index - 1);
+                if (prev_x.transmission_stopped.from_next) {
+                    break;
+                }
+            }
         } else if (state == .NextAxisAuxiliary or
             state == .NextAxisCompleted)
         {
             // Stop traffic transmission from previous station to current
             // station.
             try mcl.setStationY(c, station_index, 0x9);
+            while (true) {
+                try command.checkCommandInterrupt();
+                std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
+                try mcl.pollStation(c, station_index);
+                if (station.x.transmission_stopped.from_prev) {
+                    break;
+                }
+            }
         }
     } else {
         if (state == .NextAxisAuxiliary or
@@ -897,12 +971,28 @@ fn stopTrafficTransmission(
         {
             // Stop traffic transmission from current station to next station.
             try mcl.setStationY(c, station_index + 1, 0x9);
+            while (true) {
+                try command.checkCommandInterrupt();
+                std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
+                try mcl.pollStation(c, station_index + 1);
+                if (next_station.x.transmission_stopped.from_prev) {
+                    break;
+                }
+            }
         } else if (next_state == .PrevAxisAuxiliary or
             next_state == .PrevAxisCompleted or
             next_state == .None)
         {
             // Stop traffic transmission from next station to current station.
             try mcl.setStationY(c, station_index, 0xA);
+            while (true) {
+                try command.checkCommandInterrupt();
+                std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
+                try mcl.pollStation(c, station_index);
+                if (station.x.transmission_stopped.from_next) {
+                    break;
+                }
+            }
         }
     }
 }
@@ -951,12 +1041,32 @@ fn restartTrafficTransmission(
             // Start traffic transmission from current station to previous
             // station.
             try mcl.resetStationY(c, station_index - 1, 0xA);
+            const prev_x: *mcl.Station.X = try mcl.getStationX(
+                c,
+                station_index - 1,
+            );
+            while (true) {
+                try command.checkCommandInterrupt();
+                std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
+                try mcl.pollStation(c, station_index - 1);
+                if (!prev_x.transmission_stopped.from_next) {
+                    break;
+                }
+            }
         } else if (state == .NextAxisAuxiliary or
             state == .NextAxisCompleted)
         {
             // Start traffic transmission from previous station to current
             // station.
             try mcl.resetStationY(c, station_index, 0x9);
+            while (true) {
+                try command.checkCommandInterrupt();
+                std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
+                try mcl.pollStation(c, station_index);
+                if (!station.x.transmission_stopped.from_prev) {
+                    break;
+                }
+            }
         }
     } else {
         if (state == .NextAxisAuxiliary or
@@ -965,12 +1075,28 @@ fn restartTrafficTransmission(
         {
             // Start traffic transmission from current station to next station.
             try mcl.resetStationY(c, station_index + 1, 0x9);
+            while (true) {
+                try command.checkCommandInterrupt();
+                std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
+                try mcl.pollStation(c, station_index + 1);
+                if (!next_station.x.transmission_stopped.from_prev) {
+                    break;
+                }
+            }
         } else if (next_state == .PrevAxisAuxiliary or
             next_state == .PrevAxisCompleted or
             next_state == .None)
         {
             // Start traffic transmission from next station to current station.
             try mcl.resetStationY(c, station_index, 0xA);
+            while (true) {
+                try command.checkCommandInterrupt();
+                std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
+                try mcl.pollStation(c, station_index);
+                if (!station.x.transmission_stopped.from_next) {
+                    break;
+                }
+            }
         }
     }
 }
