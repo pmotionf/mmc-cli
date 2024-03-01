@@ -637,6 +637,7 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
     } else {
         return error.SliderIdNotFound;
     }
+
     var stopped_transmission: ?Direction = null;
     if (last_axis and station_index < config.drivers.len - 1) {
         const next_station_index: u6 = station_index + 1;
@@ -708,34 +709,91 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
     try mcl.pollChannel(channel, 0, @truncate(config.drivers.len - 1));
 
     var station_index: u6 = 0;
-    for (config.drivers) |driver| {
-        try command.checkCommandInterrupt();
-        const wr: *mcl.Station.Wr = try mcl.getStationWr(
-            channel,
-            station_index,
-        );
-        if (driver.axis1 != null and wr.slider_number.axis1 == slider_id)
-            break;
-        if (driver.axis2 != null and wr.slider_number.axis2 == slider_id)
-            break;
-        if (driver.axis3 != null and wr.slider_number.axis3 == slider_id)
-            break;
+    // Index of axis in system.
+    var axis_index: i16 = 0;
+    // Local index of axis per station.
+    var station_axis_index: u2 = undefined;
+    // Whether axis is last axis in station.
+    var last_axis: bool = false;
 
-        station_index = try std.math.add(u6, station_index, 1);
+    var wr: *mcl.Station.Wr = undefined;
+    // Find station and axis of slider.
+    driver_loop: for (config.drivers) |driver| {
+        wr = try mcl.getStationWr(channel, station_index);
+        for (0..3) |_i| {
+            const i: u2 = @intCast(_i);
+            if (driver.axis(i) != null and wr.sliderNumber(i) == slider_id) {
+                station_axis_index = i;
+                // Check if axis is last valid in driver.
+                for ((_i + 1)..3) |_j| {
+                    const j: u2 = @intCast(_j);
+                    if (driver.axis(j)) |_| {
+                        break;
+                    }
+                } else {
+                    last_axis = true;
+                }
+                break :driver_loop;
+            }
+            axis_index += 1;
+        }
+        station_index += 1;
     } else {
         return error.SliderIdNotFound;
     }
 
+    var stopped_transmission: ?Direction = null;
+    if (last_axis and station_index < config.drivers.len - 1) {
+        const next_station_index: u6 = station_index + 1;
+        const next_wr: *mcl.Station.Wr = try mcl.getStationWr(
+            channel,
+            next_station_index,
+        );
+
+        // Check first axis of next driver to see if slider is between drivers.
+        for (0..3) |_i| {
+            const i: u2 = @intCast(_i);
+            if (config.drivers[next_station_index].axis(i)) |_| {
+                if (next_wr.sliderNumber(i) == slider_id) {
+                    std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
+                    // Distance is positive. Forward movement.
+                    if (distance.mm > 0 or
+                        (distance.mm == 0 and distance.um > 0))
+                    {
+                        try stopTrafficTransmission(
+                            channel,
+                            station_index,
+                            .forward,
+                        );
+                        stopped_transmission = .forward;
+                    }
+                    // Distance is negative or 0. Backward movement.
+                    else {
+                        try stopTrafficTransmission(
+                            channel,
+                            station_index,
+                            .backward,
+                        );
+                        stopped_transmission = .backward;
+                    }
+                }
+            }
+        }
+    }
+
     const ww: *mcl.Station.Ww = try mcl.getStationWw(channel, station_index);
-
     try waitCommandReady(channel, station_index);
-
     ww.*.command_code = .MoveSliderDistanceByPosition;
     ww.*.command_slider_number = slider_id;
     ww.*.location_distance = distance;
     ww.*.speed_percentage = slider_speed;
     ww.*.acceleration_percentage = slider_acceleration;
     try sendCommand(channel, station_index);
+
+    if (stopped_transmission) |dir| {
+        std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
+        try restartTrafficTransmission(channel, station_index, dir);
+    }
 }
 
 fn mclWaitMoveSlider(params: [][]const u8) !void {
