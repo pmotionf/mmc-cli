@@ -1,5 +1,5 @@
 .{
-    .name = "mcl-cli",
+    .name = "mmc-cli",
     .version = "0.0.8",
     .dependencies = .{
         .network = .{

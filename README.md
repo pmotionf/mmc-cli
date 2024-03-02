@@ -1,3 +1,3 @@
-# MCL CLI
+# MMC CLI
 
-> A command line interface to the PMF Motion Control Library.
+> A command line version of PMF's MMC utility.

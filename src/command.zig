@@ -1,6 +1,6 @@
 //! This module defines the necessary types and functions to declare, queue,
 //! and execute commands. Furthermore, it includes the implementations of a few
-//! general purpose commands that facilitate easier use of the MCL CLI utility.
+//! general purpose commands that facilitate easier use of the MMC CLI utility.
 
 const std = @import("std");
 
@@ -78,10 +78,10 @@ pub fn init() !void {
     });
     try registry.put("VERSION", .{
         .name = "VERSION",
-        .short_description = "Display the version of the MCL CLI.",
+        .short_description = "Display the version of the MMC CLI.",
         .long_description =
-        \\Print the currently running version of the Motion Control Software
-        \\command line utility in Semantic Version format.
+        \\Print the currently running version of the MMC command line utility
+        \\in Semantic Version format.
         ,
         .execute = &version,
     });
@@ -148,10 +148,10 @@ pub fn init() !void {
     });
     try registry.put("EXIT", .{
         .name = "EXIT",
-        .short_description = "Exit the MCL command line utility.",
+        .short_description = "Exit the MMC command line utility.",
         .long_description =
-        \\Gracefully terminate the PMF Motion Control Software command line
-        \\utility, cleaning up resources and closing connections.
+        \\Gracefully terminate the PMF MMC command line utility, cleaning up
+        \\resources and closing connections.
         ,
         .execute = &exit,
     });

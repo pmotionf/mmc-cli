@@ -21,7 +21,7 @@ pub fn build(b: *std.Build) !void {
     const network_dep = b.dependency("network", .{});
 
     const exe = b.addExecutable(.{
-        .name = "mcl-cli",
+        .name = "mmc-cli",
         .root_source_file = .{ .path = "src/main.zig" },
         .target = target,
         .optimize = optimize,
