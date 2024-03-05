@@ -361,13 +361,14 @@ fn mclAxisReleaseServo(params: [][]const u8) !void {
         station_index,
     );
     ww.*.target_axis_number = axis_id;
+    try mcl.sendStationWw(channel, station_index);
     try mcl.setStationY(
         channel,
         station_index,
-        5,
+        0x5,
     );
     // Reset on error as well as on success.
-    defer mcl.resetStationY(channel, station_index, 5) catch {};
+    defer mcl.resetStationY(channel, station_index, 0x5) catch {};
     while (true) {
         try command.checkCommandInterrupt();
         std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
@@ -498,6 +499,7 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
     const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
     if (slider_id == 0) return error.InvalidSliderId;
 
+    std.log.debug("Polling CC-Link...", .{});
     std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
     try mcl.pollChannel(channel, 0, @truncate(config.drivers.len - 1));
 
@@ -509,6 +511,7 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
     // Whether axis is last axis in station.
     var last_axis: bool = false;
     // Find station and axis of slider.
+    std.log.debug("Parsing drivers...", .{});
     driver_loop: for (config.drivers) |driver| {
         const wr: *mcl.Station.Wr = try mcl.getStationWr(
             channel,
@@ -539,6 +542,7 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
     // If slider is between two drivers, stop traffic transmission.
     var stopped_transmission: ?Direction = null;
     if (last_axis and station_index < config.drivers.len - 1) {
+        std.log.debug("Checking transmission stop conditions...", .{});
         const next_station_index: u6 = station_index + 1;
         const next_wr: *mcl.Station.Wr = try mcl.getStationWr(
             channel,
@@ -577,12 +581,14 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
     }
 
     const ww: *mcl.Station.Ww = try mcl.getStationWw(channel, station_index);
+    std.log.debug("Waiting for command ready state...", .{});
     try waitCommandReady(channel, station_index);
     ww.*.command_code = .MoveSliderToAxisByPosition;
     ww.*.command_slider_number = slider_id;
     ww.*.target_axis_number = axis_id;
     ww.*.speed_percentage = slider_speed;
     ww.*.acceleration_percentage = slider_acceleration;
+    std.log.debug("Sending command...", .{});
     try sendCommand(channel, station_index);
 
     if (stopped_transmission) |dir| {
@@ -918,6 +924,7 @@ fn mclWaitRecoverSlider(params: [][]const u8) !void {
 
 fn waitCommandReady(c: mcl.Channel, station_index: u6) !void {
     const x: *mcl.Station.X = try mcl.getStationX(c, station_index);
+    std.log.debug("Waiting for command ready state...", .{});
     while (true) {
         try command.checkCommandInterrupt();
         std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
@@ -928,22 +935,26 @@ fn waitCommandReady(c: mcl.Channel, station_index: u6) !void {
 
 fn sendCommand(c: mcl.Channel, station_index: u6) !void {
     const x: *mcl.Station.X = try mcl.getStationX(c, station_index);
-    const y: *mcl.Station.Y = try mcl.getStationY(c, station_index);
 
-    y.*.start_command = true;
-
+    std.log.debug("Sending command...", .{});
+    try mcl.sendStationWw(c, station_index);
+    try mcl.setStationY(c, station_index, 0x2);
     send_command: while (true) {
         try command.checkCommandInterrupt();
         std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
         try mcl.pollStation(c, station_index);
         if (x.command_received) {
-            y.*.start_command = false;
-            y.*.reset_command_received = true;
+            std.log.debug("Resetting command received flag...", .{});
+            try mcl.resetStationY(c, station_index, 0x2);
+            try mcl.setStationY(c, station_index, 0x3);
             reset_received: while (true) {
                 try command.checkCommandInterrupt();
                 std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
                 try mcl.pollStation(c, station_index);
-                if (!x.command_received) break :reset_received;
+                if (!x.command_received) {
+                    try mcl.resetStationY(c, station_index, 0x3);
+                    break :reset_received;
+                }
             }
             break :send_command;
         }
@@ -958,6 +969,7 @@ fn stopTrafficTransmission(
     direction: Direction,
 ) !void {
     if (station_index >= config.drivers.len) return;
+    std.log.debug("Stopping traffic transmission...", .{});
 
     const station: mcl.StationReference = try mcl.getStation(c, station_index);
     const next_station: mcl.StationReference = try mcl.getStation(
@@ -1062,6 +1074,7 @@ fn restartTrafficTransmission(
     direction: Direction,
 ) !void {
     if (station_index >= config.drivers.len) return;
+    std.log.debug("Restarting traffic transmission...", .{});
 
     const station: mcl.StationReference = try mcl.getStation(c, station_index);
     const next_station: mcl.StationReference = try mcl.getStation(
