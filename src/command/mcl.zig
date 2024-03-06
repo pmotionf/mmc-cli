@@ -265,7 +265,9 @@ pub fn init(c: Config) !void {
     });
 }
 
-pub fn deinit() void {}
+pub fn deinit() void {
+    arena.deinit();
+}
 
 fn mclVersion(_: [][]const u8) !void {
     std.log.info("MCL Version: {d}.{d}.{d}\n", .{
