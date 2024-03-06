@@ -7,6 +7,8 @@ var slider_acceleration: u8 = 40;
 
 const channel: mcl.Channel = .cc_link_1slot;
 
+var arena: std.heap.ArenaAllocator = undefined;
+var allocator: std.mem.Allocator = undefined;
 var config: Config = undefined;
 
 const Direction = enum(u1) {
@@ -48,7 +50,15 @@ pub fn init(c: Config) !void {
     if (c.drivers.len == 0 or c.drivers.len > std.math.maxInt(u6) + 1) {
         return error.InvalidDriverConfiguration;
     }
-    config = c;
+    arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    allocator = arena.allocator();
+
+    config = .{
+        .connection = c.connection,
+        .min_poll_rate = c.min_poll_rate,
+        .drivers = try allocator.alloc(Config.Driver, c.drivers.len),
+    };
+    @memcpy(config.drivers, c.drivers);
 
     try command.registry.put("MCL_VERSION", .{
         .name = "MCL_VERSION",
@@ -273,7 +283,7 @@ fn mclConnect(_: [][]const u8) !void {
     for (config.drivers) |_| {
         const y: *mcl.Station.Y = try mcl.getStationY(channel, station_index);
         y.*.cc_link_enable = true;
-        station_index = try std.math.add(u6, station_index, 1);
+        station_index += 1;
     }
     errdefer disconnect() catch {};
     try mcl.sendChannelY(channel, 0, @truncate(config.drivers.len - 1));
@@ -284,7 +294,7 @@ fn disconnect() !void {
     for (config.drivers) |_| {
         const y: *mcl.Station.Y = try mcl.getStationY(channel, station_index);
         y.*.cc_link_enable = false;
-        station_index = try std.math.add(u6, station_index, 1);
+        station_index += 1;
     }
     try mcl.sendChannelY(channel, 0, @truncate(config.drivers.len - 1));
     try mcl.closeChannel(channel);
@@ -302,15 +312,16 @@ fn mclAxisSlider(params: [][]const u8) !void {
     var axis_counter: i16 = 0;
     driver_loop: for (config.drivers, 0..) |driver, _station_index| {
         const station_index: u6 = @intCast(_station_index);
-        for (0..3) |i| {
-            if (driver.axis(@intCast(i))) |_| {
+        for (0..3) |_i| {
+            const i: u2 = @intCast(_i);
+            if (driver.axis(i)) |_| {
                 axis_counter += 1;
                 if (axis_counter == axis_id) {
                     const wr: *mcl.Station.Wr = try mcl.getStationWr(
                         channel,
                         station_index,
                     );
-                    const slider_number = wr.sliderNumber(@intCast(i));
+                    const slider_number = wr.sliderNumber(i);
                     if (slider_number != 0) {
                         slider = slider_number;
                     }
@@ -338,11 +349,12 @@ fn mclAxisReleaseServo(params: [][]const u8) !void {
     var axis_counter: i16 = 0;
     var station_index: u6 = 0;
     driver_loop: for (config.drivers) |driver| {
-        for (0..3) |i| {
-            if (driver.axis(@intCast(i))) |_| {
+        for (0..3) |_i| {
+            const i: u2 = @intCast(_i);
+            if (driver.axis(i)) |_| {
                 axis_counter += 1;
                 if (axis_counter == axis_id) {
-                    axis_counter = @intCast(i);
+                    axis_counter = i;
                     break :driver_loop;
                 }
             }
@@ -383,11 +395,12 @@ fn mclAxisWaitReleaseServo(params: [][]const u8) !void {
     var axis_counter: i16 = 0;
     var station_index: u6 = 0;
     driver_loop: for (config.drivers) |driver| {
-        for (0..3) |i| {
-            if (driver.axis(@intCast(i))) |_| {
+        for (0..3) |_i| {
+            const i: u2 = @intCast(_i);
+            if (driver.axis(i)) |_| {
                 axis_counter += 1;
                 if (axis_counter == axis_id) {
-                    axis_counter = @intCast(i);
+                    axis_counter = i;
                     break :driver_loop;
                 }
             }
@@ -819,17 +832,18 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
                 channel,
                 station_index,
             );
-            for (0..3) |i| {
-                if (driver.axis(@intCast(i)) != null and
-                    wr.sliderNumber(@intCast(i)) == slider_id)
+            for (0..3) |_i| {
+                const i: u2 = @intCast(_i);
+                if (driver.axis(i) != null and
+                    wr.sliderNumber(i) == slider_id)
                 {
                     slider_id_found = true;
-                    if (wr.sliderState(@intCast(i)) == .PosMoveCompleted) {
+                    if (wr.sliderState(i) == .PosMoveCompleted) {
                         return;
                     }
                 }
             }
-            station_index = try std.math.add(u6, station_index, 1);
+            station_index += 1;
         }
 
         if (!slider_id_found) {
@@ -850,16 +864,18 @@ fn mclRecoverSlider(params: [][]const u8) !void {
     var station_index: u6 = 0;
     driver_loop: for (config.drivers) |driver| {
         try command.checkCommandInterrupt();
-        for (0..3) |i| {
-            if (driver.axis(@intCast(i))) |_| {
+        for (0..3) |_i| {
+            const i: u2 = @intCast(_i);
+            if (driver.axis(i)) |_| {
                 axis_counter += 1;
                 if (axis_counter == axis) {
-                    axis_counter = @intCast(i + 1);
+                    // Slider recovery requires local driver axis ID (1-3).
+                    axis_counter = i + 1;
                     break :driver_loop;
                 }
             }
         }
-        station_index = try std.math.add(u6, station_index, 1);
+        station_index += 1;
     } else {
         return error.TargetAxisNotFound;
     }
@@ -881,8 +897,9 @@ fn mclWaitRecoverSlider(params: [][]const u8) !void {
     var station_index: u6 = 0;
     driver_search: for (config.drivers) |driver| {
         try command.checkCommandInterrupt();
-        for (0..3) |i| {
-            if (driver.axis(@intCast(i))) |_| {
+        for (0..3) |_i| {
+            const i: u2 = @intCast(_i);
+            if (driver.axis(i)) |_| {
                 axis_counter += 1;
                 if (axis_counter == axis) {
                     const wr: *mcl.Station.Wr = try mcl.getStationWr(
@@ -896,9 +913,9 @@ fn mclWaitRecoverSlider(params: [][]const u8) !void {
                         );
                         try mcl.pollStation(channel, station_index);
 
-                        const slider_number = wr.sliderNumber(@intCast(i));
+                        const slider_number = wr.sliderNumber(i);
                         if (slider_number != 0 and
-                            wr.sliderState(@intCast(i)) == .PosMoveCompleted)
+                            wr.sliderState(i) == .PosMoveCompleted)
                         {
                             slider_id = slider_number;
                             break :driver_search;
@@ -907,7 +924,7 @@ fn mclWaitRecoverSlider(params: [][]const u8) !void {
                 }
             }
         }
-        station_index = try std.math.add(u6, station_index, 1);
+        station_index += 1;
     } else {
         return error.TargetAxisNotFound;
     }
