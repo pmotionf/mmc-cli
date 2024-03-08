@@ -7,8 +7,8 @@
             .hash = "122033fba45ac83a780b1db316526158794a7dc184138a57a001a2db0aaa81b9e18c",
         },
         .mcl = .{
-            .url = "https://github.com/pmotionf/mcl/archive/db6ff472af7bb6f20cbcb033ead939cb7318f1d2.tar.gz",
-            .hash = "1220b1758880da01d16345e7a36cc403ba96248e41f2cb19a376ca5ec02ccb5c1096",
+            .url = "https://github.com/pmotionf/mcl/archive/fcc3aa6d7dd11af61230039dd2ed92ae9ce8b8b8.tar.gz",
+            .hash = "1220f66667dafb0ff4dbba9f047065d14445463be86828736fe588a216ae460df28c",
         },
     },
     .paths = .{""},
