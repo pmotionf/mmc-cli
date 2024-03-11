@@ -1,8 +1,9 @@
 const std = @import("std");
 const command = @import("../command.zig");
 const mcl = @import("mcl");
+const conn = mcl.connection;
 
-var used_channels: [5]?mcl.Channel = undefined;
+var used_channels: [4]?conn.Channel = undefined;
 
 var arena: std.heap.ArenaAllocator = undefined;
 var allocator: std.mem.Allocator = undefined;
@@ -25,7 +26,7 @@ pub const Config = struct {
 
     pub const Line = struct {
         name: []u8,
-        channel: mcl.Channel,
+        channel: conn.Channel,
         start_station: u7,
         speed: u8 = 40,
         acceleration: u8 = 40,
@@ -56,7 +57,7 @@ pub fn init(c: Config) !void {
             return error.InvalidLineDriversConfiguration;
         }
     }
-    used_channels = .{ null, null, null, null, null };
+    used_channels = .{ null, null, null, null };
     arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     errdefer arena.deinit();
     allocator = arena.allocator();
@@ -335,35 +336,35 @@ pub fn init(c: Config) !void {
 
 pub fn deinit() void {
     arena.deinit();
-    used_channels = .{ null, null, null, null, null };
+    used_channels = .{ null, null, null, null };
 }
 
 fn mclVersion(_: [][]const u8) !void {
     std.log.info("MCL Version: {d}.{d}.{d}\n", .{
-        mcl.version().major,
-        mcl.version().minor,
-        mcl.version().patch,
+        mcl.version.major,
+        mcl.version.minor,
+        mcl.version.patch,
     });
 }
 
 fn mclConnect(_: [][]const u8) !void {
     for (used_channels) |_used_channel| {
         if (_used_channel) |used_channel| {
-            try mcl.openChannel(used_channel);
+            try conn.openChannel(used_channel);
         }
     }
 
     for (config.lines) |line| {
         var station_index: u6 = @intCast(line.start_station - 1);
         for (line.drivers) |_| {
-            const y: *mcl.Station.Y = try mcl.getStationY(
+            const y: *conn.Station.Y = try conn.stationY(
                 line.channel,
                 station_index,
             );
             y.*.cc_link_enable = true;
             station_index += 1;
         }
-        try mcl.sendChannelY(
+        try conn.sendStationsY(
             line.channel,
             @intCast(line.start_station - 1),
             station_index - 1,
@@ -375,14 +376,14 @@ fn mclDisconnect(_: [][]const u8) !void {
     for (config.lines) |line| {
         var station_index: u6 = @intCast(line.start_station - 1);
         for (line.drivers) |_| {
-            const y: *mcl.Station.Y = try mcl.getStationY(
+            const y: *conn.Station.Y = try conn.stationY(
                 line.channel,
                 station_index,
             );
             y.*.cc_link_enable = false;
             station_index += 1;
         }
-        try mcl.sendChannelY(
+        try conn.sendStationsY(
             line.channel,
             @intCast(line.start_station - 1),
             station_index - 1,
@@ -391,7 +392,7 @@ fn mclDisconnect(_: [][]const u8) !void {
 
     for (used_channels) |_used_channel| {
         if (_used_channel) |used_channel| {
-            try mcl.closeChannel(used_channel);
+            try conn.closeChannel(used_channel);
         }
     }
 }
@@ -409,7 +410,11 @@ fn mclAxisSlider(params: [][]const u8) !void {
         @as(u6, @intCast(line.drivers.len - 1));
 
     std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-    try mcl.pollChannel(line.channel, start_station_index, end_station_index);
+    try conn.pollStations(
+        line.channel,
+        start_station_index,
+        end_station_index,
+    );
 
     var axis_counter: i16 = 0;
     var station_index: u6 = start_station_index;
@@ -419,7 +424,7 @@ fn mclAxisSlider(params: [][]const u8) !void {
             if (driver.axes[i]) {
                 axis_counter += 1;
                 if (axis_counter == axis_id) {
-                    const wr: *mcl.Station.Wr = try mcl.getStationWr(
+                    const wr: *conn.Station.Wr = try conn.stationWr(
                         line.channel,
                         station_index,
                     );
@@ -473,22 +478,22 @@ fn mclAxisReleaseServo(params: [][]const u8) !void {
         return error.TargetAxisNotFound;
     }
 
-    const ww: *mcl.Station.Ww =
-        try mcl.getStationWw(line.channel, station_index);
-    const x: *mcl.Station.X = try mcl.getStationX(line.channel, station_index);
+    const ww: *conn.Station.Ww =
+        try conn.stationWw(line.channel, station_index);
+    const x: *conn.Station.X = try conn.stationX(line.channel, station_index);
     ww.*.target_axis_number = axis_id;
-    try mcl.sendStationWw(line.channel, station_index);
-    try mcl.setStationY(
+    try conn.sendStationWw(line.channel, station_index);
+    try conn.stationSetY(
         line.channel,
         station_index,
         0x5,
     );
     // Reset on error as well as on success.
-    defer mcl.resetStationY(line.channel, station_index, 0x5) catch {};
+    defer conn.stationResetY(line.channel, station_index, 0x5) catch {};
     while (true) {
         try command.checkCommandInterrupt();
         std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-        try mcl.pollStation(line.channel, station_index);
+        try conn.pollStation(line.channel, station_index);
         if (!x.servoActive(@intCast(axis_counter))) break;
     }
 }
@@ -518,11 +523,11 @@ fn mclAxisWaitReleaseServo(params: [][]const u8) !void {
         return error.TargetAxisNotFound;
     }
 
-    const x: *mcl.Station.X = try mcl.getStationX(line.channel, station_index);
+    const x: *conn.Station.X = try conn.stationX(line.channel, station_index);
     while (true) {
         try command.checkCommandInterrupt();
         std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-        try mcl.pollStation(line.channel, station_index);
+        try conn.pollStation(line.channel, station_index);
         if (x.servoActive(@intCast(axis_counter))) return;
     }
 }
@@ -531,7 +536,7 @@ fn mclHomeSlider(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line: *const Config.Line = try matchLine(&config, line_name);
     try waitCommandReady(line.channel, 0);
-    const ww: *mcl.Station.Ww = try mcl.getStationWw(line.channel, 0);
+    const ww: *conn.Station.Ww = try conn.stationWw(line.channel, 0);
     ww.*.command_code = .Home;
     try sendCommand(line.channel, 0);
 }
@@ -544,14 +549,14 @@ fn mclWaitHomeSlider(params: [][]const u8) !void {
     const start_station_index: u6 = @intCast(line.start_station - 1);
 
     var slider: ?i16 = null;
-    const wr: *mcl.Station.Wr = try mcl.getStationWr(
+    const wr: *conn.Station.Wr = try conn.stationWr(
         line.channel,
         start_station_index,
     );
     while (true) {
         try command.checkCommandInterrupt();
         std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-        try mcl.pollStation(line.channel, 0);
+        try conn.pollStation(line.channel, 0);
 
         if (wr.slider_number.axis1 != 0) {
             slider = wr.slider_number.axis1;
@@ -600,12 +605,16 @@ fn mclSliderLocation(params: [][]const u8) !void {
     const end_index_station: u6 =
         @as(u6, @intCast(line.drivers.len - 1)) + start_index_station;
     std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-    try mcl.pollChannel(line.channel, start_index_station, end_index_station);
+    try conn.pollStations(
+        line.channel,
+        start_index_station,
+        end_index_station,
+    );
 
     var station_index: u6 = start_index_station;
-    var location: mcl.Station.Distance = undefined;
+    var location: conn.Station.Distance = undefined;
     driver_loop: for (line.drivers) |driver| {
-        const wr: *mcl.Station.Wr = try mcl.getStationWr(
+        const wr: *conn.Station.Wr = try conn.stationWr(
             line.channel,
             station_index,
         );
@@ -648,7 +657,11 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
 
     std.log.debug("Polling CC-Link...", .{});
     std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-    try mcl.pollChannel(line.channel, start_station_index, end_station_index);
+    try conn.pollStations(
+        line.channel,
+        start_station_index,
+        end_station_index,
+    );
 
     var station_index: u6 = start_station_index;
     // Index of axis in system.
@@ -660,7 +673,7 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
     // Find station and axis of slider.
     std.log.debug("Parsing drivers...", .{});
     driver_loop: for (line.drivers) |driver| {
-        const wr: *mcl.Station.Wr = try mcl.getStationWr(
+        const wr: *conn.Station.Wr = try conn.stationWr(
             line.channel,
             station_index,
         );
@@ -693,7 +706,7 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
         const next_station_index: u6 = station_index + 1;
         const next_station_slice_index: usize =
             station_index - start_station_index + 1;
-        const next_wr: *mcl.Station.Wr = try mcl.getStationWr(
+        const next_wr: *conn.Station.Wr = try conn.stationWr(
             line.channel,
             next_station_index,
         );
@@ -729,8 +742,8 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
         }
     }
 
-    const ww: *mcl.Station.Ww =
-        try mcl.getStationWw(line.channel, station_index);
+    const ww: *conn.Station.Ww =
+        try conn.stationWw(line.channel, station_index);
     std.log.debug("Waiting for command ready state...", .{});
     try waitCommandReady(line.channel, station_index);
     ww.*.command_code = .MoveSliderToAxisByPosition;
@@ -753,7 +766,7 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
     const location_float: f32 = try std.fmt.parseFloat(f32, params[2]);
     if (slider_id == 0) return error.InvalidSliderId;
 
-    const location: mcl.Station.Distance = .{
+    const location: conn.Station.Distance = .{
         .mm = @intFromFloat(location_float),
         .um = @intFromFloat((location_float - @trunc(location_float)) * 1000),
     };
@@ -764,7 +777,11 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
         @as(u6, @intCast(line.drivers.len - 1)) + start_station_index;
 
     std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-    try mcl.pollChannel(line.channel, start_station_index, end_station_index);
+    try conn.pollStations(
+        line.channel,
+        start_station_index,
+        end_station_index,
+    );
 
     var station_index: u6 = start_station_index;
     // Index of axis in system.
@@ -774,10 +791,10 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
     // Whether axis is last axis in station.
     var last_axis: bool = false;
 
-    var wr: *mcl.Station.Wr = undefined;
+    var wr: *conn.Station.Wr = undefined;
     // Find station and axis of slider.
     driver_loop: for (line.drivers) |driver| {
-        wr = try mcl.getStationWr(line.channel, station_index);
+        wr = try conn.stationWr(line.channel, station_index);
         for (0..3) |_i| {
             const i: u2 = @intCast(_i);
             if (driver.axes[i] and wr.sliderNumber(i) == slider_id) {
@@ -805,7 +822,7 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
         const next_station_index: u6 = station_index + 1;
         const next_station_slice_index: usize =
             station_index - start_station_index + 1;
-        const next_wr: *mcl.Station.Wr = try mcl.getStationWr(
+        const next_wr: *conn.Station.Wr = try conn.stationWr(
             line.channel,
             next_station_index,
         );
@@ -844,8 +861,8 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
         }
     }
 
-    const ww: *mcl.Station.Ww =
-        try mcl.getStationWw(line.channel, station_index);
+    const ww: *conn.Station.Ww =
+        try conn.stationWw(line.channel, station_index);
     try waitCommandReady(line.channel, station_index);
     ww.*.command_code = .MoveSliderToLocationByPosition;
     ww.*.command_slider_number = slider_id;
@@ -871,13 +888,17 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
     const end_station_index: u6 =
         @as(u6, @intCast(line.drivers.len - 1)) + start_station_index;
 
-    const distance: mcl.Station.Distance = .{
+    const distance: conn.Station.Distance = .{
         .mm = @intFromFloat(distance_float),
         .um = @intFromFloat((distance_float - @trunc(distance_float)) * 1000),
     };
 
     std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-    try mcl.pollChannel(line.channel, start_station_index, end_station_index);
+    try conn.pollStations(
+        line.channel,
+        start_station_index,
+        end_station_index,
+    );
 
     var station_index: u6 = start_station_index;
     // Index of axis in system.
@@ -887,10 +908,10 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
     // Whether axis is last axis in station.
     var last_axis: bool = false;
 
-    var wr: *mcl.Station.Wr = undefined;
+    var wr: *conn.Station.Wr = undefined;
     // Find station and axis of slider.
     driver_loop: for (line.drivers) |driver| {
-        wr = try mcl.getStationWr(line.channel, station_index);
+        wr = try conn.stationWr(line.channel, station_index);
         for (0..3) |_i| {
             const i: u2 = @intCast(_i);
             if (driver.axes[i] and wr.sliderNumber(i) == slider_id) {
@@ -918,7 +939,7 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
         const next_station_index: u6 = station_index + 1;
         const next_station_slice_index: usize =
             station_index - start_station_index + 1;
-        const next_wr: *mcl.Station.Wr = try mcl.getStationWr(
+        const next_wr: *conn.Station.Wr = try conn.stationWr(
             line.channel,
             next_station_index,
         );
@@ -954,8 +975,8 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
         }
     }
 
-    const ww: *mcl.Station.Ww =
-        try mcl.getStationWw(line.channel, station_index);
+    const ww: *conn.Station.Ww =
+        try conn.stationWw(line.channel, station_index);
     try waitCommandReady(line.channel, station_index);
     ww.*.command_code = .MoveSliderDistanceByPosition;
     ww.*.command_slider_number = slider_id;
@@ -983,7 +1004,7 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
     while (true) {
         try command.checkCommandInterrupt();
         std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-        try mcl.pollChannel(
+        try conn.pollStations(
             line.channel,
             start_station_index,
             end_station_index,
@@ -993,7 +1014,7 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
         var slider_id_found: bool = false;
         for (line.drivers) |driver| {
             try command.checkCommandInterrupt();
-            const wr: *mcl.Station.Wr = try mcl.getStationWr(
+            const wr: *conn.Station.Wr = try conn.stationWr(
                 line.channel,
                 station_index,
             );
@@ -1027,7 +1048,11 @@ fn mclRecoverSlider(params: [][]const u8) !void {
         @as(u6, @intCast(line.drivers.len - 1)) + start_station_index;
 
     std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-    try mcl.pollChannel(line.channel, start_station_index, end_station_index);
+    try conn.pollStations(
+        line.channel,
+        start_station_index,
+        end_station_index,
+    );
 
     var axis_counter: i16 = 0;
     var station_index: u6 = start_station_index;
@@ -1049,7 +1074,7 @@ fn mclRecoverSlider(params: [][]const u8) !void {
         return error.TargetAxisNotFound;
     }
 
-    const ww: *mcl.Station.Ww = try mcl.getStationWw(
+    const ww: *conn.Station.Ww = try conn.stationWw(
         line.channel,
         station_index,
     );
@@ -1079,7 +1104,7 @@ fn mclWaitRecoverSlider(params: [][]const u8) !void {
             if (driver.axes[i]) {
                 axis_counter += 1;
                 if (axis_counter == axis) {
-                    const wr: *mcl.Station.Wr = try mcl.getStationWr(
+                    const wr: *conn.Station.Wr = try conn.stationWr(
                         line.channel,
                         station_index,
                     );
@@ -1088,7 +1113,7 @@ fn mclWaitRecoverSlider(params: [][]const u8) !void {
                         std.time.sleep(
                             std.time.ns_per_us * config.min_poll_rate,
                         );
-                        try mcl.pollStation(line.channel, station_index);
+                        try conn.pollStation(line.channel, station_index);
 
                         const slider_number = wr.sliderNumber(i);
                         if (slider_number != 0 and
@@ -1124,37 +1149,37 @@ fn matchLine(c: *Config, name: []const u8) !*Config.Line {
     }
 }
 
-fn waitCommandReady(c: mcl.Channel, station_index: u6) !void {
-    const x: *mcl.Station.X = try mcl.getStationX(c, station_index);
+fn waitCommandReady(c: conn.Channel, station_index: u6) !void {
+    const x: *conn.Station.X = try conn.stationX(c, station_index);
     std.log.debug("Waiting for command ready state...", .{});
     while (true) {
         try command.checkCommandInterrupt();
         std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-        try mcl.pollStation(c, station_index);
+        try conn.pollStation(c, station_index);
         if (x.ready_for_command) break;
     }
 }
 
-fn sendCommand(c: mcl.Channel, station_index: u6) !void {
-    const x: *mcl.Station.X = try mcl.getStationX(c, station_index);
+fn sendCommand(c: conn.Channel, station_index: u6) !void {
+    const x: *conn.Station.X = try conn.stationX(c, station_index);
 
     std.log.debug("Sending command...", .{});
-    try mcl.sendStationWw(c, station_index);
-    try mcl.setStationY(c, station_index, 0x2);
+    try conn.sendStationWw(c, station_index);
+    try conn.stationSetY(c, station_index, 0x2);
     send_command: while (true) {
         try command.checkCommandInterrupt();
         std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-        try mcl.pollStation(c, station_index);
+        try conn.pollStation(c, station_index);
         if (x.command_received) {
             std.log.debug("Resetting command received flag...", .{});
-            try mcl.resetStationY(c, station_index, 0x2);
-            try mcl.setStationY(c, station_index, 0x3);
+            try conn.stationResetY(c, station_index, 0x2);
+            try conn.stationSetY(c, station_index, 0x3);
             reset_received: while (true) {
                 try command.checkCommandInterrupt();
                 std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-                try mcl.pollStation(c, station_index);
+                try conn.pollStation(c, station_index);
                 if (!x.command_received) {
-                    try mcl.resetStationY(c, station_index, 0x3);
+                    try conn.stationResetY(c, station_index, 0x3);
                     break :reset_received;
                 }
             }
@@ -1177,15 +1202,15 @@ fn stopTrafficTransmission(
         station_index >= end_station_index) return;
     std.log.debug("Stopping traffic transmission...", .{});
 
-    const station: mcl.StationReference =
-        try mcl.getStation(line.channel, station_index);
-    const next_station: mcl.StationReference = try mcl.getStation(
+    const station: conn.Station.Reference =
+        try conn.station(line.channel, station_index);
+    const next_station: conn.Station.Reference = try conn.station(
         line.channel,
         station_index + 1,
     );
 
-    var state: mcl.Station.Wr.SliderStateCode = undefined;
-    var next_state: mcl.Station.Wr.SliderStateCode = undefined;
+    var state: conn.Station.Wr.SliderStateCode = undefined;
+    var next_state: conn.Station.Wr.SliderStateCode = undefined;
 
     for (0..3) |_i| {
         const i: u2 = @intCast(_i);
@@ -1213,15 +1238,15 @@ fn stopTrafficTransmission(
         {
             // Stop traffic transmission from current station to previous
             // station.
-            try mcl.setStationY(line.channel, station_index - 1, 0xA);
-            const prev_x: *mcl.Station.X = try mcl.getStationX(
+            try conn.stationSetY(line.channel, station_index - 1, 0xA);
+            const prev_x: *conn.Station.X = try conn.stationX(
                 line.channel,
                 station_index - 1,
             );
             while (true) {
                 try command.checkCommandInterrupt();
                 std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-                try mcl.pollStation(line.channel, station_index - 1);
+                try conn.pollStation(line.channel, station_index - 1);
                 if (prev_x.transmission_stopped.from_next) {
                     break;
                 }
@@ -1231,11 +1256,11 @@ fn stopTrafficTransmission(
         {
             // Stop traffic transmission from previous station to current
             // station.
-            try mcl.setStationY(line.channel, station_index, 0x9);
+            try conn.stationSetY(line.channel, station_index, 0x9);
             while (true) {
                 try command.checkCommandInterrupt();
                 std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-                try mcl.pollStation(line.channel, station_index);
+                try conn.pollStation(line.channel, station_index);
                 if (station.x.transmission_stopped.from_prev) {
                     break;
                 }
@@ -1247,11 +1272,11 @@ fn stopTrafficTransmission(
             state == .None)
         {
             // Stop traffic transmission from current station to next station.
-            try mcl.setStationY(line.channel, station_index + 1, 0x9);
+            try conn.stationSetY(line.channel, station_index + 1, 0x9);
             while (true) {
                 try command.checkCommandInterrupt();
                 std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-                try mcl.pollStation(line.channel, station_index + 1);
+                try conn.pollStation(line.channel, station_index + 1);
                 if (next_station.x.transmission_stopped.from_prev) {
                     break;
                 }
@@ -1261,11 +1286,11 @@ fn stopTrafficTransmission(
             next_state == .None)
         {
             // Stop traffic transmission from next station to current station.
-            try mcl.setStationY(line.channel, station_index, 0xA);
+            try conn.stationSetY(line.channel, station_index, 0xA);
             while (true) {
                 try command.checkCommandInterrupt();
                 std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-                try mcl.pollStation(line.channel, station_index);
+                try conn.pollStation(line.channel, station_index);
                 if (station.x.transmission_stopped.from_next) {
                     break;
                 }
@@ -1287,15 +1312,15 @@ fn restartTrafficTransmission(
         station_index >= end_station_index) return;
     std.log.debug("Restarting traffic transmission...", .{});
 
-    const station: mcl.StationReference =
-        try mcl.getStation(line.channel, station_index);
-    const next_station: mcl.StationReference = try mcl.getStation(
+    const station: conn.Station.Reference =
+        try conn.station(line.channel, station_index);
+    const next_station: conn.Station.Reference = try conn.station(
         line.channel,
         station_index + 1,
     );
 
-    var state: mcl.Station.Wr.SliderStateCode = undefined;
-    var next_state: mcl.Station.Wr.SliderStateCode = undefined;
+    var state: conn.Station.Wr.SliderStateCode = undefined;
+    var next_state: conn.Station.Wr.SliderStateCode = undefined;
 
     for (0..3) |_i| {
         const i: u2 = @intCast(_i);
@@ -1323,15 +1348,15 @@ fn restartTrafficTransmission(
         {
             // Start traffic transmission from current station to previous
             // station.
-            try mcl.resetStationY(line.channel, station_index - 1, 0xA);
-            const prev_x: *mcl.Station.X = try mcl.getStationX(
+            try conn.stationResetY(line.channel, station_index - 1, 0xA);
+            const prev_x: *conn.Station.X = try conn.stationX(
                 line.channel,
                 station_index - 1,
             );
             while (true) {
                 try command.checkCommandInterrupt();
                 std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-                try mcl.pollStation(line.channel, station_index - 1);
+                try conn.pollStation(line.channel, station_index - 1);
                 if (!prev_x.transmission_stopped.from_next) {
                     break;
                 }
@@ -1341,11 +1366,11 @@ fn restartTrafficTransmission(
         {
             // Start traffic transmission from previous station to current
             // station.
-            try mcl.resetStationY(line.channel, station_index, 0x9);
+            try conn.stationResetY(line.channel, station_index, 0x9);
             while (true) {
                 try command.checkCommandInterrupt();
                 std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-                try mcl.pollStation(line.channel, station_index);
+                try conn.pollStation(line.channel, station_index);
                 if (!station.x.transmission_stopped.from_prev) {
                     break;
                 }
@@ -1357,11 +1382,11 @@ fn restartTrafficTransmission(
             state == .None)
         {
             // Start traffic transmission from current station to next station.
-            try mcl.resetStationY(line.channel, station_index + 1, 0x9);
+            try conn.stationResetY(line.channel, station_index + 1, 0x9);
             while (true) {
                 try command.checkCommandInterrupt();
                 std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-                try mcl.pollStation(line.channel, station_index + 1);
+                try conn.pollStation(line.channel, station_index + 1);
                 if (!next_station.x.transmission_stopped.from_prev) {
                     break;
                 }
@@ -1371,11 +1396,11 @@ fn restartTrafficTransmission(
             next_state == .None)
         {
             // Start traffic transmission from next station to current station.
-            try mcl.resetStationY(line.channel, station_index, 0xA);
+            try conn.stationResetY(line.channel, station_index, 0xA);
             while (true) {
                 try command.checkCommandInterrupt();
                 std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-                try mcl.pollStation(line.channel, station_index);
+                try conn.pollStation(line.channel, station_index);
                 if (!station.x.transmission_stopped.from_next) {
                     break;
                 }
