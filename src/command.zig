@@ -61,7 +61,7 @@ pub fn init() !void {
     registry = std.StringArrayHashMap(Command).init(allocator);
     variables = std.BufMap.init(allocator);
     command_queue = std.ArrayList(CommandString).init(allocator);
-    stop.store(false, .Monotonic);
+    stop.store(false, .monotonic);
 
     try registry.put("HELP", .{
         .name = "HELP",
@@ -158,8 +158,8 @@ pub fn init() !void {
 }
 
 pub fn deinit() void {
-    stop.store(true, .Monotonic);
-    defer stop.store(false, .Monotonic);
+    stop.store(true, .monotonic);
+    defer stop.store(false, .monotonic);
     variables.deinit();
     command_queue.deinit();
     deinitModules();
@@ -177,8 +177,8 @@ pub fn queueClear() void {
 
 /// Checks if the `stop` flag is set, and if so returns an error.
 pub fn checkCommandInterrupt() !void {
-    if (stop.load(.Monotonic)) {
-        defer stop.store(false, .Monotonic);
+    if (stop.load(.monotonic)) {
+        defer stop.store(false, .monotonic);
         queueClear();
         return error.CommandStopped;
     }

@@ -16,7 +16,7 @@ fn stopCommand(
     dwCtrlType: std.os.windows.DWORD,
 ) callconv(std.os.windows.WINAPI) std.os.windows.BOOL {
     if (dwCtrlType == std.os.windows.CTRL_C_EVENT) {
-        command.stop.store(true, .Monotonic);
+        command.stop.store(true, .monotonic);
         std.io.getStdIn().sync() catch {};
     }
     return 1;
@@ -36,9 +36,9 @@ pub fn main() !void {
 
     command_loop: while (true) {
         std.io.getStdIn().sync() catch {};
-        if (command.stop.load(.Monotonic)) {
+        if (command.stop.load(.monotonic)) {
             command.queueClear();
-            command.stop.store(false, .Monotonic);
+            command.stop.store(false, .monotonic);
         }
         if (command.queueEmpty()) {
             var input_buffer: [1024]u8 = .{0} ** 1024;

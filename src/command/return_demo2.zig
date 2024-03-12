@@ -23,7 +23,7 @@ var server_stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false);
 
 fn acceptClients() !void {
     try server.listen();
-    while (!server_stop.load(.Monotonic)) {
+    while (!server_stop.load(.monotonic)) {
         var new_connection: network.Socket = server.accept() catch |e| {
             std.log.err(
                 "Accepting return system connection failed: {s}",
@@ -48,7 +48,7 @@ const Client = struct {
 pub fn init(_: Config) !void {
     arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     allocator = arena.allocator();
-    server_stop.store(false, .Monotonic);
+    server_stop.store(false, .monotonic);
     clients_lock.lock();
     clients = std.ArrayList(Client).init(allocator);
     clients_lock.unlock();
@@ -69,10 +69,10 @@ pub fn init(_: Config) !void {
         return e;
     };
     errdefer {
-        server_stop.store(true, .Monotonic);
+        server_stop.store(true, .monotonic);
         server.close();
         server_thread.join();
-        server_stop.store(false, .Monotonic);
+        server_stop.store(false, .monotonic);
     }
 
     try command.registry.put("HOME_RETURN_SYSTEM", .{
@@ -149,10 +149,10 @@ pub fn init(_: Config) !void {
 }
 
 pub fn deinit() void {
-    server_stop.store(true, .Monotonic);
+    server_stop.store(true, .monotonic);
     server.close();
     server_thread.join();
-    server_stop.store(false, .Monotonic);
+    server_stop.store(false, .monotonic);
 
     network.deinit();
     clients_lock.lock();

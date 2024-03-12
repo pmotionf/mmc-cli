@@ -1,14 +1,15 @@
 .{
     .name = "mmc-cli",
     .version = "0.0.8",
+    .minimum_zig_version = "0.12.0-dev.3269+0c6146677",
     .dependencies = .{
         .network = .{
             .url = "https://github.com/MasterQ32/zig-network/archive/e734600daa590ab39d7bb76a5a5054b6efd1f126.tar.gz",
             .hash = "122033fba45ac83a780b1db316526158794a7dc184138a57a001a2db0aaa81b9e18c",
         },
         .mcl = .{
-            .url = "https://github.com/pmotionf/mcl/archive/c4591c76681f771aef4a58cf2557ee4e7536e325.tar.gz",
-            .hash = "1220ae618275eb702351dd4dcd88bc9ee928ca587660c524d200bfea616441648c1a",
+            .url = "https://github.com/pmotionf/mcl/archive/561d2148103142883200742e370418eaed875a67.tar.gz",
+            .hash = "1220b76e4e7bb2dbef821fa03c55beab0e69f4b6a8b0f5a73e34bf9ae7a38453b81c",
         },
     },
     .paths = .{""},

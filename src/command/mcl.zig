@@ -364,11 +364,10 @@ fn mclConnect(_: [][]const u8) !void {
             y.*.cc_link_enable = true;
             station_index += 1;
         }
-        try conn.sendStationsY(
-            line.channel,
-            @intCast(line.start_station - 1),
-            station_index - 1,
-        );
+        try conn.sendStationsY(line.channel, .{
+            .start = @intCast(line.start_station - 1),
+            .end = station_index - 1,
+        });
     }
 }
 
@@ -383,11 +382,10 @@ fn mclDisconnect(_: [][]const u8) !void {
             y.*.cc_link_enable = false;
             station_index += 1;
         }
-        try conn.sendStationsY(
-            line.channel,
-            @intCast(line.start_station - 1),
-            station_index - 1,
-        );
+        try conn.sendStationsY(line.channel, .{
+            .start = @intCast(line.start_station - 1),
+            .end = station_index - 1,
+        });
     }
 
     for (used_channels) |_used_channel| {
@@ -412,8 +410,7 @@ fn mclAxisSlider(params: [][]const u8) !void {
     std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
     try conn.pollStations(
         line.channel,
-        start_station_index,
-        end_station_index,
+        .{ .start = start_station_index, .end = end_station_index },
     );
 
     var axis_counter: i16 = 0;
@@ -483,13 +480,13 @@ fn mclAxisReleaseServo(params: [][]const u8) !void {
     const x: *conn.Station.X = try conn.stationX(line.channel, station_index);
     ww.*.target_axis_number = axis_id;
     try conn.sendStationWw(line.channel, station_index);
-    try conn.stationSetY(
+    try conn.setStationY(
         line.channel,
         station_index,
         0x5,
     );
     // Reset on error as well as on success.
-    defer conn.stationResetY(line.channel, station_index, 0x5) catch {};
+    defer conn.resetStationY(line.channel, station_index, 0x5) catch {};
     while (true) {
         try command.checkCommandInterrupt();
         std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
@@ -607,8 +604,7 @@ fn mclSliderLocation(params: [][]const u8) !void {
     std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
     try conn.pollStations(
         line.channel,
-        start_index_station,
-        end_index_station,
+        .{ .start = start_index_station, .end = end_index_station },
     );
 
     var station_index: u6 = start_index_station;
@@ -659,8 +655,7 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
     std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
     try conn.pollStations(
         line.channel,
-        start_station_index,
-        end_station_index,
+        .{ .start = start_station_index, .end = end_station_index },
     );
 
     var station_index: u6 = start_station_index;
@@ -779,8 +774,7 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
     std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
     try conn.pollStations(
         line.channel,
-        start_station_index,
-        end_station_index,
+        .{ .start = start_station_index, .end = end_station_index },
     );
 
     var station_index: u6 = start_station_index;
@@ -896,8 +890,7 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
     std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
     try conn.pollStations(
         line.channel,
-        start_station_index,
-        end_station_index,
+        .{ .start = start_station_index, .end = end_station_index },
     );
 
     var station_index: u6 = start_station_index;
@@ -1006,8 +999,7 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
         std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
         try conn.pollStations(
             line.channel,
-            start_station_index,
-            end_station_index,
+            .{ .start = start_station_index, .end = end_station_index },
         );
 
         var station_index: u6 = start_station_index;
@@ -1050,8 +1042,7 @@ fn mclRecoverSlider(params: [][]const u8) !void {
     std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
     try conn.pollStations(
         line.channel,
-        start_station_index,
-        end_station_index,
+        .{ .start = start_station_index, .end = end_station_index },
     );
 
     var axis_counter: i16 = 0;
@@ -1165,21 +1156,21 @@ fn sendCommand(c: conn.Channel, station_index: u6) !void {
 
     std.log.debug("Sending command...", .{});
     try conn.sendStationWw(c, station_index);
-    try conn.stationSetY(c, station_index, 0x2);
+    try conn.setStationY(c, station_index, 0x2);
     send_command: while (true) {
         try command.checkCommandInterrupt();
         std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
         try conn.pollStation(c, station_index);
         if (x.command_received) {
             std.log.debug("Resetting command received flag...", .{});
-            try conn.stationResetY(c, station_index, 0x2);
-            try conn.stationSetY(c, station_index, 0x3);
+            try conn.resetStationY(c, station_index, 0x2);
+            try conn.setStationY(c, station_index, 0x3);
             reset_received: while (true) {
                 try command.checkCommandInterrupt();
                 std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
                 try conn.pollStation(c, station_index);
                 if (!x.command_received) {
-                    try conn.stationResetY(c, station_index, 0x3);
+                    try conn.resetStationY(c, station_index, 0x3);
                     break :reset_received;
                 }
             }
@@ -1238,7 +1229,7 @@ fn stopTrafficTransmission(
         {
             // Stop traffic transmission from current station to previous
             // station.
-            try conn.stationSetY(line.channel, station_index - 1, 0xA);
+            try conn.setStationY(line.channel, station_index - 1, 0xA);
             const prev_x: *conn.Station.X = try conn.stationX(
                 line.channel,
                 station_index - 1,
@@ -1256,7 +1247,7 @@ fn stopTrafficTransmission(
         {
             // Stop traffic transmission from previous station to current
             // station.
-            try conn.stationSetY(line.channel, station_index, 0x9);
+            try conn.setStationY(line.channel, station_index, 0x9);
             while (true) {
                 try command.checkCommandInterrupt();
                 std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
@@ -1272,7 +1263,7 @@ fn stopTrafficTransmission(
             state == .None)
         {
             // Stop traffic transmission from current station to next station.
-            try conn.stationSetY(line.channel, station_index + 1, 0x9);
+            try conn.setStationY(line.channel, station_index + 1, 0x9);
             while (true) {
                 try command.checkCommandInterrupt();
                 std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
@@ -1286,7 +1277,7 @@ fn stopTrafficTransmission(
             next_state == .None)
         {
             // Stop traffic transmission from next station to current station.
-            try conn.stationSetY(line.channel, station_index, 0xA);
+            try conn.setStationY(line.channel, station_index, 0xA);
             while (true) {
                 try command.checkCommandInterrupt();
                 std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
@@ -1348,7 +1339,7 @@ fn restartTrafficTransmission(
         {
             // Start traffic transmission from current station to previous
             // station.
-            try conn.stationResetY(line.channel, station_index - 1, 0xA);
+            try conn.resetStationY(line.channel, station_index - 1, 0xA);
             const prev_x: *conn.Station.X = try conn.stationX(
                 line.channel,
                 station_index - 1,
@@ -1366,7 +1357,7 @@ fn restartTrafficTransmission(
         {
             // Start traffic transmission from previous station to current
             // station.
-            try conn.stationResetY(line.channel, station_index, 0x9);
+            try conn.resetStationY(line.channel, station_index, 0x9);
             while (true) {
                 try command.checkCommandInterrupt();
                 std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
@@ -1382,7 +1373,7 @@ fn restartTrafficTransmission(
             state == .None)
         {
             // Start traffic transmission from current station to next station.
-            try conn.stationResetY(line.channel, station_index + 1, 0x9);
+            try conn.resetStationY(line.channel, station_index + 1, 0x9);
             while (true) {
                 try command.checkCommandInterrupt();
                 std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
@@ -1396,7 +1387,7 @@ fn restartTrafficTransmission(
             next_state == .None)
         {
             // Start traffic transmission from next station to current station.
-            try conn.stationResetY(line.channel, station_index, 0xA);
+            try conn.resetStationY(line.channel, station_index, 0xA);
             while (true) {
                 try command.checkCommandInterrupt();
                 std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
