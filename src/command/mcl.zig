@@ -194,6 +194,20 @@ pub fn init(c: Config) !void {
         .execute = &mclAxisWaitReleaseServo,
     });
     errdefer _ = command.registry.orderedRemove("WAIT_RELEASE_AXIS_SERVO");
+    try command.registry.put("CALIBRATE", .{
+        .name = "CALIBRATE",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+        },
+        .short_description = "Calibrate a system line.",
+        .long_description =
+        \\Calibrate a system line. An uninitialized slider must be positioned
+        \\at the start of the line such that the first axis has both hall
+        \\alarms active.
+        ,
+        .execute = &mclCalibrate,
+    });
+    errdefer _ = command.registry.orderedRemove("CALIBRATE");
     try command.registry.put("HOME_SLIDER", .{
         .name = "HOME_SLIDER",
         .parameters = &[_]command.Command.Parameter{
@@ -527,6 +541,19 @@ fn mclAxisWaitReleaseServo(params: [][]const u8) !void {
         try conn.pollStation(line.channel, station_index);
         if (x.servoActive(@intCast(axis_counter))) return;
     }
+}
+
+fn mclCalibrate(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const line: *const Config.Line = try matchLine(&config, line_name);
+    const start_station_index: u6 = @intCast(line.start_station - 1);
+    try waitCommandReady(line.channel, start_station_index);
+    const ww: *conn.Station.Ww = try conn.stationWw(
+        line.channel,
+        start_station_index,
+    );
+    ww.*.command_code = .Calibration;
+    try sendCommand(line.channel, start_station_index);
 }
 
 fn mclHomeSlider(params: [][]const u8) !void {
