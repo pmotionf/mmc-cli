@@ -532,10 +532,14 @@ fn mclAxisWaitReleaseServo(params: [][]const u8) !void {
 fn mclHomeSlider(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line: *const Config.Line = try matchLine(&config, line_name);
-    try waitCommandReady(line.channel, 0);
-    const ww: *conn.Station.Ww = try conn.stationWw(line.channel, 0);
+    const start_station_index: u6 = @intCast(line.start_station - 1);
+    try waitCommandReady(line.channel, start_station_index);
+    const ww: *conn.Station.Ww = try conn.stationWw(
+        line.channel,
+        start_station_index,
+    );
     ww.*.command_code = .Home;
-    try sendCommand(line.channel, 0);
+    try sendCommand(line.channel, start_station_index);
 }
 
 fn mclWaitHomeSlider(params: [][]const u8) !void {
