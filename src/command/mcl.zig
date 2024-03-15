@@ -15,26 +15,16 @@ const Direction = enum(u1) {
 };
 
 pub const Config = struct {
-    connection: Connection = .@"CC-Link Ver.2",
-    /// Minimum delay between polls through MELSEC, in us.
-    min_poll_rate: u64 = std.time.us_per_ms * 5,
     lines: []Line,
-
-    pub const Connection = enum(u8) {
-        @"CC-Link Ver.2" = 0,
-    };
 
     pub const Line = struct {
         name: []u8,
         channel: conn.Channel,
         start_station: u7,
+        end_station: u7,
+        total_axes: u15,
         speed: u8 = 40,
         acceleration: u8 = 40,
-        drivers: []Driver,
-    };
-
-    pub const Driver = struct {
-        axes: [3]bool,
     };
 };
 
@@ -46,15 +36,14 @@ pub fn init(c: Config) !void {
         if (line.start_station < 1 or line.start_station > 64) {
             return error.InvalidLineStartStation;
         }
-        if (line.drivers.len < 1 or line.drivers.len > 64) {
-            return error.InvalidLineNumDrivers;
+        if (line.end_station < line.start_station or line.end_station > 64) {
+            return error.InvalidLineEndStation;
         }
-        // Subtract 1 to account for included start station.
-        var last_station: u7 = @intCast(line.drivers.len - 1);
-        last_station += line.start_station;
-
-        if (last_station > 64) {
-            return error.InvalidLineDriversConfiguration;
+        const num_stations: usize = line.end_station - line.start_station + 1;
+        if (line.total_axes < num_stations or
+            line.total_axes > num_stations * 3)
+        {
+            return error.InvalidNumberOfAxes;
         }
     }
     used_channels = .{ null, null, null, null };
@@ -63,8 +52,6 @@ pub fn init(c: Config) !void {
     allocator = arena.allocator();
 
     config = .{
-        .connection = c.connection,
-        .min_poll_rate = c.min_poll_rate,
         .lines = try allocator.alloc(Config.Line, c.lines.len),
     };
     for (c.lines, 0..) |line, i| {
@@ -80,12 +67,12 @@ pub fn init(c: Config) !void {
             .name = try allocator.alloc(u8, line.name.len),
             .channel = line.channel,
             .start_station = line.start_station,
+            .end_station = line.end_station,
+            .total_axes = line.total_axes,
             .speed = line.speed,
             .acceleration = line.acceleration,
-            .drivers = try allocator.alloc(Config.Driver, line.drivers.len),
         };
         @memcpy(config.lines[i].name, line.name);
-        @memcpy(config.lines[i].drivers, line.drivers);
     }
 
     try command.registry.put("MCL_VERSION", .{
@@ -369,36 +356,34 @@ fn mclConnect(_: [][]const u8) !void {
     }
 
     for (config.lines) |line| {
-        var station_index: u6 = @intCast(line.start_station - 1);
-        for (line.drivers) |_| {
+        for (line.start_station - 1..line.end_station) |i| {
+            const station_index: u6 = @intCast(i);
             const y: *conn.Station.Y = try conn.stationY(
                 line.channel,
                 station_index,
             );
             y.*.cc_link_enable = true;
-            station_index += 1;
         }
         try conn.sendStationsY(line.channel, .{
             .start = @intCast(line.start_station - 1),
-            .end = station_index - 1,
+            .end = @intCast(line.end_station - 1),
         });
     }
 }
 
 fn mclDisconnect(_: [][]const u8) !void {
     for (config.lines) |line| {
-        var station_index: u6 = @intCast(line.start_station - 1);
-        for (line.drivers) |_| {
+        for (line.start_station - 1..line.end_station) |i| {
+            const station_index: u6 = @intCast(i);
             const y: *conn.Station.Y = try conn.stationY(
                 line.channel,
                 station_index,
             );
             y.*.cc_link_enable = false;
-            station_index += 1;
         }
         try conn.sendStationsY(line.channel, .{
             .start = @intCast(line.start_station - 1),
-            .end = station_index - 1,
+            .end = @intCast(line.end_station - 1),
         });
     }
 
@@ -413,44 +398,32 @@ fn mclAxisSlider(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(i16, params[1], 0);
     const result_var: []const u8 = params[2];
-    var slider: ?i16 = null;
 
     const line: *const Config.Line = try matchLine(&config, line_name);
 
-    const start_station_index: u6 = @intCast(line.start_station - 1);
-    const end_station_index: u6 = start_station_index +
-        @as(u6, @intCast(line.drivers.len - 1));
+    if (axis_id < 1 or axis_id > line.total_axes) {
+        return error.InvalidAxis;
+    }
 
-    std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
+    const start_station_index: u6 = @intCast(line.start_station - 1);
+    const end_station_index: u6 = @intCast(line.end_station - 1);
+
     try conn.pollStations(
         line.channel,
         .{ .start = start_station_index, .end = end_station_index },
     );
 
-    var axis_counter: i16 = 0;
-    var station_index: u6 = start_station_index;
-    driver_loop: for (line.drivers) |driver| {
-        for (0..3) |_i| {
-            const i: u2 = @intCast(_i);
-            if (driver.axes[i]) {
-                axis_counter += 1;
-                if (axis_counter == axis_id) {
-                    const wr: *conn.Station.Wr = try conn.stationWr(
-                        line.channel,
-                        station_index,
-                    );
-                    const slider_number = wr.sliderNumber(i);
-                    if (slider_number != 0) {
-                        slider = slider_number;
-                    }
-                    break :driver_loop;
-                }
-            }
-        }
-        station_index += 1;
-    }
+    const axis_index: i16 = axis_id - 1;
+    const station_index: u6 = @intCast(@divTrunc(axis_index, 3));
+    const local_axis_index: u2 = @intCast(@rem(axis_index, 3));
 
-    if (slider) |slider_id| {
+    const wr: *conn.Station.Wr = try conn.stationWr(
+        line.channel,
+        station_index,
+    );
+    const slider_id = wr.sliderNumber(local_axis_index);
+
+    if (slider_id != 0) {
         std.log.info("Slider {d} on axis {d}.\n", .{ slider_id, axis_id });
         if (result_var.len > 0) {
             var int_buf: [8]u8 = undefined;
@@ -469,30 +442,18 @@ fn mclAxisReleaseServo(params: [][]const u8) !void {
     const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
 
     const line: *const Config.Line = try matchLine(&config, line_name);
-    const start_station_index: u6 = @intCast(line.start_station - 1);
-
-    var axis_counter: i16 = 0;
-    var station_index: u6 = start_station_index;
-    driver_loop: for (line.drivers) |driver| {
-        for (0..3) |_i| {
-            const i: u2 = @intCast(_i);
-            if (driver.axes[i]) {
-                axis_counter += 1;
-                if (axis_counter == axis_id) {
-                    axis_counter = i;
-                    break :driver_loop;
-                }
-            }
-        }
-        station_index += 1;
-    } else {
-        return error.TargetAxisNotFound;
+    if (axis_id < 1 or axis_id > line.total_axes) {
+        return error.InvalidAxis;
     }
+
+    const axis_index: i16 = axis_id - 1;
+    const station_index: u6 = @intCast(@divTrunc(axis_index, 3));
+    const local_axis_index: u2 = @intCast(@rem(axis_index, 3));
 
     const ww: *conn.Station.Ww =
         try conn.stationWw(line.channel, station_index);
     const x: *conn.Station.X = try conn.stationX(line.channel, station_index);
-    ww.*.target_axis_number = axis_id;
+    ww.*.target_axis_number = local_axis_index;
     try conn.sendStationWw(line.channel, station_index);
     try conn.setStationY(
         line.channel,
@@ -503,9 +464,8 @@ fn mclAxisReleaseServo(params: [][]const u8) !void {
     defer conn.resetStationY(line.channel, station_index, 0x5) catch {};
     while (true) {
         try command.checkCommandInterrupt();
-        std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
         try conn.pollStation(line.channel, station_index);
-        if (!x.servoActive(@intCast(axis_counter))) break;
+        if (!x.servoActive(local_axis_index)) break;
     }
 }
 
@@ -514,59 +474,44 @@ fn mclAxisWaitReleaseServo(params: [][]const u8) !void {
     const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
 
     const line: *const Config.Line = try matchLine(&config, line_name);
-    const start_station_index: u6 = @intCast(line.start_station - 1);
-
-    var axis_counter: i16 = 0;
-    var station_index: u6 = start_station_index;
-    driver_loop: for (line.drivers) |driver| {
-        for (0..3) |_i| {
-            const i: u2 = @intCast(_i);
-            if (driver.axes[i]) {
-                axis_counter += 1;
-                if (axis_counter == axis_id) {
-                    axis_counter = i;
-                    break :driver_loop;
-                }
-            }
-        }
-        station_index += 1;
-    } else {
-        return error.TargetAxisNotFound;
+    if (axis_id < 1 or axis_id > line.total_axes) {
+        return error.InvalidAxis;
     }
+
+    const axis_index: i16 = axis_id - 1;
+    const station_index: u6 = @intCast(@divTrunc(axis_index, 3));
+    const local_axis_index: u2 = @intCast(@rem(axis_index, 3));
 
     const x: *conn.Station.X = try conn.stationX(line.channel, station_index);
     while (true) {
         try command.checkCommandInterrupt();
-        std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
         try conn.pollStation(line.channel, station_index);
-        if (x.servoActive(@intCast(axis_counter))) return;
+        if (x.servoActive(local_axis_index)) return;
     }
 }
 
 fn mclCalibrate(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line: *const Config.Line = try matchLine(&config, line_name);
-    const start_station_index: u6 = @intCast(line.start_station - 1);
-    try waitCommandReady(line.channel, start_station_index);
-    const ww: *conn.Station.Ww = try conn.stationWw(
-        line.channel,
-        start_station_index,
-    );
+
+    const station_index: u6 = @intCast(line.start_station - 1);
+
+    try waitCommandReady(line.channel, station_index);
+    const ww: *conn.Station.Ww =
+        try conn.stationWw(line.channel, station_index);
     ww.*.command_code = .Calibration;
-    try sendCommand(line.channel, start_station_index);
+    try sendCommand(line.channel, station_index);
 }
 
 fn mclHomeSlider(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line: *const Config.Line = try matchLine(&config, line_name);
-    const start_station_index: u6 = @intCast(line.start_station - 1);
-    try waitCommandReady(line.channel, start_station_index);
-    const ww: *conn.Station.Ww = try conn.stationWw(
-        line.channel,
-        start_station_index,
-    );
+    const station_index: u6 = @intCast(line.start_station - 1);
+    try waitCommandReady(line.channel, station_index);
+    const ww: *conn.Station.Ww =
+        try conn.stationWw(line.channel, station_index);
     ww.*.command_code = .Home;
-    try sendCommand(line.channel, start_station_index);
+    try sendCommand(line.channel, station_index);
 }
 
 fn mclWaitHomeSlider(params: [][]const u8) !void {
@@ -574,17 +519,14 @@ fn mclWaitHomeSlider(params: [][]const u8) !void {
     const result_var: []const u8 = params[1];
 
     const line: *const Config.Line = try matchLine(&config, line_name);
-    const start_station_index: u6 = @intCast(line.start_station - 1);
+    const station_index: u6 = @intCast(line.start_station - 1);
 
     var slider: ?i16 = null;
-    const wr: *conn.Station.Wr = try conn.stationWr(
-        line.channel,
-        start_station_index,
-    );
+    const wr: *conn.Station.Wr =
+        try conn.stationWr(line.channel, station_index);
     while (true) {
         try command.checkCommandInterrupt();
-        std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-        try conn.pollStation(line.channel, 0);
+        try conn.pollStation(line.channel, station_index);
 
         if (wr.slider_number.axis1 != 0) {
             slider = wr.slider_number.axis1;
@@ -624,35 +566,30 @@ fn mclSetAcceleration(params: [][]const u8) !void {
 fn mclSliderLocation(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const slider_id = try std.fmt.parseInt(i16, params[1], 0);
-    if (slider_id == 0) return error.InvalidSliderId;
+    if (slider_id < 1 or slider_id > 127) return error.InvalidSliderId;
     const result_var: []const u8 = params[2];
 
     const line: *const Config.Line = try matchLine(&config, line_name);
 
     const start_index_station: u6 = @intCast(line.start_station - 1);
-    const end_index_station: u6 =
-        @as(u6, @intCast(line.drivers.len - 1)) + start_index_station;
-    std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
+    const end_index_station: u6 = @intCast(line.end_station - 1);
     try conn.pollStations(
         line.channel,
         .{ .start = start_index_station, .end = end_index_station },
     );
 
-    var station_index: u6 = start_index_station;
     var location: conn.Station.Distance = undefined;
-    driver_loop: for (line.drivers) |driver| {
-        const wr: *conn.Station.Wr = try conn.stationWr(
-            line.channel,
-            station_index,
-        );
-        for (0..3) |_i| {
-            const i: u2 = @intCast(_i);
-            if (driver.axes[i] and wr.sliderNumber(i) == slider_id) {
-                location = wr.sliderLocation(i);
+    driver_loop: for (start_index_station..line.end_station) |i| {
+        const station_index: u6 = @intCast(i);
+        const wr: *conn.Station.Wr =
+            try conn.stationWr(line.channel, station_index);
+        for (0..3) |j| {
+            const local_axis_index: u2 = @intCast(j);
+            if (wr.sliderNumber(local_axis_index) == slider_id) {
+                location = wr.sliderLocation(local_axis_index);
                 break :driver_loop;
             }
         }
-        station_index += 1;
     } else {
         return error.SliderIdNotFound;
     }
@@ -675,113 +612,75 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const slider_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
     const axis_id: i16 = try std.fmt.parseInt(i16, params[2], 0);
-    if (slider_id == 0) return error.InvalidSliderId;
+    if (slider_id < 1 or slider_id > 127) return error.InvalidSliderId;
 
     const line: *const Config.Line = try matchLine(&config, line_name);
-    const start_station_index: u6 = @intCast(line.start_station - 1);
-    const end_station_index: u6 =
-        @as(u6, @intCast(line.drivers.len - 1)) + start_station_index;
+    if (axis_id < 1 or axis_id > line.total_axes) {
+        return error.InvalidAxis;
+    }
 
-    std.log.debug("Polling CC-Link...", .{});
-    std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
+    const start_station_index: u6 = @intCast(line.start_station - 1);
+    const end_station_index: u6 = @intCast(line.end_station - 1);
     try conn.pollStations(
         line.channel,
         .{ .start = start_station_index, .end = end_station_index },
     );
 
-    var station_index: u6 = start_station_index;
-    // Index of axis in system.
-    var axis_index: i16 = 0;
-    // Local index of axis per station.
-    var station_axis_index: u2 = undefined;
-    // Whether axis is last axis in station.
-    var last_axis: bool = false;
-    // Find station and axis of slider.
-    std.log.debug("Parsing drivers...", .{});
-    driver_loop: for (line.drivers) |driver| {
-        const wr: *conn.Station.Wr = try conn.stationWr(
-            line.channel,
-            station_index,
-        );
-        for (0..3) |_i| {
-            const i: u2 = @intCast(_i);
-            if (driver.axes[i] and wr.sliderNumber(i) == slider_id) {
-                station_axis_index = i;
-                // Check if axis is last valid in driver.
-                for ((_i + 1)..3) |_j| {
-                    const j: u2 = @intCast(_j);
-                    if (driver.axes[j]) {
-                        break;
-                    }
-                } else {
-                    last_axis = true;
-                }
+    var station_index: u6 = undefined;
+    var local_axis_index: u2 = undefined;
+    driver_loop: for (start_station_index..line.end_station) |i| {
+        station_index = @intCast(i);
+        const wr: *conn.Station.Wr =
+            try conn.stationWr(line.channel, station_index);
+        for (0..3) |j| {
+            local_axis_index = @intCast(j);
+            if (wr.sliderNumber(local_axis_index) == slider_id) {
                 break :driver_loop;
             }
-            axis_index += 1;
         }
-        station_index += 1;
     } else {
         return error.SliderIdNotFound;
     }
 
+    const axis_index: u15 = station_index * 3 + local_axis_index;
+
     // If slider is between two drivers, stop traffic transmission.
     var stopped_transmission: ?Direction = null;
-    if (last_axis and station_index < end_station_index) {
+    if (local_axis_index == 2 and station_index < end_station_index) {
         std.log.debug("Checking transmission stop conditions...", .{});
         const next_station_index: u6 = station_index + 1;
-        const next_station_slice_index: usize =
-            station_index - start_station_index + 1;
         const next_wr: *conn.Station.Wr = try conn.stationWr(
             line.channel,
             next_station_index,
         );
         // Check first axis of next driver to see if slider is between drivers.
-        for (0..3) |_i| {
-            const i: u2 = @intCast(_i);
-            if (line.drivers[next_station_slice_index].axes[i]) {
-                if (next_wr.sliderNumber(i) == slider_id) {
-                    std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-                    // Destination axis is at or beyond next driver.
-                    // Forward movement.
-                    if (axis_id > axis_index + 1) {
-                        try stopTrafficTransmission(
-                            line.*,
-                            station_index,
-                            .forward,
-                        );
-                        stopped_transmission = .forward;
-                    }
-                    // Destination is at or before current driver.
-                    // Backward movement.
-                    else {
-                        try stopTrafficTransmission(
-                            line.*,
-                            station_index,
-                            .backward,
-                        );
-                        stopped_transmission = .backward;
-                    }
-                }
-                break;
+        if (next_wr.sliderNumber(0) == slider_id) {
+            // Destination axis is at or beyond next driver.
+            // Forward movement.
+            if (axis_id > axis_index + 1) {
+                try stopTrafficTransmission(line.*, station_index, .forward);
+                stopped_transmission = .forward;
+            }
+            // Destination is at or before current driver.
+            // Backward movement.
+            else {
+                try stopTrafficTransmission(line.*, station_index, .backward);
+                stopped_transmission = .backward;
             }
         }
     }
 
     const ww: *conn.Station.Ww =
         try conn.stationWw(line.channel, station_index);
-    std.log.debug("Waiting for command ready state...", .{});
     try waitCommandReady(line.channel, station_index);
     ww.*.command_code = .MoveSliderToAxisByPosition;
     ww.*.command_slider_number = slider_id;
     ww.*.target_axis_number = axis_id;
     ww.*.speed_percentage = line.speed;
     ww.*.acceleration_percentage = line.acceleration;
-    std.log.debug("Sending command...", .{});
     try sendCommand(line.channel, station_index);
 
     if (stopped_transmission) |dir| {
-        std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
         try restartTrafficTransmission(line.*, station_index, dir);
     }
 }
@@ -790,7 +689,7 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const slider_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
     const location_float: f32 = try std.fmt.parseFloat(f32, params[2]);
-    if (slider_id == 0) return error.InvalidSliderId;
+    if (slider_id < 1 or slider_id > 127) return error.InvalidSliderId;
 
     const location: conn.Station.Distance = .{
         .mm = @intFromFloat(location_float),
@@ -799,89 +698,51 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
 
     const line: *const Config.Line = try matchLine(&config, line_name);
     const start_station_index: u6 = @intCast(line.start_station - 1);
-    const end_station_index: u6 =
-        @as(u6, @intCast(line.drivers.len - 1)) + start_station_index;
-
-    std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
+    const end_station_index: u6 = @intCast(line.end_station - 1);
     try conn.pollStations(
         line.channel,
         .{ .start = start_station_index, .end = end_station_index },
     );
 
-    var station_index: u6 = start_station_index;
-    // Index of axis in system.
-    var axis_index: i16 = 0;
-    // Local index of axis per station.
-    var station_axis_index: u2 = undefined;
-    // Whether axis is last axis in station.
-    var last_axis: bool = false;
-
+    var station_index: u6 = undefined;
+    var local_axis_index: u2 = undefined;
     var wr: *conn.Station.Wr = undefined;
-    // Find station and axis of slider.
-    driver_loop: for (line.drivers) |driver| {
+    driver_loop: for (start_station_index..line.end_station) |i| {
+        station_index = @intCast(i);
         wr = try conn.stationWr(line.channel, station_index);
-        for (0..3) |_i| {
-            const i: u2 = @intCast(_i);
-            if (driver.axes[i] and wr.sliderNumber(i) == slider_id) {
-                station_axis_index = i;
-                // Check if axis is last valid in driver.
-                for ((_i + 1)..3) |_j| {
-                    const j: u2 = @intCast(_j);
-                    if (driver.axes[j]) {
-                        break;
-                    }
-                } else {
-                    last_axis = true;
-                }
+        for (0..3) |j| {
+            local_axis_index = @intCast(j);
+            if (wr.sliderNumber(local_axis_index) == slider_id) {
                 break :driver_loop;
             }
-            axis_index += 1;
         }
-        station_index += 1;
     } else {
         return error.SliderIdNotFound;
     }
 
     var stopped_transmission: ?Direction = null;
-    if (last_axis and station_index < end_station_index) {
+    if (local_axis_index == 2 and station_index < end_station_index) {
         const next_station_index: u6 = station_index + 1;
-        const next_station_slice_index: usize =
-            station_index - start_station_index + 1;
         const next_wr: *conn.Station.Wr = try conn.stationWr(
             line.channel,
             next_station_index,
         );
         // Check first axis of next driver to see if slider is between drivers.
-        for (0..3) |_i| {
-            const i: u2 = @intCast(_i);
-            if (line.drivers[next_station_slice_index].axes[i]) {
-                if (next_wr.sliderNumber(i) == slider_id) {
-                    std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-                    // Destination location is in front of current location.
-                    // Forward movement.
-                    if (location.mm > wr.sliderLocation(i).mm or
-                        (location.mm == wr.sliderLocation(i).mm and
-                        location.um > wr.sliderLocation(i).um))
-                    {
-                        try stopTrafficTransmission(
-                            line.*,
-                            station_index,
-                            .forward,
-                        );
-                        stopped_transmission = .forward;
-                    }
-                    // Destination location is behind current location.
-                    // Backward movement.
-                    else {
-                        try stopTrafficTransmission(
-                            line.*,
-                            station_index,
-                            .backward,
-                        );
-                        stopped_transmission = .backward;
-                    }
-                }
-                break;
+        if (next_wr.sliderNumber(0) == slider_id) {
+            // Destination location is in front of current location.
+            // Forward movement.
+            if (location.mm > wr.slider_location.axis1.mm or
+                (location.mm == wr.slider_location.axis1.mm and
+                location.um > wr.slider_location.axis1.um))
+            {
+                try stopTrafficTransmission(line.*, station_index, .forward);
+                stopped_transmission = .forward;
+            }
+            // Destination location is behind current location.
+            // Backward movement.
+            else {
+                try stopTrafficTransmission(line.*, station_index, .backward);
+                stopped_transmission = .backward;
             }
         }
     }
@@ -897,7 +758,6 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
     try sendCommand(line.channel, station_index);
 
     if (stopped_transmission) |dir| {
-        std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
         try restartTrafficTransmission(line.*, station_index, dir);
     }
 }
@@ -906,95 +766,56 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
     const line_name = params[0];
     const slider_id = try std.fmt.parseInt(i16, params[1], 0);
     const distance_float = try std.fmt.parseFloat(f32, params[2]);
-    if (slider_id == 0) return error.InvalidSliderId;
-
-    const line: *const Config.Line = try matchLine(&config, line_name);
-    const start_station_index: u6 = @intCast(line.start_station - 1);
-    const end_station_index: u6 =
-        @as(u6, @intCast(line.drivers.len - 1)) + start_station_index;
+    if (slider_id < 1 or slider_id > 127) return error.InvalidSliderId;
 
     const distance: conn.Station.Distance = .{
         .mm = @intFromFloat(distance_float),
         .um = @intFromFloat((distance_float - @trunc(distance_float)) * 1000),
     };
 
-    std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
+    const line: *const Config.Line = try matchLine(&config, line_name);
+    const start_station_index: u6 = @intCast(line.start_station - 1);
+    const end_station_index: u6 = @intCast(line.end_station - 1);
     try conn.pollStations(
         line.channel,
         .{ .start = start_station_index, .end = end_station_index },
     );
 
-    var station_index: u6 = start_station_index;
-    // Index of axis in system.
-    var axis_index: i16 = 0;
-    // Local index of axis per station.
-    var station_axis_index: u2 = undefined;
-    // Whether axis is last axis in station.
-    var last_axis: bool = false;
-
+    var station_index: u6 = undefined;
+    var local_axis_index: u2 = undefined;
     var wr: *conn.Station.Wr = undefined;
-    // Find station and axis of slider.
-    driver_loop: for (line.drivers) |driver| {
+    driver_loop: for (start_station_index..line.end_station) |i| {
+        station_index = @intCast(i);
         wr = try conn.stationWr(line.channel, station_index);
-        for (0..3) |_i| {
-            const i: u2 = @intCast(_i);
-            if (driver.axes[i] and wr.sliderNumber(i) == slider_id) {
-                station_axis_index = i;
-                // Check if axis is last valid in driver.
-                for ((_i + 1)..3) |_j| {
-                    const j: u2 = @intCast(_j);
-                    if (driver.axes[j]) {
-                        break;
-                    }
-                } else {
-                    last_axis = true;
-                }
+        for (0..3) |j| {
+            local_axis_index = @intCast(j);
+            if (wr.sliderNumber(local_axis_index) == slider_id) {
                 break :driver_loop;
             }
-            axis_index += 1;
         }
-        station_index += 1;
     } else {
         return error.SliderIdNotFound;
     }
 
     var stopped_transmission: ?Direction = null;
-    if (last_axis and station_index < end_station_index) {
+    if (local_axis_index == 2 and station_index < end_station_index) {
         const next_station_index: u6 = station_index + 1;
-        const next_station_slice_index: usize =
-            station_index - start_station_index + 1;
         const next_wr: *conn.Station.Wr = try conn.stationWr(
             line.channel,
             next_station_index,
         );
 
         // Check first axis of next driver to see if slider is between drivers.
-        for (0..3) |_i| {
-            const i: u2 = @intCast(_i);
-            if (line.drivers[next_station_slice_index].axes[i]) {
-                if (next_wr.sliderNumber(i) == slider_id) {
-                    std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-                    // Distance is positive. Forward movement.
-                    if (distance.mm > 0 or
-                        (distance.mm == 0 and distance.um > 0))
-                    {
-                        try stopTrafficTransmission(
-                            line.*,
-                            station_index,
-                            .forward,
-                        );
-                        stopped_transmission = .forward;
-                    }
-                    // Distance is negative or 0. Backward movement.
-                    else {
-                        try stopTrafficTransmission(
-                            line.*,
-                            station_index,
-                            .backward,
-                        );
-                        stopped_transmission = .backward;
-                    }
-                }
+        if (next_wr.sliderNumber(0) == slider_id) {
+            // Distance is positive. Forward movement.
+            if (distance.mm > 0 or (distance.mm == 0 and distance.um > 0)) {
+                try stopTrafficTransmission(line.*, station_index, .forward);
+                stopped_transmission = .forward;
+            }
+            // Distance is negative or 0. Backward movement.
+            else {
+                try stopTrafficTransmission(line.*, station_index, .backward);
+                stopped_transmission = .backward;
             }
         }
     }
@@ -1010,7 +831,6 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
     try sendCommand(line.channel, station_index);
 
     if (stopped_transmission) |dir| {
-        std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
         try restartTrafficTransmission(line.*, station_index, dir);
     }
 }
@@ -1018,41 +838,38 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
 fn mclWaitMoveSlider(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const slider_id = try std.fmt.parseInt(i16, params[1], 0);
-    if (slider_id == 0) return error.InvalidSliderId;
+    if (slider_id < 1 or slider_id > 127) return error.InvalidSliderId;
 
     const line: *const Config.Line = try matchLine(&config, line_name);
     const start_station_index: u6 = @intCast(line.start_station - 1);
-    const end_station_index: u6 =
-        @as(u6, @intCast(line.drivers.len - 1)) + start_station_index;
+    const end_station_index: u6 = @intCast(line.end_station - 1);
 
     while (true) {
         try command.checkCommandInterrupt();
-        std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
         try conn.pollStations(
             line.channel,
             .{ .start = start_station_index, .end = end_station_index },
         );
 
-        var station_index: u6 = start_station_index;
         var slider_id_found: bool = false;
-        for (line.drivers) |driver| {
-            try command.checkCommandInterrupt();
+        for (start_station_index..line.end_station) |i| {
+            const station_index: u6 = @intCast(i);
             const wr: *conn.Station.Wr = try conn.stationWr(
                 line.channel,
                 station_index,
             );
-            for (0..3) |_i| {
-                const i: u2 = @intCast(_i);
-                if (driver.axes[i] and wr.sliderNumber(i) == slider_id) {
+            for (0..3) |j| {
+                const local_axis_index: u2 = @intCast(j);
+                if (wr.sliderNumber(local_axis_index) == slider_id) {
                     slider_id_found = true;
-                    if (wr.sliderState(i) == .PosMoveCompleted) {
+                    if (wr.sliderState(
+                        local_axis_index,
+                    ) == .PosMoveCompleted) {
                         return;
                     }
                 }
             }
-            station_index += 1;
         }
-
         if (!slider_id_found) {
             return error.SliderIdNotFound;
         }
@@ -1066,44 +883,28 @@ fn mclRecoverSlider(params: [][]const u8) !void {
     if (new_slider_id < 1 or new_slider_id > 127) return error.InvalidSliderID;
 
     const line: *const Config.Line = try matchLine(&config, line_name);
-    const start_station_index: u6 = @intCast(line.start_station - 1);
-    const end_station_index: u6 =
-        @as(u6, @intCast(line.drivers.len - 1)) + start_station_index;
+    if (axis < 1 or axis > line.total_axes) {
+        return error.InvalidAxis;
+    }
 
-    std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
+    const start_station_index: u6 = @intCast(line.start_station - 1);
+    const end_station_index: u6 = @intCast(line.end_station - 1);
     try conn.pollStations(
         line.channel,
         .{ .start = start_station_index, .end = end_station_index },
     );
 
-    var axis_counter: i16 = 0;
-    var station_index: u6 = start_station_index;
-    driver_loop: for (line.drivers) |driver| {
-        try command.checkCommandInterrupt();
-        for (0..3) |_i| {
-            const i: u2 = @intCast(_i);
-            if (driver.axes[i]) {
-                axis_counter += 1;
-                if (axis_counter == axis) {
-                    // Slider recovery uses driver local axis ID (1-3).
-                    axis_counter = i + 1;
-                    break :driver_loop;
-                }
-            }
-        }
-        station_index += 1;
-    } else {
-        return error.TargetAxisNotFound;
-    }
+    const axis_index: u15 = @intCast(axis - 1);
+    const station_index: u6 = @intCast(axis_index / 3);
+    const local_axis_index: u2 = @intCast(axis_index % 3);
 
     const ww: *conn.Station.Ww = try conn.stationWw(
         line.channel,
         station_index,
     );
-
     try waitCommandReady(line.channel, station_index);
     ww.*.command_code = .RecoverSliderAtAxis;
-    ww.*.target_axis_number = axis_counter;
+    ww.*.target_axis_number = local_axis_index;
     ww.*.command_slider_number = new_slider_id;
     try sendCommand(line.channel, station_index);
 }
@@ -1114,43 +915,30 @@ fn mclWaitRecoverSlider(params: [][]const u8) !void {
     const result_var: []const u8 = params[2];
 
     const line: *const Config.Line = try matchLine(&config, line_name);
-    const start_station_index: u6 = @intCast(line.start_station - 1);
+    if (axis < 1 or axis > line.total_axes) {
+        return error.InvalidAxis;
+    }
+
+    const axis_index: u15 = @intCast(axis - 1);
+    const station_index: u6 = @intCast(axis_index / 3);
+    const local_axis_index: u2 = @intCast(axis_index % 3);
 
     var slider_id: i16 = undefined;
-    var axis_counter: i16 = 0;
-    var station_index: u6 = start_station_index;
-    driver_search: for (line.drivers) |driver| {
+    const wr: *conn.Station.Wr = try conn.stationWr(
+        line.channel,
+        station_index,
+    );
+    while (true) {
         try command.checkCommandInterrupt();
-        for (0..3) |_i| {
-            const i: u2 = @intCast(_i);
-            if (driver.axes[i]) {
-                axis_counter += 1;
-                if (axis_counter == axis) {
-                    const wr: *conn.Station.Wr = try conn.stationWr(
-                        line.channel,
-                        station_index,
-                    );
-                    while (true) {
-                        try command.checkCommandInterrupt();
-                        std.time.sleep(
-                            std.time.ns_per_us * config.min_poll_rate,
-                        );
-                        try conn.pollStation(line.channel, station_index);
+        try conn.pollStation(line.channel, station_index);
 
-                        const slider_number = wr.sliderNumber(i);
-                        if (slider_number != 0 and
-                            wr.sliderState(i) == .PosMoveCompleted)
-                        {
-                            slider_id = slider_number;
-                            break :driver_search;
-                        }
-                    }
-                }
-            }
+        const slider_number = wr.sliderNumber(local_axis_index);
+        if (slider_number != 0 and
+            wr.sliderState(local_axis_index) == .PosMoveCompleted)
+        {
+            slider_id = slider_number;
+            break;
         }
-        station_index += 1;
-    } else {
-        return error.TargetAxisNotFound;
     }
 
     std.log.info("Slider {d} recovered.\n", .{slider_id});
@@ -1176,7 +964,6 @@ fn waitCommandReady(c: conn.Channel, station_index: u6) !void {
     std.log.debug("Waiting for command ready state...", .{});
     while (true) {
         try command.checkCommandInterrupt();
-        std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
         try conn.pollStation(c, station_index);
         if (x.ready_for_command) break;
     }
@@ -1188,24 +975,23 @@ fn sendCommand(c: conn.Channel, station_index: u6) !void {
     std.log.debug("Sending command...", .{});
     try conn.sendStationWw(c, station_index);
     try conn.setStationY(c, station_index, 0x2);
-    send_command: while (true) {
+    while (true) {
         try command.checkCommandInterrupt();
-        std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
         try conn.pollStation(c, station_index);
         if (x.command_received) {
-            std.log.debug("Resetting command received flag...", .{});
-            try conn.resetStationY(c, station_index, 0x2);
-            try conn.setStationY(c, station_index, 0x3);
-            reset_received: while (true) {
-                try command.checkCommandInterrupt();
-                std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
-                try conn.pollStation(c, station_index);
-                if (!x.command_received) {
-                    try conn.resetStationY(c, station_index, 0x3);
-                    break :reset_received;
-                }
-            }
-            break :send_command;
+            break;
+        }
+    }
+
+    std.log.debug("Resetting command received flag...", .{});
+    try conn.resetStationY(c, station_index, 0x2);
+    try conn.setStationY(c, station_index, 0x3);
+    while (true) {
+        try command.checkCommandInterrupt();
+        try conn.pollStation(c, station_index);
+        if (!x.command_received) {
+            try conn.resetStationY(c, station_index, 0x3);
+            break;
         }
     }
 }
@@ -1218,8 +1004,7 @@ fn stopTrafficTransmission(
     direction: Direction,
 ) !void {
     const start_station_index: u6 = @intCast(line.start_station - 1);
-    const end_station_index: u6 =
-        @as(u6, @intCast(line.drivers.len - 1)) + start_station_index;
+    const end_station_index: u6 = @intCast(line.end_station - 1);
     if (station_index < start_station_index or
         station_index >= end_station_index) return;
     std.log.debug("Stopping traffic transmission...", .{});
@@ -1231,28 +1016,8 @@ fn stopTrafficTransmission(
         station_index + 1,
     );
 
-    var state: conn.Station.Wr.SliderStateCode = undefined;
-    var next_state: conn.Station.Wr.SliderStateCode = undefined;
-
-    for (0..3) |_i| {
-        const i: u2 = @intCast(_i);
-        if (line.drivers[station_index - start_station_index].axes[2 - i]) {
-            state = station.wr.sliderState(2 - i);
-            break;
-        }
-    } else {
-        return error.InvalidDriverConfiguration;
-    }
-
-    for (0..3) |_i| {
-        const i: u2 = @intCast(_i);
-        if (line.drivers[station_index - start_station_index + 1].axes[i]) {
-            next_state = next_station.wr.sliderState(i);
-            break;
-        }
-    } else {
-        return error.InvalidDriverConfiguration;
-    }
+    const state = station.wr.slider_state.axis3;
+    const next_state = next_station.wr.slider_state.axis1;
 
     if (direction == .forward) {
         if ((next_state == .PrevAxisAuxiliary or
@@ -1267,7 +1032,6 @@ fn stopTrafficTransmission(
             );
             while (true) {
                 try command.checkCommandInterrupt();
-                std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
                 try conn.pollStation(line.channel, station_index - 1);
                 if (prev_x.transmission_stopped.from_next) {
                     break;
@@ -1281,7 +1045,6 @@ fn stopTrafficTransmission(
             try conn.setStationY(line.channel, station_index, 0x9);
             while (true) {
                 try command.checkCommandInterrupt();
-                std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
                 try conn.pollStation(line.channel, station_index);
                 if (station.x.transmission_stopped.from_prev) {
                     break;
@@ -1297,7 +1060,6 @@ fn stopTrafficTransmission(
             try conn.setStationY(line.channel, station_index + 1, 0x9);
             while (true) {
                 try command.checkCommandInterrupt();
-                std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
                 try conn.pollStation(line.channel, station_index + 1);
                 if (next_station.x.transmission_stopped.from_prev) {
                     break;
@@ -1311,7 +1073,6 @@ fn stopTrafficTransmission(
             try conn.setStationY(line.channel, station_index, 0xA);
             while (true) {
                 try command.checkCommandInterrupt();
-                std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
                 try conn.pollStation(line.channel, station_index);
                 if (station.x.transmission_stopped.from_next) {
                     break;
@@ -1328,8 +1089,7 @@ fn restartTrafficTransmission(
     direction: Direction,
 ) !void {
     const start_station_index: u6 = @intCast(line.start_station - 1);
-    const end_station_index: u6 =
-        @as(u6, @intCast(line.drivers.len - 1)) + start_station_index;
+    const end_station_index: u6 = @intCast(line.end_station - 1);
     if (station_index < start_station_index or
         station_index >= end_station_index) return;
     std.log.debug("Restarting traffic transmission...", .{});
@@ -1341,28 +1101,8 @@ fn restartTrafficTransmission(
         station_index + 1,
     );
 
-    var state: conn.Station.Wr.SliderStateCode = undefined;
-    var next_state: conn.Station.Wr.SliderStateCode = undefined;
-
-    for (0..3) |_i| {
-        const i: u2 = @intCast(_i);
-        if (line.drivers[station_index - start_station_index].axes[2 - i]) {
-            state = station.wr.sliderState(2 - i);
-            break;
-        }
-    } else {
-        return error.InvalidDriverConfiguration;
-    }
-
-    for (0..3) |_i| {
-        const i: u2 = @intCast(_i);
-        if (line.drivers[station_index - start_station_index + 1].axes[i]) {
-            next_state = next_station.wr.sliderState(i);
-            break;
-        }
-    } else {
-        return error.InvalidDriverConfiguration;
-    }
+    const state = station.wr.slider_state.axis3;
+    const next_state = next_station.wr.slider_state.axis1;
 
     if (direction == .forward) {
         if ((next_state == .PrevAxisAuxiliary or
@@ -1377,7 +1117,6 @@ fn restartTrafficTransmission(
             );
             while (true) {
                 try command.checkCommandInterrupt();
-                std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
                 try conn.pollStation(line.channel, station_index - 1);
                 if (!prev_x.transmission_stopped.from_next) {
                     break;
@@ -1391,7 +1130,6 @@ fn restartTrafficTransmission(
             try conn.resetStationY(line.channel, station_index, 0x9);
             while (true) {
                 try command.checkCommandInterrupt();
-                std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
                 try conn.pollStation(line.channel, station_index);
                 if (!station.x.transmission_stopped.from_prev) {
                     break;
@@ -1407,7 +1145,6 @@ fn restartTrafficTransmission(
             try conn.resetStationY(line.channel, station_index + 1, 0x9);
             while (true) {
                 try command.checkCommandInterrupt();
-                std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
                 try conn.pollStation(line.channel, station_index + 1);
                 if (!next_station.x.transmission_stopped.from_prev) {
                     break;
@@ -1421,7 +1158,6 @@ fn restartTrafficTransmission(
             try conn.resetStationY(line.channel, station_index, 0xA);
             while (true) {
                 try command.checkCommandInterrupt();
-                std.time.sleep(std.time.ns_per_us * config.min_poll_rate);
                 try conn.pollStation(line.channel, station_index);
                 if (!station.x.transmission_stopped.from_next) {
                     break;
