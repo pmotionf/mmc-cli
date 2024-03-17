@@ -3,11 +3,11 @@ const command = @import("../command.zig");
 const mcl = @import("mcl");
 const conn = mcl.connection;
 
-var used_channels: [4]?conn.Channel = undefined;
-
 var arena: std.heap.ArenaAllocator = undefined;
 var allocator: std.mem.Allocator = undefined;
-var config: Config = undefined;
+var line_names: [][]u8 = undefined;
+var line_speeds: []u7 = undefined;
+var line_accelerations: []u7 = undefined;
 
 const Direction = enum(u1) {
     backward = 0,
@@ -15,64 +15,27 @@ const Direction = enum(u1) {
 };
 
 pub const Config = struct {
-    lines: []Line,
-
-    pub const Line = struct {
-        name: []u8,
-        channel: conn.Channel,
-        start_station: u7,
-        end_station: u7,
-        total_axes: u15,
-        speed: u8 = 40,
-        acceleration: u8 = 40,
-    };
+    names: [][]const u8,
+    lines: []mcl.Line,
 };
 
 pub fn init(c: Config) !void {
-    if (c.lines.len == 0) {
-        return error.NoLinesConfigureed;
+    if (c.names.len != c.lines.len) {
+        return error.InvalidLineNames;
     }
-    for (c.lines) |line| {
-        if (line.start_station < 1 or line.start_station > 64) {
-            return error.InvalidLineStartStation;
-        }
-        if (line.end_station < line.start_station or line.end_station > 64) {
-            return error.InvalidLineEndStation;
-        }
-        const num_stations: usize = line.end_station - line.start_station + 1;
-        if (line.total_axes < num_stations or
-            line.total_axes > num_stations * 3)
-        {
-            return error.InvalidNumberOfAxes;
-        }
-    }
-    used_channels = .{ null, null, null, null };
+    try mcl.init(c.lines);
     arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     errdefer arena.deinit();
     allocator = arena.allocator();
 
-    config = .{
-        .lines = try allocator.alloc(Config.Line, c.lines.len),
-    };
-    for (c.lines, 0..) |line, i| {
-        for (&used_channels) |*_used_channel| {
-            if (_used_channel.*) |used_channel| {
-                if (used_channel == line.channel) break;
-            } else {
-                _used_channel.* = line.channel;
-                break;
-            }
-        }
-        config.lines[i] = .{
-            .name = try allocator.alloc(u8, line.name.len),
-            .channel = line.channel,
-            .start_station = line.start_station,
-            .end_station = line.end_station,
-            .total_axes = line.total_axes,
-            .speed = line.speed,
-            .acceleration = line.acceleration,
-        };
-        @memcpy(config.lines[i].name, line.name);
+    line_names = try allocator.alloc([]u8, c.names.len);
+    line_speeds = try allocator.alloc(u7, c.names.len);
+    line_accelerations = try allocator.alloc(u7, c.names.len);
+    for (c.names, 0..) |name, i| {
+        line_names[i] = try allocator.alloc(u8, name.len);
+        @memcpy(line_names[i], name);
+        line_speeds[i] = 40;
+        line_accelerations[i] = 40;
     }
 
     try command.registry.put("MCL_VERSION", .{
@@ -167,20 +130,6 @@ pub fn init(c: Config) !void {
         .execute = &mclAxisReleaseServo,
     });
     errdefer _ = command.registry.orderedRemove("RELEASE_AXIS_SERVO");
-    try command.registry.put("WAIT_RELEASE_AXIS_SERVO", .{
-        .name = "WAIT_RELEASE_AXIS_SERVO",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-        },
-        .short_description = "Wait until a given axis has released its servo.",
-        .long_description =
-        \\Pause the execution of any further commands until the given axis has
-        \\indicated that it has released its servo.
-        ,
-        .execute = &mclAxisWaitReleaseServo,
-    });
-    errdefer _ = command.registry.orderedRemove("WAIT_RELEASE_AXIS_SERVO");
     try command.registry.put("CALIBRATE", .{
         .name = "CALIBRATE",
         .parameters = &[_]command.Command.Parameter{
@@ -337,7 +286,7 @@ pub fn init(c: Config) !void {
 
 pub fn deinit() void {
     arena.deinit();
-    used_channels = .{ null, null, null, null };
+    line_names = undefined;
 }
 
 fn mclVersion(_: [][]const u8) !void {
@@ -349,48 +298,14 @@ fn mclVersion(_: [][]const u8) !void {
 }
 
 fn mclConnect(_: [][]const u8) !void {
-    for (used_channels) |_used_channel| {
-        if (_used_channel) |used_channel| {
-            try conn.openChannel(used_channel);
-        }
-    }
-
-    for (config.lines) |line| {
-        for (line.start_station - 1..line.end_station) |i| {
-            const station_index: u6 = @intCast(i);
-            const y: *conn.Station.Y = try conn.stationY(
-                line.channel,
-                station_index,
-            );
-            y.*.cc_link_enable = true;
-        }
-        try conn.sendStationsY(line.channel, .{
-            .start = @intCast(line.start_station - 1),
-            .end = @intCast(line.end_station - 1),
-        });
+    for (mcl.lines) |line| {
+        try line.connect();
     }
 }
 
 fn mclDisconnect(_: [][]const u8) !void {
-    for (config.lines) |line| {
-        for (line.start_station - 1..line.end_station) |i| {
-            const station_index: u6 = @intCast(i);
-            const y: *conn.Station.Y = try conn.stationY(
-                line.channel,
-                station_index,
-            );
-            y.*.cc_link_enable = false;
-        }
-        try conn.sendStationsY(line.channel, .{
-            .start = @intCast(line.start_station - 1),
-            .end = @intCast(line.end_station - 1),
-        });
-    }
-
-    for (used_channels) |_used_channel| {
-        if (_used_channel) |used_channel| {
-            try conn.closeChannel(used_channel);
-        }
+    for (mcl.lines) |line| {
+        try line.disconnect();
     }
 }
 
@@ -399,28 +314,21 @@ fn mclAxisSlider(params: [][]const u8) !void {
     const axis_id = try std.fmt.parseInt(i16, params[1], 0);
     const result_var: []const u8 = params[2];
 
-    const line: *const Config.Line = try matchLine(&config, line_name);
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
 
-    if (axis_id < 1 or axis_id > line.total_axes) {
+    if (axis_id < 1 or axis_id > line.axes) {
         return error.InvalidAxis;
     }
 
-    const start_station_index: u6 = @intCast(line.start_station - 1);
-    const end_station_index: u6 = @intCast(line.end_station - 1);
-
-    try conn.pollStations(
-        line.channel,
-        .{ .start = start_station_index, .end = end_station_index },
-    );
+    try line.poll();
 
     const axis_index: i16 = axis_id - 1;
-    const station_index: u6 = @intCast(@divTrunc(axis_index, 3));
+    const station_index: u8 = @intCast(@divTrunc(axis_index, 3));
     const local_axis_index: u2 = @intCast(@rem(axis_index, 3));
 
-    const wr: *conn.Station.Wr = try conn.stationWr(
-        line.channel,
-        station_index,
-    );
+    const station = try line.station(station_index);
+    const wr: *conn.Station.Wr = try station.Wr();
     const slider_id = wr.sliderNumber(local_axis_index);
 
     if (slider_id != 0) {
@@ -441,92 +349,71 @@ fn mclAxisReleaseServo(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
 
-    const line: *const Config.Line = try matchLine(&config, line_name);
-    if (axis_id < 1 or axis_id > line.total_axes) {
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+    if (axis_id < 1 or axis_id > line.axes) {
         return error.InvalidAxis;
     }
 
     const axis_index: i16 = axis_id - 1;
-    const station_index: u6 = @intCast(@divTrunc(axis_index, 3));
+    const station_index: u8 = @intCast(@divTrunc(axis_index, 3));
     const local_axis_index: u2 = @intCast(@rem(axis_index, 3));
 
-    const ww: *conn.Station.Ww =
-        try conn.stationWw(line.channel, station_index);
-    const x: *conn.Station.X = try conn.stationX(line.channel, station_index);
+    const station = try line.station(station_index);
+    const ww: *conn.Station.Ww = try station.Ww();
+    const x: *conn.Station.X = try station.X();
+
     ww.*.target_axis_number = local_axis_index;
-    try conn.sendStationWw(line.channel, station_index);
-    try conn.setStationY(
-        line.channel,
-        station_index,
-        0x5,
-    );
+    try station.sendWw();
+    try station.setY(0x5);
     // Reset on error as well as on success.
-    defer conn.resetStationY(line.channel, station_index, 0x5) catch {};
+    defer station.resetY(0x5) catch {};
     while (true) {
         try command.checkCommandInterrupt();
-        try conn.pollStation(line.channel, station_index);
+        try station.pollX();
         if (!x.servoActive(local_axis_index)) break;
-    }
-}
-
-fn mclAxisWaitReleaseServo(params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
-
-    const line: *const Config.Line = try matchLine(&config, line_name);
-    if (axis_id < 1 or axis_id > line.total_axes) {
-        return error.InvalidAxis;
-    }
-
-    const axis_index: i16 = axis_id - 1;
-    const station_index: u6 = @intCast(@divTrunc(axis_index, 3));
-    const local_axis_index: u2 = @intCast(@rem(axis_index, 3));
-
-    const x: *conn.Station.X = try conn.stationX(line.channel, station_index);
-    while (true) {
-        try command.checkCommandInterrupt();
-        try conn.pollStation(line.channel, station_index);
-        if (x.servoActive(local_axis_index)) return;
     }
 }
 
 fn mclCalibrate(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const line: *const Config.Line = try matchLine(&config, line_name);
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
 
-    const station_index: u6 = @intCast(line.start_station - 1);
-
-    try waitCommandReady(line.channel, station_index);
-    const ww: *conn.Station.Ww =
-        try conn.stationWw(line.channel, station_index);
+    const station = try line.station(0);
+    try waitCommandReady(station);
+    const ww: *conn.Station.Ww = try station.Ww();
     ww.*.command_code = .Calibration;
-    try sendCommand(line.channel, station_index);
+    try sendCommand(station);
 }
 
 fn mclHomeSlider(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const line: *const Config.Line = try matchLine(&config, line_name);
-    const station_index: u6 = @intCast(line.start_station - 1);
-    try waitCommandReady(line.channel, station_index);
-    const ww: *conn.Station.Ww =
-        try conn.stationWw(line.channel, station_index);
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+
+    const station = try line.station(0);
+
+    try waitCommandReady(station);
+    const ww: *conn.Station.Ww = try station.Ww();
     ww.*.command_code = .Home;
-    try sendCommand(line.channel, station_index);
+    try sendCommand(station);
 }
 
 fn mclWaitHomeSlider(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const result_var: []const u8 = params[1];
 
-    const line: *const Config.Line = try matchLine(&config, line_name);
-    const station_index: u6 = @intCast(line.start_station - 1);
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+
+    const station = try line.station(0);
 
     var slider: ?i16 = null;
-    const wr: *conn.Station.Wr =
-        try conn.stationWr(line.channel, station_index);
+    const wr: *conn.Station.Wr = try station.Wr();
     while (true) {
         try command.checkCommandInterrupt();
-        try conn.pollStation(line.channel, station_index);
+        try station.pollWr();
 
         if (wr.slider_number.axis1 != 0) {
             slider = wr.slider_number.axis1;
@@ -549,8 +436,8 @@ fn mclSetSpeed(params: [][]const u8) !void {
     const slider_speed = try std.fmt.parseUnsigned(u8, params[1], 0);
     if (slider_speed < 1 or slider_speed > 100) return error.InvalidSpeed;
 
-    const line: *Config.Line = try matchLine(&config, line_name);
-    line.*.speed = slider_speed;
+    const line_idx: usize = try matchLine(line_names, line_name);
+    line_speeds[line_idx] = @intCast(slider_speed);
 }
 
 fn mclSetAcceleration(params: [][]const u8) !void {
@@ -559,8 +446,8 @@ fn mclSetAcceleration(params: [][]const u8) !void {
     if (slider_acceleration < 1 or slider_acceleration > 100)
         return error.InvalidAcceleration;
 
-    const line: *Config.Line = try matchLine(&config, line_name);
-    line.*.acceleration = slider_acceleration;
+    const line_idx: usize = try matchLine(line_names, line_name);
+    line_accelerations[line_idx] = @intCast(slider_acceleration);
 }
 
 fn mclSliderLocation(params: [][]const u8) !void {
@@ -569,30 +456,19 @@ fn mclSliderLocation(params: [][]const u8) !void {
     if (slider_id < 1 or slider_id > 127) return error.InvalidSliderId;
     const result_var: []const u8 = params[2];
 
-    const line: *const Config.Line = try matchLine(&config, line_name);
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
 
-    const start_index_station: u6 = @intCast(line.start_station - 1);
-    const end_index_station: u6 = @intCast(line.end_station - 1);
-    try conn.pollStations(
-        line.channel,
-        .{ .start = start_index_station, .end = end_index_station },
-    );
+    try line.pollWr();
+    const station_index, const axis_index = if (try line.search(slider_id)) |t|
+        t
+    else
+        return error.SliderNotFound;
 
-    var location: conn.Station.Distance = undefined;
-    driver_loop: for (start_index_station..line.end_station) |i| {
-        const station_index: u6 = @intCast(i);
-        const wr: *conn.Station.Wr =
-            try conn.stationWr(line.channel, station_index);
-        for (0..3) |j| {
-            const local_axis_index: u2 = @intCast(j);
-            if (wr.sliderNumber(local_axis_index) == slider_id) {
-                location = wr.sliderLocation(local_axis_index);
-                break :driver_loop;
-            }
-        }
-    } else {
-        return error.SliderIdNotFound;
-    }
+    const station = try line.station(station_index);
+    const wr: *conn.Station.Wr = try station.Wr();
+
+    const location: conn.Station.Distance = wr.sliderLocation(axis_index);
 
     std.log.info(
         "Slider {d} location: {d}.{d}mm",
@@ -614,74 +490,53 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
     const axis_id: i16 = try std.fmt.parseInt(i16, params[2], 0);
     if (slider_id < 1 or slider_id > 127) return error.InvalidSliderId;
 
-    const line: *const Config.Line = try matchLine(&config, line_name);
-    if (axis_id < 1 or axis_id > line.total_axes) {
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+    if (axis_id < 1 or axis_id > line.axes) {
         return error.InvalidAxis;
     }
 
-    const start_station_index: u6 = @intCast(line.start_station - 1);
-    const end_station_index: u6 = @intCast(line.end_station - 1);
-    try conn.pollStations(
-        line.channel,
-        .{ .start = start_station_index, .end = end_station_index },
-    );
-
-    var station_index: u6 = undefined;
-    var local_axis_index: u2 = undefined;
-    driver_loop: for (start_station_index..line.end_station) |i| {
-        station_index = @intCast(i);
-        const wr: *conn.Station.Wr =
-            try conn.stationWr(line.channel, station_index);
-        for (0..3) |j| {
-            local_axis_index = @intCast(j);
-            if (wr.sliderNumber(local_axis_index) == slider_id) {
-                break :driver_loop;
-            }
-        }
-    } else {
-        return error.SliderIdNotFound;
-    }
-
-    const axis_index: u15 = station_index * 3 + local_axis_index;
+    try line.pollWr();
+    const station_index, const axis_index = if (try line.search(slider_id)) |t|
+        t
+    else
+        return error.SliderNotFound;
 
     // If slider is between two drivers, stop traffic transmission.
     var stopped_transmission: ?Direction = null;
-    if (local_axis_index == 2 and station_index < end_station_index) {
+    if (axis_index == 2 and station_index < line.numStations() - 1) {
         std.log.debug("Checking transmission stop conditions...", .{});
-        const next_station_index: u6 = station_index + 1;
-        const next_wr: *conn.Station.Wr = try conn.stationWr(
-            line.channel,
-            next_station_index,
-        );
+        const next_station = try line.station(station_index + 1);
+        const next_wr: *conn.Station.Wr = try next_station.Wr();
         // Check first axis of next driver to see if slider is between drivers.
         if (next_wr.sliderNumber(0) == slider_id) {
             // Destination axis is at or beyond next driver.
             // Forward movement.
-            if (axis_id > axis_index + 1) {
-                try stopTrafficTransmission(line.*, station_index, .forward);
+            if (axis_id > station_index * 3 + axis_index + 1) {
+                try stopTrafficTransmission(line, station_index, .forward);
                 stopped_transmission = .forward;
             }
             // Destination is at or before current driver.
             // Backward movement.
             else {
-                try stopTrafficTransmission(line.*, station_index, .backward);
+                try stopTrafficTransmission(line, station_index, .backward);
                 stopped_transmission = .backward;
             }
         }
     }
 
-    const ww: *conn.Station.Ww =
-        try conn.stationWw(line.channel, station_index);
-    try waitCommandReady(line.channel, station_index);
+    const station = try line.station(station_index);
+    const ww: *conn.Station.Ww = try station.Ww();
+    try waitCommandReady(station);
     ww.*.command_code = .MoveSliderToAxisByPosition;
     ww.*.command_slider_number = slider_id;
     ww.*.target_axis_number = axis_id;
-    ww.*.speed_percentage = line.speed;
-    ww.*.acceleration_percentage = line.acceleration;
-    try sendCommand(line.channel, station_index);
+    ww.*.speed_percentage = line_speeds[line_idx];
+    ww.*.acceleration_percentage = line_accelerations[line_idx];
+    try sendCommand(station);
 
     if (stopped_transmission) |dir| {
-        try restartTrafficTransmission(line.*, station_index, dir);
+        try restartTrafficTransmission(line, station_index, dir);
     }
 }
 
@@ -696,69 +551,51 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
         .um = @intFromFloat((location_float - @trunc(location_float)) * 1000),
     };
 
-    const line: *const Config.Line = try matchLine(&config, line_name);
-    const start_station_index: u6 = @intCast(line.start_station - 1);
-    const end_station_index: u6 = @intCast(line.end_station - 1);
-    try conn.pollStations(
-        line.channel,
-        .{ .start = start_station_index, .end = end_station_index },
-    );
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
 
-    var station_index: u6 = undefined;
-    var local_axis_index: u2 = undefined;
-    var wr: *conn.Station.Wr = undefined;
-    driver_loop: for (start_station_index..line.end_station) |i| {
-        station_index = @intCast(i);
-        wr = try conn.stationWr(line.channel, station_index);
-        for (0..3) |j| {
-            local_axis_index = @intCast(j);
-            if (wr.sliderNumber(local_axis_index) == slider_id) {
-                break :driver_loop;
-            }
-        }
-    } else {
-        return error.SliderIdNotFound;
-    }
+    try line.pollWr();
+    const station_index, const axis_index = if (try line.search(slider_id)) |t|
+        t
+    else
+        return error.SliderNotFound;
 
     var stopped_transmission: ?Direction = null;
-    if (local_axis_index == 2 and station_index < end_station_index) {
-        const next_station_index: u6 = station_index + 1;
-        const next_wr: *conn.Station.Wr = try conn.stationWr(
-            line.channel,
-            next_station_index,
-        );
+    if (axis_index == 2 and station_index < line.numStations() - 1) {
+        const next_station = try line.station(station_index + 1);
+        const next_wr: *conn.Station.Wr = try next_station.Wr();
         // Check first axis of next driver to see if slider is between drivers.
         if (next_wr.sliderNumber(0) == slider_id) {
             // Destination location is in front of current location.
             // Forward movement.
-            if (location.mm > wr.slider_location.axis1.mm or
-                (location.mm == wr.slider_location.axis1.mm and
-                location.um > wr.slider_location.axis1.um))
+            if (location.mm > next_wr.slider_location.axis1.mm or
+                (location.mm == next_wr.slider_location.axis1.mm and
+                location.um > next_wr.slider_location.axis1.um))
             {
-                try stopTrafficTransmission(line.*, station_index, .forward);
+                try stopTrafficTransmission(line, station_index, .forward);
                 stopped_transmission = .forward;
             }
             // Destination location is behind current location.
             // Backward movement.
             else {
-                try stopTrafficTransmission(line.*, station_index, .backward);
+                try stopTrafficTransmission(line, station_index, .backward);
                 stopped_transmission = .backward;
             }
         }
     }
 
-    const ww: *conn.Station.Ww =
-        try conn.stationWw(line.channel, station_index);
-    try waitCommandReady(line.channel, station_index);
+    const station = try line.station(station_index);
+    const ww: *conn.Station.Ww = try station.Ww();
+    try waitCommandReady(station);
     ww.*.command_code = .MoveSliderToLocationByPosition;
     ww.*.command_slider_number = slider_id;
     ww.*.location_distance = location;
-    ww.*.speed_percentage = line.speed;
-    ww.*.acceleration_percentage = line.acceleration;
-    try sendCommand(line.channel, station_index);
+    ww.*.speed_percentage = line_speeds[line_idx];
+    ww.*.acceleration_percentage = line_accelerations[line_idx];
+    try sendCommand(station);
 
     if (stopped_transmission) |dir| {
-        try restartTrafficTransmission(line.*, station_index, dir);
+        try restartTrafficTransmission(line, station_index, dir);
     }
 }
 
@@ -773,65 +610,47 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
         .um = @intFromFloat((distance_float - @trunc(distance_float)) * 1000),
     };
 
-    const line: *const Config.Line = try matchLine(&config, line_name);
-    const start_station_index: u6 = @intCast(line.start_station - 1);
-    const end_station_index: u6 = @intCast(line.end_station - 1);
-    try conn.pollStations(
-        line.channel,
-        .{ .start = start_station_index, .end = end_station_index },
-    );
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line = mcl.lines[line_idx];
 
-    var station_index: u6 = undefined;
-    var local_axis_index: u2 = undefined;
-    var wr: *conn.Station.Wr = undefined;
-    driver_loop: for (start_station_index..line.end_station) |i| {
-        station_index = @intCast(i);
-        wr = try conn.stationWr(line.channel, station_index);
-        for (0..3) |j| {
-            local_axis_index = @intCast(j);
-            if (wr.sliderNumber(local_axis_index) == slider_id) {
-                break :driver_loop;
-            }
-        }
-    } else {
-        return error.SliderIdNotFound;
-    }
+    try line.pollWr();
+    const station_index, const axis_index = if (try line.search(slider_id)) |t|
+        t
+    else
+        return error.SliderNotFound;
 
     var stopped_transmission: ?Direction = null;
-    if (local_axis_index == 2 and station_index < end_station_index) {
-        const next_station_index: u6 = station_index + 1;
-        const next_wr: *conn.Station.Wr = try conn.stationWr(
-            line.channel,
-            next_station_index,
-        );
+    if (axis_index == 2 and station_index < line.numStations() - 1) {
+        const next_station = try line.station(station_index + 1);
+        const next_wr: *conn.Station.Wr = try next_station.Wr();
 
         // Check first axis of next driver to see if slider is between drivers.
         if (next_wr.sliderNumber(0) == slider_id) {
             // Distance is positive. Forward movement.
             if (distance.mm > 0 or (distance.mm == 0 and distance.um > 0)) {
-                try stopTrafficTransmission(line.*, station_index, .forward);
+                try stopTrafficTransmission(line, station_index, .forward);
                 stopped_transmission = .forward;
             }
             // Distance is negative or 0. Backward movement.
             else {
-                try stopTrafficTransmission(line.*, station_index, .backward);
+                try stopTrafficTransmission(line, station_index, .backward);
                 stopped_transmission = .backward;
             }
         }
     }
 
-    const ww: *conn.Station.Ww =
-        try conn.stationWw(line.channel, station_index);
-    try waitCommandReady(line.channel, station_index);
+    const station = try line.station(station_index);
+    const ww: *conn.Station.Ww = try station.Ww();
+    try waitCommandReady(station);
     ww.*.command_code = .MoveSliderDistanceByPosition;
     ww.*.command_slider_number = slider_id;
     ww.*.location_distance = distance;
-    ww.*.speed_percentage = line.speed;
-    ww.*.acceleration_percentage = line.acceleration;
-    try sendCommand(line.channel, station_index);
+    ww.*.speed_percentage = line_speeds[line_idx];
+    ww.*.acceleration_percentage = line_accelerations[line_idx];
+    try sendCommand(station);
 
     if (stopped_transmission) |dir| {
-        try restartTrafficTransmission(line.*, station_index, dir);
+        try restartTrafficTransmission(line, station_index, dir);
     }
 }
 
@@ -840,38 +659,30 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
     const slider_id = try std.fmt.parseInt(i16, params[1], 0);
     if (slider_id < 1 or slider_id > 127) return error.InvalidSliderId;
 
-    const line: *const Config.Line = try matchLine(&config, line_name);
-    const start_station_index: u6 = @intCast(line.start_station - 1);
-    const end_station_index: u6 = @intCast(line.end_station - 1);
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line = mcl.lines[line_idx];
 
     while (true) {
         try command.checkCommandInterrupt();
-        try conn.pollStations(
-            line.channel,
-            .{ .start = start_station_index, .end = end_station_index },
-        );
+        try line.pollWr();
+        const station_index, const axis_index =
+            if (try line.search(slider_id)) |t|
+            t
+        else
+            return error.SliderNotFound;
 
-        var slider_id_found: bool = false;
-        for (start_station_index..line.end_station) |i| {
-            const station_index: u6 = @intCast(i);
-            const wr: *conn.Station.Wr = try conn.stationWr(
-                line.channel,
-                station_index,
-            );
-            for (0..3) |j| {
-                const local_axis_index: u2 = @intCast(j);
-                if (wr.sliderNumber(local_axis_index) == slider_id) {
-                    slider_id_found = true;
-                    if (wr.sliderState(
-                        local_axis_index,
-                    ) == .PosMoveCompleted) {
-                        return;
-                    }
-                }
-            }
-        }
-        if (!slider_id_found) {
-            return error.SliderIdNotFound;
+        const station = try line.station(station_index);
+        const wr = try station.Wr();
+        const next_axis_index = @rem(axis_index + 1, 3);
+        const next_station = if (next_axis_index == 0)
+            try line.station(station_index + 1)
+        else
+            station;
+        const next_wr = try next_station.Wr();
+        if (wr.sliderState(axis_index) == .PosMoveCompleted or
+            next_wr.sliderState(next_axis_index) == .PosMoveCompleted)
+        {
+            break;
         }
     }
 }
@@ -882,31 +693,23 @@ fn mclRecoverSlider(params: [][]const u8) !void {
     const new_slider_id: i16 = try std.fmt.parseUnsigned(i16, params[2], 0);
     if (new_slider_id < 1 or new_slider_id > 127) return error.InvalidSliderID;
 
-    const line: *const Config.Line = try matchLine(&config, line_name);
-    if (axis < 1 or axis > line.total_axes) {
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line = mcl.lines[line_idx];
+    if (axis < 1 or axis > line.axes) {
         return error.InvalidAxis;
     }
 
-    const start_station_index: u6 = @intCast(line.start_station - 1);
-    const end_station_index: u6 = @intCast(line.end_station - 1);
-    try conn.pollStations(
-        line.channel,
-        .{ .start = start_station_index, .end = end_station_index },
-    );
-
     const axis_index: u15 = @intCast(axis - 1);
-    const station_index: u6 = @intCast(axis_index / 3);
+    const station_index: u8 = @intCast(axis_index / 3);
     const local_axis_index: u2 = @intCast(axis_index % 3);
 
-    const ww: *conn.Station.Ww = try conn.stationWw(
-        line.channel,
-        station_index,
-    );
-    try waitCommandReady(line.channel, station_index);
+    const station = try line.station(station_index);
+    const ww: *conn.Station.Ww = try station.Ww();
+    try waitCommandReady(station);
     ww.*.command_code = .RecoverSliderAtAxis;
     ww.*.target_axis_number = local_axis_index;
     ww.*.command_slider_number = new_slider_id;
-    try sendCommand(line.channel, station_index);
+    try sendCommand(station);
 }
 
 fn mclWaitRecoverSlider(params: [][]const u8) !void {
@@ -914,23 +717,23 @@ fn mclWaitRecoverSlider(params: [][]const u8) !void {
     const axis: i16 = try std.fmt.parseUnsigned(i16, params[1], 0);
     const result_var: []const u8 = params[2];
 
-    const line: *const Config.Line = try matchLine(&config, line_name);
-    if (axis < 1 or axis > line.total_axes) {
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line = mcl.lines[line_idx];
+    if (axis < 1 or axis > line.axes) {
         return error.InvalidAxis;
     }
 
     const axis_index: u15 = @intCast(axis - 1);
-    const station_index: u6 = @intCast(axis_index / 3);
+    const station_index: u8 = @intCast(axis_index / 3);
     const local_axis_index: u2 = @intCast(axis_index % 3);
 
+    const station = try line.station(station_index);
+
     var slider_id: i16 = undefined;
-    const wr: *conn.Station.Wr = try conn.stationWr(
-        line.channel,
-        station_index,
-    );
+    const wr: *conn.Station.Wr = try station.Wr();
     while (true) {
         try command.checkCommandInterrupt();
-        try conn.pollStation(line.channel, station_index);
+        try station.pollWr();
 
         const slider_number = wr.sliderNumber(local_axis_index);
         if (slider_number != 0 and
@@ -951,46 +754,46 @@ fn mclWaitRecoverSlider(params: [][]const u8) !void {
     }
 }
 
-fn matchLine(c: *Config, name: []const u8) !*Config.Line {
-    for (c.lines) |*line| {
-        if (std.mem.eql(u8, line.name, name)) return line;
+fn matchLine(names: [][]const u8, name: []const u8) !usize {
+    for (names, 0..) |n, i| {
+        if (std.mem.eql(u8, n, name)) return i;
     } else {
         return error.LineNameNotFound;
     }
 }
 
-fn waitCommandReady(c: conn.Channel, station_index: u6) !void {
-    const x: *conn.Station.X = try conn.stationX(c, station_index);
+fn waitCommandReady(station: mcl.Station) !void {
+    const x: *conn.Station.X = try station.X();
     std.log.debug("Waiting for command ready state...", .{});
     while (true) {
         try command.checkCommandInterrupt();
-        try conn.pollStation(c, station_index);
+        try station.pollX();
         if (x.ready_for_command) break;
     }
 }
 
-fn sendCommand(c: conn.Channel, station_index: u6) !void {
-    const x: *conn.Station.X = try conn.stationX(c, station_index);
+fn sendCommand(station: mcl.Station) !void {
+    const x: *conn.Station.X = try station.X();
 
     std.log.debug("Sending command...", .{});
-    try conn.sendStationWw(c, station_index);
-    try conn.setStationY(c, station_index, 0x2);
+    try station.sendWw();
+    try station.setY(0x2);
     while (true) {
         try command.checkCommandInterrupt();
-        try conn.pollStation(c, station_index);
+        try station.pollX();
         if (x.command_received) {
             break;
         }
     }
 
     std.log.debug("Resetting command received flag...", .{});
-    try conn.resetStationY(c, station_index, 0x2);
-    try conn.setStationY(c, station_index, 0x3);
+    try station.resetY(0x2);
+    try station.setY(0x3);
     while (true) {
         try command.checkCommandInterrupt();
-        try conn.pollStation(c, station_index);
+        try station.pollX();
         if (!x.command_received) {
-            try conn.resetStationY(c, station_index, 0x3);
+            try station.resetY(0x3);
             break;
         }
     }
@@ -999,40 +802,31 @@ fn sendCommand(c: conn.Channel, station_index: u6) !void {
 /// Handle traffic transmission stop when a slider positioned between current
 /// and next station begins movement.
 fn stopTrafficTransmission(
-    line: Config.Line,
-    station_index: u6,
+    line: mcl.Line,
+    station_index: u8,
     direction: Direction,
 ) !void {
-    const start_station_index: u6 = @intCast(line.start_station - 1);
-    const end_station_index: u6 = @intCast(line.end_station - 1);
-    if (station_index < start_station_index or
-        station_index >= end_station_index) return;
-    std.log.debug("Stopping traffic transmission...", .{});
+    const station = try line.station(station_index);
+    const next_station = try line.station(station_index + 1);
 
-    const station: conn.Station.Reference =
-        try conn.station(line.channel, station_index);
-    const next_station: conn.Station.Reference = try conn.station(
-        line.channel,
-        station_index + 1,
-    );
+    const ref = try station.reference();
+    const next_ref = try next_station.reference();
 
-    const state = station.wr.slider_state.axis3;
-    const next_state = next_station.wr.slider_state.axis1;
+    const state = ref.wr.slider_state.axis3;
+    const next_state = next_ref.wr.slider_state.axis1;
 
     if (direction == .forward) {
         if ((next_state == .PrevAxisAuxiliary or
             next_state == .PrevAxisCompleted) and station_index > 0)
         {
+            const prev_station = try line.station(station_index - 1);
             // Stop traffic transmission from current station to previous
             // station.
-            try conn.setStationY(line.channel, station_index - 1, 0xA);
-            const prev_x: *conn.Station.X = try conn.stationX(
-                line.channel,
-                station_index - 1,
-            );
+            try prev_station.setY(0xA);
+            const prev_x: *conn.Station.X = try prev_station.X();
             while (true) {
                 try command.checkCommandInterrupt();
-                try conn.pollStation(line.channel, station_index - 1);
+                try prev_station.pollX();
                 if (prev_x.transmission_stopped.from_next) {
                     break;
                 }
@@ -1042,11 +836,11 @@ fn stopTrafficTransmission(
         {
             // Stop traffic transmission from previous station to current
             // station.
-            try conn.setStationY(line.channel, station_index, 0x9);
+            try station.setY(0x9);
             while (true) {
                 try command.checkCommandInterrupt();
-                try conn.pollStation(line.channel, station_index);
-                if (station.x.transmission_stopped.from_prev) {
+                try station.pollX();
+                if (ref.x.transmission_stopped.from_prev) {
                     break;
                 }
             }
@@ -1057,11 +851,11 @@ fn stopTrafficTransmission(
             state == .None)
         {
             // Stop traffic transmission from current station to next station.
-            try conn.setStationY(line.channel, station_index + 1, 0x9);
+            try next_station.setY(0x9);
             while (true) {
                 try command.checkCommandInterrupt();
-                try conn.pollStation(line.channel, station_index + 1);
-                if (next_station.x.transmission_stopped.from_prev) {
+                try next_station.pollX();
+                if (next_ref.x.transmission_stopped.from_prev) {
                     break;
                 }
             }
@@ -1070,11 +864,11 @@ fn stopTrafficTransmission(
             next_state == .None)
         {
             // Stop traffic transmission from next station to current station.
-            try conn.setStationY(line.channel, station_index, 0xA);
+            try station.setY(0xA);
             while (true) {
                 try command.checkCommandInterrupt();
-                try conn.pollStation(line.channel, station_index);
-                if (station.x.transmission_stopped.from_next) {
+                try station.pollX();
+                if (ref.x.transmission_stopped.from_next) {
                     break;
                 }
             }
@@ -1084,40 +878,32 @@ fn stopTrafficTransmission(
 
 /// Handle traffic transmission start after slider movement command.
 fn restartTrafficTransmission(
-    line: Config.Line,
-    station_index: u6,
+    line: mcl.Line,
+    station_index: u8,
     direction: Direction,
 ) !void {
-    const start_station_index: u6 = @intCast(line.start_station - 1);
-    const end_station_index: u6 = @intCast(line.end_station - 1);
-    if (station_index < start_station_index or
-        station_index >= end_station_index) return;
     std.log.debug("Restarting traffic transmission...", .{});
 
-    const station: conn.Station.Reference =
-        try conn.station(line.channel, station_index);
-    const next_station: conn.Station.Reference = try conn.station(
-        line.channel,
-        station_index + 1,
-    );
+    const station = try line.station(station_index);
+    const ref = try station.reference();
+    const next_station = try line.station(station_index + 1);
+    const next_ref = try next_station.reference();
 
-    const state = station.wr.slider_state.axis3;
-    const next_state = next_station.wr.slider_state.axis1;
+    const state = ref.wr.slider_state.axis3;
+    const next_state = next_ref.wr.slider_state.axis1;
 
     if (direction == .forward) {
         if ((next_state == .PrevAxisAuxiliary or
             next_state == .PrevAxisCompleted) and station_index > 0)
         {
+            const prev_station = try line.station(station_index - 1);
             // Start traffic transmission from current station to previous
             // station.
-            try conn.resetStationY(line.channel, station_index - 1, 0xA);
-            const prev_x: *conn.Station.X = try conn.stationX(
-                line.channel,
-                station_index - 1,
-            );
+            try prev_station.resetY(0xA);
+            const prev_x: *conn.Station.X = try prev_station.X();
             while (true) {
                 try command.checkCommandInterrupt();
-                try conn.pollStation(line.channel, station_index - 1);
+                try prev_station.pollX();
                 if (!prev_x.transmission_stopped.from_next) {
                     break;
                 }
@@ -1127,11 +913,11 @@ fn restartTrafficTransmission(
         {
             // Start traffic transmission from previous station to current
             // station.
-            try conn.resetStationY(line.channel, station_index, 0x9);
+            try station.resetY(0x9);
             while (true) {
                 try command.checkCommandInterrupt();
-                try conn.pollStation(line.channel, station_index);
-                if (!station.x.transmission_stopped.from_prev) {
+                try station.pollX();
+                if (!ref.x.transmission_stopped.from_prev) {
                     break;
                 }
             }
@@ -1142,11 +928,11 @@ fn restartTrafficTransmission(
             state == .None)
         {
             // Start traffic transmission from current station to next station.
-            try conn.resetStationY(line.channel, station_index + 1, 0x9);
+            try next_station.resetY(0x9);
             while (true) {
                 try command.checkCommandInterrupt();
-                try conn.pollStation(line.channel, station_index + 1);
-                if (!next_station.x.transmission_stopped.from_prev) {
+                try next_station.pollX();
+                if (!next_ref.x.transmission_stopped.from_prev) {
                     break;
                 }
             }
@@ -1155,11 +941,11 @@ fn restartTrafficTransmission(
             next_state == .None)
         {
             // Start traffic transmission from next station to current station.
-            try conn.resetStationY(line.channel, station_index, 0xA);
+            try station.resetY(0xA);
             while (true) {
                 try command.checkCommandInterrupt();
-                try conn.pollStation(line.channel, station_index);
-                if (!station.x.transmission_stopped.from_next) {
+                try station.pollX();
+                if (!ref.x.transmission_stopped.from_next) {
                     break;
                 }
             }
