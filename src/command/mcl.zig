@@ -363,7 +363,7 @@ fn mclAxisReleaseServo(params: [][]const u8) !void {
     const ww: *conn.Station.Ww = try station.Ww();
     const x: *conn.Station.X = try station.X();
 
-    ww.*.target_axis_number = local_axis_index;
+    ww.*.target_axis_number = local_axis_index + 1;
     try station.sendWw();
     try station.setY(0x5);
     // Reset on error as well as on success.
@@ -707,7 +707,7 @@ fn mclRecoverSlider(params: [][]const u8) !void {
     const ww: *conn.Station.Ww = try station.Ww();
     try waitCommandReady(station);
     ww.*.command_code = .RecoverSliderAtAxis;
-    ww.*.target_axis_number = local_axis_index;
+    ww.*.target_axis_number = local_axis_index + 1;
     ww.*.command_slider_number = new_slider_id;
     try sendCommand(station);
 }
