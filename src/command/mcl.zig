@@ -671,18 +671,26 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
         else
             return error.SliderNotFound;
 
+        const system_axis: u10 = @as(u10, station_index) * 3 + axis_index;
+
         const station = try line.station(station_index);
         const wr = try station.Wr();
-        const next_axis_index = @rem(axis_index + 1, 3);
-        const next_station = if (next_axis_index == 0)
-            try line.station(station_index + 1)
-        else
-            station;
-        const next_wr = try next_station.Wr();
-        if (wr.sliderState(axis_index) == .PosMoveCompleted or
-            next_wr.sliderState(next_axis_index) == .PosMoveCompleted)
-        {
+        if (wr.sliderState(axis_index) == .PosMoveCompleted) {
             break;
+        }
+
+        if (system_axis < line.axes - 1) {
+            const next_axis_index = @rem(axis_index + 1, 3);
+            const next_station = if (next_axis_index == 0)
+                try line.station(station_index + 1)
+            else
+                station;
+            const next_wr = try next_station.Wr();
+            if (next_wr.sliderNumber(next_axis_index) == slider_id and
+                next_wr.sliderState(next_axis_index) == .PosMoveCompleted)
+            {
+                break;
+            }
         }
     }
 }
