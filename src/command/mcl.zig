@@ -828,15 +828,29 @@ fn waitCommandReady(station: mcl.Station) !void {
 
 fn sendCommand(station: mcl.Station) !void {
     const x: *conn.Station.X = try station.X();
+    const wr: *conn.Station.Wr = try station.Wr();
 
     std.log.debug("Sending command...", .{});
     try station.sendWw();
     try station.setY(0x2);
+    errdefer station.resetY(0x2) catch {};
     while (true) {
         try command.checkCommandInterrupt();
         try station.pollX();
+        try station.pollWr();
         if (x.command_received) {
             break;
+        } else if (wr.command_response != .NoError) {
+            return switch (wr.command_response) {
+                .InvalidCommand => error.InvalidCommand,
+                .SliderIdNotFound => error.SliderIdNotFound,
+                .HomingFailed => error.HomingFailed,
+                .InvalidParameter => error.InvalidParameter,
+                .InvalidSystemState => error.InvalidSystemState,
+                .SliderAlreadyExists => error.SliderAlreadyExists,
+                .InvalidAxisNumber => error.InvalidAxisNumber,
+                .NoError => unreachable,
+            };
         }
     }
 
