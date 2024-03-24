@@ -115,6 +115,19 @@ pub fn init(c: Config) !void {
         .execute = &mclAxisSlider,
     });
     errdefer _ = command.registry.orderedRemove("AXIS_SLIDER");
+    try command.registry.put("CLEAR_ERRORS", .{
+        .name = "CLEAR_ERRORS",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+        },
+        .short_description = "Clear driver errors of specified axis.",
+        .long_description =
+        \\Clear driver errors of specified axis.
+        ,
+        .execute = &mclClearErrors,
+    });
+    errdefer _ = command.registry.orderedRemove("RELEASE_AXIS_SERVO");
     try command.registry.put("RELEASE_AXIS_SERVO", .{
         .name = "RELEASE_AXIS_SERVO",
         .parameters = &[_]command.Command.Parameter{
@@ -372,6 +385,36 @@ fn mclAxisReleaseServo(params: [][]const u8) !void {
         try command.checkCommandInterrupt();
         try station.pollX();
         if (!x.servoActive(local_axis_index)) break;
+    }
+}
+
+fn mclClearErrors(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+    if (axis_id < 1 or axis_id > line.axes) {
+        return error.InvalidAxis;
+    }
+
+    const axis_index: i16 = axis_id - 1;
+    const station_index: u8 = @intCast(@divTrunc(axis_index, 3));
+    const local_axis_index: u2 = @intCast(@rem(axis_index, 3));
+
+    const station = try line.station(station_index);
+    const ww: *conn.Station.Ww = try station.Ww();
+    const x: *conn.Station.X = try station.X();
+
+    ww.*.target_axis_number = local_axis_index + 1;
+    try station.sendWw();
+    try station.setY(0xB);
+    // Reset on error as well as on success.
+    defer station.resetY(0xB) catch {};
+    while (true) {
+        try command.checkCommandInterrupt();
+        try station.pollX();
+        if (x.errors_cleared) break;
     }
 }
 
@@ -675,7 +718,9 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
 
         const station = try line.station(station_index);
         const wr = try station.Wr();
-        if (wr.sliderState(axis_index) == .PosMoveCompleted) {
+        if (wr.sliderState(axis_index) == .PosMoveCompleted or
+            wr.sliderState(axis_index) == .SpdMoveCompleted)
+        {
             break;
         }
 
@@ -687,7 +732,8 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
                 station;
             const next_wr = try next_station.Wr();
             if (next_wr.sliderNumber(next_axis_index) == slider_id and
-                next_wr.sliderState(next_axis_index) == .PosMoveCompleted)
+                (next_wr.sliderState(next_axis_index) == .PosMoveCompleted or
+                next_wr.sliderState(next_axis_index) == .SpdMoveCompleted))
             {
                 break;
             }
