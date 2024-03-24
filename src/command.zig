@@ -415,5 +415,5 @@ fn loadConfig(params: [][]const u8) !void {
 }
 
 fn exit(_: [][]const u8) !void {
-    std.os.exit(1);
+    std.process.exit(1);
 }
