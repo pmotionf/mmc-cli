@@ -9,10 +9,7 @@ var line_names: [][]u8 = undefined;
 var line_speeds: []u7 = undefined;
 var line_accelerations: []u7 = undefined;
 
-const Direction = enum(u1) {
-    backward = 0,
-    forward = 1,
-};
+const Direction = mcl.Direction;
 
 pub const Config = struct {
     names: [][]const u8,
@@ -341,7 +338,7 @@ fn mclAxisSlider(params: [][]const u8) !void {
     const local_axis_index: u2 = @intCast(@rem(axis_index, 3));
 
     const station = try line.station(station_index);
-    const wr: *conn.Station.Wr = try station.Wr();
+    const wr: *conn.Station.Wr = try station.connection.Wr();
     const slider_id = wr.sliderNumber(local_axis_index);
 
     if (slider_id != 0) {
@@ -373,17 +370,17 @@ fn mclAxisReleaseServo(params: [][]const u8) !void {
     const local_axis_index: u2 = @intCast(@rem(axis_index, 3));
 
     const station = try line.station(station_index);
-    const ww: *conn.Station.Ww = try station.Ww();
-    const x: *conn.Station.X = try station.X();
+    const ww = try station.connection.Ww();
+    const x = try station.connection.X();
 
     ww.*.target_axis_number = local_axis_index + 1;
-    try station.sendWw();
-    try station.setY(0x5);
+    try station.connection.sendWw();
+    try station.connection.setY(0x5);
     // Reset on error as well as on success.
-    defer station.resetY(0x5) catch {};
+    defer station.connection.resetY(0x5) catch {};
     while (true) {
         try command.checkCommandInterrupt();
-        try station.pollX();
+        try station.connection.pollX();
         if (!x.servoActive(local_axis_index)) break;
     }
 }
@@ -403,17 +400,17 @@ fn mclClearErrors(params: [][]const u8) !void {
     const local_axis_index: u2 = @intCast(@rem(axis_index, 3));
 
     const station = try line.station(station_index);
-    const ww: *conn.Station.Ww = try station.Ww();
-    const x: *conn.Station.X = try station.X();
+    const ww = try station.connection.Ww();
+    const x = try station.connection.X();
 
     ww.*.target_axis_number = local_axis_index + 1;
-    try station.sendWw();
-    try station.setY(0xB);
+    try station.connection.sendWw();
+    try station.connection.setY(0xB);
     // Reset on error as well as on success.
-    defer station.resetY(0xB) catch {};
+    defer station.connection.resetY(0xB) catch {};
     while (true) {
         try command.checkCommandInterrupt();
-        try station.pollX();
+        try station.connection.pollX();
         if (x.errors_cleared) break;
     }
 }
@@ -425,7 +422,7 @@ fn mclCalibrate(params: [][]const u8) !void {
 
     const station = try line.station(0);
     try waitCommandReady(station);
-    const ww: *conn.Station.Ww = try station.Ww();
+    const ww = try station.connection.Ww();
     ww.*.command_code = .Calibration;
     try sendCommand(station);
 }
@@ -438,7 +435,7 @@ fn mclHomeSlider(params: [][]const u8) !void {
     const station = try line.station(0);
 
     try waitCommandReady(station);
-    const ww: *conn.Station.Ww = try station.Ww();
+    const ww = try station.connection.Ww();
     ww.*.command_code = .Home;
     try sendCommand(station);
 }
@@ -453,10 +450,10 @@ fn mclWaitHomeSlider(params: [][]const u8) !void {
     const station = try line.station(0);
 
     var slider: ?i16 = null;
-    const wr: *conn.Station.Wr = try station.Wr();
+    const wr = try station.connection.Wr();
     while (true) {
         try command.checkCommandInterrupt();
-        try station.pollWr();
+        try station.connection.pollWr();
 
         if (wr.slider_number.axis1 != 0) {
             slider = wr.slider_number.axis1;
@@ -503,13 +500,12 @@ fn mclSliderLocation(params: [][]const u8) !void {
     const line: mcl.Line = mcl.lines[line_idx];
 
     try line.pollWr();
-    const station_index, const axis_index = if (try line.search(slider_id)) |t|
+    const station, const axis_index = if (try line.search(slider_id)) |t|
         t
     else
         return error.SliderNotFound;
 
-    const station = try line.station(station_index);
-    const wr: *conn.Station.Wr = try station.Wr();
+    const wr = try station.connection.Wr();
 
     const location: conn.Station.Distance = wr.sliderLocation(axis_index);
 
@@ -540,36 +536,48 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
     }
 
     try line.pollWr();
-    const station_index, const axis_index = if (try line.search(slider_id)) |t|
+    const station, const axis_index = if (try line.search(slider_id)) |t|
         t
     else
         return error.SliderNotFound;
 
-    // If slider is between two drivers, stop traffic transmission.
-    var stopped_transmission: ?Direction = null;
-    if (axis_index == 2 and station_index < line.numStations() - 1) {
-        std.log.debug("Checking transmission stop conditions...", .{});
-        const next_station = try line.station(station_index + 1);
-        const next_wr: *conn.Station.Wr = try next_station.Wr();
-        // Check first axis of next driver to see if slider is between drivers.
-        if (next_wr.sliderNumber(0) == slider_id) {
-            // Destination axis is at or beyond next driver.
-            // Forward movement.
-            if (axis_id > station_index * 3 + axis_index + 1) {
-                try stopTrafficTransmission(line, station_index, .forward);
-                stopped_transmission = .forward;
-            }
-            // Destination is at or before current driver.
-            // Backward movement.
-            else {
-                try stopTrafficTransmission(line, station_index, .backward);
-                stopped_transmission = .backward;
+    var transmission_stopped: ?mcl.Station = null;
+    var direction: mcl.Direction =
+        if (axis_id > station.index * 3 + axis_index + 1)
+        .forward
+    else
+        .backward;
+    if (station.next()) |next_station| {
+        if (try mcl.stopTrafficTransmission(
+            station,
+            next_station,
+            direction,
+        )) |stopped| {
+            transmission_stopped, direction = stopped;
+        }
+    }
+    errdefer {
+        if (transmission_stopped) |stopped_station| {
+            switch (direction) {
+                .backward => stopped_station.connection.resetY(0x9) catch {},
+                .forward => stopped_station.connection.resetY(0xA) catch {},
             }
         }
     }
 
-    const station = try line.station(station_index);
-    const ww: *conn.Station.Ww = try station.Ww();
+    if (transmission_stopped) |stopped_station| {
+        const x = try stopped_station.connection.X();
+        while (!x.transmissionStopped(direction)) {
+            try command.checkCommandInterrupt();
+            try stopped_station.connection.pollX();
+        }
+        switch (direction) {
+            .backward => try stopped_station.connection.resetY(0x9),
+            .forward => try stopped_station.connection.resetY(0xA),
+        }
+    }
+
+    const ww = try station.connection.Ww();
     try waitCommandReady(station);
     ww.*.command_code = .MoveSliderToAxisByPosition;
     ww.*.command_slider_number = slider_id;
@@ -578,8 +586,8 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
     ww.*.acceleration_percentage = line_accelerations[line_idx];
     try sendCommand(station);
 
-    if (stopped_transmission) |dir| {
-        try restartTrafficTransmission(line, station_index, dir);
+    if (transmission_stopped) |stopped_station| {
+        try restartTrafficTransmission(stopped_station, direction);
     }
 }
 
@@ -598,37 +606,52 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
     const line: mcl.Line = mcl.lines[line_idx];
 
     try line.pollWr();
-    const station_index, const axis_index = if (try line.search(slider_id)) |t|
+    const station, const axis_index = if (try line.search(slider_id)) |t|
         t
     else
         return error.SliderNotFound;
 
-    var stopped_transmission: ?Direction = null;
-    if (axis_index == 2 and station_index < line.numStations() - 1) {
-        const next_station = try line.station(station_index + 1);
-        const next_wr: *conn.Station.Wr = try next_station.Wr();
-        // Check first axis of next driver to see if slider is between drivers.
-        if (next_wr.sliderNumber(0) == slider_id) {
-            // Destination location is in front of current location.
-            // Forward movement.
-            if (location.mm > next_wr.slider_location.axis1.mm or
-                (location.mm == next_wr.slider_location.axis1.mm and
-                location.um > next_wr.slider_location.axis1.um))
-            {
-                try stopTrafficTransmission(line, station_index, .forward);
-                stopped_transmission = .forward;
-            }
-            // Destination location is behind current location.
-            // Backward movement.
-            else {
-                try stopTrafficTransmission(line, station_index, .backward);
-                stopped_transmission = .backward;
+    const wr = try station.connection.Wr();
+    var transmission_stopped: ?mcl.Station = null;
+    var direction: mcl.Direction =
+        if (location.mm > wr.sliderLocation(axis_index).mm or
+        (location.mm == wr.sliderLocation(axis_index).mm and
+        location.um > wr.sliderLocation(axis_index).um))
+        .forward
+    else
+        .backward;
+
+    if (station.next()) |next_station| {
+        if (try mcl.stopTrafficTransmission(
+            station,
+            next_station,
+            direction,
+        )) |stopped| {
+            transmission_stopped, direction = stopped;
+        }
+    }
+    errdefer {
+        if (transmission_stopped) |stopped_station| {
+            switch (direction) {
+                .backward => stopped_station.connection.resetY(0x9) catch {},
+                .forward => stopped_station.connection.resetY(0xA) catch {},
             }
         }
     }
 
-    const station = try line.station(station_index);
-    const ww: *conn.Station.Ww = try station.Ww();
+    if (transmission_stopped) |stopped_station| {
+        const x = try stopped_station.connection.X();
+        while (!x.transmissionStopped(direction)) {
+            try command.checkCommandInterrupt();
+            try stopped_station.connection.pollX();
+        }
+        switch (direction) {
+            .backward => try stopped_station.connection.resetY(0x9),
+            .forward => try stopped_station.connection.resetY(0xA),
+        }
+    }
+
+    const ww = try station.connection.Ww();
     try waitCommandReady(station);
     ww.*.command_code = .MoveSliderToLocationByPosition;
     ww.*.command_slider_number = slider_id;
@@ -637,8 +660,8 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
     ww.*.acceleration_percentage = line_accelerations[line_idx];
     try sendCommand(station);
 
-    if (stopped_transmission) |dir| {
-        try restartTrafficTransmission(line, station_index, dir);
+    if (transmission_stopped) |stopped_station| {
+        try restartTrafficTransmission(stopped_station, direction);
     }
 }
 
@@ -657,33 +680,49 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
     const line = mcl.lines[line_idx];
 
     try line.pollWr();
-    const station_index, const axis_index = if (try line.search(slider_id)) |t|
+    const station, _ = if (try line.search(slider_id)) |t|
         t
     else
         return error.SliderNotFound;
 
-    var stopped_transmission: ?Direction = null;
-    if (axis_index == 2 and station_index < line.numStations() - 1) {
-        const next_station = try line.station(station_index + 1);
-        const next_wr: *conn.Station.Wr = try next_station.Wr();
+    var transmission_stopped: ?mcl.Station = null;
+    var direction: mcl.Direction =
+        if (distance.mm > 0 or (distance.mm == 0 and distance.um > 0))
+        .forward
+    else
+        .backward;
 
-        // Check first axis of next driver to see if slider is between drivers.
-        if (next_wr.sliderNumber(0) == slider_id) {
-            // Distance is positive. Forward movement.
-            if (distance.mm > 0 or (distance.mm == 0 and distance.um > 0)) {
-                try stopTrafficTransmission(line, station_index, .forward);
-                stopped_transmission = .forward;
-            }
-            // Distance is negative or 0. Backward movement.
-            else {
-                try stopTrafficTransmission(line, station_index, .backward);
-                stopped_transmission = .backward;
+    if (station.next()) |next_station| {
+        if (try mcl.stopTrafficTransmission(
+            station,
+            next_station,
+            direction,
+        )) |stopped| {
+            transmission_stopped, direction = stopped;
+        }
+    }
+    errdefer {
+        if (transmission_stopped) |stopped_station| {
+            switch (direction) {
+                .backward => stopped_station.connection.resetY(0x9) catch {},
+                .forward => stopped_station.connection.resetY(0xA) catch {},
             }
         }
     }
 
-    const station = try line.station(station_index);
-    const ww: *conn.Station.Ww = try station.Ww();
+    if (transmission_stopped) |stopped_station| {
+        const x = try stopped_station.connection.X();
+        while (!x.transmissionStopped(direction)) {
+            try command.checkCommandInterrupt();
+            try stopped_station.connection.pollX();
+        }
+        switch (direction) {
+            .backward => try stopped_station.connection.resetY(0x9),
+            .forward => try stopped_station.connection.resetY(0xA),
+        }
+    }
+
+    const ww = try station.connection.Ww();
     try waitCommandReady(station);
     ww.*.command_code = .MoveSliderDistanceByPosition;
     ww.*.command_slider_number = slider_id;
@@ -692,8 +731,8 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
     ww.*.acceleration_percentage = line_accelerations[line_idx];
     try sendCommand(station);
 
-    if (stopped_transmission) |dir| {
-        try restartTrafficTransmission(line, station_index, dir);
+    if (transmission_stopped) |stopped_station| {
+        try restartTrafficTransmission(stopped_station, direction);
     }
 }
 
@@ -708,16 +747,18 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
     while (true) {
         try command.checkCommandInterrupt();
         try line.pollWr();
-        const station_index, const axis_index =
+        const station, const axis_index =
             if (try line.search(slider_id)) |t|
             t
         else
             return error.SliderNotFound;
 
-        const system_axis: u10 = @as(u10, station_index) * 3 + axis_index;
+        const system_axis: mcl.Line.Index = @as(
+            mcl.Line.Index,
+            station.index,
+        ) * 3 + axis_index;
 
-        const station = try line.station(station_index);
-        const wr = try station.Wr();
+        const wr = try station.connection.Wr();
         if (wr.sliderState(axis_index) == .PosMoveCompleted or
             wr.sliderState(axis_index) == .SpdMoveCompleted)
         {
@@ -727,10 +768,10 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
         if (system_axis < line.axes - 1) {
             const next_axis_index = @rem(axis_index + 1, 3);
             const next_station = if (next_axis_index == 0)
-                try line.station(station_index + 1)
+                try line.station(station.index + 1)
             else
                 station;
-            const next_wr = try next_station.Wr();
+            const next_wr = try next_station.connection.Wr();
             if (next_wr.sliderNumber(next_axis_index) == slider_id and
                 (next_wr.sliderState(next_axis_index) == .PosMoveCompleted or
                 next_wr.sliderState(next_axis_index) == .SpdMoveCompleted))
@@ -758,7 +799,7 @@ fn mclRecoverSlider(params: [][]const u8) !void {
     const local_axis_index: u2 = @intCast(axis_index % 3);
 
     const station = try line.station(station_index);
-    const ww: *conn.Station.Ww = try station.Ww();
+    const ww = try station.connection.Ww();
     try waitCommandReady(station);
     ww.*.command_code = .RecoverSliderAtAxis;
     ww.*.target_axis_number = local_axis_index + 1;
@@ -784,10 +825,10 @@ fn mclWaitRecoverSlider(params: [][]const u8) !void {
     const station = try line.station(station_index);
 
     var slider_id: i16 = undefined;
-    const wr: *conn.Station.Wr = try station.Wr();
+    const wr = try station.connection.Wr();
     while (true) {
         try command.checkCommandInterrupt();
-        try station.pollWr();
+        try station.connection.pollWr();
 
         const slider_number = wr.sliderNumber(local_axis_index);
         if (slider_number != 0 and
@@ -817,161 +858,73 @@ fn matchLine(names: [][]const u8, name: []const u8) !usize {
 }
 
 fn waitCommandReady(station: mcl.Station) !void {
-    const x: *conn.Station.X = try station.X();
+    const x = try station.connection.X();
     std.log.debug("Waiting for command ready state...", .{});
     while (true) {
         try command.checkCommandInterrupt();
-        try station.pollX();
+        try station.connection.pollX();
         if (x.ready_for_command) break;
     }
 }
 
 fn sendCommand(station: mcl.Station) !void {
-    const x: *conn.Station.X = try station.X();
-    const wr: *conn.Station.Wr = try station.Wr();
+    const x: *conn.Station.X = try station.connection.X();
+    const wr: *conn.Station.Wr = try station.connection.Wr();
 
     std.log.debug("Sending command...", .{});
-    try station.sendWw();
-    try station.setY(0x2);
-    errdefer station.resetY(0x2) catch {};
+    try station.connection.sendWw();
+    try station.connection.setY(0x2);
+    errdefer station.connection.resetY(0x2) catch {};
     while (true) {
         try command.checkCommandInterrupt();
-        try station.pollX();
-        try station.pollWr();
+        try station.connection.pollX();
+        try station.connection.pollWr();
         if (x.command_received) {
             break;
         } else if (wr.command_response != .NoError) {
-            return switch (wr.command_response) {
-                .InvalidCommand => error.InvalidCommand,
-                .SliderIdNotFound => error.SliderIdNotFound,
-                .HomingFailed => error.HomingFailed,
-                .InvalidParameter => error.InvalidParameter,
-                .InvalidSystemState => error.InvalidSystemState,
-                .SliderAlreadyExists => error.SliderAlreadyExists,
-                .InvalidAxisNumber => error.InvalidAxisNumber,
-                .NoError => unreachable,
-            };
+            try wr.command_response.throwError();
         }
     }
+    try station.connection.resetY(0x2);
 
     std.log.debug("Resetting command received flag...", .{});
-    try station.resetY(0x2);
-    try station.setY(0x3);
+    try station.connection.setY(0x3);
+    errdefer station.connection.resetY(0x3) catch {};
     while (true) {
         try command.checkCommandInterrupt();
-        try station.pollX();
+        try station.connection.pollX();
         if (!x.command_received) {
-            try station.resetY(0x3);
+            try station.connection.resetY(0x3);
             break;
-        }
-    }
-}
-
-/// Handle traffic transmission stop when a slider positioned between current
-/// and next station begins movement.
-fn stopTrafficTransmission(
-    line: mcl.Line,
-    station_index: u8,
-    direction: Direction,
-) !void {
-    const station = try line.station(station_index);
-    const next_station = try line.station(station_index + 1);
-
-    const ref = try station.reference();
-    const next_ref = try next_station.reference();
-
-    const state = ref.wr.slider_state.axis3;
-    const next_state = next_ref.wr.slider_state.axis1;
-
-    if (direction == .forward) {
-        if ((next_state == .PrevAxisAuxiliary or
-            next_state == .PrevAxisCompleted) and station_index > 0)
-        {
-            const prev_station = try line.station(station_index - 1);
-            // Stop traffic transmission from current station to previous
-            // station.
-            try prev_station.setY(0xA);
-            const prev_x: *conn.Station.X = try prev_station.X();
-            while (true) {
-                try command.checkCommandInterrupt();
-                try prev_station.pollX();
-                if (prev_x.transmission_stopped.from_next) {
-                    break;
-                }
-            }
-        } else if (state == .NextAxisAuxiliary or
-            state == .NextAxisCompleted)
-        {
-            // Stop traffic transmission from previous station to current
-            // station.
-            try station.setY(0x9);
-            while (true) {
-                try command.checkCommandInterrupt();
-                try station.pollX();
-                if (ref.x.transmission_stopped.from_prev) {
-                    break;
-                }
-            }
-        }
-    } else {
-        if (state == .NextAxisAuxiliary or
-            state == .NextAxisCompleted or
-            state == .None)
-        {
-            // Stop traffic transmission from current station to next station.
-            try next_station.setY(0x9);
-            while (true) {
-                try command.checkCommandInterrupt();
-                try next_station.pollX();
-                if (next_ref.x.transmission_stopped.from_prev) {
-                    break;
-                }
-            }
-        } else if (next_state == .PrevAxisAuxiliary or
-            next_state == .PrevAxisCompleted or
-            next_state == .None)
-        {
-            // Stop traffic transmission from next station to current station.
-            try station.setY(0xA);
-            while (true) {
-                try command.checkCommandInterrupt();
-                try station.pollX();
-                if (ref.x.transmission_stopped.from_next) {
-                    break;
-                }
-            }
         }
     }
 }
 
 /// Handle traffic transmission start after slider movement command.
 fn restartTrafficTransmission(
-    line: mcl.Line,
-    station_index: u8,
+    station: mcl.Station,
     direction: Direction,
 ) !void {
     std.log.debug("Restarting traffic transmission...", .{});
-
-    const station = try line.station(station_index);
-    const ref = try station.reference();
-    const next_station = try line.station(station_index + 1);
-    const next_ref = try next_station.reference();
+    const next_station = station.next().?;
+    const ref = try station.connection.reference();
+    const next_ref = try next_station.connection.reference();
 
     const state = ref.wr.slider_state.axis3;
     const next_state = next_ref.wr.slider_state.axis1;
 
     if (direction == .forward) {
         if ((next_state == .PrevAxisAuxiliary or
-            next_state == .PrevAxisCompleted) and station_index > 0)
+            next_state == .PrevAxisCompleted) and station.index > 0)
         {
-            const prev_station = try line.station(station_index - 1);
+            const prev_station = station.prev().?;
             // Start traffic transmission from current station to previous
             // station.
-            try prev_station.resetY(0xA);
-            const prev_x: *conn.Station.X = try prev_station.X();
+            try prev_station.connection.resetY(0xA);
+            const prev_x = try prev_station.connection.X();
             while (true) {
                 try command.checkCommandInterrupt();
-                try prev_station.pollX();
+                try prev_station.connection.pollX();
                 if (!prev_x.transmission_stopped.from_next) {
                     break;
                 }
@@ -981,10 +934,10 @@ fn restartTrafficTransmission(
         {
             // Start traffic transmission from previous station to current
             // station.
-            try station.resetY(0x9);
+            try station.connection.resetY(0x9);
             while (true) {
                 try command.checkCommandInterrupt();
-                try station.pollX();
+                try station.connection.pollX();
                 if (!ref.x.transmission_stopped.from_prev) {
                     break;
                 }
@@ -996,10 +949,10 @@ fn restartTrafficTransmission(
             state == .None)
         {
             // Start traffic transmission from current station to next station.
-            try next_station.resetY(0x9);
+            try next_station.connection.resetY(0x9);
             while (true) {
                 try command.checkCommandInterrupt();
-                try next_station.pollX();
+                try next_station.connection.pollX();
                 if (!next_ref.x.transmission_stopped.from_prev) {
                     break;
                 }
@@ -1009,10 +962,10 @@ fn restartTrafficTransmission(
             next_state == .None)
         {
             // Start traffic transmission from next station to current station.
-            try station.resetY(0xA);
+            try station.connection.resetY(0xA);
             while (true) {
                 try command.checkCommandInterrupt();
-                try station.pollX();
+                try station.connection.pollX();
                 if (!ref.x.transmission_stopped.from_next) {
                     break;
                 }
