@@ -164,7 +164,7 @@ pub fn init(c: Config) !void {
         ,
         .execute = &mclClearErrors,
     });
-    errdefer _ = command.registry.orderedRemove("RELEASE_AXIS_SERVO");
+    errdefer _ = command.registry.orderedRemove("CLEAR_ERRORS");
     try command.registry.put("RELEASE_AXIS_SERVO", .{
         .name = "RELEASE_AXIS_SERVO",
         .parameters = &[_]command.Command.Parameter{
