@@ -308,6 +308,7 @@ fn mclVersion(_: [][]const u8) !void {
 }
 
 fn mclConnect(_: [][]const u8) !void {
+    try mcl.open();
     for (mcl.lines) |line| {
         try line.connect();
     }
@@ -317,6 +318,7 @@ fn mclDisconnect(_: [][]const u8) !void {
     for (mcl.lines) |line| {
         try line.disconnect();
     }
+    try mcl.close();
 }
 
 fn mclAxisSlider(params: [][]const u8) !void {
