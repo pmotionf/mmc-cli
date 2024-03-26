@@ -245,7 +245,7 @@ pub fn init(c: Config) !void {
         .short_description = "Recover an unrecognized slider on a given axis.",
         .long_description =
         \\Recover an unrecognized slider on a given axis. The provided slider
-        \\ID must be a positive integer from 1 to 127 inclusive, and must be
+        \\ID must be a positive integer from 1 to 254 inclusive, and must be
         \\unique to other recognized slider IDs.
         ,
         .execute = &mclRecoverSlider,
@@ -345,6 +345,77 @@ pub fn init(c: Config) !void {
         .execute = &mclWaitMoveSlider,
     });
     errdefer _ = command.registry.orderedRemove("WAIT_MOVE_SLIDER");
+    try command.registry.put("PUSH_SLIDER_FORWARD", .{
+        .name = "PUSH_SLIDER_FORWARD",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "slider" },
+        },
+        .short_description = "Push slider forward by slider length.",
+        .long_description =
+        \\Push slider forward with speed feedback-controlled movement. This
+        \\movement targets a distance of the slider length, and thus if it is
+        \\used to cross a line boundary, the receiving axis at the destination
+        \\line must first be pulling the slider.
+        ,
+        .execute = &mclSliderPushForward,
+    });
+    errdefer _ = command.registry.orderedRemove("PUSH_SLIDER_FORWARD");
+    try command.registry.put("PUSH_SLIDER_BACKWARD", .{
+        .name = "PUSH_SLIDER_BACKWARD",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "slider" },
+        },
+        .short_description = "Push slider backward by slider length.",
+        .long_description =
+        \\Push slider backward with speed feedback-controlled movement. This
+        \\movement targets a distance of the slider length, and thus if it is
+        \\used to cross a line boundary, the receiving axis at the destination
+        \\line must first be pulling the slider.
+        ,
+        .execute = &mclSliderPushBackward,
+    });
+    errdefer _ = command.registry.orderedRemove("PUSH_SLIDER_BACKWARD");
+    try command.registry.put("PULL_SLIDER_FORWARD", .{
+        .name = "PULL_SLIDER_FORWARD",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+        },
+        .short_description = "Pull incoming slider forward at axis.",
+        .long_description =
+        \\Pull incoming slider forward at axis.
+        ,
+        .execute = &mclSliderPullForward,
+    });
+    errdefer _ = command.registry.orderedRemove("PULL_SLIDER_FORWARD");
+    try command.registry.put("PULL_SLIDER_BACKWARD", .{
+        .name = "PULL_SLIDER_BACKWARD",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+        },
+        .short_description = "Pull incoming slider backward at axis.",
+        .long_description =
+        \\Pull incoming slider backward at axis.
+        ,
+        .execute = &mclSliderPullBackward,
+    });
+    errdefer _ = command.registry.orderedRemove("PULL_SLIDER_BACKWARD");
+    try command.registry.put("STOP_PULL_SLIDER", .{
+        .name = "STOP_PULL_SLIDER",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+        },
+        .short_description = "Stop active slider pull at axis.",
+        .long_description =
+        \\Stop active slider pull at axis.
+        ,
+        .execute = &mclSliderStopPull,
+    });
+    errdefer _ = command.registry.orderedRemove("STOP_PULL_SLIDER");
 }
 
 pub fn deinit() void {
@@ -579,7 +650,7 @@ fn mclSetAcceleration(params: [][]const u8) !void {
 fn mclSliderLocation(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const slider_id = try std.fmt.parseInt(i16, params[1], 0);
-    if (slider_id < 1 or slider_id > 127) return error.InvalidSliderId;
+    if (slider_id < 1 or slider_id > 254) return error.InvalidSliderId;
     const result_var: []const u8 = params[2];
 
     const line_idx: usize = try matchLine(line_names, line_name);
@@ -613,7 +684,7 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const slider_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
     const axis_id: i16 = try std.fmt.parseInt(i16, params[2], 0);
-    if (slider_id < 1 or slider_id > 127) return error.InvalidSliderId;
+    if (slider_id < 1 or slider_id > 254) return error.InvalidSliderId;
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
@@ -681,7 +752,7 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const slider_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
     const location_float: f32 = try std.fmt.parseFloat(f32, params[2]);
-    if (slider_id < 1 or slider_id > 127) return error.InvalidSliderId;
+    if (slider_id < 1 or slider_id > 254) return error.InvalidSliderId;
 
     const location: conn.Station.Distance = .{
         .mm = @intFromFloat(location_float),
@@ -755,7 +826,7 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
     const line_name = params[0];
     const slider_id = try std.fmt.parseInt(i16, params[1], 0);
     const distance_float = try std.fmt.parseFloat(f32, params[2]);
-    if (slider_id < 1 or slider_id > 127) return error.InvalidSliderId;
+    if (slider_id < 1 or slider_id > 254) return error.InvalidSliderId;
 
     const distance: conn.Station.Distance = .{
         .mm = @intFromFloat(distance_float),
@@ -822,10 +893,271 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
     }
 }
 
+fn mclSliderPushForward(params: [][]const u8) !void {
+    const line_name = params[0];
+    const slider_id = try std.fmt.parseInt(i16, params[1], 0);
+    if (slider_id < 1 or slider_id > 254) return error.InvalidSliderId;
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line = mcl.lines[line_idx];
+
+    try line.pollWr();
+    const station, const local_axis = if (try line.search(slider_id)) |t|
+        t
+    else
+        return error.SliderNotFound;
+
+    var transmission_stopped: ?mcl.Station = null;
+    var direction: mcl.Direction = .forward;
+
+    if (station.next()) |next_station| {
+        if (try mcl.stopTrafficTransmission(
+            station,
+            next_station,
+            direction,
+        )) |stopped| {
+            transmission_stopped, direction = stopped;
+        }
+    }
+    errdefer {
+        if (transmission_stopped) |stopped_station| {
+            switch (direction) {
+                .backward => stopped_station.connection.resetY(0x9) catch {},
+                .forward => stopped_station.connection.resetY(0xA) catch {},
+            }
+        }
+    }
+
+    if (transmission_stopped) |stopped_station| {
+        const x = try stopped_station.connection.X();
+        while (!x.transmissionStopped(direction)) {
+            try command.checkCommandInterrupt();
+            try stopped_station.connection.pollX();
+        }
+        switch (direction) {
+            .backward => try stopped_station.connection.resetY(0x9),
+            .forward => try stopped_station.connection.resetY(0xA),
+        }
+    }
+
+    const ww = try station.connection.Ww();
+    try waitCommandReady(station);
+    ww.*.command_code = .PushAxisSliderForward;
+    ww.*.command_slider_number = slider_id;
+    ww.*.target_axis_number = local_axis + 1;
+    ww.*.speed_percentage = line_speeds[line_idx];
+    ww.*.acceleration_percentage = line_accelerations[line_idx];
+    try sendCommand(station);
+
+    if (transmission_stopped) |stopped_station| {
+        try restartTrafficTransmission(stopped_station, direction);
+    }
+}
+
+fn mclSliderPushBackward(params: [][]const u8) !void {
+    const line_name = params[0];
+    const slider_id = try std.fmt.parseInt(i16, params[1], 0);
+    if (slider_id < 1 or slider_id > 254) return error.InvalidSliderId;
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line = mcl.lines[line_idx];
+
+    try line.pollWr();
+    const station, const local_axis = if (try line.search(slider_id)) |t|
+        t
+    else
+        return error.SliderNotFound;
+
+    var transmission_stopped: ?mcl.Station = null;
+    var direction: mcl.Direction = .backward;
+
+    if (station.next()) |next_station| {
+        if (try mcl.stopTrafficTransmission(
+            station,
+            next_station,
+            direction,
+        )) |stopped| {
+            transmission_stopped, direction = stopped;
+        }
+    }
+    errdefer {
+        if (transmission_stopped) |stopped_station| {
+            switch (direction) {
+                .backward => stopped_station.connection.resetY(0x9) catch {},
+                .forward => stopped_station.connection.resetY(0xA) catch {},
+            }
+        }
+    }
+
+    if (transmission_stopped) |stopped_station| {
+        const x = try stopped_station.connection.X();
+        while (!x.transmissionStopped(direction)) {
+            try command.checkCommandInterrupt();
+            try stopped_station.connection.pollX();
+        }
+        switch (direction) {
+            .backward => try stopped_station.connection.resetY(0x9),
+            .forward => try stopped_station.connection.resetY(0xA),
+        }
+    }
+
+    const ww = try station.connection.Ww();
+    try waitCommandReady(station);
+    ww.*.command_code = .PushAxisSliderBackward;
+    ww.*.command_slider_number = slider_id;
+    ww.*.target_axis_number = local_axis + 1;
+    ww.*.speed_percentage = line_speeds[line_idx];
+    ww.*.acceleration_percentage = line_accelerations[line_idx];
+    try sendCommand(station);
+
+    if (transmission_stopped) |stopped_station| {
+        try restartTrafficTransmission(stopped_station, direction);
+    }
+}
+
+fn mclSliderPullForward(params: [][]const u8) !void {
+    const line_name = params[0];
+    const axis = try std.fmt.parseInt(i16, params[1], 0);
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line = mcl.lines[line_idx];
+
+    if (axis < 1 or axis > line.axes) return error.InvalidAxis;
+
+    const axis_id: u10 = @intCast(axis - 1);
+    const local_axis: u2 = @intCast(axis_id % 3);
+    const station = try line.axisStation(axis_id);
+
+    var transmission_stopped: ?mcl.Station = null;
+    var direction: mcl.Direction = .forward;
+
+    if (station.next()) |next_station| {
+        if (try mcl.stopTrafficTransmission(
+            station,
+            next_station,
+            direction,
+        )) |stopped| {
+            transmission_stopped, direction = stopped;
+        }
+    }
+    errdefer {
+        if (transmission_stopped) |stopped_station| {
+            switch (direction) {
+                .backward => stopped_station.connection.resetY(0x9) catch {},
+                .forward => stopped_station.connection.resetY(0xA) catch {},
+            }
+        }
+    }
+
+    if (transmission_stopped) |stopped_station| {
+        const x = try stopped_station.connection.X();
+        while (!x.transmissionStopped(direction)) {
+            try command.checkCommandInterrupt();
+            try stopped_station.connection.pollX();
+        }
+        switch (direction) {
+            .backward => try stopped_station.connection.resetY(0x9),
+            .forward => try stopped_station.connection.resetY(0xA),
+        }
+    }
+
+    const ww = try station.connection.Ww();
+    try waitCommandReady(station);
+    ww.*.command_code = .PullAxisSliderForward;
+    ww.*.target_axis_number = local_axis + 1;
+    ww.*.speed_percentage = line_speeds[line_idx];
+    ww.*.acceleration_percentage = line_accelerations[line_idx];
+    try sendCommand(station);
+
+    if (transmission_stopped) |stopped_station| {
+        try restartTrafficTransmission(stopped_station, direction);
+    }
+}
+
+fn mclSliderPullBackward(params: [][]const u8) !void {
+    const line_name = params[0];
+    const axis = try std.fmt.parseInt(i16, params[1], 0);
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line = mcl.lines[line_idx];
+
+    if (axis < 1 or axis > line.axes) return error.InvalidAxis;
+
+    const axis_id: u10 = @intCast(axis - 1);
+    const local_axis: u2 = @intCast(axis_id % 3);
+    const station = try line.axisStation(axis_id);
+
+    var transmission_stopped: ?mcl.Station = null;
+    var direction: mcl.Direction = .backward;
+
+    if (station.next()) |next_station| {
+        if (try mcl.stopTrafficTransmission(
+            station,
+            next_station,
+            direction,
+        )) |stopped| {
+            transmission_stopped, direction = stopped;
+        }
+    }
+    errdefer {
+        if (transmission_stopped) |stopped_station| {
+            switch (direction) {
+                .backward => stopped_station.connection.resetY(0x9) catch {},
+                .forward => stopped_station.connection.resetY(0xA) catch {},
+            }
+        }
+    }
+
+    if (transmission_stopped) |stopped_station| {
+        const x = try stopped_station.connection.X();
+        while (!x.transmissionStopped(direction)) {
+            try command.checkCommandInterrupt();
+            try stopped_station.connection.pollX();
+        }
+        switch (direction) {
+            .backward => try stopped_station.connection.resetY(0x9),
+            .forward => try stopped_station.connection.resetY(0xA),
+        }
+    }
+
+    const ww = try station.connection.Ww();
+    try waitCommandReady(station);
+    ww.*.command_code = .PullAxisSliderBackward;
+    ww.*.target_axis_number = local_axis + 1;
+    ww.*.speed_percentage = line_speeds[line_idx];
+    ww.*.acceleration_percentage = line_accelerations[line_idx];
+    try sendCommand(station);
+
+    if (transmission_stopped) |stopped_station| {
+        try restartTrafficTransmission(stopped_station, direction);
+    }
+}
+
+fn mclSliderStopPull(params: [][]const u8) !void {
+    const line_name = params[0];
+    const axis = try std.fmt.parseInt(i16, params[1], 0);
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line = mcl.lines[line_idx];
+
+    if (axis < 1 or axis > line.axes) return error.InvalidAxis;
+
+    const axis_id: u10 = @intCast(axis - 1);
+    const local_axis: u2 = @intCast(axis_id % 3);
+    const station = try line.axisStation(axis_id);
+
+    const y = try station.connection.Y();
+    y.resetPullSlider(local_axis, false);
+
+    const x = try station.connection.X();
+    while (true) {
+        try command.checkCommandInterrupt();
+        try station.connection.pollX();
+        if (!x.pullingSlider(local_axis)) break;
+    }
+}
+
 fn mclWaitMoveSlider(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const slider_id = try std.fmt.parseInt(i16, params[1], 0);
-    if (slider_id < 1 or slider_id > 127) return error.InvalidSliderId;
+    if (slider_id < 1 or slider_id > 254) return error.InvalidSliderId;
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
@@ -872,7 +1204,7 @@ fn mclRecoverSlider(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis: i16 = try std.fmt.parseUnsigned(i16, params[1], 0);
     const new_slider_id: i16 = try std.fmt.parseUnsigned(i16, params[2], 0);
-    if (new_slider_id < 1 or new_slider_id > 127) return error.InvalidSliderID;
+    if (new_slider_id < 1 or new_slider_id > 254) return error.InvalidSliderID;
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
