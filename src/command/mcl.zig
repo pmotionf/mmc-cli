@@ -165,6 +165,19 @@ pub fn init(c: Config) !void {
         .execute = &mclClearErrors,
     });
     errdefer _ = command.registry.orderedRemove("CLEAR_ERRORS");
+    try command.registry.put("CLEAR_SLIDER_INFO", .{
+        .name = "CLEAR_SLIDER_INFO",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+        },
+        .short_description = "Clear slider information at specified axis.",
+        .long_description =
+        \\Clear slider information at specified axis.
+        ,
+        .execute = &mclClearSliderInfo,
+    });
+    errdefer _ = command.registry.orderedRemove("CLEAR_SLIDER_INFO");
     try command.registry.put("RELEASE_AXIS_SERVO", .{
         .name = "RELEASE_AXIS_SERVO",
         .parameters = &[_]command.Command.Parameter{
@@ -454,6 +467,37 @@ fn mclClearErrors(params: [][]const u8) !void {
         try command.checkCommandInterrupt();
         try station.connection.pollX();
         if (x.errors_cleared) break;
+    }
+}
+
+fn mclClearSliderInfo(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+    if (axis_id < 1 or axis_id > line.axes) {
+        return error.InvalidAxis;
+    }
+
+    const axis_index: i16 = axis_id - 1;
+    const station_index: u8 = @intCast(@divTrunc(axis_index, 3));
+    const local_axis_index: u2 = @intCast(@rem(axis_index, 3));
+
+    const station = try line.station(station_index);
+    const ww = try station.connection.Ww();
+
+    ww.*.target_axis_number = local_axis_index + 1;
+    try station.connection.sendWw();
+    try station.connection.setY(0xC);
+    // Reset on error as well as on success.
+    defer station.connection.resetY(0xC) catch {};
+
+    const wr = try station.connection.Wr();
+    while (true) {
+        try command.checkCommandInterrupt();
+        try station.connection.pollWr();
+        if (wr.sliderNumber(local_axis_index) == 0) break;
     }
 }
 
