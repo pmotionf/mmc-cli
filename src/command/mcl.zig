@@ -12,25 +12,65 @@ var line_accelerations: []u7 = undefined;
 const Direction = mcl.Direction;
 
 pub const Config = struct {
-    names: [][]const u8,
-    lines: []mcl.Line,
+    lines: []Line,
+
+    pub const Line = struct {
+        name: []const u8,
+        axes: u10,
+        ranges: []Range,
+
+        pub const Range = struct {
+            channel: mcl.connection.Channel,
+            start: u7,
+            length: u7,
+        };
+    };
 };
 
 pub fn init(c: Config) !void {
-    if (c.names.len != c.lines.len) {
-        return error.InvalidLineNames;
+    if (c.lines.len < 1) return error.InvalidLines;
+
+    var local_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    errdefer local_arena.deinit();
+    {
+        var local_allocator = local_arena.allocator();
+        var lines = try local_allocator.alloc(mcl.Line, c.lines.len);
+
+        for (c.lines, 0..) |line, i| {
+            lines[i] = .{
+                .axes = line.axes,
+                .ranges = try local_allocator.alloc(
+                    mcl.Station.Range,
+                    line.ranges.len,
+                ),
+            };
+
+            for (line.ranges, 0..) |range, j| {
+                lines[i].ranges[j] = .{
+                    .connection = .{
+                        .channel = range.channel,
+                        .indices = .{
+                            .start = @intCast(range.start),
+                            .end = @intCast(range.start + range.length - 1),
+                        },
+                    },
+                };
+            }
+        }
+        try mcl.init(lines);
     }
-    try mcl.init(c.lines);
+    local_arena.deinit();
+
     arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     errdefer arena.deinit();
     allocator = arena.allocator();
 
-    line_names = try allocator.alloc([]u8, c.names.len);
-    line_speeds = try allocator.alloc(u7, c.names.len);
-    line_accelerations = try allocator.alloc(u7, c.names.len);
-    for (c.names, 0..) |name, i| {
-        line_names[i] = try allocator.alloc(u8, name.len);
-        @memcpy(line_names[i], name);
+    line_names = try allocator.alloc([]u8, c.lines.len);
+    line_speeds = try allocator.alloc(u7, c.lines.len);
+    line_accelerations = try allocator.alloc(u7, c.lines.len);
+    for (c.lines, 0..) |line, i| {
+        line_names[i] = try allocator.alloc(u8, line.name.len);
+        @memcpy(line_names[i], line.name);
         line_speeds[i] = 40;
         line_accelerations[i] = 40;
     }
