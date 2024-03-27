@@ -732,7 +732,7 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
             transmission_stopped, direction = stopped;
         }
     }
-    errdefer {
+    defer {
         if (transmission_stopped) |stopped_station| {
             switch (direction) {
                 .backward => stopped_station.connection.resetY(0x9) catch {},
@@ -747,10 +747,6 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
             try command.checkCommandInterrupt();
             try stopped_station.connection.pollX();
         }
-        switch (direction) {
-            .backward => try stopped_station.connection.resetY(0x9),
-            .forward => try stopped_station.connection.resetY(0xA),
-        }
     }
 
     const ww = try station.connection.Ww();
@@ -761,10 +757,6 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
     ww.*.speed_percentage = line_speeds[line_idx];
     ww.*.acceleration_percentage = line_accelerations[line_idx];
     try sendCommand(station);
-
-    if (transmission_stopped) |_| {
-        try restartTrafficTransmission(station, direction);
-    }
 }
 
 fn mclSliderPosMoveLocation(params: [][]const u8) !void {
@@ -806,7 +798,7 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
             transmission_stopped, direction = stopped;
         }
     }
-    errdefer {
+    defer {
         if (transmission_stopped) |stopped_station| {
             switch (direction) {
                 .backward => stopped_station.connection.resetY(0x9) catch {},
@@ -821,10 +813,6 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
             try command.checkCommandInterrupt();
             try stopped_station.connection.pollX();
         }
-        switch (direction) {
-            .backward => try stopped_station.connection.resetY(0x9),
-            .forward => try stopped_station.connection.resetY(0xA),
-        }
     }
 
     const ww = try station.connection.Ww();
@@ -835,10 +823,6 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
     ww.*.speed_percentage = line_speeds[line_idx];
     ww.*.acceleration_percentage = line_accelerations[line_idx];
     try sendCommand(station);
-
-    if (transmission_stopped) |_| {
-        try restartTrafficTransmission(station, direction);
-    }
 }
 
 fn mclSliderPosMoveDistance(params: [][]const u8) !void {
@@ -877,7 +861,7 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
             transmission_stopped, direction = stopped;
         }
     }
-    errdefer {
+    defer {
         if (transmission_stopped) |stopped_station| {
             switch (direction) {
                 .backward => stopped_station.connection.resetY(0x9) catch {},
@@ -892,10 +876,6 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
             try command.checkCommandInterrupt();
             try stopped_station.connection.pollX();
         }
-        switch (direction) {
-            .backward => try stopped_station.connection.resetY(0x9),
-            .forward => try stopped_station.connection.resetY(0xA),
-        }
     }
 
     const ww = try station.connection.Ww();
@@ -906,10 +886,6 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
     ww.*.speed_percentage = line_speeds[line_idx];
     ww.*.acceleration_percentage = line_accelerations[line_idx];
     try sendCommand(station);
-
-    if (transmission_stopped) |_| {
-        try restartTrafficTransmission(station, direction);
-    }
 }
 
 fn mclSliderPushForward(params: [][]const u8) !void {
@@ -938,7 +914,7 @@ fn mclSliderPushForward(params: [][]const u8) !void {
             transmission_stopped, direction = stopped;
         }
     }
-    errdefer {
+    defer {
         if (transmission_stopped) |stopped_station| {
             switch (direction) {
                 .backward => stopped_station.connection.resetY(0x9) catch {},
@@ -953,10 +929,6 @@ fn mclSliderPushForward(params: [][]const u8) !void {
             try command.checkCommandInterrupt();
             try stopped_station.connection.pollX();
         }
-        switch (direction) {
-            .backward => try stopped_station.connection.resetY(0x9),
-            .forward => try stopped_station.connection.resetY(0xA),
-        }
     }
 
     const ww = try station.connection.Ww();
@@ -967,10 +939,6 @@ fn mclSliderPushForward(params: [][]const u8) !void {
     ww.*.speed_percentage = line_speeds[line_idx];
     ww.*.acceleration_percentage = line_accelerations[line_idx];
     try sendCommand(station);
-
-    if (transmission_stopped) |_| {
-        try restartTrafficTransmission(station, direction);
-    }
 }
 
 fn mclSliderPushBackward(params: [][]const u8) !void {
@@ -999,7 +967,7 @@ fn mclSliderPushBackward(params: [][]const u8) !void {
             transmission_stopped, direction = stopped;
         }
     }
-    errdefer {
+    defer {
         if (transmission_stopped) |stopped_station| {
             switch (direction) {
                 .backward => stopped_station.connection.resetY(0x9) catch {},
@@ -1014,10 +982,6 @@ fn mclSliderPushBackward(params: [][]const u8) !void {
             try command.checkCommandInterrupt();
             try stopped_station.connection.pollX();
         }
-        switch (direction) {
-            .backward => try stopped_station.connection.resetY(0x9),
-            .forward => try stopped_station.connection.resetY(0xA),
-        }
     }
 
     const ww = try station.connection.Ww();
@@ -1028,10 +992,6 @@ fn mclSliderPushBackward(params: [][]const u8) !void {
     ww.*.speed_percentage = line_speeds[line_idx];
     ww.*.acceleration_percentage = line_accelerations[line_idx];
     try sendCommand(station);
-
-    if (transmission_stopped) |_| {
-        try restartTrafficTransmission(station, direction);
-    }
 }
 
 fn mclSliderPullForward(params: [][]const u8) !void {
@@ -1059,7 +1019,7 @@ fn mclSliderPullForward(params: [][]const u8) !void {
             transmission_stopped, direction = stopped;
         }
     }
-    errdefer {
+    defer {
         if (transmission_stopped) |stopped_station| {
             switch (direction) {
                 .backward => stopped_station.connection.resetY(0x9) catch {},
@@ -1074,10 +1034,6 @@ fn mclSliderPullForward(params: [][]const u8) !void {
             try command.checkCommandInterrupt();
             try stopped_station.connection.pollX();
         }
-        switch (direction) {
-            .backward => try stopped_station.connection.resetY(0x9),
-            .forward => try stopped_station.connection.resetY(0xA),
-        }
     }
 
     const ww = try station.connection.Ww();
@@ -1088,10 +1044,6 @@ fn mclSliderPullForward(params: [][]const u8) !void {
     ww.*.speed_percentage = line_speeds[line_idx];
     ww.*.acceleration_percentage = line_accelerations[line_idx];
     try sendCommand(station);
-
-    if (transmission_stopped) |_| {
-        try restartTrafficTransmission(station, direction);
-    }
 }
 
 fn mclSliderPullBackward(params: [][]const u8) !void {
@@ -1119,7 +1071,7 @@ fn mclSliderPullBackward(params: [][]const u8) !void {
             transmission_stopped, direction = stopped;
         }
     }
-    errdefer {
+    defer {
         if (transmission_stopped) |stopped_station| {
             switch (direction) {
                 .backward => stopped_station.connection.resetY(0x9) catch {},
@@ -1134,10 +1086,6 @@ fn mclSliderPullBackward(params: [][]const u8) !void {
             try command.checkCommandInterrupt();
             try stopped_station.connection.pollX();
         }
-        switch (direction) {
-            .backward => try stopped_station.connection.resetY(0x9),
-            .forward => try stopped_station.connection.resetY(0xA),
-        }
     }
 
     const ww = try station.connection.Ww();
@@ -1148,10 +1096,6 @@ fn mclSliderPullBackward(params: [][]const u8) !void {
     ww.*.speed_percentage = line_speeds[line_idx];
     ww.*.acceleration_percentage = line_accelerations[line_idx];
     try sendCommand(station);
-
-    if (transmission_stopped) |_| {
-        try restartTrafficTransmission(station, direction);
-    }
 }
 
 fn mclSliderWaitPull(params: [][]const u8) !void {
@@ -1362,80 +1306,6 @@ fn sendCommand(station: mcl.Station) !void {
         if (!x.command_received) {
             try station.connection.resetY(0x3);
             break;
-        }
-    }
-}
-
-/// Handle traffic transmission start after slider movement command.
-fn restartTrafficTransmission(
-    station: mcl.Station,
-    direction: Direction,
-) !void {
-    std.log.debug("Restarting traffic transmission...", .{});
-    const next_station = station.next().?;
-    const ref = try station.connection.reference();
-    const next_ref = try next_station.connection.reference();
-
-    const state = ref.wr.slider_state.axis3;
-    const next_state = next_ref.wr.slider_state.axis1;
-
-    if (direction == .forward) {
-        if ((next_state == .PrevAxisAuxiliary or
-            next_state == .PrevAxisCompleted) and station.index > 0)
-        {
-            const prev_station = station.prev().?;
-            // Start traffic transmission from current station to previous
-            // station.
-            try prev_station.connection.resetY(0xA);
-            const prev_x = try prev_station.connection.X();
-            while (true) {
-                try command.checkCommandInterrupt();
-                try prev_station.connection.pollX();
-                if (!prev_x.transmission_stopped.from_next) {
-                    break;
-                }
-            }
-        } else if (state == .NextAxisAuxiliary or
-            state == .NextAxisCompleted)
-        {
-            // Start traffic transmission from previous station to current
-            // station.
-            try station.connection.resetY(0x9);
-            while (true) {
-                try command.checkCommandInterrupt();
-                try station.connection.pollX();
-                if (!ref.x.transmission_stopped.from_prev) {
-                    break;
-                }
-            }
-        }
-    } else {
-        if (state == .NextAxisAuxiliary or
-            state == .NextAxisCompleted or
-            state == .None)
-        {
-            // Start traffic transmission from current station to next station.
-            try next_station.connection.resetY(0x9);
-            while (true) {
-                try command.checkCommandInterrupt();
-                try next_station.connection.pollX();
-                if (!next_ref.x.transmission_stopped.from_prev) {
-                    break;
-                }
-            }
-        } else if (next_state == .PrevAxisAuxiliary or
-            next_state == .PrevAxisCompleted or
-            next_state == .None)
-        {
-            // Start traffic transmission from next station to current station.
-            try station.connection.resetY(0xA);
-            while (true) {
-                try command.checkCommandInterrupt();
-                try station.connection.pollX();
-                if (!ref.x.transmission_stopped.from_next) {
-                    break;
-                }
-            }
         }
     }
 }
