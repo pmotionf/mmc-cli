@@ -802,11 +802,13 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
 
     const ww = try station.connection.Ww();
     try waitCommandReady(station);
-    ww.*.command_code = .MoveSliderToAxisByPosition;
-    ww.*.command_slider_number = slider_id;
-    ww.*.target_axis_number = axis_id;
-    ww.*.speed_percentage = line_speeds[line_idx];
-    ww.*.acceleration_percentage = line_accelerations[line_idx];
+    ww.* = .{
+        .command_code = .MoveSliderToAxisByPosition,
+        .command_slider_number = slider_id,
+        .target_axis_number = axis_id,
+        .speed_percentage = line_speeds[line_idx],
+        .acceleration_percentage = line_accelerations[line_idx],
+    };
     try sendCommand(station);
 }
 
@@ -868,11 +870,13 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
 
     const ww = try station.connection.Ww();
     try waitCommandReady(station);
-    ww.*.command_code = .MoveSliderToLocationByPosition;
-    ww.*.command_slider_number = slider_id;
-    ww.*.location_distance = location;
-    ww.*.speed_percentage = line_speeds[line_idx];
-    ww.*.acceleration_percentage = line_accelerations[line_idx];
+    ww.* = .{
+        .command_code = .MoveSliderToLocationByPosition,
+        .command_slider_number = slider_id,
+        .location_distance = location,
+        .speed_percentage = line_speeds[line_idx],
+        .acceleration_percentage = line_accelerations[line_idx],
+    };
     try sendCommand(station);
 }
 
@@ -931,11 +935,13 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
 
     const ww = try station.connection.Ww();
     try waitCommandReady(station);
-    ww.*.command_code = .MoveSliderDistanceByPosition;
-    ww.*.command_slider_number = slider_id;
-    ww.*.location_distance = distance;
-    ww.*.speed_percentage = line_speeds[line_idx];
-    ww.*.acceleration_percentage = line_accelerations[line_idx];
+    ww.* = .{
+        .command_code = .MoveSliderDistanceByPosition,
+        .command_slider_number = slider_id,
+        .location_distance = distance,
+        .speed_percentage = line_speeds[line_idx],
+        .acceleration_percentage = line_accelerations[line_idx],
+    };
     try sendCommand(station);
 }
 
@@ -991,11 +997,13 @@ fn mclSliderSpdMoveAxis(params: [][]const u8) !void {
 
     const ww = try station.connection.Ww();
     try waitCommandReady(station);
-    ww.*.command_code = .MoveSliderToAxisBySpeed;
-    ww.*.command_slider_number = slider_id;
-    ww.*.target_axis_number = axis_id;
-    ww.*.speed_percentage = line_speeds[line_idx];
-    ww.*.acceleration_percentage = line_accelerations[line_idx];
+    ww.* = .{
+        .command_code = .MoveSliderToAxisBySpeed,
+        .command_slider_number = slider_id,
+        .target_axis_number = axis_id,
+        .speed_percentage = line_speeds[line_idx],
+        .acceleration_percentage = line_accelerations[line_idx],
+    };
     try sendCommand(station);
 }
 
@@ -1057,11 +1065,13 @@ fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
 
     const ww = try station.connection.Ww();
     try waitCommandReady(station);
-    ww.*.command_code = .MoveSliderToLocationBySpeed;
-    ww.*.command_slider_number = slider_id;
-    ww.*.location_distance = location;
-    ww.*.speed_percentage = line_speeds[line_idx];
-    ww.*.acceleration_percentage = line_accelerations[line_idx];
+    ww.* = .{
+        .command_code = .MoveSliderToLocationBySpeed,
+        .command_slider_number = slider_id,
+        .location_distance = location,
+        .speed_percentage = line_speeds[line_idx],
+        .acceleration_percentage = line_speeds[line_idx],
+    };
     try sendCommand(station);
 }
 
@@ -1120,11 +1130,13 @@ fn mclSliderSpdMoveDistance(params: [][]const u8) !void {
 
     const ww = try station.connection.Ww();
     try waitCommandReady(station);
-    ww.*.command_code = .MoveSliderDistanceBySpeed;
-    ww.*.command_slider_number = slider_id;
-    ww.*.location_distance = distance;
-    ww.*.speed_percentage = line_speeds[line_idx];
-    ww.*.acceleration_percentage = line_accelerations[line_idx];
+    ww.* = .{
+        .command_code = .MoveSliderDistanceBySpeed,
+        .command_slider_number = slider_id,
+        .location_distance = distance,
+        .speed_percentage = line_speeds[line_idx],
+        .acceleration_percentage = line_accelerations[line_idx],
+    };
     try sendCommand(station);
 }
 
@@ -1173,11 +1185,13 @@ fn mclSliderPushForward(params: [][]const u8) !void {
 
     const ww = try station.connection.Ww();
     try waitCommandReady(station);
-    ww.*.command_code = .PushAxisSliderForward;
-    ww.*.command_slider_number = slider_id;
-    ww.*.target_axis_number = local_axis + 1;
-    ww.*.speed_percentage = line_speeds[line_idx];
-    ww.*.acceleration_percentage = line_accelerations[line_idx];
+    ww.* = .{
+        .command_code = .PushAxisSliderForward,
+        .command_slider_number = slider_id,
+        .target_axis_number = local_axis + 1,
+        .speed_percentage = line_speeds[line_idx],
+        .acceleration_percentage = line_accelerations[line_idx],
+    };
     try sendCommand(station);
 }
 
@@ -1226,11 +1240,13 @@ fn mclSliderPushBackward(params: [][]const u8) !void {
 
     const ww = try station.connection.Ww();
     try waitCommandReady(station);
-    ww.*.command_code = .PushAxisSliderBackward;
-    ww.*.command_slider_number = slider_id;
-    ww.*.target_axis_number = local_axis + 1;
-    ww.*.speed_percentage = line_speeds[line_idx];
-    ww.*.acceleration_percentage = line_accelerations[line_idx];
+    ww.* = .{
+        .command_code = .PushAxisSliderBackward,
+        .command_slider_number = slider_id,
+        .target_axis_number = local_axis + 1,
+        .speed_percentage = line_speeds[line_idx],
+        .acceleration_percentage = line_accelerations[line_idx],
+    };
     try sendCommand(station);
 }
 
@@ -1278,11 +1294,13 @@ fn mclSliderPullForward(params: [][]const u8) !void {
 
     const ww = try station.connection.Ww();
     try waitCommandReady(station);
-    ww.*.command_code = .PullAxisSliderForward;
-    ww.*.command_slider_number = slider_id;
-    ww.*.target_axis_number = local_axis + 1;
-    ww.*.speed_percentage = line_speeds[line_idx];
-    ww.*.acceleration_percentage = line_accelerations[line_idx];
+    ww.* = .{
+        .command_code = .PullAxisSliderForward,
+        .command_slider_number = slider_id,
+        .target_axis_number = local_axis + 1,
+        .speed_percentage = line_speeds[line_idx],
+        .acceleration_percentage = line_accelerations[line_idx],
+    };
     try sendCommand(station);
 }
 
@@ -1330,11 +1348,13 @@ fn mclSliderPullBackward(params: [][]const u8) !void {
 
     const ww = try station.connection.Ww();
     try waitCommandReady(station);
-    ww.*.command_code = .PullAxisSliderBackward;
-    ww.*.command_slider_number = slider_id;
-    ww.*.target_axis_number = local_axis + 1;
-    ww.*.speed_percentage = line_speeds[line_idx];
-    ww.*.acceleration_percentage = line_accelerations[line_idx];
+    ww.* = .{
+        .command_code = .PullAxisSliderBackward,
+        .command_slider_number = slider_id,
+        .target_axis_number = local_axis + 1,
+        .speed_percentage = line_speeds[line_idx],
+        .acceleration_percentage = line_accelerations[line_idx],
+    };
     try sendCommand(station);
 }
 
@@ -1455,9 +1475,11 @@ fn mclRecoverSlider(params: [][]const u8) !void {
     const station = try line.station(station_index);
     const ww = try station.connection.Ww();
     try waitCommandReady(station);
-    ww.*.command_code = .RecoverSliderAtAxis;
-    ww.*.target_axis_number = local_axis_index + 1;
-    ww.*.command_slider_number = new_slider_id;
+    ww.* = .{
+        .command_code = .RecoverSliderAtAxis,
+        .target_axis_number = local_axis_index + 1,
+        .command_slider_number = new_slider_id,
+    };
     try sendCommand(station);
 }
 
