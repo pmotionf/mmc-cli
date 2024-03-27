@@ -762,8 +762,8 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
     ww.*.acceleration_percentage = line_accelerations[line_idx];
     try sendCommand(station);
 
-    if (transmission_stopped) |stopped_station| {
-        try restartTrafficTransmission(stopped_station, direction);
+    if (transmission_stopped) |_| {
+        try restartTrafficTransmission(station, direction);
     }
 }
 
@@ -836,8 +836,8 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
     ww.*.acceleration_percentage = line_accelerations[line_idx];
     try sendCommand(station);
 
-    if (transmission_stopped) |stopped_station| {
-        try restartTrafficTransmission(stopped_station, direction);
+    if (transmission_stopped) |_| {
+        try restartTrafficTransmission(station, direction);
     }
 }
 
@@ -907,8 +907,8 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
     ww.*.acceleration_percentage = line_accelerations[line_idx];
     try sendCommand(station);
 
-    if (transmission_stopped) |stopped_station| {
-        try restartTrafficTransmission(stopped_station, direction);
+    if (transmission_stopped) |_| {
+        try restartTrafficTransmission(station, direction);
     }
 }
 
@@ -968,8 +968,8 @@ fn mclSliderPushForward(params: [][]const u8) !void {
     ww.*.acceleration_percentage = line_accelerations[line_idx];
     try sendCommand(station);
 
-    if (transmission_stopped) |stopped_station| {
-        try restartTrafficTransmission(stopped_station, direction);
+    if (transmission_stopped) |_| {
+        try restartTrafficTransmission(station, direction);
     }
 }
 
@@ -1029,8 +1029,8 @@ fn mclSliderPushBackward(params: [][]const u8) !void {
     ww.*.acceleration_percentage = line_accelerations[line_idx];
     try sendCommand(station);
 
-    if (transmission_stopped) |stopped_station| {
-        try restartTrafficTransmission(stopped_station, direction);
+    if (transmission_stopped) |_| {
+        try restartTrafficTransmission(station, direction);
     }
 }
 
@@ -1089,8 +1089,8 @@ fn mclSliderPullForward(params: [][]const u8) !void {
     ww.*.acceleration_percentage = line_accelerations[line_idx];
     try sendCommand(station);
 
-    if (transmission_stopped) |stopped_station| {
-        try restartTrafficTransmission(stopped_station, direction);
+    if (transmission_stopped) |_| {
+        try restartTrafficTransmission(station, direction);
     }
 }
 
@@ -1149,8 +1149,8 @@ fn mclSliderPullBackward(params: [][]const u8) !void {
     ww.*.acceleration_percentage = line_accelerations[line_idx];
     try sendCommand(station);
 
-    if (transmission_stopped) |stopped_station| {
-        try restartTrafficTransmission(stopped_station, direction);
+    if (transmission_stopped) |_| {
+        try restartTrafficTransmission(station, direction);
     }
 }
 
