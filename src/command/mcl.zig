@@ -331,6 +331,57 @@ pub fn init(c: Config) !void {
         .execute = &mclSliderPosMoveDistance,
     });
     errdefer _ = command.registry.orderedRemove("MOVE_SLIDER_DISTANCE");
+    try command.registry.put("SPD_MOVE_SLIDER_AXIS", .{
+        .name = "SPD_MOVE_SLIDER_AXIS",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "slider" },
+            .{ .name = "destination axis" },
+        },
+        .short_description = "Move slider to target axis center.",
+        .long_description =
+        \\Move given slider to the center of target axis. The slider ID must be
+        \\currently recognized within the motion system. This command moves the
+        \\slider with speed profile feedback.
+        ,
+        .execute = &mclSliderSpdMoveAxis,
+    });
+    errdefer _ = command.registry.orderedRemove("SPD_MOVE_SLIDER_AXIS");
+    try command.registry.put("SPD_MOVE_SLIDER_LOCATION", .{
+        .name = "SPD_MOVE_SLIDER_LOCATION",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "slider" },
+            .{ .name = "destination location" },
+        },
+        .short_description = "Move slider to target location.",
+        .long_description =
+        \\Move given slider to target location. The slider ID must be currently
+        \\recognized within the motion system, and the target location must be
+        \\provided in millimeters as a whole or decimal number. This command
+        \\moves the slider with speed profile feedback.
+        ,
+        .execute = &mclSliderSpdMoveLocation,
+    });
+    errdefer _ = command.registry.orderedRemove("SPD_MOVE_SLIDER_LOCATION");
+    try command.registry.put("SPD_MOVE_SLIDER_DISTANCE", .{
+        .name = "SPD_MOVE_SLIDER_DISTANCE",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "slider" },
+            .{ .name = "distance" },
+        },
+        .short_description = "Move slider by a distance.",
+        .long_description =
+        \\Move given slider by a provided distance. The slider ID must be 
+        \\currently recognized within the motion system, and the distance must
+        \\be provided in millimeters as a whole or decimal number. The distance
+        \\may be negative for backward movement. This command moves the slider
+        \\with speed profile feedback.
+        ,
+        .execute = &mclSliderSpdMoveDistance,
+    });
+    errdefer _ = command.registry.orderedRemove("SPD_MOVE_SLIDER_DISTANCE");
     try command.registry.put("WAIT_MOVE_SLIDER", .{
         .name = "WAIT_MOVE_SLIDER",
         .parameters = &[_]command.Command.Parameter{
@@ -881,6 +932,195 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
     const ww = try station.connection.Ww();
     try waitCommandReady(station);
     ww.*.command_code = .MoveSliderDistanceByPosition;
+    ww.*.command_slider_number = slider_id;
+    ww.*.location_distance = distance;
+    ww.*.speed_percentage = line_speeds[line_idx];
+    ww.*.acceleration_percentage = line_accelerations[line_idx];
+    try sendCommand(station);
+}
+
+fn mclSliderSpdMoveAxis(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const slider_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
+    const axis_id: i16 = try std.fmt.parseInt(i16, params[2], 0);
+    if (slider_id < 1 or slider_id > 254) return error.InvalidSliderId;
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+    if (axis_id < 1 or axis_id > line.axes) {
+        return error.InvalidAxis;
+    }
+
+    try line.pollWr();
+    const station, const axis_index = if (try line.search(slider_id)) |t|
+        t
+    else
+        return error.SliderNotFound;
+
+    var transmission_stopped: ?mcl.Station = null;
+    var direction: mcl.Direction =
+        if (axis_id > station.index * 3 + axis_index + 1)
+        .forward
+    else
+        .backward;
+    if (station.next()) |next_station| {
+        if (try mcl.stopTrafficTransmission(
+            station,
+            next_station,
+            direction,
+        )) |stopped| {
+            transmission_stopped, direction = stopped;
+        }
+    }
+    defer {
+        if (transmission_stopped) |stopped_station| {
+            switch (direction) {
+                .backward => stopped_station.connection.resetY(0x9) catch {},
+                .forward => stopped_station.connection.resetY(0xA) catch {},
+            }
+        }
+    }
+
+    if (transmission_stopped) |stopped_station| {
+        const x = try stopped_station.connection.X();
+        while (!x.transmissionStopped(direction)) {
+            try command.checkCommandInterrupt();
+            try stopped_station.connection.pollX();
+        }
+    }
+
+    const ww = try station.connection.Ww();
+    try waitCommandReady(station);
+    ww.*.command_code = .MoveSliderToAxisBySpeed;
+    ww.*.command_slider_number = slider_id;
+    ww.*.target_axis_number = axis_id;
+    ww.*.speed_percentage = line_speeds[line_idx];
+    ww.*.acceleration_percentage = line_accelerations[line_idx];
+    try sendCommand(station);
+}
+
+fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const slider_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
+    const location_float: f32 = try std.fmt.parseFloat(f32, params[2]);
+    if (slider_id < 1 or slider_id > 254) return error.InvalidSliderId;
+
+    const location: conn.Station.Distance = .{
+        .mm = @intFromFloat(location_float),
+        .um = @intFromFloat((location_float - @trunc(location_float)) * 1000),
+    };
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+
+    try line.pollWr();
+    const station, const axis_index = if (try line.search(slider_id)) |t|
+        t
+    else
+        return error.SliderNotFound;
+
+    const wr = try station.connection.Wr();
+    var transmission_stopped: ?mcl.Station = null;
+    var direction: mcl.Direction =
+        if (location.mm > wr.sliderLocation(axis_index).mm or
+        (location.mm == wr.sliderLocation(axis_index).mm and
+        location.um > wr.sliderLocation(axis_index).um))
+        .forward
+    else
+        .backward;
+
+    if (station.next()) |next_station| {
+        if (try mcl.stopTrafficTransmission(
+            station,
+            next_station,
+            direction,
+        )) |stopped| {
+            transmission_stopped, direction = stopped;
+        }
+    }
+    defer {
+        if (transmission_stopped) |stopped_station| {
+            switch (direction) {
+                .backward => stopped_station.connection.resetY(0x9) catch {},
+                .forward => stopped_station.connection.resetY(0xA) catch {},
+            }
+        }
+    }
+
+    if (transmission_stopped) |stopped_station| {
+        const x = try stopped_station.connection.X();
+        while (!x.transmissionStopped(direction)) {
+            try command.checkCommandInterrupt();
+            try stopped_station.connection.pollX();
+        }
+    }
+
+    const ww = try station.connection.Ww();
+    try waitCommandReady(station);
+    ww.*.command_code = .MoveSliderToLocationBySpeed;
+    ww.*.command_slider_number = slider_id;
+    ww.*.location_distance = location;
+    ww.*.speed_percentage = line_speeds[line_idx];
+    ww.*.acceleration_percentage = line_accelerations[line_idx];
+    try sendCommand(station);
+}
+
+fn mclSliderSpdMoveDistance(params: [][]const u8) !void {
+    const line_name = params[0];
+    const slider_id = try std.fmt.parseInt(i16, params[1], 0);
+    const distance_float = try std.fmt.parseFloat(f32, params[2]);
+    if (slider_id < 1 or slider_id > 254) return error.InvalidSliderId;
+
+    const distance: conn.Station.Distance = .{
+        .mm = @intFromFloat(distance_float),
+        .um = @intFromFloat((distance_float - @trunc(distance_float)) * 1000),
+    };
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line = mcl.lines[line_idx];
+
+    try line.pollWr();
+    const station, _ = if (try line.search(slider_id)) |t|
+        t
+    else
+        return error.SliderNotFound;
+
+    var transmission_stopped: ?mcl.Station = null;
+    var direction: mcl.Direction =
+        if (distance.mm > 0 or (distance.mm == 0 and distance.um > 0))
+        .forward
+    else
+        .backward;
+
+    if (station.next()) |next_station| {
+        if (try mcl.stopTrafficTransmission(
+            station,
+            next_station,
+            direction,
+        )) |stopped| {
+            transmission_stopped, direction = stopped;
+        }
+    }
+    defer {
+        if (transmission_stopped) |stopped_station| {
+            switch (direction) {
+                .backward => stopped_station.connection.resetY(0x9) catch {},
+                .forward => stopped_station.connection.resetY(0xA) catch {},
+            }
+        }
+    }
+
+    if (transmission_stopped) |stopped_station| {
+        const x = try stopped_station.connection.X();
+        while (!x.transmissionStopped(direction)) {
+            try command.checkCommandInterrupt();
+            try stopped_station.connection.pollX();
+        }
+    }
+
+    const ww = try station.connection.Ww();
+    try waitCommandReady(station);
+    ww.*.command_code = .MoveSliderDistanceBySpeed;
     ww.*.command_slider_number = slider_id;
     ww.*.location_distance = distance;
     ww.*.speed_percentage = line_speeds[line_idx];
