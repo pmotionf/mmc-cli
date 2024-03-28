@@ -147,6 +147,17 @@ pub fn init(c: Config) !void {
         .execute = &mclStationX,
     });
     errdefer _ = command.registry.orderedRemove("PRINT_X");
+    try command.registry.put("PRINT_Y", .{
+        .name = "PRINT_Y",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "station" },
+        },
+        .short_description = "Poll and print the Y register of a station.",
+        .long_description = "Poll and print the Y register of a station.",
+        .execute = &mclStationY,
+    });
+    errdefer _ = command.registry.orderedRemove("PRINT_Y");
     try command.registry.put("PRINT_WR", .{
         .name = "PRINT_WR",
         .parameters = &[_]command.Command.Parameter{
@@ -157,7 +168,18 @@ pub fn init(c: Config) !void {
         .long_description = "Poll and print the Wr register of a station.",
         .execute = &mclStationWr,
     });
-    errdefer _ = command.registry.orderedRemove("PRINT_X");
+    errdefer _ = command.registry.orderedRemove("PRINT_WR");
+    try command.registry.put("PRINT_WW", .{
+        .name = "PRINT_WW",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "station" },
+        },
+        .short_description = "Poll and print the Ww register of a station.",
+        .long_description = "Poll and print the Ww register of a station.",
+        .execute = &mclStationWw,
+    });
+    errdefer _ = command.registry.orderedRemove("PRINT_WW");
     try command.registry.put("AXIS_SLIDER", .{
         .name = "AXIS_SLIDER",
         .parameters = &[_]command.Command.Parameter{
@@ -556,6 +578,25 @@ fn mclStationX(params: [][]const u8) !void {
     std.log.info("{}", .{x});
 }
 
+fn mclStationY(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const station_id = try std.fmt.parseInt(i16, params[1], 0);
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+
+    if (station_id < 1 or station_id > line.numStations()) {
+        return error.InvalidStation;
+    }
+
+    const station = try line.station(@intCast(station_id - 1));
+    const y = try station.connection.Y();
+
+    try station.connection.pollY();
+
+    std.log.info("{}", .{y});
+}
+
 fn mclStationWr(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const station_id = try std.fmt.parseInt(i16, params[1], 0);
@@ -573,6 +614,25 @@ fn mclStationWr(params: [][]const u8) !void {
     try station.connection.pollWr();
 
     std.log.info("{}", .{wr});
+}
+
+fn mclStationWw(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const station_id = try std.fmt.parseInt(i16, params[1], 0);
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+
+    if (station_id < 1 or station_id > line.numStations()) {
+        return error.InvalidStation;
+    }
+
+    const station = try line.station(@intCast(station_id - 1));
+    const ww = try station.connection.Ww();
+
+    try station.connection.pollWw();
+
+    std.log.info("{}", .{ww});
 }
 
 fn mclAxisSlider(params: [][]const u8) !void {
