@@ -1544,8 +1544,11 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
         const station, const axis_index =
             if (try line.search(slider_id)) |t|
             t
+            // Do not error here as the poll receiving CC-Link information can
+            // "move past" a backwards traveling slider during transmission, thus
+            // rendering the slider briefly invisible in the whole loop.
         else
-            return error.SliderNotFound;
+            continue;
 
         const system_axis: mcl.Line.Index = @as(
             mcl.Line.Index,
