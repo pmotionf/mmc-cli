@@ -50,8 +50,8 @@ pub fn init(c: Config) !void {
                     .connection = .{
                         .channel = range.channel,
                         .indices = .{
-                            .start = @intCast(range.start),
-                            .end = @intCast(range.start + range.length - 1),
+                            .start = @intCast(range.start - 1),
+                            .end = @intCast(range.start + range.length - 2),
                         },
                     },
                 };
