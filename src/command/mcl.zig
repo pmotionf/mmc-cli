@@ -1668,6 +1668,7 @@ fn waitCommandReady(station: mcl.Station) !void {
 
 fn sendCommand(station: mcl.Station) !void {
     const x: *conn.Station.X = try station.connection.X();
+    const wr: *conn.Station.Wr = try station.connection.Wr();
 
     std.log.debug("Sending command...", .{});
     try station.connection.sendWw();
@@ -1681,6 +1682,18 @@ fn sendCommand(station: mcl.Station) !void {
         }
     }
     try station.connection.resetY(0x2);
+
+    try station.connection.pollWr();
+    switch (wr.command_response) {
+        .NoError => {},
+        .InvalidCommand => return error.InvalidCommand,
+        .SliderNotFound => return error.SliderNotFound,
+        .HomingFailed => return error.HomingFailed,
+        .InvalidParameter => return error.InvalidParameter,
+        .InvalidSystemState => return error.InvalidSystemState,
+        .SliderAlreadyExists => return error.SliderAlreadyExists,
+        .InvalidAxis => return error.InvalidAxis,
+    }
 
     std.log.debug("Resetting command received flag...", .{});
     try station.connection.setY(0x3);
