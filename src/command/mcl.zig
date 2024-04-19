@@ -1823,16 +1823,7 @@ fn sendCommand(station: mcl.Station) !void {
     try station.connection.resetY(0x2);
 
     try station.connection.pollWr();
-    switch (wr.command_response) {
-        .NoError => {},
-        .InvalidCommand => return error.InvalidCommand,
-        .SliderNotFound => return error.SliderNotFound,
-        .HomingFailed => return error.HomingFailed,
-        .InvalidParameter => return error.InvalidParameter,
-        .InvalidSystemState => return error.InvalidSystemState,
-        .SliderAlreadyExists => return error.SliderAlreadyExists,
-        .InvalidAxis => return error.InvalidAxis,
-    }
+    const command_response = wr.command_response;
 
     std.log.debug("Resetting command received flag...", .{});
     try station.connection.setY(0x3);
@@ -1845,4 +1836,15 @@ fn sendCommand(station: mcl.Station) !void {
             break;
         }
     }
+
+    return switch (command_response) {
+        .NoError => {},
+        .InvalidCommand => error.InvalidCommand,
+        .SliderNotFound => error.SliderNotFound,
+        .HomingFailed => error.HomingFailed,
+        .InvalidParameter => error.InvalidParameter,
+        .InvalidSystemState => error.InvalidSystemState,
+        .SliderAlreadyExists => error.SliderAlreadyExists,
+        .InvalidAxis => error.InvalidAxis,
+    };
 }
