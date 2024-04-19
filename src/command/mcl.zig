@@ -881,7 +881,7 @@ fn mclIsolate(params: [][]const u8) !void {
         } else break :link null;
     };
 
-    const station = try line.axisStation(@intCast(axis_id));
+    const station = try line.axisStation(@intCast(axis_id - 1));
     const local_axis = @rem(axis_id - 1, 3);
     const y = try station.connection.Y();
 
