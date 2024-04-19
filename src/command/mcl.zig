@@ -1686,7 +1686,7 @@ fn mclRecoverSlider(params: [][]const u8) !void {
     const axis: i16 = try std.fmt.parseUnsigned(i16, params[1], 0);
     const new_slider_id: i16 = try std.fmt.parseUnsigned(i16, params[2], 0);
     if (new_slider_id < 1 or new_slider_id > 254) return error.InvalidSliderID;
-    const sensor: []const u8 = params[2];
+    const sensor: []const u8 = params[3];
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
