@@ -279,18 +279,42 @@ pub fn init(c: Config) !void {
         .execute = &mclWaitHomeSlider,
     });
     errdefer _ = command.registry.orderedRemove("WAIT_HOME_SLIDER");
+    try command.registry.put("ISOLATE", .{
+        .name = "ISOLATE",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+            .{ .name = "direction" },
+            .{ .name = "slider id", .optional = true },
+            .{ .name = "link axis", .resolve = false, .optional = true },
+        },
+        .short_description = "Isolate an uninitialized slider backwards.",
+        .long_description =
+        \\Slowly move an uninitialized slider to separate it from other nearby
+        \\sliders. A direction of "backward" or "forward" must be provided. A
+        \\slider ID can be optionally specified to give the isolated slider an
+        \\ID other than the default temporary ID 255, and the next or previous
+        \\can also be linked for isolation movement. Linked axis parameter
+        \\values must be one of "prev", "next", "left", or "right".
+        ,
+        .execute = &mclIsolate,
+    });
+    errdefer _ = command.registry.orderedRemove("ISOLATE_BACKWARD");
     try command.registry.put("RECOVER_SLIDER", .{
         .name = "RECOVER_SLIDER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
             .{ .name = "axis" },
             .{ .name = "new slider ID" },
+            .{ .name = "use sensor", .resolve = false, .optional = true },
         },
         .short_description = "Recover an unrecognized slider on a given axis.",
         .long_description =
         \\Recover an unrecognized slider on a given axis. The provided slider
         \\ID must be a positive integer from 1 to 254 inclusive, and must be
-        \\unique to other recognized slider IDs.
+        \\unique to other recognized slider IDs. If a sensor is optionally
+        \\specified for use (valid sensor values include: front, back, left,
+        \\right), recovery will use the specified hall sensor.
         ,
         .execute = &mclRecoverSlider,
     });
@@ -771,6 +795,7 @@ fn mclCalibrate(params: [][]const u8) !void {
     try waitCommandReady(station);
     const ww = try station.connection.Ww();
     ww.*.command_code = .Calibration;
+    ww.*.command_slider_number = 1;
     try sendCommand(station);
 }
 
@@ -816,6 +841,83 @@ fn mclWaitHomeSlider(params: [][]const u8) !void {
             try std.fmt.bufPrint(&int_buf, "{d}", .{slider.?}),
         );
     }
+}
+
+fn mclIsolate(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+    if (axis_id < 1 or axis_id > line.axes) {
+        return error.InvalidAxis;
+    }
+
+    const dir: Direction = dir_parse: {
+        if (std.ascii.eqlIgnoreCase("forward", params[2])) {
+            break :dir_parse .forward;
+        } else if (std.ascii.eqlIgnoreCase("backward", params[2])) {
+            break :dir_parse .backward;
+        } else {
+            return error.InvalidDirection;
+        }
+    };
+
+    const slider_id: i16 = if (params[3].len > 0)
+        try std.fmt.parseInt(i16, params[3], 0)
+    else
+        0;
+    const link_axis: ?Direction = link: {
+        if (params[4].len > 0) {
+            if (std.ascii.eqlIgnoreCase("next", params[4]) or
+                std.ascii.eqlIgnoreCase("right", params[4]))
+            {
+                break :link .forward;
+            } else if (std.ascii.eqlIgnoreCase("prev", params[4]) or
+                std.ascii.eqlIgnoreCase("left", params[4]))
+            {
+                break :link .backward;
+            } else return error.InvalidIsolateLinkAxis;
+        } else break :link null;
+    };
+
+    const station = try line.axisStation(@intCast(axis_id));
+    const local_axis = @rem(axis_id - 1, 3);
+    const y = try station.connection.Y();
+
+    const ww = try station.connection.Ww();
+    try waitCommandReady(station);
+    if (link_axis) |a| {
+        if (a == .backward) {
+            try station.connection.setY(0xD);
+            y.*.prev_axis_isolate_link = true;
+        } else {
+            try station.connection.setY(0xE);
+            y.*.next_axis_isolate_link = true;
+        }
+    }
+    defer {
+        if (link_axis) |a| {
+            if (a == .backward) {
+                if (station.connection.resetY(0xD)) {
+                    y.*.prev_axis_isolate_link = false;
+                } else |_| {}
+            } else {
+                if (station.connection.resetY(0xE)) {
+                    y.*.next_axis_isolate_link = false;
+                } else |_| {}
+            }
+        }
+    }
+    ww.* = .{
+        .command_code = if (dir == .forward)
+            .IsolateForward
+        else
+            .IsolateBackward,
+        .command_slider_number = slider_id,
+        .target_axis_number = local_axis + 1,
+    };
+    try sendCommand(station);
 }
 
 fn mclSetSpeed(params: [][]const u8) !void {
@@ -1584,6 +1686,7 @@ fn mclRecoverSlider(params: [][]const u8) !void {
     const axis: i16 = try std.fmt.parseUnsigned(i16, params[1], 0);
     const new_slider_id: i16 = try std.fmt.parseUnsigned(i16, params[2], 0);
     if (new_slider_id < 1 or new_slider_id > 254) return error.InvalidSliderID;
+    const sensor: []const u8 = params[2];
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
@@ -1591,13 +1694,49 @@ fn mclRecoverSlider(params: [][]const u8) !void {
         return error.InvalidAxis;
     }
 
+    const use_sensor: ?Direction = parse_use_sensor: {
+        if (sensor.len == 0) break :parse_use_sensor null;
+        if (std.ascii.eqlIgnoreCase("back", sensor) or
+            std.ascii.eqlIgnoreCase("left", sensor))
+        {
+            break :parse_use_sensor .backward;
+        } else if (std.ascii.eqlIgnoreCase("front", sensor) or
+            std.ascii.eqlIgnoreCase("right", sensor))
+        {
+            break :parse_use_sensor .forward;
+        } else return error.InvalidSensorSide;
+    };
+
     const axis_index: u15 = @intCast(axis - 1);
     const station_index: u8 = @intCast(axis_index / 3);
     const local_axis_index: u2 = @intCast(axis_index % 3);
 
     const station = try line.station(station_index);
     const ww = try station.connection.Ww();
+    const y = try station.connection.Y();
     try waitCommandReady(station);
+    if (use_sensor) |side| {
+        if (side == .backward) {
+            try station.connection.setY(0x13);
+            y.recovery_use_hall_sensor.back = true;
+        } else {
+            try station.connection.setY(0x14);
+            y.recovery_use_hall_sensor.front = true;
+        }
+    }
+    defer {
+        if (use_sensor) |side| {
+            if (side == .backward) {
+                if (station.connection.resetY(0x13)) {
+                    y.recovery_use_hall_sensor.back = false;
+                } else |_| {}
+            } else {
+                if (station.connection.resetY(0x14)) {
+                    y.recovery_use_hall_sensor.front = false;
+                } else |_| {}
+            }
+        }
+    }
     ww.* = .{
         .command_code = .RecoverSliderAtAxis,
         .target_axis_number = local_axis_index + 1,
