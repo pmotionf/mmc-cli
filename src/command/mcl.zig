@@ -821,7 +821,7 @@ fn mclWaitHomeSlider(params: [][]const u8) !void {
 
     const station = try line.station(0);
 
-    var slider: ?i16 = null;
+    var slider: ?u16 = null;
     const wr = try station.connection.Wr();
     while (true) {
         try command.checkCommandInterrupt();
@@ -845,11 +845,11 @@ fn mclWaitHomeSlider(params: [][]const u8) !void {
 
 fn mclIsolate(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
+    const axis_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
-    if (axis_id < 1 or axis_id > line.axes) {
+    if (axis_id == 0 or axis_id > line.axes) {
         return error.InvalidAxis;
     }
 
@@ -863,8 +863,8 @@ fn mclIsolate(params: [][]const u8) !void {
         }
     };
 
-    const slider_id: i16 = if (params[3].len > 0)
-        try std.fmt.parseInt(i16, params[3], 0)
+    const slider_id: u16 = if (params[3].len > 0)
+        try std.fmt.parseInt(u16, params[3], 0)
     else
         0;
     const link_axis: ?Direction = link: {
@@ -941,8 +941,8 @@ fn mclSetAcceleration(params: [][]const u8) !void {
 
 fn mclSliderLocation(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const slider_id = try std.fmt.parseInt(i16, params[1], 0);
-    if (slider_id < 1 or slider_id > 254) return error.InvalidSliderId;
+    const slider_id = try std.fmt.parseInt(u16, params[1], 0);
+    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
     const result_var: []const u8 = params[2];
 
     const line_idx: usize = try matchLine(line_names, line_name);
@@ -974,13 +974,13 @@ fn mclSliderLocation(params: [][]const u8) !void {
 
 fn mclSliderPosMoveAxis(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const slider_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
-    const axis_id: i16 = try std.fmt.parseInt(i16, params[2], 0);
-    if (slider_id < 1 or slider_id > 254) return error.InvalidSliderId;
+    const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
+    const axis_id: u16 = try std.fmt.parseInt(u16, params[2], 0);
+    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
-    if (axis_id < 1 or axis_id > line.axes) {
+    if (axis_id == 0 or axis_id > line.axes) {
         return error.InvalidAxis;
     }
 
@@ -1036,9 +1036,9 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
 
 fn mclSliderPosMoveLocation(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const slider_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
+    const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
     const location_float: f32 = try std.fmt.parseFloat(f32, params[2]);
-    if (slider_id < 1 or slider_id > 254) return error.InvalidSliderId;
+    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
 
     const location: conn.Station.Distance = .{
         .mm = @intFromFloat(location_float),
@@ -1104,9 +1104,9 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
 
 fn mclSliderPosMoveDistance(params: [][]const u8) !void {
     const line_name = params[0];
-    const slider_id = try std.fmt.parseInt(i16, params[1], 0);
+    const slider_id = try std.fmt.parseInt(u16, params[1], 0);
     const distance_float = try std.fmt.parseFloat(f32, params[2]);
-    if (slider_id < 1 or slider_id > 254) return error.InvalidSliderId;
+    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
 
     const distance: conn.Station.Distance = .{
         .mm = @intFromFloat(distance_float),
@@ -1169,13 +1169,13 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
 
 fn mclSliderSpdMoveAxis(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const slider_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
-    const axis_id: i16 = try std.fmt.parseInt(i16, params[2], 0);
-    if (slider_id < 1 or slider_id > 254) return error.InvalidSliderId;
+    const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
+    const axis_id: u16 = try std.fmt.parseInt(u16, params[2], 0);
+    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
-    if (axis_id < 1 or axis_id > line.axes) {
+    if (axis_id == 0 or axis_id > line.axes) {
         return error.InvalidAxis;
     }
 
@@ -1231,9 +1231,9 @@ fn mclSliderSpdMoveAxis(params: [][]const u8) !void {
 
 fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const slider_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
+    const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
     const location_float: f32 = try std.fmt.parseFloat(f32, params[2]);
-    if (slider_id < 1 or slider_id > 254) return error.InvalidSliderId;
+    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
 
     const location: conn.Station.Distance = .{
         .mm = @intFromFloat(location_float),
@@ -1299,9 +1299,9 @@ fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
 
 fn mclSliderSpdMoveDistance(params: [][]const u8) !void {
     const line_name = params[0];
-    const slider_id = try std.fmt.parseInt(i16, params[1], 0);
+    const slider_id = try std.fmt.parseInt(u16, params[1], 0);
     const distance_float = try std.fmt.parseFloat(f32, params[2]);
-    if (slider_id < 1 or slider_id > 254) return error.InvalidSliderId;
+    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
 
     const distance: conn.Station.Distance = .{
         .mm = @intFromFloat(distance_float),
@@ -1364,8 +1364,8 @@ fn mclSliderSpdMoveDistance(params: [][]const u8) !void {
 
 fn mclSliderPushForward(params: [][]const u8) !void {
     const line_name = params[0];
-    const slider_id = try std.fmt.parseInt(i16, params[1], 0);
-    if (slider_id < 1 or slider_id > 254) return error.InvalidSliderId;
+    const slider_id = try std.fmt.parseInt(u16, params[1], 0);
+    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
@@ -1419,8 +1419,8 @@ fn mclSliderPushForward(params: [][]const u8) !void {
 
 fn mclSliderPushBackward(params: [][]const u8) !void {
     const line_name = params[0];
-    const slider_id = try std.fmt.parseInt(i16, params[1], 0);
-    if (slider_id < 1 or slider_id > 254) return error.InvalidSliderId;
+    const slider_id = try std.fmt.parseInt(u16, params[1], 0);
+    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
@@ -1474,12 +1474,12 @@ fn mclSliderPushBackward(params: [][]const u8) !void {
 
 fn mclSliderPullForward(params: [][]const u8) !void {
     const line_name = params[0];
-    const axis = try std.fmt.parseInt(i16, params[1], 0);
-    const slider_id = try std.fmt.parseInt(i16, params[2], 0);
+    const axis = try std.fmt.parseInt(u16, params[1], 0);
+    const slider_id = try std.fmt.parseInt(u16, params[2], 0);
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
 
-    if (axis < 1 or axis > line.axes) return error.InvalidAxis;
+    if (axis == 0 or axis > line.axes) return error.InvalidAxis;
 
     const axis_id: u10 = @intCast(axis - 1);
     const local_axis: u2 = @intCast(axis_id % 3);
@@ -1528,12 +1528,12 @@ fn mclSliderPullForward(params: [][]const u8) !void {
 
 fn mclSliderPullBackward(params: [][]const u8) !void {
     const line_name = params[0];
-    const axis = try std.fmt.parseInt(i16, params[1], 0);
-    const slider_id = try std.fmt.parseInt(i16, params[2], 0);
+    const axis = try std.fmt.parseInt(u16, params[1], 0);
+    const slider_id = try std.fmt.parseInt(u16, params[2], 0);
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
 
-    if (axis < 1 or axis > line.axes) return error.InvalidAxis;
+    if (axis == 0 or axis > line.axes) return error.InvalidAxis;
 
     const axis_id: u10 = @intCast(axis - 1);
     const local_axis: u2 = @intCast(axis_id % 3);
@@ -1634,8 +1634,8 @@ fn mclSliderStopPull(params: [][]const u8) !void {
 
 fn mclWaitMoveSlider(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const slider_id = try std.fmt.parseInt(i16, params[1], 0);
-    if (slider_id < 1 or slider_id > 254) return error.InvalidSliderId;
+    const slider_id = try std.fmt.parseInt(u16, params[1], 0);
+    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
@@ -1683,9 +1683,10 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
 
 fn mclRecoverSlider(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis: i16 = try std.fmt.parseUnsigned(i16, params[1], 0);
-    const new_slider_id: i16 = try std.fmt.parseUnsigned(i16, params[2], 0);
-    if (new_slider_id < 1 or new_slider_id > 254) return error.InvalidSliderID;
+    const axis: u16 = try std.fmt.parseUnsigned(u16, params[1], 0);
+    const new_slider_id: u16 = try std.fmt.parseUnsigned(u16, params[2], 0);
+    if (new_slider_id == 0 or new_slider_id > 254)
+        return error.InvalidSliderID;
     const sensor: []const u8 = params[3];
 
     const line_idx: usize = try matchLine(line_names, line_name);
@@ -1747,12 +1748,12 @@ fn mclRecoverSlider(params: [][]const u8) !void {
 
 fn mclWaitRecoverSlider(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis: i16 = try std.fmt.parseUnsigned(i16, params[1], 0);
+    const axis: u16 = try std.fmt.parseUnsigned(u16, params[1], 0);
     const result_var: []const u8 = params[2];
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
-    if (axis < 1 or axis > line.axes) {
+    if (axis == 0 or axis > line.axes) {
         return error.InvalidAxis;
     }
 
@@ -1762,7 +1763,7 @@ fn mclWaitRecoverSlider(params: [][]const u8) !void {
 
     const station = try line.station(station_index);
 
-    var slider_id: i16 = undefined;
+    var slider_id: u16 = undefined;
     const wr = try station.connection.Wr();
     while (true) {
         try command.checkCommandInterrupt();
