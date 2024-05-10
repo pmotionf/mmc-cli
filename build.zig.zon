@@ -1,15 +1,15 @@
 .{
     .name = "mmc-cli",
     .version = "0.1.0",
-    .minimum_zig_version = "0.12.0-dev.3685+d06e5b434",
+    .minimum_zig_version = "0.13.0-dev.79+6bc0cef60",
     .dependencies = .{
         .network = .{
-            .url = "https://github.com/mochalins/zig-network/archive/9c2e5e0.tar.gz",
-            .hash = "122095b1af33a2fbe87af9365516e6c2d21f9f5a6725b539e03bcc6ed8df3c012f39",
+            .url = "https://github.com/mochalins/zig-network/archive/68217a4.tar.gz",
+            .hash = "122080b2675fa7fdd7410af5f62942dec99e0ea766827c8c6506e6672b575fb0a50e",
         },
         .mcl = .{
-            .url = "https://github.com/pmotionf/mcl/archive/30876e5.tar.gz",
-            .hash = "1220e3b7641bc1e7f7bd38e4f63f40d74da53c5e5074c92636b4ae7a533fdb49eb47",
+            .url = "https://github.com/pmotionf/mcl/archive/46f6364.tar.gz",
+            .hash = "12207d61cb4ecc79205b4c358eed7cc033153e8a86d0e6dd98d29c4b83953957889a",
         },
     },
     .paths = .{""},

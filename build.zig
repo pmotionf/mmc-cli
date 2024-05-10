@@ -9,9 +9,9 @@ pub fn build(b: *std.Build) !void {
         "mdfunc",
         "Specify the path to the MELSEC static library artifact.",
     ) orelse if (target.result.cpu.arch == .x86_64)
-        b.pathFromRoot("vendor/mdfunc/lib/x64/MdFunc32.lib")
+        "vendor/mdfunc/lib/x64/MdFunc32.lib"
     else
-        b.pathFromRoot("vendor/mdfunc/lib/mdfunc32.lib");
+        "vendor/mdfunc/lib/mdfunc32.lib";
 
     const mcl = b.dependency("mcl", .{
         .target = target,
@@ -22,7 +22,7 @@ pub fn build(b: *std.Build) !void {
 
     const exe = b.addExecutable(.{
         .name = "mmc-cli",
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -44,7 +44,7 @@ pub fn build(b: *std.Build) !void {
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
     const unit_tests = b.addTest(.{
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
