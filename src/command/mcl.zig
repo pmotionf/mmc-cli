@@ -38,6 +38,7 @@ pub fn init(c: Config) !void {
 
         for (c.lines, 0..) |line, i| {
             lines[i] = .{
+                .index = @intCast(i),
                 .axes = line.axes,
                 .ranges = try local_allocator.alloc(
                     mcl.Station.Range,
