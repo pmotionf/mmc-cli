@@ -680,7 +680,7 @@ fn mclAxisSlider(params: [][]const u8) !void {
 
     const station = try line.station(station_index);
     const wr: *conn.Station.Wr = try station.connection.Wr();
-    const slider_id = wr.sliderNumber(local_axis_index);
+    const slider_id = wr.slider_number.axis(local_axis_index);
 
     if (slider_id != 0) {
         std.log.info("Slider {d} on axis {d}.\n", .{ slider_id, axis_id });
@@ -722,7 +722,7 @@ fn mclAxisReleaseServo(params: [][]const u8) !void {
     while (true) {
         try command.checkCommandInterrupt();
         try station.connection.pollX();
-        if (!x.servoActive(local_axis_index)) break;
+        if (!x.servo_active.axis(local_axis_index)) break;
     }
 }
 
@@ -957,7 +957,8 @@ fn mclSliderLocation(params: [][]const u8) !void {
 
     const wr = try station.connection.Wr();
 
-    const location: conn.Station.Distance = wr.sliderLocation(axis_index);
+    const location: conn.Station.Distance =
+        wr.slider_location.axis(axis_index);
 
     std.log.info(
         "Slider {d} location: {d}.{d}mm",
@@ -1017,7 +1018,7 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
 
     if (transmission_stopped) |stopped_station| {
         const x = try stopped_station.connection.X();
-        while (!x.transmissionStopped(direction)) {
+        while (!x.transmission_stopped.from(direction)) {
             try command.checkCommandInterrupt();
             try stopped_station.connection.pollX();
         }
@@ -1058,9 +1059,9 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
     const wr = try station.connection.Wr();
     var transmission_stopped: ?mcl.Station = null;
     var direction: mcl.Direction =
-        if (location.mm > wr.sliderLocation(axis_index).mm or
-        (location.mm == wr.sliderLocation(axis_index).mm and
-        location.um > wr.sliderLocation(axis_index).um))
+        if (location.mm > wr.slider_location.axis(axis_index).mm or
+        (location.mm == wr.slider_location.axis(axis_index).mm and
+        location.um > wr.slider_location.axis(axis_index).um))
         .forward
     else
         .backward;
@@ -1085,7 +1086,7 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
 
     if (transmission_stopped) |stopped_station| {
         const x = try stopped_station.connection.X();
-        while (!x.transmissionStopped(direction)) {
+        while (!x.transmission_stopped.from(direction)) {
             try command.checkCommandInterrupt();
             try stopped_station.connection.pollX();
         }
@@ -1150,7 +1151,7 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
 
     if (transmission_stopped) |stopped_station| {
         const x = try stopped_station.connection.X();
-        while (!x.transmissionStopped(direction)) {
+        while (!x.transmission_stopped.from(direction)) {
             try command.checkCommandInterrupt();
             try stopped_station.connection.pollX();
         }
@@ -1212,7 +1213,7 @@ fn mclSliderSpdMoveAxis(params: [][]const u8) !void {
 
     if (transmission_stopped) |stopped_station| {
         const x = try stopped_station.connection.X();
-        while (!x.transmissionStopped(direction)) {
+        while (!x.transmission_stopped.from(direction)) {
             try command.checkCommandInterrupt();
             try stopped_station.connection.pollX();
         }
@@ -1253,9 +1254,9 @@ fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
     const wr = try station.connection.Wr();
     var transmission_stopped: ?mcl.Station = null;
     var direction: mcl.Direction =
-        if (location.mm > wr.sliderLocation(axis_index).mm or
-        (location.mm == wr.sliderLocation(axis_index).mm and
-        location.um > wr.sliderLocation(axis_index).um))
+        if (location.mm > wr.slider_location.axis(axis_index).mm or
+        (location.mm == wr.slider_location.axis(axis_index).mm and
+        location.um > wr.slider_location.axis(axis_index).um))
         .forward
     else
         .backward;
@@ -1280,7 +1281,7 @@ fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
 
     if (transmission_stopped) |stopped_station| {
         const x = try stopped_station.connection.X();
-        while (!x.transmissionStopped(direction)) {
+        while (!x.transmission_stopped.from(direction)) {
             try command.checkCommandInterrupt();
             try stopped_station.connection.pollX();
         }
@@ -1345,7 +1346,7 @@ fn mclSliderSpdMoveDistance(params: [][]const u8) !void {
 
     if (transmission_stopped) |stopped_station| {
         const x = try stopped_station.connection.X();
-        while (!x.transmissionStopped(direction)) {
+        while (!x.transmission_stopped.from(direction)) {
             try command.checkCommandInterrupt();
             try stopped_station.connection.pollX();
         }
@@ -1400,7 +1401,7 @@ fn mclSliderPushForward(params: [][]const u8) !void {
 
     if (transmission_stopped) |stopped_station| {
         const x = try stopped_station.connection.X();
-        while (!x.transmissionStopped(direction)) {
+        while (!x.transmission_stopped.from(direction)) {
             try command.checkCommandInterrupt();
             try stopped_station.connection.pollX();
         }
@@ -1455,7 +1456,7 @@ fn mclSliderPushBackward(params: [][]const u8) !void {
 
     if (transmission_stopped) |stopped_station| {
         const x = try stopped_station.connection.X();
-        while (!x.transmissionStopped(direction)) {
+        while (!x.transmission_stopped.from(direction)) {
             try command.checkCommandInterrupt();
             try stopped_station.connection.pollX();
         }
@@ -1509,7 +1510,7 @@ fn mclSliderPullForward(params: [][]const u8) !void {
 
     if (transmission_stopped) |stopped_station| {
         const x = try stopped_station.connection.X();
-        while (!x.transmissionStopped(direction)) {
+        while (!x.transmission_stopped.from(direction)) {
             try command.checkCommandInterrupt();
             try stopped_station.connection.pollX();
         }
@@ -1563,7 +1564,7 @@ fn mclSliderPullBackward(params: [][]const u8) !void {
 
     if (transmission_stopped) |stopped_station| {
         const x = try stopped_station.connection.X();
-        while (!x.transmissionStopped(direction)) {
+        while (!x.transmission_stopped.from(direction)) {
             try command.checkCommandInterrupt();
             try stopped_station.connection.pollX();
         }
@@ -1598,14 +1599,14 @@ fn mclSliderWaitPull(params: [][]const u8) !void {
 
     const x = try station.connection.X();
     const wr = try station.connection.Wr();
-    while (x.pullingSlider(local_axis)) {
+    while (x.pulling_slider.axis(local_axis)) {
         try command.checkCommandInterrupt();
         try station.connection.pollX();
         try station.connection.pollWr();
-        if (wr.sliderState(local_axis) == .PullForwardCompleted or
-            wr.sliderState(local_axis) == .PullBackwardCompleted) break;
-        if (wr.sliderState(local_axis) == .PullForwardFault or
-            wr.sliderState(local_axis) == .PullBackwardFault)
+        if (wr.slider_state.axis(local_axis) == .PullForwardCompleted or
+            wr.slider_state.axis(local_axis) == .PullBackwardCompleted) break;
+        if (wr.slider_state.axis(local_axis) == .PullForwardFault or
+            wr.slider_state.axis(local_axis) == .PullBackwardFault)
             return error.SliderPullError;
     }
 }
@@ -1629,7 +1630,7 @@ fn mclSliderStopPull(params: [][]const u8) !void {
     while (true) {
         try command.checkCommandInterrupt();
         try station.connection.pollX();
-        if (!x.pullingSlider(local_axis)) break;
+        if (!x.pulling_slider.axis(local_axis)) break;
     }
 }
 
@@ -1659,8 +1660,8 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
         ) * 3 + axis_index;
 
         const wr = try station.connection.Wr();
-        if (wr.sliderState(axis_index) == .PosMoveCompleted or
-            wr.sliderState(axis_index) == .SpdMoveCompleted)
+        if (wr.slider_state.axis(axis_index) == .PosMoveCompleted or
+            wr.slider_state.axis(axis_index) == .SpdMoveCompleted)
         {
             break;
         }
@@ -1671,10 +1672,10 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
                 try line.station(station.index + 1)
             else
                 station;
-            const next_wr = try next_station.connection.Wr();
-            if (next_wr.sliderNumber(next_axis_index) == slider_id and
-                (next_wr.sliderState(next_axis_index) == .PosMoveCompleted or
-                next_wr.sliderState(next_axis_index) == .SpdMoveCompleted))
+            const nwr = try next_station.connection.Wr();
+            if (nwr.slider_number.axis(next_axis_index) == slider_id and
+                (nwr.slider_state.axis(next_axis_index) == .PosMoveCompleted or
+                nwr.slider_state.axis(next_axis_index) == .SpdMoveCompleted))
             {
                 break;
             }
@@ -1770,9 +1771,9 @@ fn mclWaitRecoverSlider(params: [][]const u8) !void {
         try command.checkCommandInterrupt();
         try station.connection.pollWr();
 
-        const slider_number = wr.sliderNumber(local_axis_index);
+        const slider_number = wr.slider_number.axis(local_axis_index);
         if (slider_number != 0 and
-            wr.sliderState(local_axis_index) == .PosMoveCompleted)
+            wr.slider_state.axis(local_axis_index) == .PosMoveCompleted)
         {
             slider_id = slider_number;
             break;
