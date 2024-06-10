@@ -137,6 +137,34 @@ pub fn init(c: Config) !void {
         .execute = &mclSetAcceleration,
     });
     errdefer _ = command.registry.orderedRemove("SET_ACCELERATION");
+    try command.registry.put("GET_SPEED", .{
+        .name = "GET_SPEED",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+        },
+        .short_description = "Get the speed of slider movement for a line.",
+        .long_description =
+        \\Get the speed of slider movement for a line. The line is referenced
+        \\by its name. The speed is a whole integer number between 1 and 100,
+        \\inclusive.
+        ,
+        .execute = &mclGetSpeed,
+    });
+    errdefer _ = command.registry.orderedRemove("GET_SPEED");
+    try command.registry.put("GET_ACCELERATION", .{
+        .name = "GET_ACCELERATION",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+        },
+        .short_description = "Get the acceleration of slider movement.",
+        .long_description =
+        \\Get the acceleration of slider movement for a line. The line is
+        \\referenced by its name. The acceleration is a whole integer number
+        \\between 1 and 100, inclusive.
+        ,
+        .execute = &mclGetAcceleration,
+    });
+    errdefer _ = command.registry.orderedRemove("GET_ACCELERATION");
     try command.registry.put("PRINT_X", .{
         .name = "PRINT_X",
         .parameters = &[_]command.Command.Parameter{
@@ -938,6 +966,23 @@ fn mclSetAcceleration(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
     line_accelerations[line_idx] = @intCast(slider_acceleration);
+}
+
+fn mclGetSpeed(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    std.log.info("Line {s} speed: {d}%", .{ line_name, line_speeds[line_idx] });
+}
+
+fn mclGetAcceleration(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    std.log.info(
+        "Line {s} acceleration: {d}%",
+        .{ line_name, line_accelerations[line_idx] },
+    );
 }
 
 fn mclSliderLocation(params: [][]const u8) !void {
