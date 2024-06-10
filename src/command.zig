@@ -98,6 +98,18 @@ pub fn init() !void {
         ,
         .execute = &loadConfig,
     });
+    try registry.put("WAIT", .{
+        .name = "WAIT",
+        .parameters = &[_]Command.Parameter{
+            .{ .name = "duration", .resolve = true },
+        },
+        .short_description = "Pause program for given time in milliseconds.",
+        .long_description =
+        \\Pause command execution until the provided duration has passed in
+        \\milliseconds.
+        ,
+        .execute = &wait,
+    });
     try registry.put("SET", .{
         .name = "SET",
         .parameters = &[_]Command.Parameter{
@@ -412,6 +424,14 @@ fn loadConfig(params: [][]const u8) !void {
     }
     config.deinit();
     m_arena.deinit();
+}
+
+fn wait(params: [][]const u8) !void {
+    const duration: u32 = try std.fmt.parseInt(u32, params[0], 0);
+    var timer = try std.time.Timer.start();
+    while (timer.read() < duration * std.time.ns_per_ms) {
+        try checkCommandInterrupt();
+    }
 }
 
 fn exit(_: [][]const u8) !void {
