@@ -1,7 +1,7 @@
 .{
     .name = "mmc-cli",
-    .version = "0.1.0",
-    .minimum_zig_version = "0.13.0-dev.351+64ef45eb0",
+    .version = "0.1.1",
+    .minimum_zig_version = "0.14.0-dev.15+d4bc64038",
     .dependencies = .{
         .network = .{
             .url = "https://github.com/mochalins/zig-network/archive/68217a4.tar.gz",
