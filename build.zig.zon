@@ -8,8 +8,8 @@
             .hash = "122080b2675fa7fdd7410af5f62942dec99e0ea766827c8c6506e6672b575fb0a50e",
         },
         .mcl = .{
-            .url = "https://github.com/pmotionf/mcl/archive/82cdce9.tar.gz",
-            .hash = "1220dcf1ff1e2605dd4c98d962b915b2e36509b63798f9b65b057efcc9ce95684bb1",
+            .url = "https://github.com/pmotionf/mcl/archive/948b5ee.tar.gz",
+            .hash = "12209fe22f9145b587939f9caf10ec09610cc7059974a18349fbb13c32d8cd0b5edd",
         },
     },
     .paths = .{""},
