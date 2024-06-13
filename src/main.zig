@@ -30,12 +30,11 @@ pub fn main() !void {
     try command.init();
     defer command.deinit();
 
-    const standard_in = std.io.getStdIn();
-    var buffered_reader = std.io.bufferedReader(standard_in.reader());
+    const stdin = std.io.getStdIn();
+    var buffered_reader = std.io.bufferedReader(stdin.reader());
     const reader = buffered_reader.reader();
 
     command_loop: while (true) {
-        std.io.getStdIn().sync() catch {};
         if (command.stop.load(.monotonic)) {
             command.queueClear();
             command.stop.store(false, .monotonic);
