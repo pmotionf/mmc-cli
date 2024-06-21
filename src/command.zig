@@ -28,6 +28,8 @@ var initialized_modules: std.EnumArray(Config.Module, bool) = undefined;
 
 var command_queue: std.ArrayList(CommandString) = undefined;
 
+var timer: ?std.time.Timer = null;
+
 const CommandString = struct {
     buffer: [1024]u8,
     len: usize,
@@ -62,6 +64,7 @@ pub fn init() !void {
     variables = std.BufMap.init(allocator);
     command_queue = std.ArrayList(CommandString).init(allocator);
     stop.store(false, .monotonic);
+    timer = try std.time.Timer.start();
 
     try registry.put("HELP", .{
         .name = "HELP",
@@ -142,6 +145,26 @@ pub fn init() !void {
         \\Print all currently set variable names along with their values.
         ,
         .execute = &printVariables,
+    });
+    try registry.put("TIMER_START", .{
+        .name = "TIMER_START",
+        .short_description = "Start a monotonic system timer.",
+        .long_description =
+        \\Start monotonic system timer. Only one timer can exist per `mmc-cli`
+        \\process, thus any repeated calls to this command will simply restart
+        \\the timer. This command should be run once before `TIMER_READ`.
+        ,
+        .execute = &timerStart,
+    });
+    try registry.put("TIMER_READ", .{
+        .name = "TIMER_READ",
+        .short_description = "Read elapsed time from the system timer.",
+        .long_description =
+        \\Retreive the elapsed time from the last `TIMER_START` command. This
+        \\timer is monotonic, and hence is unaffected by changing system time
+        \\or timezone.
+        ,
+        .execute = &timerRead,
     });
     try registry.put("FILE", .{
         .name = "FILE",
@@ -365,6 +388,25 @@ fn printVariables(_: [][]const u8) !void {
     }
 }
 
+fn timerStart(_: [][]const u8) !void {
+    if (timer) |*t| {
+        t.reset();
+    } else {
+        return error.SystemTimerFailure;
+    }
+}
+
+fn timerRead(_: [][]const u8) !void {
+    if (timer) |*t| {
+        var timer_value: f64 = @floatFromInt(t.read());
+        timer_value = timer_value / std.time.ns_per_s;
+        // Only print to microsecond precision.
+        std.log.info("Timer: {d:.6}\n", .{timer_value});
+    } else {
+        return error.SystemTimerFailure;
+    }
+}
+
 fn file(params: [][]const u8) !void {
     var f = try std.fs.cwd().openFile(params[0], .{});
     var reader = f.reader();
@@ -428,8 +470,8 @@ fn loadConfig(params: [][]const u8) !void {
 
 fn wait(params: [][]const u8) !void {
     const duration: u32 = try std.fmt.parseInt(u32, params[0], 0);
-    var timer = try std.time.Timer.start();
-    while (timer.read() < duration * std.time.ns_per_ms) {
+    var wait_timer = try std.time.Timer.start();
+    while (wait_timer.read() < duration * std.time.ns_per_ms) {
         try checkCommandInterrupt();
     }
 }
