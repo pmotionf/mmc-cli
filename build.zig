@@ -27,6 +27,8 @@ pub fn build(b: *std.Build) !void {
     const network_dep = b.dependency("network", .{});
     const chrono = b.dependency("chrono", .{});
 
+    const zig_args = b.dependency("zig-args", .{});
+
     const exe = b.addExecutable(.{
         .name = "mmc-cli",
         .root_source_file = b.path("src/main.zig"),
@@ -38,6 +40,20 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.addImport("chrono", chrono.module("chrono"));
 
     b.installArtifact(exe);
+
+    const configurator = b.addExecutable(.{
+        .name = "configurator",
+        .root_source_file = b.path("src/configurator.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    configurator.root_module.addImport(
+        "network",
+        network_dep.module("network"),
+    );
+    configurator.root_module.addImport("mcl", mcl.module("mcl"));
+    configurator.root_module.addImport("args", zig_args.module("args"));
+    b.installArtifact(configurator);
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());

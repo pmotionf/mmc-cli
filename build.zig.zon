@@ -15,6 +15,10 @@
             .url = "https://github.com/pmotionf/chrono/archive/68247b6.tar.gz",
             .hash = "1220f02c4c893f04fc271b2e9e540e45cdb9595e5931148795c5577fe196746462f7",
         },
+        .@"zig-args" = .{
+            .url = "git+https://github.com/ikskuh/zig-args#03af1b6c5bfda9646a562c861055024daed5b238",
+            .hash = "1220904d2fdcd970dd0d216211d092eb3ef6da01117163cc9393ab845a1d66c029d9",
+        },
     },
     .paths = .{""},
 }
