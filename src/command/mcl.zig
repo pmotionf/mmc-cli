@@ -201,6 +201,37 @@ pub fn init(c: Config) !void {
         .execute = &mclAxisSlider,
     });
     errdefer _ = command.registry.orderedRemove("AXIS_SLIDER");
+    try command.registry.put("SLIDER_LOCATION", .{
+        .name = "SLIDER_LOCATION",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "slider" },
+            .{ .name = "result variable", .resolve = false, .optional = true },
+        },
+        .short_description = "Display a slider's location.",
+        .long_description =
+        \\Print a given slider's location if it is currently recognized in the
+        \\provided line. If a result variable name is provided, then store the
+        \\slider's location in the variable.
+        ,
+        .execute = &mclSliderLocation,
+    });
+    errdefer _ = command.registry.orderedRemove("SLIDER_LOCATION");
+    try command.registry.put("SLIDER_AXIS", .{
+        .name = "SLIDER_AXIS",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "slider" },
+        },
+        .short_description = "Display a slider's axis/axes.",
+        .long_description =
+        \\Print a given slider's axis if it is currently recognized in the
+        \\provided line. If the slider is currently recognized across two axes,
+        \\then both axes will be printed.
+        ,
+        .execute = &mclSliderAxis,
+    });
+    errdefer _ = command.registry.orderedRemove("SLIDER_AXIS");
     try command.registry.put("CLEAR_ERRORS", .{
         .name = "CLEAR_ERRORS",
         .parameters = &[_]command.Command.Parameter{
@@ -304,7 +335,7 @@ pub fn init(c: Config) !void {
         ,
         .execute = &mclIsolate,
     });
-    errdefer _ = command.registry.orderedRemove("ISOLATE_BACKWARD");
+    errdefer _ = command.registry.orderedRemove("ISOLATE");
     try command.registry.put("RECOVER_SLIDER", .{
         .name = "RECOVER_SLIDER",
         .parameters = &[_]command.Command.Parameter{
@@ -340,22 +371,6 @@ pub fn init(c: Config) !void {
         .execute = &mclWaitRecoverSlider,
     });
     errdefer _ = command.registry.orderedRemove("WAIT_RECOVER_SLIDER");
-    try command.registry.put("SLIDER_LOCATION", .{
-        .name = "SLIDER_LOCATION",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "slider" },
-            .{ .name = "result variable", .resolve = false, .optional = true },
-        },
-        .short_description = "Display a slider's location.",
-        .long_description =
-        \\Print a given slider's location if it is currently recognized in the
-        \\provided line. If a result variable name is provided, then store the
-        \\slider's location in the variable.
-        ,
-        .execute = &mclSliderLocation,
-    });
-    errdefer _ = command.registry.orderedRemove("SLIDER_LOCATION");
     try command.registry.put("MOVE_SLIDER_AXIS", .{
         .name = "MOVE_SLIDER_AXIS",
         .parameters = &[_]command.Command.Parameter{
@@ -976,6 +991,32 @@ fn mclSliderLocation(params: [][]const u8) !void {
             "{d}.{d}",
             .{ location.mm, location.um },
         ));
+    }
+}
+
+fn mclSliderAxis(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const slider_id = try std.fmt.parseInt(u16, params[1], 0);
+    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+
+    try line.pollWr();
+
+    var axis: mcl.Line.Axis.Id = 1;
+    for (line.stations) |station| {
+        for (0..3) |_local_axis| {
+            const local_axis: mcl.Station.Axis.Index = @intCast(_local_axis);
+            if (station.wr.slider_number.axis(local_axis) == slider_id) {
+                std.log.info(
+                    "Slider {d} axis: {}",
+                    .{ slider_id, axis },
+                );
+            }
+            axis += 1;
+            if (axis > line.axes) break;
+        }
     }
 }
 
