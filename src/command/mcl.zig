@@ -876,7 +876,7 @@ fn mclIsolate(params: [][]const u8) !void {
 
     const axis_index: mcl.Line.Axis.Index = @intCast(axis_id - 1);
     const station = line.stations[axis_index / 3];
-    const local_axis: mcl.Station.Axis.Index = @intCast(axis_index / 3);
+    const local_axis: mcl.Station.Axis.Index = @intCast(axis_index % 3);
 
     try waitCommandReady(station);
     if (link_axis) |a| {
