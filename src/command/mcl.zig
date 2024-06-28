@@ -1557,14 +1557,12 @@ fn mclSliderWaitPull(params: [][]const u8) !void {
     const local_axis: mcl.Station.Axis.Index = @intCast(axis_index % 3);
     const station = line.stations[axis_index / 3];
 
-    try station.setY(0x10 + @as(u6, local_axis));
-    defer station.resetY(0x10 + @as(u6, local_axis)) catch {};
-
-    while (station.x.pulling_slider.axis(local_axis)) {
+    while (true) {
         try command.checkCommandInterrupt();
         try station.pollX();
         try station.pollWr();
         const slider_state = station.wr.slider_state.axis(local_axis);
+        if (station.x.pulling_slider.axis(local_axis)) continue;
         if (slider_state == .PullForwardCompleted or
             slider_state == .PullBackwardCompleted) break;
         if (slider_state == .PullForwardFault or
