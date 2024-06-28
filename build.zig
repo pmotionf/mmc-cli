@@ -25,6 +25,7 @@ pub fn build(b: *std.Build) !void {
         .mdfunc_mock = mdfunc_mock_build,
     });
     const network_dep = b.dependency("network", .{});
+    const chrono = b.dependency("chrono", .{});
 
     const exe = b.addExecutable(.{
         .name = "mmc-cli",
@@ -34,6 +35,7 @@ pub fn build(b: *std.Build) !void {
     });
     exe.root_module.addImport("network", network_dep.module("network"));
     exe.root_module.addImport("mcl", mcl.module("mcl"));
+    exe.root_module.addImport("chrono", chrono.module("chrono"));
 
     b.installArtifact(exe);
 

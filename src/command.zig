@@ -3,6 +3,7 @@
 //! general purpose commands that facilitate easier use of the MMC CLI utility.
 
 const std = @import("std");
+const chrono = @import("chrono");
 
 // Command modules.
 const mcl = @import("command/mcl.zig");
@@ -29,6 +30,7 @@ var initialized_modules: std.EnumArray(Config.Module, bool) = undefined;
 var command_queue: std.ArrayList(CommandString) = undefined;
 
 var timer: ?std.time.Timer = null;
+var log_file: ?std.fs.File = null;
 
 const CommandString = struct {
     buffer: [1024]u8,
@@ -54,6 +56,34 @@ pub const Command = struct {
         resolve: bool = true,
     };
 };
+
+pub fn logFn(
+    comptime message_level: std.log.Level,
+    comptime scope: @TypeOf(.EnumLiteral),
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    const level_txt = comptime message_level.asText();
+    const prefix2 = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
+
+    if (log_file) |f| {
+        var bw = std.io.bufferedWriter(f.writer());
+        const writer = bw.writer();
+        writer.print(level_txt ++ prefix2 ++ format ++ "\n", args) catch return;
+        bw.flush() catch return;
+    }
+
+    const stderr = std.io.getStdErr().writer();
+    var bw = std.io.bufferedWriter(stderr);
+    const writer = bw.writer();
+
+    std.debug.lockStdErr();
+    defer std.debug.unlockStdErr();
+    nosuspend {
+        writer.print(level_txt ++ prefix2 ++ format ++ "\n", args) catch return;
+        bw.flush() catch return;
+    }
+}
 
 pub fn init() !void {
     arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -112,6 +142,13 @@ pub fn init() !void {
         \\milliseconds.
         ,
         .execute = &wait,
+    });
+    try registry.put("CLEAR", .{
+        .name = "CLEAR",
+        .parameters = &.{},
+        .short_description = "Clear visible screen output.",
+        .long_description = "Clear visible screen output.",
+        .execute = &clear,
     });
     try registry.put("SET", .{
         .name = "SET",
@@ -180,6 +217,27 @@ pub fn init() !void {
         \\enclosed in double quotes (e.g. "my file path").
         ,
         .execute = &file,
+    });
+    try registry.put("SAVE_OUTPUT", .{
+        .name = "SAVE_OUTPUT",
+        .parameters = &[_]Command.Parameter{
+            .{ .name = "mode" },
+            .{ .name = "path", .optional = true },
+        },
+        .short_description = "Save all command output after this command.",
+        .long_description =
+        \\Write all program logging that occurs after this command to a file.
+        \\The "mode" parameter can be one of three values:
+        \\  "append" - Append output to the end of the file.
+        \\  "replace" - Existing file contents are overwritten with output.
+        \\  "stop" - Output after this command is no longer written to a file.
+        \\A file path can optionally be provided to specify the output file in
+        \\cases of "append" and "replace" modes. If a path is not provided,
+        \\then a default logging file containing the current system date and
+        \\time will be created in the current working directory, in the format
+        \\"mmc-log-YYYY.MM.DD-HH.MM.SS.txt".
+        ,
+        .execute = &setLog,
     });
     try registry.put("EXIT", .{
         .name = "EXIT",
@@ -364,7 +422,7 @@ fn help(params: [][]const u8) !void {
 
 fn version(_: [][]const u8) !void {
     // TODO: Figure out better way to get version from `build.zig.zon`.
-    std.log.info("CLI Version: {s}\n", .{"0.1.1"});
+    std.log.info("CLI Version: {s}\n", .{"0.2.0"});
 }
 
 fn set(params: [][]const u8) !void {
@@ -474,6 +532,66 @@ fn wait(params: [][]const u8) !void {
     while (wait_timer.read() < duration * std.time.ns_per_ms) {
         try checkCommandInterrupt();
     }
+}
+
+fn setLog(params: [][]const u8) !void {
+    const mode_str = params[0];
+    const path = params[1];
+
+    var buf: [512]u8 = undefined;
+    const file_path = if (path.len > 0) path else p: {
+        const timestamp: u64 = @intCast(std.time.timestamp());
+        const days_since_epoch: i32 = @intCast(timestamp / std.time.s_per_day);
+        const ymd =
+            chrono.date.YearMonthDay.fromDaysSinceUnixEpoch(days_since_epoch);
+        const time_day: u32 = @intCast(timestamp % std.time.s_per_day);
+        const time = try chrono.Time.fromNumSecondsFromMidnight(time_day, 0);
+
+        break :p try std.fmt.bufPrint(
+            &buf,
+            "mmc-log-{}.{:0>2}.{:0>2}-{:0>2}.{:0>2}.{:0>2}.txt",
+            .{
+                ymd.year,
+                ymd.month.number(),
+                ymd.day,
+                time.hour(),
+                time.minute(),
+                time.second(),
+            },
+        );
+    };
+
+    std.debug.print("{s}\n", .{file_path});
+
+    if (std.ascii.eqlIgnoreCase("stop", mode_str)) {
+        if (log_file) |f| {
+            f.close();
+        }
+        log_file = null;
+    } else if (std.ascii.eqlIgnoreCase("append", mode_str)) {
+        if (log_file) |f| {
+            f.close();
+        }
+
+        log_file = try std.fs.cwd().createFile(file_path, .{
+            .truncate = false,
+        });
+    } else if (std.ascii.eqlIgnoreCase("replace", mode_str)) {
+        if (log_file) |f| {
+            f.close();
+        }
+        log_file = try std.fs.cwd().createFile(file_path, .{});
+    } else {
+        return error.InvalidSaveOutputMode;
+    }
+}
+
+fn clear(_: [][]const u8) !void {
+    const stdout = std.io.getStdOut().writer();
+    const stderr = std.io.getStdErr().writer();
+
+    try stdout.writeAll("\x1B[2J\x1B[H");
+    try stderr.writeAll("\x1B[2J\x1B[H");
 }
 
 fn exit(_: [][]const u8) !void {

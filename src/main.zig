@@ -3,6 +3,10 @@ const std = @import("std");
 const network = @import("network");
 const command = @import("command.zig");
 
+pub const std_options = .{
+    .logFn = command.logFn,
+};
+
 fn nextLine(reader: anytype, buffer: []u8) !?[]const u8 {
     const line = (try reader.readUntilDelimiterOrEof(
         buffer,
