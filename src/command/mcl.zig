@@ -232,6 +232,24 @@ pub fn init(c: Config) !void {
         .execute = &mclSliderAxis,
     });
     errdefer _ = command.registry.orderedRemove("SLIDER_AXIS");
+    try command.registry.put("ASSERT_HALL", .{
+        .name = "ASSERT_HALL",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+            .{ .name = "side" },
+            .{ .name = "on/off", .optional = true },
+        },
+        .short_description = "Check that a hall alarm is the expected state.",
+        .long_description =
+        \\Throw an error if a hall alarm is not in the specified state. Must
+        \\identify the hall alarm with line name, axis, and a side ("back" or
+        \\"front"). Can optionally specify the expected hall alarm state as
+        \\"off" or "on"; if not specified, will default to "on".
+        ,
+        .execute = &mclAssertHall,
+    });
+    errdefer _ = command.registry.orderedRemove("ASSERT_HALL");
     try command.registry.put("CLEAR_ERRORS", .{
         .name = "CLEAR_ERRORS",
         .parameters = &[_]command.Command.Parameter{
@@ -1017,6 +1035,53 @@ fn mclSliderAxis(params: [][]const u8) !void {
             axis += 1;
             if (axis > line.axes) break;
         }
+    }
+}
+
+fn mclAssertHall(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const axis = try std.fmt.parseInt(mcl.Line.Axis.Id, params[2], 0);
+    const side: mcl.Direction =
+        if (std.ascii.eqlIgnoreCase("back", params[3]) or
+        std.ascii.eqlIgnoreCase("left", params[3]))
+        .backward
+    else if (std.ascii.eqlIgnoreCase("front", params[3]) or
+        std.ascii.eqlIgnoreCase("right", params[3]))
+        .forward
+    else
+        return error.InvalidHallAlarmSide;
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+    if (axis == 0 or axis > line.axes) {
+        return error.InvalidAxis;
+    }
+
+    var alarm_on: bool = true;
+    if (params[4].len > 0) {
+        if (std.ascii.eqlIgnoreCase("off", params[4])) {
+            alarm_on = false;
+        } else if (std.ascii.eqlIgnoreCase("on", params[4])) {
+            alarm_on = true;
+        } else return error.InvalidHallAlarmState;
+    }
+
+    const station_ind: mcl.Station.Index = @intCast((axis - 1) / 3);
+    const local_axis: mcl.Station.Axis.Index = @intCast((axis - 1) % 3);
+
+    const station = line.stations[station_ind];
+    try station.pollX();
+
+    switch (side) {
+        .backward => {
+            if (station.x.hall_alarm.axis(local_axis).back != alarm_on) {
+                return error.UnexpectedHallAlarm;
+            }
+        },
+        .forward => {
+            if (station.x.hall_alarm.axis(local_axis).front != alarm_on) {
+                return error.UnexpectedHallAlarm;
+            }
+        },
     }
 }
 
