@@ -133,10 +133,13 @@ pub fn init(c: Config) !void {
         .name = "PRINT_X",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "station" },
+            .{ .name = "axis" },
         },
         .short_description = "Poll and print the X register of a station.",
-        .long_description = "Poll and print the X register of a station.",
+        .long_description =
+        \\Poll and print the X register of a station. The station X register to
+        \\be printed is determined by the provided axis.
+        ,
         .execute = &mclStationX,
     });
     errdefer _ = command.registry.orderedRemove("PRINT_X");
@@ -144,10 +147,13 @@ pub fn init(c: Config) !void {
         .name = "PRINT_Y",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "station" },
+            .{ .name = "axis" },
         },
         .short_description = "Poll and print the Y register of a station.",
-        .long_description = "Poll and print the Y register of a station.",
+        .long_description =
+        \\Poll and print the Y register of a station. The station Y register to
+        \\be printed is determined by the provided axis.
+        ,
         .execute = &mclStationY,
     });
     errdefer _ = command.registry.orderedRemove("PRINT_Y");
@@ -155,10 +161,13 @@ pub fn init(c: Config) !void {
         .name = "PRINT_WR",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "station" },
+            .{ .name = "axis" },
         },
         .short_description = "Poll and print the Wr register of a station.",
-        .long_description = "Poll and print the Wr register of a station.",
+        .long_description =
+        \\Poll and print the Wr register of a station. The station Wr register
+        \\to be printed is determined by the provided axis.
+        ,
         .execute = &mclStationWr,
     });
     errdefer _ = command.registry.orderedRemove("PRINT_WR");
@@ -166,10 +175,13 @@ pub fn init(c: Config) !void {
         .name = "PRINT_WW",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "station" },
+            .{ .name = "axis" },
         },
         .short_description = "Poll and print the Ww register of a station.",
-        .long_description = "Poll and print the Ww register of a station.",
+        .long_description =
+        \\Poll and print the Ww register of a station. The station Ww register
+        \\to be printed is determined by the provided axis.
+        ,
         .execute = &mclStationWw,
     });
     errdefer _ = command.registry.orderedRemove("PRINT_WW");
@@ -582,16 +594,18 @@ fn mclDisconnect(_: [][]const u8) !void {
 
 fn mclStationX(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const station_id = try std.fmt.parseInt(i16, params[1], 0);
+    const axis_id = try std.fmt.parseInt(i16, params[1], 0);
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
 
-    if (station_id < 1 or station_id > line.stations.len) {
-        return error.InvalidStation;
+    if (axis_id < 1 or axis_id > line.axes) {
+        return error.InvalidAxis;
     }
 
-    const station_index: Station.Index = @intCast(station_id - 1);
+    const axis: mcl.Line.Axis.Index = @intCast(axis_id - 1);
+
+    const station_index: Station.Index = @intCast(axis / 3);
     try line.stations[station_index].pollX();
 
     std.log.info("{}", .{line.stations[station_index].x});
@@ -599,16 +613,18 @@ fn mclStationX(params: [][]const u8) !void {
 
 fn mclStationY(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const station_id = try std.fmt.parseInt(i16, params[1], 0);
+    const axis_id = try std.fmt.parseInt(i16, params[1], 0);
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
 
-    if (station_id < 1 or station_id > line.stations.len) {
-        return error.InvalidStation;
+    if (axis_id < 1 or axis_id > line.axes) {
+        return error.InvalidAxis;
     }
 
-    const station_index: Station.Index = @intCast(station_id - 1);
+    const axis: mcl.Line.Axis.Index = @intCast(axis_id - 1);
+
+    const station_index: Station.Index = @intCast(axis / 3);
     try line.stations[station_index].pollY();
 
     std.log.info("{}", .{line.stations[station_index].y});
@@ -616,16 +632,18 @@ fn mclStationY(params: [][]const u8) !void {
 
 fn mclStationWr(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const station_id = try std.fmt.parseInt(i16, params[1], 0);
+    const axis_id = try std.fmt.parseInt(i16, params[1], 0);
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
 
-    if (station_id < 1 or station_id > line.stations.len) {
-        return error.InvalidStation;
+    if (axis_id < 1 or axis_id > line.axes) {
+        return error.InvalidAxis;
     }
 
-    const station_index: Station.Index = @intCast(station_id - 1);
+    const axis: mcl.Line.Axis.Index = @intCast(axis_id - 1);
+
+    const station_index: Station.Index = @intCast(axis / 3);
     try line.stations[station_index].pollWr();
 
     std.log.info("{}", .{line.stations[station_index].wr});
@@ -633,16 +651,18 @@ fn mclStationWr(params: [][]const u8) !void {
 
 fn mclStationWw(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const station_id = try std.fmt.parseInt(i16, params[1], 0);
+    const axis_id = try std.fmt.parseInt(i16, params[1], 0);
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
 
-    if (station_id < 1 or station_id > line.stations.len) {
-        return error.InvalidStation;
+    if (axis_id < 1 or axis_id > line.axes) {
+        return error.InvalidAxis;
     }
 
-    const station_index: Station.Index = @intCast(station_id - 1);
+    const axis: mcl.Line.Axis.Index = @intCast(axis_id - 1);
+
+    const station_index: Station.Index = @intCast(axis / 3);
     try line.stations[station_index].pollWw();
 
     std.log.info("{}", .{line.stations[station_index].ww});
