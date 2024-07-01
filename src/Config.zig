@@ -4,16 +4,16 @@ const std = @import("std");
 const MclConfig = @import("command/mcl.zig").Config;
 const ReturnDemo2Config = @import("command/return_demo2.zig").Config;
 
-modules: []ModuleConfig,
+modules: []Module.Config,
 
 pub const Module = enum {
     mcl,
     return_demo2,
-};
 
-const ModuleConfig = union(Module) {
-    mcl: MclConfig,
-    return_demo2: ReturnDemo2Config,
+    pub const Config = union(Module) {
+        mcl: MclConfig,
+        return_demo2: ReturnDemo2Config,
+    };
 };
 
 pub fn parse(
@@ -32,12 +32,4 @@ pub fn parse(
         &json_reader,
         .{},
     );
-}
-
-pub fn modules(self: *Config) []const ModuleConfig {
-    return self.parsed.value.modules;
-}
-
-pub fn deinit(self: *Config) void {
-    self.parsed.deinit();
 }

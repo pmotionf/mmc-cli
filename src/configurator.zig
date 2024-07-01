@@ -42,7 +42,7 @@ pub fn main() !u8 {
             options.executable_name orelse "configurator",
             stdout,
         );
-        return;
+        return 0;
     }
 
     var config: Config = .{
@@ -63,9 +63,10 @@ pub fn main() !u8 {
             .{},
         );
         defer config_file.close();
-        config = Config.parse(allocator, config_file);
+        const config_parse = try Config.parse(allocator, config_file);
+        config = config_parse.value;
     } else {
-        config.modules = try allocator.alloc(Config.Module, 1);
+        config.modules = try allocator.alloc(Config.Module.Config, 1);
         config.modules[0] = .{ .mcl = .{
             .line_names = &.{},
             .lines = &.{},
