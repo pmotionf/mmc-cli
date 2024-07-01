@@ -232,6 +232,21 @@ pub fn init(c: Config) !void {
         .execute = &mclSliderAxis,
     });
     errdefer _ = command.registry.orderedRemove("SLIDER_AXIS");
+    try command.registry.put("HALL_STATUS", .{
+        .name = "HALL_STATUS",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis", .optional = true },
+        },
+        .short_description = "Display currently active hall sensors.",
+        .long_description =
+        \\List all active hall sensors. If an axis is provided, only hall
+        \\sensors in that axis will be listed. Otherwise, all active hall
+        \\sensors in the line will be listed.
+        ,
+        .execute = &mclHallStatus,
+    });
+    errdefer _ = command.registry.orderedRemove("HALL_STATUS");
     try command.registry.put("ASSERT_HALL", .{
         .name = "ASSERT_HALL",
         .parameters = &[_]command.Command.Parameter{
@@ -1032,6 +1047,32 @@ fn mclSliderAxis(params: [][]const u8) !void {
                     .{ slider_id, axis },
                 );
             }
+            axis += 1;
+            if (axis > line.axes) break;
+        }
+    }
+}
+
+fn mclHallStatus(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+
+    try line.pollX();
+
+    var axis: mcl.Line.Axis.Id = 1;
+    for (line.stations) |station| {
+        for (0..3) |_local_axis| {
+            const local_axis: mcl.Station.Axis.Index = @intCast(_local_axis);
+            const alarms = station.x.hall_alarm.axis(local_axis);
+
+            if (alarms.back) {
+                std.log.info("Axis {} Hall Sensor: BACK - ON", .{axis});
+            }
+            if (alarms.front) {
+                std.log.info("Axis {} Hall Sensor: FRONT - ON", .{axis});
+            }
+
             axis += 1;
             if (axis > line.axes) break;
         }
