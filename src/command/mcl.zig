@@ -1141,38 +1141,30 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
     }
 
     try line.pollWr();
-    const station, const axis_index = if (try line.search(slider_id)) |t|
-        t
-    else
-        return error.SliderNotFound;
+    const station, const local_axis =
+        if (try line.search(slider_id)) |t| t else return error.SliderNotFound;
 
-    var transmission_stopped: ?Station = null;
-    var direction: mcl.Direction =
-        if (axis_id > station.index * 3 + axis_index + 1)
-        .forward
-    else
-        .backward;
-    if (station.next()) |next_station| {
-        if (try mcl.stopTrafficTransmission(
-            station,
-            next_station,
-            direction,
-        )) |stopped| {
-            transmission_stopped, direction = stopped;
-        }
-    }
-
-    if (transmission_stopped) |stopped_station| {
-        while (!stopped_station.x.transmission_stopped.to(direction)) {
-            try command.checkCommandInterrupt();
-            try stopped_station.pollX();
-        }
-    }
-
-    if (transmission_stopped) |stopped_station| {
-        switch (direction) {
-            .backward => try stopped_station.resetY(0x9),
-            .forward => try stopped_station.resetY(0xA),
+    if (local_axis == 2) {
+        const next_station = station.next();
+        if (next_station != null and
+            next_station.?.wr.slider_number.axis1 == slider_id)
+        {
+            if (try mcl.stopTrafficTransmission(
+                station,
+                next_station.?,
+            )) |stopped| {
+                var direction: Direction = undefined;
+                var stopped_station: mcl.Station = undefined;
+                stopped_station, direction = stopped;
+                while (!stopped_station.x.transmission_stopped.to(direction)) {
+                    try command.checkCommandInterrupt();
+                    try stopped_station.pollX();
+                }
+                switch (direction) {
+                    .backward => try stopped_station.resetY(0x9),
+                    .forward => try stopped_station.resetY(0xA),
+                }
+            }
         }
     }
 
@@ -1202,41 +1194,30 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
     const line: mcl.Line = mcl.lines[line_idx];
 
     try line.pollWr();
-    const station, const axis_index = if (try line.search(slider_id)) |t|
-        t
-    else
-        return error.SliderNotFound;
+    const station, const local_axis =
+        if (try line.search(slider_id)) |t| t else return error.SliderNotFound;
 
-    var transmission_stopped: ?Station = null;
-    var direction: mcl.Direction =
-        if (location.mm > station.wr.slider_location.axis(axis_index).mm or
-        (location.mm == station.wr.slider_location.axis(axis_index).mm and
-        location.um > station.wr.slider_location.axis(axis_index).um))
-        .forward
-    else
-        .backward;
-
-    if (station.next()) |next_station| {
-        if (try mcl.stopTrafficTransmission(
-            station,
-            next_station,
-            direction,
-        )) |stopped| {
-            transmission_stopped, direction = stopped;
-        }
-    }
-
-    if (transmission_stopped) |stopped_station| {
-        while (!stopped_station.x.transmission_stopped.to(direction)) {
-            try command.checkCommandInterrupt();
-            try stopped_station.pollX();
-        }
-    }
-
-    if (transmission_stopped) |stopped_station| {
-        switch (direction) {
-            .backward => try stopped_station.resetY(0x9),
-            .forward => try stopped_station.resetY(0xA),
+    if (local_axis == 2) {
+        const next_station = station.next();
+        if (next_station != null and
+            next_station.?.wr.slider_number.axis1 == slider_id)
+        {
+            if (try mcl.stopTrafficTransmission(
+                station,
+                next_station.?,
+            )) |stopped| {
+                var direction: Direction = undefined;
+                var stopped_station: mcl.Station = undefined;
+                stopped_station, direction = stopped;
+                while (!stopped_station.x.transmission_stopped.to(direction)) {
+                    try command.checkCommandInterrupt();
+                    try stopped_station.pollX();
+                }
+                switch (direction) {
+                    .backward => try stopped_station.resetY(0x9),
+                    .forward => try stopped_station.resetY(0xA),
+                }
+            }
         }
     }
 
@@ -1266,39 +1247,30 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
     const line = mcl.lines[line_idx];
 
     try line.pollWr();
-    const station, _ = if (try line.search(slider_id)) |t|
-        t
-    else
-        return error.SliderNotFound;
+    const station, const local_axis =
+        if (try line.search(slider_id)) |t| t else return error.SliderNotFound;
 
-    var transmission_stopped: ?Station = null;
-    var direction: mcl.Direction =
-        if (distance.mm > 0 or (distance.mm == 0 and distance.um > 0))
-        .forward
-    else
-        .backward;
-
-    if (station.next()) |next_station| {
-        if (try mcl.stopTrafficTransmission(
-            station,
-            next_station,
-            direction,
-        )) |stopped| {
-            transmission_stopped, direction = stopped;
-        }
-    }
-
-    if (transmission_stopped) |stopped_station| {
-        while (!stopped_station.x.transmission_stopped.to(direction)) {
-            try command.checkCommandInterrupt();
-            try stopped_station.pollX();
-        }
-    }
-
-    if (transmission_stopped) |stopped_station| {
-        switch (direction) {
-            .backward => try stopped_station.resetY(0x9),
-            .forward => try stopped_station.resetY(0xA),
+    if (local_axis == 2) {
+        const next_station = station.next();
+        if (next_station != null and
+            next_station.?.wr.slider_number.axis1 == slider_id)
+        {
+            if (try mcl.stopTrafficTransmission(
+                station,
+                next_station.?,
+            )) |stopped| {
+                var direction: Direction = undefined;
+                var stopped_station: mcl.Station = undefined;
+                stopped_station, direction = stopped;
+                while (!stopped_station.x.transmission_stopped.to(direction)) {
+                    try command.checkCommandInterrupt();
+                    try stopped_station.pollX();
+                }
+                switch (direction) {
+                    .backward => try stopped_station.resetY(0x9),
+                    .forward => try stopped_station.resetY(0xA),
+                }
+            }
         }
     }
 
@@ -1326,38 +1298,30 @@ fn mclSliderSpdMoveAxis(params: [][]const u8) !void {
     }
 
     try line.pollWr();
-    const station, const axis_index = if (try line.search(slider_id)) |t|
-        t
-    else
-        return error.SliderNotFound;
+    const station, const local_axis =
+        if (try line.search(slider_id)) |t| t else return error.SliderNotFound;
 
-    var transmission_stopped: ?Station = null;
-    var direction: mcl.Direction =
-        if (axis_id > station.index * 3 + axis_index + 1)
-        .forward
-    else
-        .backward;
-    if (station.next()) |next_station| {
-        if (try mcl.stopTrafficTransmission(
-            station,
-            next_station,
-            direction,
-        )) |stopped| {
-            transmission_stopped, direction = stopped;
-        }
-    }
-
-    if (transmission_stopped) |stopped_station| {
-        while (!stopped_station.x.transmission_stopped.to(direction)) {
-            try command.checkCommandInterrupt();
-            try stopped_station.pollX();
-        }
-    }
-
-    if (transmission_stopped) |stopped_station| {
-        switch (direction) {
-            .backward => try stopped_station.resetY(0x9),
-            .forward => try stopped_station.resetY(0xA),
+    if (local_axis == 2) {
+        const next_station = station.next();
+        if (next_station != null and
+            next_station.?.wr.slider_number.axis1 == slider_id)
+        {
+            if (try mcl.stopTrafficTransmission(
+                station,
+                next_station.?,
+            )) |stopped| {
+                var direction: Direction = undefined;
+                var stopped_station: mcl.Station = undefined;
+                stopped_station, direction = stopped;
+                while (!stopped_station.x.transmission_stopped.to(direction)) {
+                    try command.checkCommandInterrupt();
+                    try stopped_station.pollX();
+                }
+                switch (direction) {
+                    .backward => try stopped_station.resetY(0x9),
+                    .forward => try stopped_station.resetY(0xA),
+                }
+            }
         }
     }
 
@@ -1387,41 +1351,30 @@ fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
     const line: mcl.Line = mcl.lines[line_idx];
 
     try line.pollWr();
-    const station, const axis_index = if (try line.search(slider_id)) |t|
-        t
-    else
-        return error.SliderNotFound;
+    const station, const local_axis =
+        if (try line.search(slider_id)) |t| t else return error.SliderNotFound;
 
-    var transmission_stopped: ?Station = null;
-    var direction: mcl.Direction =
-        if (location.mm > station.wr.slider_location.axis(axis_index).mm or
-        (location.mm == station.wr.slider_location.axis(axis_index).mm and
-        location.um > station.wr.slider_location.axis(axis_index).um))
-        .forward
-    else
-        .backward;
-
-    if (station.next()) |next_station| {
-        if (try mcl.stopTrafficTransmission(
-            station,
-            next_station,
-            direction,
-        )) |stopped| {
-            transmission_stopped, direction = stopped;
-        }
-    }
-
-    if (transmission_stopped) |stopped_station| {
-        while (!stopped_station.x.transmission_stopped.to(direction)) {
-            try command.checkCommandInterrupt();
-            try stopped_station.pollX();
-        }
-    }
-
-    if (transmission_stopped) |stopped_station| {
-        switch (direction) {
-            .backward => try stopped_station.resetY(0x9),
-            .forward => try stopped_station.resetY(0xA),
+    if (local_axis == 2) {
+        const next_station = station.next();
+        if (next_station != null and
+            next_station.?.wr.slider_number.axis1 == slider_id)
+        {
+            if (try mcl.stopTrafficTransmission(
+                station,
+                next_station.?,
+            )) |stopped| {
+                var direction: Direction = undefined;
+                var stopped_station: mcl.Station = undefined;
+                stopped_station, direction = stopped;
+                while (!stopped_station.x.transmission_stopped.to(direction)) {
+                    try command.checkCommandInterrupt();
+                    try stopped_station.pollX();
+                }
+                switch (direction) {
+                    .backward => try stopped_station.resetY(0x9),
+                    .forward => try stopped_station.resetY(0xA),
+                }
+            }
         }
     }
 
@@ -1451,39 +1404,30 @@ fn mclSliderSpdMoveDistance(params: [][]const u8) !void {
     const line = mcl.lines[line_idx];
 
     try line.pollWr();
-    const station, _ = if (try line.search(slider_id)) |t|
-        t
-    else
-        return error.SliderNotFound;
+    const station, const local_axis =
+        if (try line.search(slider_id)) |t| t else return error.SliderNotFound;
 
-    var transmission_stopped: ?Station = null;
-    var direction: mcl.Direction =
-        if (distance.mm > 0 or (distance.mm == 0 and distance.um > 0))
-        .forward
-    else
-        .backward;
-
-    if (station.next()) |next_station| {
-        if (try mcl.stopTrafficTransmission(
-            station,
-            next_station,
-            direction,
-        )) |stopped| {
-            transmission_stopped, direction = stopped;
-        }
-    }
-
-    if (transmission_stopped) |stopped_station| {
-        while (!stopped_station.x.transmission_stopped.to(direction)) {
-            try command.checkCommandInterrupt();
-            try stopped_station.pollX();
-        }
-    }
-
-    if (transmission_stopped) |stopped_station| {
-        switch (direction) {
-            .backward => try stopped_station.resetY(0x9),
-            .forward => try stopped_station.resetY(0xA),
+    if (local_axis == 2) {
+        const next_station = station.next();
+        if (next_station != null and
+            next_station.?.wr.slider_number.axis1 == slider_id)
+        {
+            if (try mcl.stopTrafficTransmission(
+                station,
+                next_station.?,
+            )) |stopped| {
+                var direction: Direction = undefined;
+                var stopped_station: mcl.Station = undefined;
+                stopped_station, direction = stopped;
+                while (!stopped_station.x.transmission_stopped.to(direction)) {
+                    try command.checkCommandInterrupt();
+                    try stopped_station.pollX();
+                }
+                switch (direction) {
+                    .backward => try stopped_station.resetY(0x9),
+                    .forward => try stopped_station.resetY(0xA),
+                }
+            }
         }
     }
 
@@ -1507,35 +1451,30 @@ fn mclSliderPushForward(params: [][]const u8) !void {
     const line = mcl.lines[line_idx];
 
     try line.pollWr();
-    const station, const local_axis = if (try line.search(slider_id)) |t|
-        t
-    else
-        return error.SliderNotFound;
+    const station, const local_axis =
+        if (try line.search(slider_id)) |t| t else return error.SliderNotFound;
 
-    var transmission_stopped: ?Station = null;
-    var direction: mcl.Direction = .forward;
-
-    if (station.next()) |next_station| {
-        if (try mcl.stopTrafficTransmission(
-            station,
-            next_station,
-            direction,
-        )) |stopped| {
-            transmission_stopped, direction = stopped;
-        }
-    }
-
-    if (transmission_stopped) |stopped_station| {
-        while (!stopped_station.x.transmission_stopped.to(direction)) {
-            try command.checkCommandInterrupt();
-            try stopped_station.pollX();
-        }
-    }
-
-    if (transmission_stopped) |stopped_station| {
-        switch (direction) {
-            .backward => try stopped_station.resetY(0x9),
-            .forward => try stopped_station.resetY(0xA),
+    if (local_axis == 2) {
+        const next_station = station.next();
+        if (next_station != null and
+            next_station.?.wr.slider_number.axis1 == slider_id)
+        {
+            if (try mcl.stopTrafficTransmission(
+                station,
+                next_station.?,
+            )) |stopped| {
+                var direction: Direction = undefined;
+                var stopped_station: mcl.Station = undefined;
+                stopped_station, direction = stopped;
+                while (!stopped_station.x.transmission_stopped.to(direction)) {
+                    try command.checkCommandInterrupt();
+                    try stopped_station.pollX();
+                }
+                switch (direction) {
+                    .backward => try stopped_station.resetY(0x9),
+                    .forward => try stopped_station.resetY(0xA),
+                }
+            }
         }
     }
 
@@ -1559,35 +1498,30 @@ fn mclSliderPushBackward(params: [][]const u8) !void {
     const line = mcl.lines[line_idx];
 
     try line.pollWr();
-    const station, const local_axis = if (try line.search(slider_id)) |t|
-        t
-    else
-        return error.SliderNotFound;
+    const station, const local_axis =
+        if (try line.search(slider_id)) |t| t else return error.SliderNotFound;
 
-    var transmission_stopped: ?Station = null;
-    var direction: mcl.Direction = .backward;
-
-    if (station.next()) |next_station| {
-        if (try mcl.stopTrafficTransmission(
-            station,
-            next_station,
-            direction,
-        )) |stopped| {
-            transmission_stopped, direction = stopped;
-        }
-    }
-
-    if (transmission_stopped) |stopped_station| {
-        while (!stopped_station.x.transmission_stopped.to(direction)) {
-            try command.checkCommandInterrupt();
-            try stopped_station.pollX();
-        }
-    }
-
-    if (transmission_stopped) |stopped_station| {
-        switch (direction) {
-            .backward => try stopped_station.resetY(0x9),
-            .forward => try stopped_station.resetY(0xA),
+    if (local_axis == 2) {
+        const next_station = station.next();
+        if (next_station != null and
+            next_station.?.wr.slider_number.axis1 == slider_id)
+        {
+            if (try mcl.stopTrafficTransmission(
+                station,
+                next_station.?,
+            )) |stopped| {
+                var direction: Direction = undefined;
+                var stopped_station: mcl.Station = undefined;
+                stopped_station, direction = stopped;
+                while (!stopped_station.x.transmission_stopped.to(direction)) {
+                    try command.checkCommandInterrupt();
+                    try stopped_station.pollX();
+                }
+                switch (direction) {
+                    .backward => try stopped_station.resetY(0x9),
+                    .forward => try stopped_station.resetY(0xA),
+                }
+            }
         }
     }
 
@@ -1615,30 +1549,27 @@ fn mclSliderPullForward(params: [][]const u8) !void {
     const local_axis: mcl.Station.Axis.Index = @intCast(axis_index % 3);
     const station = line.stations[axis_index / 3];
 
-    var transmission_stopped: ?Station = null;
-    var direction: mcl.Direction = .forward;
-
-    if (station.next()) |next_station| {
-        if (try mcl.stopTrafficTransmission(
-            station,
-            next_station,
-            direction,
-        )) |stopped| {
-            transmission_stopped, direction = stopped;
-        }
-    }
-
-    if (transmission_stopped) |stopped_station| {
-        while (!stopped_station.x.transmission_stopped.to(direction)) {
-            try command.checkCommandInterrupt();
-            try stopped_station.pollX();
-        }
-    }
-
-    if (transmission_stopped) |stopped_station| {
-        switch (direction) {
-            .backward => try stopped_station.resetY(0x9),
-            .forward => try stopped_station.resetY(0xA),
+    if (local_axis == 2) {
+        const next_station = station.next();
+        if (next_station != null and
+            next_station.?.wr.slider_number.axis1 == slider_id)
+        {
+            if (try mcl.stopTrafficTransmission(
+                station,
+                next_station.?,
+            )) |stopped| {
+                var direction: Direction = undefined;
+                var stopped_station: mcl.Station = undefined;
+                stopped_station, direction = stopped;
+                while (!stopped_station.x.transmission_stopped.to(direction)) {
+                    try command.checkCommandInterrupt();
+                    try stopped_station.pollX();
+                }
+                switch (direction) {
+                    .backward => try stopped_station.resetY(0x9),
+                    .forward => try stopped_station.resetY(0xA),
+                }
+            }
         }
     }
 
@@ -1666,30 +1597,27 @@ fn mclSliderPullBackward(params: [][]const u8) !void {
     const local_axis: mcl.Station.Axis.Index = @intCast(axis_index % 3);
     const station = line.stations[axis_index / 3];
 
-    var transmission_stopped: ?Station = null;
-    var direction: mcl.Direction = .backward;
-
-    if (station.next()) |next_station| {
-        if (try mcl.stopTrafficTransmission(
-            station,
-            next_station,
-            direction,
-        )) |stopped| {
-            transmission_stopped, direction = stopped;
-        }
-    }
-
-    if (transmission_stopped) |stopped_station| {
-        while (!stopped_station.x.transmission_stopped.to(direction)) {
-            try command.checkCommandInterrupt();
-            try stopped_station.pollX();
-        }
-    }
-
-    if (transmission_stopped) |stopped_station| {
-        switch (direction) {
-            .backward => try stopped_station.resetY(0x9),
-            .forward => try stopped_station.resetY(0xA),
+    if (local_axis == 2) {
+        const next_station = station.next();
+        if (next_station != null and
+            next_station.?.wr.slider_number.axis1 == slider_id)
+        {
+            if (try mcl.stopTrafficTransmission(
+                station,
+                next_station.?,
+            )) |stopped| {
+                var direction: Direction = undefined;
+                var stopped_station: mcl.Station = undefined;
+                stopped_station, direction = stopped;
+                while (!stopped_station.x.transmission_stopped.to(direction)) {
+                    try command.checkCommandInterrupt();
+                    try stopped_station.pollX();
+                }
+                switch (direction) {
+                    .backward => try stopped_station.resetY(0x9),
+                    .forward => try stopped_station.resetY(0xA),
+                }
+            }
         }
     }
 
