@@ -505,11 +505,13 @@ fn loadConfig(params: [][]const u8) !void {
     const config_file = try std.fs.cwd().openFile(file_path, .{});
     var m_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     const m_allocator = m_arena.allocator();
-    var config = try Config.parse(m_allocator, config_file);
+    const parsed_config = try Config.parse(m_allocator, config_file);
+    defer parsed_config.deinit();
+    const config = parsed_config.value;
 
     // Initialize only the modules specified in config file.
     const fields = @typeInfo(Config.Module).Enum.fields;
-    for (config.modules()) |module| {
+    for (config.modules) |module| {
         switch (@intFromEnum(module)) {
             inline 0...fields.len - 1 => |i| {
                 try @field(@This(), fields[i].name).init(
@@ -522,7 +524,6 @@ fn loadConfig(params: [][]const u8) !void {
             },
         }
     }
-    config.deinit();
     m_arena.deinit();
 }
 
