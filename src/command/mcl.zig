@@ -1118,19 +1118,18 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
             transmission_stopped, direction = stopped;
         }
     }
-    defer {
-        if (transmission_stopped) |stopped_station| {
-            switch (direction) {
-                .backward => stopped_station.resetY(0x9) catch {},
-                .forward => stopped_station.resetY(0xA) catch {},
-            }
+
+    if (transmission_stopped) |stopped_station| {
+        while (!stopped_station.x.transmission_stopped.to(direction)) {
+            try command.checkCommandInterrupt();
+            try stopped_station.pollX();
         }
     }
 
     if (transmission_stopped) |stopped_station| {
-        while (!stopped_station.x.transmission_stopped.from(direction)) {
-            try command.checkCommandInterrupt();
-            try stopped_station.pollX();
+        switch (direction) {
+            .backward => try stopped_station.resetY(0x9),
+            .forward => try stopped_station.resetY(0xA),
         }
     }
 
@@ -1183,19 +1182,18 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
             transmission_stopped, direction = stopped;
         }
     }
-    defer {
-        if (transmission_stopped) |stopped_station| {
-            switch (direction) {
-                .backward => stopped_station.resetY(0x9) catch {},
-                .forward => stopped_station.resetY(0xA) catch {},
-            }
+
+    if (transmission_stopped) |stopped_station| {
+        while (!stopped_station.x.transmission_stopped.to(direction)) {
+            try command.checkCommandInterrupt();
+            try stopped_station.pollX();
         }
     }
 
     if (transmission_stopped) |stopped_station| {
-        while (!stopped_station.x.transmission_stopped.from(direction)) {
-            try command.checkCommandInterrupt();
-            try stopped_station.pollX();
+        switch (direction) {
+            .backward => try stopped_station.resetY(0x9),
+            .forward => try stopped_station.resetY(0xA),
         }
     }
 
@@ -1246,19 +1244,18 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
             transmission_stopped, direction = stopped;
         }
     }
-    defer {
-        if (transmission_stopped) |stopped_station| {
-            switch (direction) {
-                .backward => stopped_station.resetY(0x9) catch {},
-                .forward => stopped_station.resetY(0xA) catch {},
-            }
+
+    if (transmission_stopped) |stopped_station| {
+        while (!stopped_station.x.transmission_stopped.to(direction)) {
+            try command.checkCommandInterrupt();
+            try stopped_station.pollX();
         }
     }
 
     if (transmission_stopped) |stopped_station| {
-        while (!stopped_station.x.transmission_stopped.from(direction)) {
-            try command.checkCommandInterrupt();
-            try stopped_station.pollX();
+        switch (direction) {
+            .backward => try stopped_station.resetY(0x9),
+            .forward => try stopped_station.resetY(0xA),
         }
     }
 
@@ -1306,19 +1303,18 @@ fn mclSliderSpdMoveAxis(params: [][]const u8) !void {
             transmission_stopped, direction = stopped;
         }
     }
-    defer {
-        if (transmission_stopped) |stopped_station| {
-            switch (direction) {
-                .backward => stopped_station.resetY(0x9) catch {},
-                .forward => stopped_station.resetY(0xA) catch {},
-            }
+
+    if (transmission_stopped) |stopped_station| {
+        while (!stopped_station.x.transmission_stopped.to(direction)) {
+            try command.checkCommandInterrupt();
+            try stopped_station.pollX();
         }
     }
 
     if (transmission_stopped) |stopped_station| {
-        while (!stopped_station.x.transmission_stopped.from(direction)) {
-            try command.checkCommandInterrupt();
-            try stopped_station.pollX();
+        switch (direction) {
+            .backward => try stopped_station.resetY(0x9),
+            .forward => try stopped_station.resetY(0xA),
         }
     }
 
@@ -1371,19 +1367,18 @@ fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
             transmission_stopped, direction = stopped;
         }
     }
-    defer {
-        if (transmission_stopped) |stopped_station| {
-            switch (direction) {
-                .backward => stopped_station.resetY(0x9) catch {},
-                .forward => stopped_station.resetY(0xA) catch {},
-            }
+
+    if (transmission_stopped) |stopped_station| {
+        while (!stopped_station.x.transmission_stopped.to(direction)) {
+            try command.checkCommandInterrupt();
+            try stopped_station.pollX();
         }
     }
 
     if (transmission_stopped) |stopped_station| {
-        while (!stopped_station.x.transmission_stopped.from(direction)) {
-            try command.checkCommandInterrupt();
-            try stopped_station.pollX();
+        switch (direction) {
+            .backward => try stopped_station.resetY(0x9),
+            .forward => try stopped_station.resetY(0xA),
         }
     }
 
@@ -1434,19 +1429,18 @@ fn mclSliderSpdMoveDistance(params: [][]const u8) !void {
             transmission_stopped, direction = stopped;
         }
     }
-    defer {
-        if (transmission_stopped) |stopped_station| {
-            switch (direction) {
-                .backward => stopped_station.resetY(0x9) catch {},
-                .forward => stopped_station.resetY(0xA) catch {},
-            }
+
+    if (transmission_stopped) |stopped_station| {
+        while (!stopped_station.x.transmission_stopped.to(direction)) {
+            try command.checkCommandInterrupt();
+            try stopped_station.pollX();
         }
     }
 
     if (transmission_stopped) |stopped_station| {
-        while (!stopped_station.x.transmission_stopped.from(direction)) {
-            try command.checkCommandInterrupt();
-            try stopped_station.pollX();
+        switch (direction) {
+            .backward => try stopped_station.resetY(0x9),
+            .forward => try stopped_station.resetY(0xA),
         }
     }
 
@@ -1487,19 +1481,18 @@ fn mclSliderPushForward(params: [][]const u8) !void {
             transmission_stopped, direction = stopped;
         }
     }
-    defer {
-        if (transmission_stopped) |stopped_station| {
-            switch (direction) {
-                .backward => stopped_station.resetY(0x9) catch {},
-                .forward => stopped_station.resetY(0xA) catch {},
-            }
+
+    if (transmission_stopped) |stopped_station| {
+        while (!stopped_station.x.transmission_stopped.to(direction)) {
+            try command.checkCommandInterrupt();
+            try stopped_station.pollX();
         }
     }
 
     if (transmission_stopped) |stopped_station| {
-        while (!stopped_station.x.transmission_stopped.from(direction)) {
-            try command.checkCommandInterrupt();
-            try stopped_station.pollX();
+        switch (direction) {
+            .backward => try stopped_station.resetY(0x9),
+            .forward => try stopped_station.resetY(0xA),
         }
     }
 
@@ -1540,19 +1533,18 @@ fn mclSliderPushBackward(params: [][]const u8) !void {
             transmission_stopped, direction = stopped;
         }
     }
-    defer {
-        if (transmission_stopped) |stopped_station| {
-            switch (direction) {
-                .backward => stopped_station.resetY(0x9) catch {},
-                .forward => stopped_station.resetY(0xA) catch {},
-            }
+
+    if (transmission_stopped) |stopped_station| {
+        while (!stopped_station.x.transmission_stopped.to(direction)) {
+            try command.checkCommandInterrupt();
+            try stopped_station.pollX();
         }
     }
 
     if (transmission_stopped) |stopped_station| {
-        while (!stopped_station.x.transmission_stopped.from(direction)) {
-            try command.checkCommandInterrupt();
-            try stopped_station.pollX();
+        switch (direction) {
+            .backward => try stopped_station.resetY(0x9),
+            .forward => try stopped_station.resetY(0xA),
         }
     }
 
@@ -1592,19 +1584,18 @@ fn mclSliderPullForward(params: [][]const u8) !void {
             transmission_stopped, direction = stopped;
         }
     }
-    defer {
-        if (transmission_stopped) |stopped_station| {
-            switch (direction) {
-                .backward => stopped_station.resetY(0x9) catch {},
-                .forward => stopped_station.resetY(0xA) catch {},
-            }
+
+    if (transmission_stopped) |stopped_station| {
+        while (!stopped_station.x.transmission_stopped.to(direction)) {
+            try command.checkCommandInterrupt();
+            try stopped_station.pollX();
         }
     }
 
     if (transmission_stopped) |stopped_station| {
-        while (!stopped_station.x.transmission_stopped.from(direction)) {
-            try command.checkCommandInterrupt();
-            try stopped_station.pollX();
+        switch (direction) {
+            .backward => try stopped_station.resetY(0x9),
+            .forward => try stopped_station.resetY(0xA),
         }
     }
 
@@ -1644,19 +1635,18 @@ fn mclSliderPullBackward(params: [][]const u8) !void {
             transmission_stopped, direction = stopped;
         }
     }
-    defer {
-        if (transmission_stopped) |stopped_station| {
-            switch (direction) {
-                .backward => stopped_station.resetY(0x9) catch {},
-                .forward => stopped_station.resetY(0xA) catch {},
-            }
+
+    if (transmission_stopped) |stopped_station| {
+        while (!stopped_station.x.transmission_stopped.to(direction)) {
+            try command.checkCommandInterrupt();
+            try stopped_station.pollX();
         }
     }
 
     if (transmission_stopped) |stopped_station| {
-        while (!stopped_station.x.transmission_stopped.from(direction)) {
-            try command.checkCommandInterrupt();
-            try stopped_station.pollX();
+        switch (direction) {
+            .backward => try stopped_station.resetY(0x9),
+            .forward => try stopped_station.resetY(0xA),
         }
     }
 
