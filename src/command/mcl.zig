@@ -627,6 +627,9 @@ fn mclConnect(_: [][]const u8) !void {
     for (mcl.lines) |line| {
         for (line.y) |*y| {
             y.cc_link_enable = true;
+            for (line.stations) |station| {
+                try station.send();
+            }
         }
     }
 }
@@ -635,6 +638,9 @@ fn mclDisconnect(_: [][]const u8) !void {
     for (mcl.lines) |line| {
         for (line.y) |*y| {
             y.cc_link_enable = false;
+            for (line.stations) |station| {
+                try station.send();
+            }
         }
     }
     try mcl.close();
