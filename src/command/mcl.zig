@@ -625,22 +625,18 @@ fn mclVersion(_: [][]const u8) !void {
 fn mclConnect(_: [][]const u8) !void {
     try mcl.open();
     for (mcl.lines) |line| {
-        for (line.y) |*y| {
-            y.cc_link_enable = true;
-            for (line.stations) |station| {
-                try station.send();
-            }
+        for (line.stations) |station| {
+            station.y.cc_link_enable = true;
+            try station.send();
         }
     }
 }
 
 fn mclDisconnect(_: [][]const u8) !void {
     for (mcl.lines) |line| {
-        for (line.y) |*y| {
-            y.cc_link_enable = false;
-            for (line.stations) |station| {
-                try station.send();
-            }
+        for (line.stations) |station| {
+            station.y.cc_link_enable = false;
+            try station.send();
         }
     }
     try mcl.close();
