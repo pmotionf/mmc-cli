@@ -31,7 +31,7 @@ const Options = struct {
 
 const Process = struct {
     name: []const u8,
-    cmd: fn (args: [][]const u8, param: anytype) !void = undefined, //returning 1 means there was some error, so run the command again. If 0 is returned, then the "command loop" is exited,
+    cmd: fn (args: [][]const u8, param: anytype) ProcessError!void = undefined, //returning 1 means there was some error, so run the command again. If 0 is returned, then the "command loop" is exited,
     help: []const u8 = undefined,
 };
 
@@ -53,12 +53,12 @@ fn runProcess(cmd: Process, param: anytype) !void {
         if (std.mem.eql(u8, cmd_name, cmd.name)) {
             const cmd_args = std.mem.splitSequence(u8, input, " ")[1..];
 
-            try cmd.cmd(cmd_args, param) catch
-            if (cmd.cmd(cmd_args, param) == 0) {
+            if(cmd.cmd(args, param)) |_|{
                 break;
-            } else {
+            }else |err|{
                 continue;
             }
+
         } else {
             try stdout.print("Command name is {s}.\n", .{cmd.name});
             continue;
@@ -120,22 +120,22 @@ pub fn main() !u8 {
         .name = "range",
         .help = "range <range#> <channel, start, length>",
         .cmd = struct {
-            fn editRangeData(arg: [][]const u8, line: anytype) u8 {
+            fn editRangeData(arg: [][]const u8, line: anytype) ProcessError!void {
                 if (arg.len != 2) {
                     try stdout.print("Format must be: {s}\n", .{"TODO: add help message here"});
-                    return 1;
+                    return ProcessError.WrongFormat;
                 }
 
                 const range_num = std.fmt.parseUnsigned(u32, arg[0], 10) - 1 catch {
                     try stdout.print("Please input a number for the range.\n", .{});
-                    return 1;
+                    return ProcessError.NotANumber;
                 };
 
                 const mod = arg[1];
 
                 if (range_num < 0 or range_num >= line.*.ranges.len) {
                     try stdout.print("Range number must be between 1 and {d}", .{line.*.ranges.len});
-                    return 1;
+                    return ProcessError.OutOfRange;
                 }
 
                 if (std.mem.eql(u8, mod, "channel")) {
@@ -144,28 +144,28 @@ pub fn main() !u8 {
                     line.*.ranges.channel = "cc_link_" ++ new_channel ++ "slot";
 
                     try stdout.print("Range #{d} channel name changed to {s}\n", .{ range_num, line.*.ranges.channel });
-                    return 0;
+                    return;
                 } else if (std.mem.eql(u8, mod, "start")) {
                     const new_start = std.fmt.parseUnsigned(u32, try readInput("Please input a new start #.")) catch {
                         try stdout.print("Please input a number for the start #.", .{});
-                        return 1;
+                        return ProcessError.NotANumber;
                     };
 
                     line.*.ranges.start = new_start;
                     try stdout.print("Range #{d} start # changed to {d}\n", .{ range_num, new_start });
-                    return 0;
+                    return;
                 } else if (std.mem.eql(u8, mod, "start")) {
                     const new_length = std.fmt.parseUnsigned(u32, try readInput("Please input a new length.")) catch {
                         try stdout.print("Please input a number for the length #.", .{});
-                        return 1;
+                        return ProcessError.NotANumber;
                     };
 
                     line.*.ranges.length = new_length;
                     try stdout.print("Range #{d} length # changed to {d}\n", .{ range_num, new_length });
-                    return 0;
+                    return;
                 } else {
                     try stdout.print("Second argument must be channel, start, or length.\n", .{});
-                    return 1;
+                    return ProcessError.WrongFormat;
                 }
             }
         }.editRangeData,
@@ -175,15 +175,15 @@ pub fn main() !u8 {
         .name = "line",
         .help = "line <line#> <name, axes, ranges>", //TODO: make the help message print out the informations about the existing lines.
         .cmd = struct {
-            fn editLineData(arg: [][]const u8, con: anytype) u8 {
+            fn editLineData(arg: [][]const u8, con: anytype) ProcessError!void {
                 if (arg.len != 2) {
                     try stdout.print("Format must be: {s}\n", .{"TODO: add help message here"});
-                    return 1;
+                    return ProcessError.WrongFormat;
                 }
 
                 const line_num = std.fmt.parseUnsigned(u32, arg[0], 10) - 1 catch {
                     stdout.print("Please input a number for the line #.\n", .{});
-                    return 1;
+                    return ProcessError.NotANumber;
                 };
                 const mod = arg[1];
 
@@ -191,7 +191,7 @@ pub fn main() !u8 {
 
                 if (line_num < 0 or line_num >= lines.len) {
                     try stdout.print("Line number must be between 1 and {d}.\n", .{lines.len});
-                    return 1;
+                    return ProcessError.OutOfRange;
                 }
 
                 if (std.mem.eql(u8, mod, "name")) {
@@ -199,20 +199,20 @@ pub fn main() !u8 {
                     con.*.modules[0].mcl.lines[line_num].name = new_name;
 
                     try stdout.print("Line #{d} name changed to {s}.\n", .{ line_num, new_name });
-                    return 0;
+                    return;
                 } else if (std.mem.eql(u8, mod, "axes")) {
                     const new_axes: u8 = std.fmt.parseUnsigned(u32, try readInput("Please input a new axes for line #{d}\n", .{line_num})) catch {
                         try stdout.print("Please input a number.\n", .{});
-                        return 1;
+                        return ProcessError.NotANumber;
                     };
 
                     con.*.modules[0].mcl.lines[line_num].axes = new_axes;
 
                     try stdout.print("Line #{d} axes changed to {d}\n", .{ line_num, new_axes });
-                    return 0;
+                    return;
                 } else if (std.mem.eql(u8, mod, "ranges")) {
                     try runProcess(edit_range_data, &con.*.modules[0].mcl.lines[line_num]);
-                    return 0;
+                    return;
                 }
             }
         }.editLineData,
@@ -222,16 +222,16 @@ pub fn main() !u8 {
         .name = "add",
         .help = "add <name> <axes> (inputting ranges will come after)",
         .cmd = struct {
-            fn addLineData(arg: [][]const u8, con: anytype) u8 {
+            fn addLineData(arg: [][]const u8, con: anytype) ProcessError!void {
                 if (arg.len != 2) {
                     try stdout.print("Format must be: {s}\n", .{"TODO put the help message here."});
-                    return 1;
+                    return ProcessError.WrongFormat;
                 }
 
                 const name = try readInput("Please input the line name.");
                 const axes = std.fmt.parseUnsigned(u32, arg[1], 10) catch {
                     try stdout.print("Line axes # must be a number.\n", .{});
-                    return 1;
+                    return ProcessError.NotANumber;
                 };
 
                 var ranges: []mcl.Config.Line.Range = {};
