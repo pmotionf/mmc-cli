@@ -291,7 +291,7 @@ pub fn main() !u8 {
     var buffer: [1024]u8 = undefined;
 
     while (true) {
-        const run = try readInput("Modify or add data? [y/n]");
+        const run = try readInput("Modify or add data? [y/n]", &buffer);
 
         if (std.mem.eql(u8, run, "y")) {
             const m_or_a = try readInput("m for modify, a for add", &buffer);
