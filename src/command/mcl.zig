@@ -306,6 +306,38 @@ pub fn init(c: Config) !void {
         .execute = &mclAxisReleaseServo,
     });
     errdefer _ = command.registry.orderedRemove("RELEASE_AXIS_SERVO");
+    try command.registry.put("STOP_TRAFFIC", .{
+        .name = "STOP_TRAFFIC",
+        .parameters = &.{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+            .{ .name = "direction" },
+        },
+        .short_description = "Prevent traffic communication to controller.",
+        .long_description =
+        \\Forcibly stop all traffic transmission from the specified axis's
+        \\controller to its neighboring controller. The neighboring controller
+        \\is determined by the provided direction.
+        ,
+        .execute = &mclTrafficStop,
+    });
+    errdefer _ = command.registry.orderedRemove("STOP_TRAFFIC");
+    try command.registry.put("ALLOW_TRAFFIC", .{
+        .name = "ALLOW_TRAFFIC",
+        .parameters = &.{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+            .{ .name = "direction" },
+        },
+        .short_description = "Resume traffic communication to controller.",
+        .long_description =
+        \\Permit all traffic transmission from the specified axis's controller
+        \\to its neighboring controller. The neighboring controller is
+        \\determined by the provided direction.
+        ,
+        .execute = &mclTrafficAllow,
+    });
+    errdefer _ = command.registry.orderedRemove("ALLOW_TRAFFIC");
     try command.registry.put("CALIBRATE", .{
         .name = "CALIBRATE",
         .parameters = &[_]command.Command.Parameter{
@@ -1791,6 +1823,74 @@ fn mclRecoverSlider(params: [][]const u8) !void {
         .command_slider_number = new_slider_id,
     };
     try sendCommand(station);
+}
+
+fn mclTrafficStop(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const axis = try std.fmt.parseUnsigned(mcl.Line.Axis.Id, params[1], 0);
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line = mcl.lines[line_idx];
+    if (axis == 0 or axis > line.axes) {
+        return error.InvalidAxis;
+    }
+
+    const direction: Direction = dir: {
+        if (std.ascii.eqlIgnoreCase("next", params[2]) or
+            std.ascii.eqlIgnoreCase("right", params[2]))
+        {
+            break :dir .forward;
+        } else if (std.ascii.eqlIgnoreCase("prev", params[2]) or
+            std.ascii.eqlIgnoreCase("left", params[2]))
+        {
+            break :dir .backward;
+        } else return error.InvalidDirection;
+    };
+
+    const axis_index: mcl.Line.Axis.Index = @intCast(axis - 1);
+    const station = line.stations[axis_index / 3];
+    try station.poll();
+
+    station.y.stop_driver_transmission.setTo(direction, true);
+    try station.sendY();
+    while (!station.x.transmission_stopped.to(direction)) {
+        try command.checkCommandInterrupt();
+        try station.pollX();
+    }
+}
+
+fn mclTrafficAllow(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const axis = try std.fmt.parseUnsigned(mcl.Line.Axis.Id, params[1], 0);
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line = mcl.lines[line_idx];
+    if (axis == 0 or axis > line.axes) {
+        return error.InvalidAxis;
+    }
+
+    const direction: Direction = dir: {
+        if (std.ascii.eqlIgnoreCase("next", params[2]) or
+            std.ascii.eqlIgnoreCase("right", params[2]))
+        {
+            break :dir .forward;
+        } else if (std.ascii.eqlIgnoreCase("prev", params[2]) or
+            std.ascii.eqlIgnoreCase("left", params[2]))
+        {
+            break :dir .backward;
+        } else return error.InvalidDirection;
+    };
+
+    const axis_index: mcl.Line.Axis.Index = @intCast(axis - 1);
+    const station = line.stations[axis_index / 3];
+    try station.poll();
+
+    station.y.stop_driver_transmission.setTo(direction, false);
+    try station.sendY();
+    while (station.x.transmission_stopped.to(direction)) {
+        try command.checkCommandInterrupt();
+        try station.pollX();
+    }
 }
 
 fn mclWaitRecoverSlider(params: [][]const u8) !void {
