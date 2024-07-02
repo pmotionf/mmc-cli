@@ -3,6 +3,12 @@ const args = @import("args");
 const Config = @import("Config.zig");
 const mcl = @import("mcl");
 
+const ProcessError = error{
+    WrongFormat,
+    NotANumber,
+    OutOfRange,
+};
+
 const Options = struct {
     create: bool = false,
     help: bool = false,
@@ -25,7 +31,7 @@ const Options = struct {
 
 const Process = struct {
     name: []const u8,
-    cmd: fn (args: [][]const u8, param: anytype) u8 = undefined, //returning 1 means there was some error, so run the command again. If 0 is returned, then the "command loop" is exited,
+    cmd: fn (args: [][]const u8, param: anytype) !void = undefined, //returning 1 means there was some error, so run the command again. If 0 is returned, then the "command loop" is exited,
     help: []const u8 = undefined,
 };
 
@@ -35,7 +41,7 @@ fn readInput(out: []const u8) ![]u8 {
     return "";
 }
 
-fn runProcess(cmd: Process, param: anytype) !u8 {
+fn runProcess(cmd: Process, param: anytype) !void {
     const stdout = std.io.getStdOut().writer();
 
     while (true) {
@@ -47,6 +53,7 @@ fn runProcess(cmd: Process, param: anytype) !u8 {
         if (std.mem.eql(u8, cmd_name, cmd.name)) {
             const cmd_args = std.mem.splitSequence(u8, input, " ")[1..];
 
+            try cmd.cmd(cmd_args, param) catch
             if (cmd.cmd(cmd_args, param) == 0) {
                 break;
             } else {
