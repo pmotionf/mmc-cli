@@ -35,10 +35,16 @@ const Process = struct {
     help: []const u8 = undefined,
 };
 
-fn readInput(out: []const u8) ![]u8 {
+fn readInput(out: []const u8, buffer: []u8) ![]const u8 {
     try std.io.getStdOut().writer().print("{s}\n", .{out});
-    //TODO: implement user input
-    return "";
+    const reader = std.io.getStdIn().reader();
+
+    if (try reader.readUntilDelimiterOrEof(buffer, '\n')) |value| {
+        const trimmedValue = std.mem.trimRight(u8, value[0..value.len], "\r");
+        return trimmedValue;
+    } else {
+        return "";
+    }
 }
 
 fn runProcess(cmd: Process, param: anytype) !void {
