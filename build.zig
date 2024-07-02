@@ -55,6 +55,20 @@ pub fn build(b: *std.Build) !void {
     configurator.root_module.addImport("args", zig_args.module("args"));
     b.installArtifact(configurator);
 
+    const configurator2 = b.addExecutable(.{
+        .name = "configurator2",
+        .root_source_file = b.path("src/configurator2.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    configurator2.root_module.addImport(
+        "network",
+        network_dep.module("network"),
+    );
+    configurator2.root_module.addImport("mcl", mcl.module("mcl"));
+    configurator2.root_module.addImport("args", zig_args.module("args"));
+    b.installArtifact(configurator2);
+
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
 
