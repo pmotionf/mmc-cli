@@ -59,12 +59,11 @@ fn runProcess(cmd: Process, param: anytype) !void {
         if (std.mem.eql(u8, cmd_name, cmd.name)) {
             const cmd_args = std.mem.splitSequence(u8, input, " ")[1..];
 
-            if(cmd.cmd(args, param)) |_|{
+            if (cmd.cmd(cmd_args, param)) |_| {
                 break;
-            }else |err|{
+            } else |_| {
                 continue;
             }
-
         } else {
             try stdout.print("Command name is {s}.\n", .{cmd.name});
             continue;
@@ -304,6 +303,6 @@ pub fn main() !u8 {
     return 0;
 }
 
-fn rangeToJson(range: mcl.Config.Line.Range, alloc: *std.mem.Allocator) !std.json.Value{
-    std.json.stringify()
-}
+// fn rangeToJson(range: mcl.Config.Line.Range, alloc: *std.mem.Allocator) !std.json.Value{
+//     std.json.stringify()
+// }
