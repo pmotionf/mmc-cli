@@ -1681,7 +1681,6 @@ fn mclSliderWaitPull(params: [][]const u8) !void {
         try station.pollX();
         try station.pollWr();
         const slider_state = station.wr.slider_state.axis(local_axis);
-        if (station.x.pulling_slider.axis(local_axis)) continue;
         if (slider_state == .PullForwardCompleted or
             slider_state == .PullBackwardCompleted) break;
         if (slider_state == .PullForwardFault or

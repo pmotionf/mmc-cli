@@ -589,10 +589,7 @@ fn setLog(params: [][]const u8) !void {
 
 fn clear(_: [][]const u8) !void {
     const stdout = std.io.getStdOut().writer();
-    const stderr = std.io.getStdErr().writer();
-
-    try stdout.writeAll("\x1B[2J\x1B[H");
-    try stderr.writeAll("\x1B[2J\x1B[H");
+    try stdout.writeAll("\x1bc");
 }
 
 fn exit(_: [][]const u8) !void {

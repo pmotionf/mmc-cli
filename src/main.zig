@@ -28,7 +28,17 @@ fn stopCommand(
 
 pub fn main() !void {
     if (builtin.os.tag == .windows) {
-        try std.os.windows.SetConsoleCtrlHandler(&stopCommand, true);
+        const windows = std.os.windows;
+        try windows.SetConsoleCtrlHandler(&stopCommand, true);
+        const handle = try windows.GetStdHandle(windows.STD_OUTPUT_HANDLE);
+        var mode: windows.DWORD = 0;
+        if (windows.kernel32.GetConsoleMode(handle, &mode) != windows.TRUE) {
+            return error.WindowsConsoleModeRetrievalFailure;
+        }
+        mode |= windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+        if (windows.kernel32.SetConsoleMode(handle, mode) != windows.TRUE) {
+            return error.WindowsConsoleModeSetFailure;
+        }
     }
 
     try command.init();
