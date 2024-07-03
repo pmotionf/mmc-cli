@@ -219,7 +219,7 @@ pub fn main() !u8 {
 
                 if (std.mem.eql(u8, mod, "name")) {
                     const new_name = readInput("Please input the new name", &buffer) catch return;
-                    con.*.modules[0].mcl.lines[line_num].name = new_name;
+                    con.*.modules[0].mcl.line_names[line_num] = new_name;
 
                     sout.print("Line #{d} name changed to {s}.\n", .{ line_num, new_name }) catch return;
                     return;
@@ -261,9 +261,11 @@ pub fn main() !u8 {
                     return ProcessError.NotANumber;
                 };
 
-                var ranges: []mcl.Config.Line.Range = {};
+                const alloc = std.heap.page_allocator;
+                var ranges = std.ArrayList(mcl.Config.Line.Range).init(alloc);
+                defer ranges.deinit();
 
-                var num_of_range = 0;
+                comptime var num_of_range = 1;
                 while (true) : (num_of_range += 1) {
                     sout.print("Range #{d}\n", .{num_of_range}) catch return;
                     const channel = try readInput("Please input the channel name.", &buffer);
@@ -277,13 +279,13 @@ pub fn main() !u8 {
                         num_of_range -= 1;
                         continue;
                     };
-                    const new_range: [1]mcl.Config.Line.Range = .{mcl.Config.Line.Range{
+
+                    ranges.append(mcl.Config.Line.Range{
                         .channel = "cc_link_" ++ channel ++ "slot",
                         .start = start,
                         .length = length,
-                    }};
+                    });
 
-                    ranges = ranges ++ new_range;
                     sout.print("New range created.\n", .{}) catch return; //TODO: formatted print the newly added range.
 
                     const cont = readInput("Add another range? [y/n]", &buffer) catch return;
@@ -293,6 +295,7 @@ pub fn main() !u8 {
                     } else if (std.mem.eql(u8, cont, "n")) {
                         break;
                     }
+                    //TODO: reask the above question if something else is inputted
                 }
 
                 con.*.modules[0].mcl.lines = con.*.modules[0].mcl.lines ++ .{mcl.Config.Line{ .axes = axes, .ranges = ranges }};
