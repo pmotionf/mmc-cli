@@ -136,52 +136,54 @@ pub fn main() !u8 {
         .help = "range <range#> <channel, start, length>",
         .cmd = struct {
             fn editRangeData(arg: [][]const u8, line: anytype) ProcessError!void {
+                const sout = std.io.getStdOut().writer();
+
                 if (arg.len != 2) {
-                    try stdout.print("Format must be: {s}\n", .{"TODO: add help message here"});
+                    sout.print("Format must be: {s}\n", .{"TODO: add help message here"}) catch return;
                     return ProcessError.WrongFormat;
                 }
 
                 const range_num = std.fmt.parseUnsigned(u32, arg[0], 10) - 1 catch {
-                    try stdout.print("Please input a number for the range.\n", .{});
+                    sout.print("Please input a number for the range.\n", .{}) catch return;
                     return ProcessError.NotANumber;
                 };
 
                 const mod = arg[1];
 
                 if (range_num < 0 or range_num >= line.*.ranges.len) {
-                    try stdout.print("Range number must be between 1 and {d}", .{line.*.ranges.len});
+                    sout.print("Range number must be between 1 and {d}", .{line.*.ranges.len}) catch return;
                     return ProcessError.OutOfRange;
                 }
 
                 var buffer: [1024]u8 = undefined;
 
                 if (std.mem.eql(u8, mod, "channel")) {
-                    const new_channel = try readInput("Please input a new channel name: ", &buffer);
+                    const new_channel = readInput("Please input a new channel name: ", &buffer) catch return;
 
                     line.*.ranges.channel = "cc_link_" ++ new_channel ++ "slot";
 
-                    try stdout.print("Range #{d} channel name changed to {s}\n", .{ range_num, line.*.ranges.channel });
+                    sout.print("Range #{d} channel name changed to {s}\n", .{ range_num, line.*.ranges.channel }) catch return;
                     return;
                 } else if (std.mem.eql(u8, mod, "start")) {
-                    const new_start = std.fmt.parseUnsigned(u32, try readInput("Please input a new start #.", &buffer)) catch {
-                        try stdout.print("Please input a number for the start #.", .{});
+                    const new_start = std.fmt.parseUnsigned(u32, readInput("Please input a new start #.", &buffer) catch "err") catch {
+                        sout.print("Please input a number for the start #.", .{}) catch return;
                         return ProcessError.NotANumber;
                     };
 
                     line.*.ranges.start = new_start;
-                    try stdout.print("Range #{d} start # changed to {d}\n", .{ range_num, new_start });
+                    sout.print("Range #{d} start # changed to {d}\n", .{ range_num, new_start }) catch return;
                     return;
                 } else if (std.mem.eql(u8, mod, "start")) {
-                    const new_length = std.fmt.parseUnsigned(u32, try readInput("Please input a new length.", &buffer)) catch {
-                        try stdout.print("Please input a number for the length #.", .{});
+                    const new_length = std.fmt.parseUnsigned(u32, readInput("Please input a new length.", &buffer) catch "err") catch {
+                        sout.print("Please input a number for the length #.", .{}) catch return;
                         return ProcessError.NotANumber;
                     };
 
                     line.*.ranges.length = new_length;
-                    try stdout.print("Range #{d} length # changed to {d}\n", .{ range_num, new_length });
+                    sout.print("Range #{d} length # changed to {d}\n", .{ range_num, new_length }) catch return;
                     return;
                 } else {
-                    try stdout.print("Second argument must be channel, start, or length.\n", .{});
+                    sout.print("Second argument must be channel, start, or length.\n", .{}) catch return;
                     return ProcessError.WrongFormat;
                 }
             }
@@ -193,44 +195,46 @@ pub fn main() !u8 {
         .help = "line <line#> <name, axes, ranges>", //TODO: make the help message print out the informations about the existing lines.
         .cmd = struct {
             fn editLineData(arg: [][]const u8, con: anytype) ProcessError!void {
+                const sout = std.io.getStdOut().writer();
+
                 if (arg.len != 2) {
-                    try stdout.print("Format must be: {s}\n", .{"TODO: add help message here"});
+                    sout.print("Format must be: {s}\n", .{"TODO: add help message here"}) catch return;
                     return ProcessError.WrongFormat;
                 }
 
-                const line_num = std.fmt.parseUnsigned(u32, arg[0], 10) - 1 catch {
-                    stdout.print("Please input a number for the line #.\n", .{});
+                const line_num = std.fmt.parseUnsigned(u32, arg[0], 10) catch {
+                    sout.print("Please input a number for the line #.\n", .{}) catch return;
                     return ProcessError.NotANumber;
-                };
+                } - 1;
                 const mod = arg[1];
 
                 const lines: []mcl.Config.Line = con.*.modules[0].mcl.lines;
 
                 if (line_num < 0 or line_num >= lines.len) {
-                    try stdout.print("Line number must be between 1 and {d}.\n", .{lines.len});
+                    sout.print("Line number must be between 1 and {d}.\n", .{lines.len}) catch return;
                     return ProcessError.OutOfRange;
                 }
 
                 var buffer: [1024]u8 = undefined;
 
                 if (std.mem.eql(u8, mod, "name")) {
-                    const new_name = try readInput("Please input the new name", &buffer);
+                    const new_name = readInput("Please input the new name", &buffer) catch return;
                     con.*.modules[0].mcl.lines[line_num].name = new_name;
 
-                    try stdout.print("Line #{d} name changed to {s}.\n", .{ line_num, new_name });
+                    sout.print("Line #{d} name changed to {s}.\n", .{ line_num, new_name }) catch return;
                     return;
                 } else if (std.mem.eql(u8, mod, "axes")) {
-                    const new_axes: u8 = std.fmt.parseUnsigned(u32, try readInput("Please input a new axes", &buffer)) catch {
-                        try stdout.print("Please input a number.\n", .{});
+                    const new_axes: u8 = std.fmt.parseUnsigned(u32, readInput("Please input a new axes", &buffer) catch "err") catch {
+                        sout.print("Please input a number.\n", .{}) catch return;
                         return ProcessError.NotANumber;
                     };
 
                     con.*.modules[0].mcl.lines[line_num].axes = new_axes;
 
-                    try stdout.print("Line #{d} axes changed to {d}\n", .{ line_num, new_axes });
+                    sout.print("Line #{d} axes changed to {d}\n", .{ line_num, new_axes }) catch return;
                     return;
                 } else if (std.mem.eql(u8, mod, "ranges")) {
-                    try runProcess(edit_range_data, &con.*.modules[0].mcl.lines[line_num]);
+                    runProcess(edit_range_data, &con.*.modules[0].mcl.lines[line_num]) catch return;
                     return;
                 }
             }
@@ -242,16 +246,18 @@ pub fn main() !u8 {
         .help = "add <name> <axes> (inputting ranges will come after)",
         .cmd = struct {
             fn addLineData(arg: [][]const u8, con: anytype) ProcessError!void {
+                const sout = std.io.getStdOut().writer();
+
                 if (arg.len != 2) {
-                    try stdout.print("Format must be: {s}\n", .{"TODO put the help message here."});
+                    sout.print("Format must be: {s}\n", .{"TODO put the help message here."}) catch return;
                     return ProcessError.WrongFormat;
                 }
 
                 var buffer: [1024]u8 = undefined;
 
-                const name = try readInput("Please input the line name.", &buffer);
+                const name = readInput("Please input the line name.", &buffer) catch return;
                 const axes = std.fmt.parseUnsigned(u32, arg[1], 10) catch {
-                    try stdout.print("Line axes # must be a number.\n", .{});
+                    sout.print("Line axes # must be a number.\n", .{}) catch return;
                     return ProcessError.NotANumber;
                 };
 
@@ -259,15 +265,15 @@ pub fn main() !u8 {
 
                 var num_of_range = 0;
                 while (true) : (num_of_range += 1) {
-                    try stdout.print("Range #{d}\n", .{num_of_range});
+                    sout.print("Range #{d}\n", .{num_of_range}) catch return;
                     const channel = try readInput("Please input the channel name.", &buffer);
-                    const start = std.fmt.parseUnsigned(u32, try readInput("Please input the start #.", &buffer)) catch {
-                        try stdout.print("Please input a number for the start #.\n", .{});
+                    const start = std.fmt.parseUnsigned(u32, readInput("Please input the start #.", &buffer) catch "err") catch {
+                        sout.print("Please input a number for the start #.\n", .{}) catch return;
                         num_of_range -= 1;
                         continue;
                     };
-                    const length = std.fmt.parseUnsigned(u32, try readInput("Please input the length.", &buffer)) catch {
-                        try stdout.print("Please input a number for the length.\n", .{});
+                    const length = std.fmt.parseUnsigned(u32, readInput("Please input the length.", &buffer) catch "err") catch {
+                        sout.print("Please input a number for the length.\n", .{}) catch return;
                         num_of_range -= 1;
                         continue;
                     };
@@ -278,9 +284,9 @@ pub fn main() !u8 {
                     }};
 
                     ranges = ranges ++ new_range;
-                    try stdout.print("New range created.\n", .{}); //TODO: formatted print the newly added range.
+                    sout.print("New range created.\n", .{}) catch return; //TODO: formatted print the newly added range.
 
-                    const cont = try readInput("Add another range? [y/n]", &buffer);
+                    const cont = readInput("Add another range? [y/n]", &buffer) catch return;
 
                     if (std.mem.eql(u8, cont, "y")) {
                         continue;
@@ -292,7 +298,7 @@ pub fn main() !u8 {
                 con.*.modules[0].mcl.lines = con.*.modules[0].mcl.lines ++ .{mcl.Config.Line{ .axes = axes, .ranges = ranges }};
                 con.*.modules[0].mcl.line_names = con.*.modules[0].mcl.line_names ++ .{name};
 
-                try stdout.print("Successfully created a new line.\n", .{});
+                sout.print("Successfully created a new line.\n", .{}) catch return;
                 //TODO: formatted print the newly created line.
             }
         }.addLineData,
@@ -312,10 +318,10 @@ pub fn main() !u8 {
                 try runProcess(add_line_data, &config);
             }
         } else if (std.mem.eql(u8, run, "n")) {
-            stdout.print("Quitting program.\n", .{});
+            try stdout.print("Quitting program.\n", .{});
             break;
         } else {
-            stdout.print("Wrong input\n", .{});
+            try stdout.print("Wrong input\n", .{});
         }
     }
     return 0;
