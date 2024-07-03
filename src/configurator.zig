@@ -143,10 +143,10 @@ pub fn main() !u8 {
                     return ProcessError.WrongFormat;
                 }
 
-                const range_num = std.fmt.parseUnsigned(u32, arg[0], 10) - 1 catch {
+                const range_num = std.fmt.parseUnsigned(u32, arg[0], 10) catch {
                     sout.print("Please input a number for the range.\n", .{}) catch return;
                     return ProcessError.NotANumber;
-                };
+                } - 1;
 
                 const mod = arg[1];
 
@@ -158,11 +158,24 @@ pub fn main() !u8 {
                 var buffer: [1024]u8 = undefined;
 
                 if (std.mem.eql(u8, mod, "channel")) {
-                    const new_channel = readInput("Please input a new channel name: ", &buffer) catch return;
+                    var new_channel_str: []const u8 = undefined;
 
-                    line.*.ranges.channel = "cc_link_" ++ new_channel ++ "slot";
+                    while (true) {
+                        new_channel_str = readInput("Please input a new channel number (1~4): ", &buffer) catch "err";
+                        _ = std.fmt.parseUnsigned(u2, new_channel_str, 10) catch {
+                            sout.print("Please input a correct number for the channel # (1~4).\n", .{}) catch return;
+                            continue;
+                        };
+                        break;
+                    }
+                    var aa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                    defer aa.deinit();
 
-                    sout.print("Range #{d} channel name changed to {s}\n", .{ range_num, line.*.ranges.channel }) catch return;
+                    const new_channel_concat = std.fmt.allocPrint(aa.allocator(), "cc_link_{s}slot", .{new_channel_str}) catch return;
+
+                    line.*.ranges[range_num].channel = @field(mcl.connection.Channel, new_channel_concat);
+
+                    sout.print("Range #{d} channel num changed to {s}\n", .{ range_num, new_channel_str }) catch return;
                     return;
                 } else if (std.mem.eql(u8, mod, "start")) {
                     const new_start = std.fmt.parseUnsigned(u32, readInput("Please input a new start #.", &buffer) catch "err") catch {
@@ -224,7 +237,7 @@ pub fn main() !u8 {
                     sout.print("Line #{d} name changed to {s}.\n", .{ line_num, new_name }) catch return;
                     return;
                 } else if (std.mem.eql(u8, mod, "axes")) {
-                    const new_axes: u8 = std.fmt.parseUnsigned(u32, readInput("Please input a new axes", &buffer) catch "err") catch {
+                    const new_axes: u10 = std.fmt.parseUnsigned(u10, readInput("Please input a new axes", &buffer) catch "err", 10) catch {
                         sout.print("Please input a number.\n", .{}) catch return;
                         return ProcessError.NotANumber;
                     };
@@ -265,25 +278,36 @@ pub fn main() !u8 {
                 var ranges = std.ArrayList(mcl.Config.Line.Range).init(alloc);
                 defer ranges.deinit();
 
-                comptime var num_of_range = 1;
+                var num_of_range: u32 = 1;
                 while (true) : (num_of_range += 1) {
                     sout.print("Range #{d}\n", .{num_of_range}) catch return;
-                    const channel = try readInput("Please input the channel name.", &buffer);
-                    const start = std.fmt.parseUnsigned(u32, readInput("Please input the start #.", &buffer) catch "err") catch {
-                        sout.print("Please input a number for the start #.\n", .{}) catch return;
-                        num_of_range -= 1;
-                        continue;
-                    };
-                    const length = std.fmt.parseUnsigned(u32, readInput("Please input the length.", &buffer) catch "err") catch {
-                        sout.print("Please input a number for the length.\n", .{}) catch return;
+                    const channel = readInput("Please input the channel #. (1~4)", &buffer) catch return;
+                    _ = std.fmt.parseUnsigned(u2, channel, 10) catch {
+                        sout.print("Please input a correct number for the channel # (1~4).\n", .{}) catch return;
                         num_of_range -= 1;
                         continue;
                     };
 
+                    const start = std.fmt.parseUnsigned(u32, readInput("Please input the start #.", &buffer) catch "err", 10) catch {
+                        sout.print("Please input a number for the start #.\n", .{}) catch return;
+                        num_of_range -= 1;
+                        continue;
+                    };
+                    const end = std.fmt.parseUnsigned(u32, readInput("Please input the end #.", &buffer) catch "err", 10) catch {
+                        sout.print("Please input a number for the end #.\n", .{}) catch return;
+                        num_of_range -= 1;
+                        continue;
+                    };
+
+                    var aa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                    defer aa.deinit();
+
+                    const new_channel_concat = std.fmt.allocPrint(aa.allocator(), "cc_link_{s}slot", .{channel}) catch return;
+
                     ranges.append(mcl.Config.Line.Range{
-                        .channel = "cc_link_" ++ channel ++ "slot",
+                        .channel = @field(mcl.connection.Channel, new_channel_concat),
                         .start = start,
-                        .length = length,
+                        .end = end,
                     });
 
                     sout.print("New range created.\n", .{}) catch return; //TODO: formatted print the newly added range.
