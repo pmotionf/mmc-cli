@@ -49,15 +49,25 @@ fn readInput(out: []const u8, buffer: []u8) ![]const u8 {
 
 fn runProcess(cmd: Process, param: anytype) !void {
     const stdout = std.io.getStdOut().writer();
+    var buffer: [1024]u8 = undefined;
 
     while (true) {
         try stdout.print("{s}\n", .{cmd.help});
 
-        const input = try readInput("");
-        const cmd_name = std.mem.splitSequence(u8, input, " ").first();
+        const input = try readInput("", &buffer);
+        var input_split = std.mem.splitSequence(u8, input, " ");
+        const cmd_name: []const u8 = input_split.next().?;
 
         if (std.mem.eql(u8, cmd_name, cmd.name)) {
-            const cmd_args = std.mem.splitSequence(u8, input, " ")[1..];
+            const allocator = std.heap.page_allocator;
+            var rest = std.ArrayList([]const u8).init(allocator);
+            defer rest.deinit();
+
+            while (input_split.next()) |n| {
+                try rest.append(n);
+            }
+
+            const cmd_args: [][]const u8 = rest.items;
 
             if (cmd.cmd(cmd_args, param)) |_| {
                 break;
@@ -210,7 +220,7 @@ pub fn main() !u8 {
                     try stdout.print("Line #{d} name changed to {s}.\n", .{ line_num, new_name });
                     return;
                 } else if (std.mem.eql(u8, mod, "axes")) {
-                    const new_axes: u8 = std.fmt.parseUnsigned(u32, try readInput("Please input a new axes", buffer)) catch {
+                    const new_axes: u8 = std.fmt.parseUnsigned(u32, try readInput("Please input a new axes", &buffer)) catch {
                         try stdout.print("Please input a number.\n", .{});
                         return ProcessError.NotANumber;
                     };
