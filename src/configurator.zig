@@ -30,7 +30,7 @@ pub fn main() !u8 {
     const stdout = std.io.getStdOut().writer();
 
     var new_file: bool = false;
-    var file_name: []const u8 = "config.json";
+    var file_name: []const u8 = undefined;
 
     const options = args.parseForCurrentProcess(
         Options,
@@ -76,6 +76,13 @@ pub fn main() !u8 {
             .line_names = &.{},
             .lines = &.{},
         } };
+    }
+
+    var buffer: [1024]u8 = undefined;
+
+    if (new_file) {
+        const input = try readInput("Please input the new config file name:", &buffer);
+        file_name = input;
     }
     return 0;
 }
