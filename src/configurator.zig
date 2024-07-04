@@ -160,7 +160,7 @@ pub fn main() !u8 {
                 const sout = std.io.getStdOut().writer();
 
                 if (arg.len != 2) {
-                    sout.print("Format must be: {s}\n", .{"TODO: add help message here"}) catch return;
+                    sout.print("Format must be: {s}\n", .{"range <range#> <channel, start, length>"}) catch return;
                     return ProcessError.WrongFormat;
                 }
 
@@ -232,18 +232,18 @@ pub fn main() !u8 {
                 const sout = std.io.getStdOut().writer();
 
                 if (arg.len != 2) {
-                    sout.print("Format must be: {s}\n", .{"TODO: add help message here"}) catch return;
+                    sout.print("Format must be: {s}\n", .{"line <line#> <name, axes, ranges>"}) catch return;
                     return ProcessError.WrongFormat;
                 }
 
                 for (con[0].*.modules[0].mcl.lines, 0..) |line, i| {
-                    try stdout.print("{d}. name:{s}\n", .{ i, con[0].*.modules[0].mcl.line_names[i] });
-                    try stdout.print("axes: {d}\n", .{line.axes});
-                    try stdout.print("ranges:\n");
+                    sout.print("axes: {d}\n", .{line.axes}) catch return;
+                    sout.print("{d}. name:{s}\n", .{ i, con[0].*.modules[0].mcl.line_names[i] }) catch return;
+                    sout.print("ranges:\n", .{}) catch return;
                     for (line.ranges) |range| {
-                        try stdout.print("  channel: {s}\n", .{range.channel});
-                        try stdout.print("  start: {d}\n", .{range.start});
-                        try stdout.print("  length: {d}\n\n", .{range.length});
+                        sout.print("  start: {d}\n", .{range.start}) catch return;
+                        sout.print("  channel: {s}\n", .{range.channel}) catch return;
+                        sout.print("  length: {d}\n\n", .{range.length}) catch return;
                     }
                 }
 
@@ -299,7 +299,7 @@ pub fn main() !u8 {
                 const sout = std.io.getStdOut().writer();
 
                 if (arg.len != 2) {
-                    sout.print("Format must be: {s}\n", .{"TODO put the help message here."}) catch return;
+                    sout.print("Format must be: {s}\n", .{"add <name> <axes> (inputting ranges will come after)"}) catch return;
                     return ProcessError.WrongFormat;
                 }
 
@@ -316,7 +316,7 @@ pub fn main() !u8 {
                 defer ranges.deinit();
 
                 var num_of_range: u32 = 1;
-                while (true) : (num_of_range += 1) {
+                outer: while (true) : (num_of_range += 1) {
                     sout.print("Range #{d}\n", .{num_of_range}) catch return;
                     const channel = readInput("Please input the channel #. (1~4)", &buffer) catch return;
                     _ = std.fmt.parseUnsigned(u2, channel, 10) catch {
@@ -347,16 +347,21 @@ pub fn main() !u8 {
                         .end = end,
                     });
 
-                    sout.print("New range created.\n", .{}) catch return; //TODO: formatted print the newly added range.
+                    sout.print("New range created.\n", .{}) catch return;
+                    sout.print("channel: {s}\n", .{new_channel_concat}) catch return;
+                    sout.print("start: {}", .{start}) catch return;
+                    sout.print("end: {}\n", .{end}) catch return;
 
-                    const cont = readInput("Add another range? [y/n]", &buffer) catch return;
-
-                    if (std.mem.eql(u8, cont, "y")) {
-                        continue;
-                    } else if (std.mem.eql(u8, cont, "n")) {
-                        break;
+                    while (true) {
+                        const cont = readInput("Add another range? [y/n]", &buffer) catch return;
+                        if (std.mem.eql(u8, cont, "y")) {
+                            continue :outer;
+                        } else if (std.mem.eql(u8, cont, "n")) {
+                            break :outer;
+                        } else {
+                            sout.print("Allowed inputs are [y/n]\n", .{}) catch return;
+                        }
                     }
-                    //TODO: reask the above question if something else is inputted
                 }
 
                 con[0].*.modules[0].mcl.lines = con[0].*.modules[0].mcl.lines ++ .{mcl.Config.Line{ .axes = axes, .ranges = ranges }};
