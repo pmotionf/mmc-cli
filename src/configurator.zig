@@ -31,7 +31,7 @@ const Options = struct {
 
 const Process = struct {
     name: []const u8,
-    cmd: fn (args: [][]const u8, param: anytype) ProcessError!void = undefined, //returning 1 means there was some error, so run the command again. If 0 is returned, then the "command loop" is exited,
+    cmd: fn (args: [][]const u8, param: anytype) ProcessError!void = undefined,
     help: []const u8 = undefined,
 };
 
@@ -46,6 +46,22 @@ fn readInput(out: []const u8, buffer: []u8) ![]const u8 {
         return "";
     }
 }
+
+const JsonWriter = struct {
+    const Self = @This();
+
+    file: std.fs.File = undefined,
+
+    pub const Writer = std.io.Writer(*Self, error{OutOfMemory}, write);
+
+    pub fn writer(self: *Self) Writer {
+        return .{ .context = self };
+    }
+
+    pub fn write(self: JsonWriter, data: []const u8) !usize {
+        return try self.file.write(data);
+    }
+};
 
 fn runProcess(cmd: Process, param: anytype) !void {
     const stdout = std.io.getStdOut().writer();
@@ -354,6 +370,16 @@ pub fn main() !u8 {
     return 0;
 }
 
-// fn rangeToJson(range: mcl.Config.Line.Range, alloc: *std.mem.Allocator) !std.json.Value{
-//     std.json.stringify()
-// }
+fn save_config_edit(file_name: []const u8, config: Config) !void {
+    var json_writer = JsonWriter{ .file = try std.fs.cwd().openFile(file_name, .{}) };
+
+    try std.json.stringify(config, .{}, json_writer.writer());
+    try json_writer.file.close();
+}
+
+fn save_config_new(file_name: []const u8, config: Config) !void {
+    var json_writer = JsonWriter{ .file = try std.fs.cwd().createFile(file_name, .{}) };
+
+    try std.json.stringify(config, .{}, json_writer.writer());
+    try json_writer.file.close();
+}
