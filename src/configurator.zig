@@ -31,14 +31,14 @@ const Prompt = struct {
 };
 
 const AnyPointer = union(enum) {
-    lines: *[]mcl.Config.Line,
-    ranges: *[]mcl.Config.Line.Range,
-    range: *mcl.Config.Line.Range,
-    line: *mcl.Config.Line,
-    str: *[]const u8,
-    unum8: *u8,
-    unum32: *u32,
-    channel: *mcl.connection.Channel,
+    @"[]mcl.Config.Line": *[]mcl.Config.Line,
+    @"[]mcl.Config.Line.Range": *[]mcl.Config.Line.Range,
+    @"mcl.Config.Line.Range": *mcl.Config.Line.Range,
+    @"mcl.Config.Line": *mcl.Config.Line,
+    @"[]const u8": *[]const u8,
+    @"u8": *u8,
+    @"u32": *u32,
+    @"mcl.connection.Channel": *mcl.connection.Channel,
 };
 
 pub fn main() !u8 {
@@ -110,7 +110,9 @@ pub fn main() !u8 {
     return 0;
 }
 
-fn save_config(file_name: []const u8, config: *const Config) !void {
+fn 
+
+fn saveConfig(file_name: []const u8, config: *const Config) !void {
     const file: std.fs.File = std.fs.cwd().createFile(file_name, .{});
     defer file.close();
     try std.json.stringify(config.*, .{}, file.writer());
