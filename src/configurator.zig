@@ -226,7 +226,7 @@ pub fn main() !u8 {
 
     const edit_line_data: Process = Process{
         .name = "line",
-        .help = "line <line#> <name, axes, ranges>", //TODO: make the help message print out the informations about the existing lines.
+        .help = "line <line#> <name, axes, ranges>",
         .cmd = struct {
             fn editLineData(arg: [][]const u8, con: anytype) ProcessError!void {
                 const sout = std.io.getStdOut().writer();
@@ -234,6 +234,17 @@ pub fn main() !u8 {
                 if (arg.len != 2) {
                     sout.print("Format must be: {s}\n", .{"TODO: add help message here"}) catch return;
                     return ProcessError.WrongFormat;
+                }
+
+                for (con[0].*.modules[0].mcl.lines, 0..) |line, i| {
+                    try stdout.print("{d}. name:{s}\n", .{ i, con[0].*.modules[0].mcl.line_names[i] });
+                    try stdout.print("axes: {d}\n", .{line.axes});
+                    try stdout.print("ranges:\n");
+                    for (line.ranges) |range| {
+                        try stdout.print("  channel: {s}\n", .{range.channel});
+                        try stdout.print("  start: {d}\n", .{range.start});
+                        try stdout.print("  length: {d}\n\n", .{range.length});
+                    }
                 }
 
                 const line_num = std.fmt.parseUnsigned(u32, arg[0], 10) catch {
