@@ -23,6 +23,24 @@ const Options = struct {
     };
 };
 
+const Prompt = struct {
+    question: []const u8,
+    info: []const u8,
+    ptr: AnyPointer,
+    field_name: []const u8,
+};
+
+const AnyPointer = union(enum) {
+    lines: *[]mcl.Config.Line,
+    ranges: *[]mcl.Config.Line.Range,
+    range: *mcl.Config.Line.Range,
+    line: *mcl.Config.Line,
+    str: *[]const u8,
+    unum8: *u8,
+    unum32: *u32,
+    channel: *mcl.connection.Channel,
+};
+
 pub fn main() !u8 {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
