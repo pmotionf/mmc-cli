@@ -103,6 +103,9 @@ pub fn main() !u8 {
     const allocator = arena.allocator();
     const stdout = std.io.getStdOut().writer();
 
+    var new_file: bool = false;
+    var file_name: []const u8 = "config.json";
+
     const options = args.parseForCurrentProcess(
         Options,
         allocator,
@@ -138,8 +141,10 @@ pub fn main() !u8 {
         );
         defer config_file.close();
         const config_parse = try Config.parse(allocator, config_file);
+        file_name = options.positionals[0];
         config = config_parse.value;
     } else {
+        new_file = true;
         config.modules = try allocator.alloc(Config.Module.Config, 1);
         config.modules[0] = .{ .mcl = .{
             .line_names = &.{},
@@ -237,7 +242,7 @@ pub fn main() !u8 {
                 } - 1;
                 const mod = arg[1];
 
-                const lines: []mcl.Config.Line = con.*.modules[0].mcl.lines;
+                const lines: []mcl.Config.Line = con[0].*.modules[0].mcl.lines;
 
                 if (line_num < 0 or line_num >= lines.len) {
                     sout.print("Line number must be between 1 and {d}.\n", .{lines.len}) catch return;
@@ -248,7 +253,9 @@ pub fn main() !u8 {
 
                 if (std.mem.eql(u8, mod, "name")) {
                     const new_name = readInput("Please input the new name", &buffer) catch return;
-                    con.*.modules[0].mcl.line_names[line_num] = new_name;
+                    con[0].*.modules[0].mcl.line_names[line_num] = new_name;
+
+                    save_config(con[2], con[0], con[1]); //TODO do this better. numbers confusing
 
                     sout.print("Line #{d} name changed to {s}.\n", .{ line_num, new_name }) catch return;
                     return;
@@ -258,12 +265,15 @@ pub fn main() !u8 {
                         return ProcessError.NotANumber;
                     };
 
-                    con.*.modules[0].mcl.lines[line_num].axes = new_axes;
+                    con[0].*.modules[0].mcl.lines[line_num].axes = new_axes;
+                    save_config(con[2], con[0], con[1]);
 
                     sout.print("Line #{d} axes changed to {d}\n", .{ line_num, new_axes }) catch return;
                     return;
                 } else if (std.mem.eql(u8, mod, "ranges")) {
-                    runProcess(edit_range_data, &con.*.modules[0].mcl.lines[line_num]) catch return;
+                    runProcess(edit_range_data, &con[0].*.modules[0].mcl.lines[line_num]) catch return;
+                    save_config(con[2], con[0], con[1]);
+                    sout.print("Range data successfully saved.\n", .{}) catch return;
                     return;
                 }
             }
@@ -338,8 +348,10 @@ pub fn main() !u8 {
                     //TODO: reask the above question if something else is inputted
                 }
 
-                con.*.modules[0].mcl.lines = con.*.modules[0].mcl.lines ++ .{mcl.Config.Line{ .axes = axes, .ranges = ranges }};
-                con.*.modules[0].mcl.line_names = con.*.modules[0].mcl.line_names ++ .{name};
+                con[0].*.modules[0].mcl.lines = con[0].*.modules[0].mcl.lines ++ .{mcl.Config.Line{ .axes = axes, .ranges = ranges }};
+                con[0].*.modules[0].mcl.line_names = con[0].*.modules[0].mcl.line_names ++ .{name};
+
+                save_config(con[2], con[0], con[1]);
 
                 sout.print("Successfully created a new line.\n", .{}) catch return;
                 //TODO: formatted print the newly created line.
@@ -350,16 +362,23 @@ pub fn main() !u8 {
     var buffer: [1024]u8 = undefined;
 
     while (true) {
+        if (new_file) {
+            const input = try readInput("Please input a name for the new config json file:", &buffer);
+
+            file_name = input;
+        }
+
         const run = try readInput("Modify or add data? [y/n]", &buffer);
 
         if (std.mem.eql(u8, run, "y")) {
             const m_or_a = try readInput("m for modify, a for add", &buffer);
 
             if (std.mem.eql(u8, m_or_a, "m")) {
-                try runProcess(edit_line_data, &config);
+                try runProcess(edit_line_data, .{ &config, new_file, file_name });
             } else if (std.mem.eql(u8, m_or_a, "a")) {
-                try runProcess(add_line_data, &config);
+                try runProcess(add_line_data, .{ &config, new_file, file_name });
             }
+            new_file = false;
         } else if (std.mem.eql(u8, run, "n")) {
             try stdout.print("Quitting program.\n", .{});
             break;
@@ -370,16 +389,9 @@ pub fn main() !u8 {
     return 0;
 }
 
-fn save_config_edit(file_name: []const u8, config: Config) !void {
-    var json_writer = JsonWriter{ .file = try std.fs.cwd().openFile(file_name, .{}) };
+fn save_config(file_name: []const u8, config: Config, new_file: bool) !void {
+    var json_writer = JsonWriter{ .file = if (new_file) try std.fs.cwd().createFile(file_name, .{}) else try std.fs.cwd().openFile(file_name, .{}) };
 
+    defer json_writer.file.close();
     try std.json.stringify(config, .{}, json_writer.writer());
-    try json_writer.file.close();
-}
-
-fn save_config_new(file_name: []const u8, config: Config) !void {
-    var json_writer = JsonWriter{ .file = try std.fs.cwd().createFile(file_name, .{}) };
-
-    try std.json.stringify(config, .{}, json_writer.writer());
-    try json_writer.file.close();
 }
