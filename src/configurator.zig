@@ -236,16 +236,7 @@ pub fn main() !u8 {
                     return ProcessError.WrongFormat;
                 }
 
-                for (con[0].*.modules[0].mcl.lines, 0..) |line, i| {
-                    sout.print("axes: {d}\n", .{line.axes}) catch return;
-                    sout.print("{d}. name:{s}\n", .{ i, con[0].*.modules[0].mcl.line_names[i] }) catch return;
-                    sout.print("ranges:\n", .{}) catch return;
-                    for (line.ranges) |range| {
-                        sout.print("  start: {d}\n", .{range.start}) catch return;
-                        sout.print("  channel: {s}\n", .{range.channel}) catch return;
-                        sout.print("  length: {d}\n\n", .{range.length}) catch return;
-                    }
-                }
+                print_lines(con[0]);
 
                 const line_num = std.fmt.parseUnsigned(u32, arg[0], 10) catch {
                     sout.print("Please input a number for the line #.\n", .{}) catch return;
@@ -410,4 +401,26 @@ fn save_config(file_name: []const u8, config: Config, new_file: bool) !void {
 
     defer json_writer.file.close();
     try std.json.stringify(config, .{}, json_writer.writer());
+}
+
+fn print_lines(config: Config) !void {
+    const stdout = std.io.getStdOut().writer();
+
+    for (config.modules[0].mcl.lines, 0..) |line, i| {
+        try stdout.print("axes: {d}\n", .{line.axes});
+        try stdout.print("{d}. name:{s}\n", .{ i, line.modules[0].mcl.line_names[i] });
+        try stdout.print("ranges:\n", .{});
+
+        try print_ranges(line.ranges);
+    }
+}
+
+fn print_ranges(ranges: []mcl.Config.Line.Range) !void {
+    const stdout = std.io.getStdOut().writer();
+
+    for (ranges) |range| {
+        try stdout.print("  start: {d}\n", .{range.start});
+        try stdout.print("  channel: {s}\n", .{range.channel});
+        try stdout.print("  length: {d}\n\n", .{range.length});
+    }
 }
