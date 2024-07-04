@@ -63,6 +63,8 @@ const JsonWriter = struct {
     }
 };
 
+const ConfigSaveData = struct { config: *Config = undefined, new_file: bool = false, file_name: []const u8 = "config.json" };
+
 fn runProcess(cmd: Process, param: anytype) !void {
     const stdout = std.io.getStdOut().writer();
     var buffer: [1024]u8 = undefined;
@@ -236,7 +238,7 @@ pub fn main() !u8 {
                     return ProcessError.WrongFormat;
                 }
 
-                print_lines(con[0]);
+                print_lines(con.config.*);
 
                 const line_num = std.fmt.parseUnsigned(u32, arg[0], 10) catch {
                     sout.print("Please input a number for the line #.\n", .{}) catch return;
@@ -244,7 +246,7 @@ pub fn main() !u8 {
                 } - 1;
                 const mod = arg[1];
 
-                const lines: []mcl.Config.Line = con[0].*.modules[0].mcl.lines;
+                const lines: []mcl.Config.Line = con.config.*.modules[0].mcl.lines;
 
                 if (line_num < 0 or line_num >= lines.len) {
                     sout.print("Line number must be between 1 and {d}.\n", .{lines.len}) catch return;
@@ -255,9 +257,9 @@ pub fn main() !u8 {
 
                 if (std.mem.eql(u8, mod, "name")) {
                     const new_name = readInput("Please input the new name", &buffer) catch return;
-                    con[0].*.modules[0].mcl.line_names[line_num] = new_name;
+                    con.config.*.modules[0].mcl.line_names[line_num] = new_name;
 
-                    save_config(con[2], con[0], con[1]); //TODO do this better. numbers confusing
+                    save_config(con.file_name, con.config.*, con.new_file);
 
                     sout.print("Line #{d} name changed to {s}.\n", .{ line_num, new_name }) catch return;
                     return;
@@ -267,14 +269,14 @@ pub fn main() !u8 {
                         return ProcessError.NotANumber;
                     };
 
-                    con[0].*.modules[0].mcl.lines[line_num].axes = new_axes;
-                    save_config(con[2], con[0], con[1]);
+                    con.config.*.modules[0].mcl.lines[line_num].axes = new_axes;
+                    save_config(con.file_name, con.config.*, con.new_file);
 
                     sout.print("Line #{d} axes changed to {d}\n", .{ line_num, new_axes }) catch return;
                     return;
                 } else if (std.mem.eql(u8, mod, "ranges")) {
-                    runProcess(edit_range_data, &con[0].*.modules[0].mcl.lines[line_num]) catch return;
-                    save_config(con[2], con[0], con[1]);
+                    runProcess(edit_range_data, &con.config.*.modules[0].mcl.lines[line_num]) catch return;
+                    save_config(con.file_name, con.config.*, con.new_file);
                     sout.print("Range data successfully saved.\n", .{}) catch return;
                     return;
                 }
@@ -355,13 +357,13 @@ pub fn main() !u8 {
                     }
                 }
 
-                con[0].*.modules[0].mcl.lines = con[0].*.modules[0].mcl.lines ++ .{mcl.Config.Line{ .axes = axes, .ranges = ranges }};
-                con[0].*.modules[0].mcl.line_names = con[0].*.modules[0].mcl.line_names ++ .{name};
+                con.config.*.modules[0].mcl.lines = con.config.*.modules[0].mcl.lines ++ .{mcl.Config.Line{ .axes = axes, .ranges = ranges.items }};
+                con.config.*.modules[0].mcl.line_names = con.config.*.modules[0].mcl.line_names ++ .{name};
 
-                save_config(con[2], con[0], con[1]);
+                save_config(con.file_name, con.config.*, con.new_file);
 
                 sout.print("Successfully created a new line.\n", .{}) catch return;
-                //TODO: formatted print the newly created line.
+                print_lines(con.config.*);
             }
         }.addLineData,
     };
@@ -381,9 +383,9 @@ pub fn main() !u8 {
             const m_or_a = try readInput("m for modify, a for add", &buffer);
 
             if (std.mem.eql(u8, m_or_a, "m")) {
-                try runProcess(edit_line_data, .{ &config, new_file, file_name });
+                try runProcess(edit_line_data, ConfigSaveData{ .config = &config, .file_name = file_name, .new_file = new_file });
             } else if (std.mem.eql(u8, m_or_a, "a")) {
-                try runProcess(add_line_data, .{ &config, new_file, file_name });
+                try runProcess(add_line_data, ConfigSaveData{ .config = &config, .file_name = file_name, .new_file = new_file });
             }
             new_file = false;
         } else if (std.mem.eql(u8, run, "n")) {
@@ -408,7 +410,7 @@ fn print_lines(config: Config) !void {
 
     for (config.modules[0].mcl.lines, 0..) |line, i| {
         try stdout.print("axes: {d}\n", .{line.axes});
-        try stdout.print("{d}. name:{s}\n", .{ i, line.modules[0].mcl.line_names[i] });
+        try stdout.print("{d}. name:{s}\n", .{ i, config.modules[0].mcl.line_names[i] });
         try stdout.print("ranges:\n", .{});
 
         try print_ranges(line.ranges);
