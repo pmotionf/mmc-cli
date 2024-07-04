@@ -7,6 +7,7 @@ const ProcessError = error{
     WrongFormat,
     NotANumber,
     OutOfRange,
+    UnsuccessfulSave,
 };
 
 const Options = struct {
@@ -52,13 +53,13 @@ const JsonWriter = struct {
 
     file: std.fs.File = undefined,
 
-    pub const Writer = std.io.Writer(*Self, error{OutOfMemory}, write);
+    pub const Writer = std.io.GenericWriter(*Self, std.fs.File.WriteError, write);
 
     pub fn writer(self: *Self) Writer {
         return .{ .context = self };
     }
 
-    pub fn write(self: JsonWriter, data: []const u8) !usize {
+    pub fn write(self: Self, data: []const u8) !usize {
         return try self.file.write(data);
     }
 };
@@ -238,7 +239,7 @@ pub fn main() !u8 {
                     return ProcessError.WrongFormat;
                 }
 
-                print_lines(con.config.*);
+                print_lines(con.config.*) catch return;
 
                 const line_num = std.fmt.parseUnsigned(u32, arg[0], 10) catch {
                     sout.print("Please input a number for the line #.\n", .{}) catch return;
@@ -259,7 +260,10 @@ pub fn main() !u8 {
                     const new_name = readInput("Please input the new name", &buffer) catch return;
                     con.config.*.modules[0].mcl.line_names[line_num] = new_name;
 
-                    save_config(con.file_name, con.config.*, con.new_file);
+                    save_config(con.file_name, con.config.*, con.new_file) catch {
+                        sout.print("Saving unsuccessful\n", .{});
+                        return ProcessError.UnsuccessfulSave;
+                    };
 
                     sout.print("Line #{d} name changed to {s}.\n", .{ line_num, new_name }) catch return;
                     return;
@@ -270,13 +274,19 @@ pub fn main() !u8 {
                     };
 
                     con.config.*.modules[0].mcl.lines[line_num].axes = new_axes;
-                    save_config(con.file_name, con.config.*, con.new_file);
+                    save_config(con.file_name, con.config.*, con.new_file) catch {
+                        sout.print("Saving unsuccessful\n", .{});
+                        return ProcessError.UnsuccessfulSave;
+                    };
 
                     sout.print("Line #{d} axes changed to {d}\n", .{ line_num, new_axes }) catch return;
                     return;
                 } else if (std.mem.eql(u8, mod, "ranges")) {
                     runProcess(edit_range_data, &con.config.*.modules[0].mcl.lines[line_num]) catch return;
-                    save_config(con.file_name, con.config.*, con.new_file);
+                    save_config(con.file_name, con.config.*, con.new_file) catch {
+                        sout.print("Saving unsuccessful\n", .{});
+                        return ProcessError.UnsuccessfulSave;
+                    };
                     sout.print("Range data successfully saved.\n", .{}) catch return;
                     return;
                 }
@@ -360,7 +370,10 @@ pub fn main() !u8 {
                 con.config.*.modules[0].mcl.lines = con.config.*.modules[0].mcl.lines ++ .{mcl.Config.Line{ .axes = axes, .ranges = ranges.items }};
                 con.config.*.modules[0].mcl.line_names = con.config.*.modules[0].mcl.line_names ++ .{name};
 
-                save_config(con.file_name, con.config.*, con.new_file);
+                save_config(con.file_name, con.config.*, con.new_file) catch {
+                    sout.print("Saving unsuccessful\n", .{});
+                    return ProcessError.UnsuccessfulSave;
+                };
 
                 sout.print("Successfully created a new line.\n", .{}) catch return;
                 print_lines(con.config.*);
@@ -421,8 +434,8 @@ fn print_ranges(ranges: []mcl.Config.Line.Range) !void {
     const stdout = std.io.getStdOut().writer();
 
     for (ranges) |range| {
-        try stdout.print("  start: {d}\n", .{range.start});
         try stdout.print("  channel: {s}\n", .{range.channel});
-        try stdout.print("  length: {d}\n\n", .{range.length});
+        try stdout.print("  start: {d}\n", .{range.start});
+        try stdout.print("  end: {d}\n\n", .{range.end});
     }
 }
