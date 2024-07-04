@@ -102,6 +102,11 @@ pub fn main() !u8 {
         const input = try readInput("Please input the new config file name:", &buffer);
         file_name = input;
     }
+
+    const alloc = std.heap.page_allocator;
+    var prompt_stack = std.ArrayList(Prompt).init(alloc);
+    defer prompt_stack.deinit();
+
     return 0;
 }
 
