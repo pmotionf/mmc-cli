@@ -41,6 +41,16 @@ const AnyPointer = union(enum) {
     @"mcl.connection.Channel": *mcl.connection.Channel,
 };
 
+fn MclType(comptime T: type, comptime name: []const u8, ptr: *T) type {
+    return struct {
+        typ: type = T,
+        ptr: *T = ptr,
+        fields: []MclType,
+
+        pub const field_name = name;
+    };
+}
+
 pub fn main() !u8 {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
