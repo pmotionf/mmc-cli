@@ -19,7 +19,7 @@ jobs:
     steps:
       - name: Log masks
         run: echo "::add-mask::$NAME_MASK"
-      
+
       - uses: actions/checkout@v4
 
       - name: Run zig fmt
