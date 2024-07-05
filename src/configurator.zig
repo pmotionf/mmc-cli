@@ -2,6 +2,7 @@ const std = @import("std");
 const args = @import("args");
 const Config = @import("Config.zig");
 const mcl = @import("mcl");
+const command = @import("command/mcl.zig");
 
 const Options = struct {
     create: bool = false,
@@ -31,25 +32,30 @@ const Prompt = struct {
 };
 
 const AnyPointer = union(enum) {
-    @"[]mcl.Config.Line": *[]mcl.Config.Line,
-    @"[]mcl.Config.Line.Range": *[]mcl.Config.Line.Range,
-    @"mcl.Config.Line.Range": *mcl.Config.Line.Range,
-    @"mcl.Config.Line": *mcl.Config.Line,
-    @"[]const u8": *[]const u8,
+    arr_line: *[]mcl.Config.Line,
+    arr_range: *[]mcl.Config.Line.Range,
+    mcl_config: *command.Config,
+    range: *mcl.Config.Line.Range,
+    line: *mcl.Config.Line,
+    str: *[]const u8,
     u8: *u8,
     u32: *u32,
-    @"mcl.connection.Channel": *mcl.connection.Channel,
+    channel: *mcl.connection.Channel,
 };
 
-fn MclType(comptime T: type, comptime name: []const u8, ptr: *T) type {
-    return struct {
-        typ: type = T,
-        ptr: *T = ptr,
-        fields: []MclType,
+// fn MclType(comptime T: type, comptime name: []const u8, ptr: *T) type {
+//     const alloc = std.heap.page_allocator;
+//     var field_list = std.ArrayList(MclType).init(alloc);
+//     //NOTE do i need to deinint somewhere or does the memory automatically get freed when program ends
 
-        pub const field_name = name;
-    };
-}
+// }
+
+const MclType = struct {
+    typ: type = undefined,
+    ptr: *anyopaque = undefined,
+    fields: std.ArrayList(MclType),
+    field_name: []const u8 = undefined,
+};
 
 pub fn main() !u8 {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -79,7 +85,7 @@ pub fn main() !u8 {
     var config: Config = .{
         .modules = &.{},
     };
-    // Load existing config file.
+
     if (!options.options.create) {
         if (options.positionals.len != 1) {
             try args.printHelp(
@@ -105,6 +111,7 @@ pub fn main() !u8 {
             .lines = &.{},
         } };
     }
+    // Load existing config file.
 
     var buffer: [1024]u8 = undefined;
 
@@ -116,8 +123,40 @@ pub fn main() !u8 {
     const alloc = std.heap.page_allocator;
     var prompt_stack = std.ArrayList(Prompt).init(alloc);
     defer prompt_stack.deinit();
-    printPrompt(&prompt_stack, Prompt{});
+
+    var mcltype_tree = generateMclTypeTree(&config);
+    mcltype_tree = mcltype_tree;
     return 0;
+}
+
+fn generateMclTypeTree(config: *Config) MclType {
+    const alloc = std.heap.page_allocator;
+    var field_list = std.ArrayList(MclType).init(alloc);
+    field_list = field_list;
+    var head = MclType{
+        .field_name = "mcl",
+        .fields = field_list,
+        .ptr = @ptrCast(&config.modules[0].mcl),
+        .typ = @TypeOf(config.modules[0].mcl),
+    };
+
+    return recursiveTreeSearch(&head);
+}
+
+fn recursiveTreeSearch(head_ptr: *MclType) MclType {
+    switch (@typeInfo(head_ptr.typ)) {
+        .Array => {
+            const arr: *head_ptr.typ = @alignCast(@ptrCast(head_ptr.ptr));
+
+            for (&arr.*.len) |*v| {
+                recursiveTreeSearch(v);
+            }
+        },
+
+        .Struct => {},
+
+        else => {},
+    }
 }
 
 fn printPrompt(prompt_stack: *std.ArrayList(Prompt), prompt: Prompt) !void {
