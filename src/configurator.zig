@@ -36,8 +36,8 @@ const AnyPointer = union(enum) {
     @"mcl.Config.Line.Range": *mcl.Config.Line.Range,
     @"mcl.Config.Line": *mcl.Config.Line,
     @"[]const u8": *[]const u8,
-    @"u8": *u8,
-    @"u32": *u32,
+    u8: *u8,
+    u32: *u32,
     @"mcl.connection.Channel": *mcl.connection.Channel,
 };
 
@@ -106,11 +106,22 @@ pub fn main() !u8 {
     const alloc = std.heap.page_allocator;
     var prompt_stack = std.ArrayList(Prompt).init(alloc);
     defer prompt_stack.deinit();
-
+    printPrompt(&prompt_stack, Prompt{});
     return 0;
 }
 
-fn 
+fn printPrompt(prompt_stack: *std.ArrayList(Prompt), prompt: Prompt) !void {
+    const stdout = std.io.getStdOut().writer();
+
+    try stdout.print("{s}\n\n", .{prompt.question});
+    try stdout.print("{s}\n", .{prompt.info});
+
+    try prompt_stack.append(prompt);
+}
+
+fn popPromptStack(prompt_stack: *std.ArrayList(Prompt)) Prompt {
+    return prompt_stack.orderedRemove(prompt_stack.items.len - 1);
+}
 
 fn saveConfig(file_name: []const u8, config: *const Config) !void {
     const file: std.fs.File = std.fs.cwd().createFile(file_name, .{});
