@@ -24,43 +24,21 @@ const Options = struct {
     };
 };
 
+const Type = std.meta.Tag(std.builtin.Type);
+
 const Prompt = struct {
     question: []const u8,
     info: []const u8,
-    ptr: AnyPointer,
-    field_name: []const u8,
-};
-
-const AnyPointer = union(enum) {
-    arr_line: *[]mcl.Config.Line,
-    arr_range: *[]mcl.Config.Line.Range,
-    mcl_config: *command.Config,
-    range: *mcl.Config.Line.Range,
-    line: *mcl.Config.Line,
-    str: *[]const u8,
-    u8: *u8,
-    u32: *u32,
-    channel: *mcl.connection.Channel,
-};
-
-// fn MclType(comptime T: type, comptime name: []const u8, ptr: *T) type {
-//     const alloc = std.heap.page_allocator;
-//     var field_list = std.ArrayList(MclType).init(alloc);
-//     //NOTE do i need to deinint somewhere or does the memory automatically get freed when program ends
-
-// }
-
-const MclType = struct {
-    typ: type = undefined,
-    ptr: *anyopaque = undefined,
-    fields: std.ArrayList(MclType),
-    field_name: []const u8 = undefined,
+    name: []const u8,
+    type: std.meta.Tag(std.builtin.Type),
+    ptr: *anyopaque,
 };
 
 pub fn main() !u8 {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
+
     const stdout = std.io.getStdOut().writer();
 
     var new_file: bool = false;
@@ -120,43 +98,10 @@ pub fn main() !u8 {
         file_name = input;
     }
 
-    const alloc = std.heap.page_allocator;
-    var prompt_stack = std.ArrayList(Prompt).init(alloc);
+    var prompt_stack = std.ArrayList(Prompt).init(allocator);
     defer prompt_stack.deinit();
 
-    var mcltype_tree = generateMclTypeTree(&config);
-    mcltype_tree = mcltype_tree;
     return 0;
-}
-
-fn generateMclTypeTree(config: *Config) MclType {
-    const alloc = std.heap.page_allocator;
-    var field_list = std.ArrayList(MclType).init(alloc);
-    field_list = field_list;
-    var head = MclType{
-        .field_name = "mcl",
-        .fields = field_list,
-        .ptr = @ptrCast(&config.modules[0].mcl),
-        .typ = @TypeOf(config.modules[0].mcl),
-    };
-
-    return recursiveTreeSearch(&head);
-}
-
-fn recursiveTreeSearch(head_ptr: *MclType) MclType {
-    switch (@typeInfo(head_ptr.typ)) {
-        .Array => {
-            const arr: *head_ptr.typ = @alignCast(@ptrCast(head_ptr.ptr));
-
-            for (&arr.*.len) |*v| {
-                recursiveTreeSearch(v);
-            }
-        },
-
-        .Struct => {},
-
-        else => {},
-    }
 }
 
 fn printPrompt(prompt_stack: *std.ArrayList(Prompt), prompt: Prompt) !void {
