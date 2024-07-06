@@ -30,8 +30,36 @@ const Prompt = struct {
     question: []const u8,
     info: []const u8,
     name: []const u8,
-    type: std.meta.Tag(std.builtin.Type),
+    type: std.builtin.Type,
     ptr: *anyopaque,
+
+    /// Print structured prompt info. Does not wrap any string fields, with
+    /// whitespace printed only between each major block of the prompt.
+    pub fn print(prompt: Prompt, writer: std.io.AnyWriter) !void {
+        writer.print("{s}\n{s}\n", .{ prompt.question, prompt.info });
+
+        // Recast type-erased pointer and print cased on type.
+        switch (prompt.type) {
+            .Struct => |t| {},
+            .Int, .Float => |t| {},
+            .Float => |t| {},
+            .Array => |t| {},
+            .Pointer => |t| {
+                // If this is a slice of bytes, then assume string and print a
+                // prompt accordingly.
+            },
+            .Optional => |t| {},
+            .Enum => |t| {},
+            .Union => |t| {},
+            else => {
+                return error.UnsupportedTypeDetected;
+            },
+        }
+    }
+
+    pub const Stack = struct {
+        prompts: std.ArrayList(Prompt),
+    };
 };
 
 pub fn main() !u8 {
