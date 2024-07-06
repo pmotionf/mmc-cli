@@ -24,7 +24,7 @@ pub fn init(c: Config) !void {
 
     try mcl.Config.validate(.{ .lines = c.lines });
 
-    mcl.init(.{ .lines = c.lines });
+    try mcl.init(allocator, .{ .lines = c.lines });
 
     arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     errdefer arena.deinit();
@@ -681,11 +681,11 @@ fn mclStationX(params: [][]const u8) !void {
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
 
-    if (axis_id < 1 or axis_id > line.axes) {
+    if (axis_id < 1 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
 
-    const axis: mcl.Line.Axis.Index = @intCast(axis_id - 1);
+    const axis: mcl.Axis.Index.Line = @intCast(axis_id - 1);
 
     const station_index: Station.Index = @intCast(axis / 3);
     try line.stations[station_index].pollX();
@@ -700,11 +700,11 @@ fn mclStationY(params: [][]const u8) !void {
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
 
-    if (axis_id < 1 or axis_id > line.axes) {
+    if (axis_id < 1 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
 
-    const axis: mcl.Line.Axis.Index = @intCast(axis_id - 1);
+    const axis: mcl.Axis.Index.Line = @intCast(axis_id - 1);
 
     const station_index: Station.Index = @intCast(axis / 3);
     try line.stations[station_index].pollY();
@@ -719,11 +719,11 @@ fn mclStationWr(params: [][]const u8) !void {
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
 
-    if (axis_id < 1 or axis_id > line.axes) {
+    if (axis_id < 1 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
 
-    const axis: mcl.Line.Axis.Index = @intCast(axis_id - 1);
+    const axis: mcl.Axis.Index.Line = @intCast(axis_id - 1);
 
     const station_index: Station.Index = @intCast(axis / 3);
     try line.stations[station_index].pollWr();
@@ -738,11 +738,11 @@ fn mclStationWw(params: [][]const u8) !void {
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
 
-    if (axis_id < 1 or axis_id > line.axes) {
+    if (axis_id < 1 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
 
-    const axis: mcl.Line.Axis.Index = @intCast(axis_id - 1);
+    const axis: mcl.Axis.Index.Line = @intCast(axis_id - 1);
 
     const station_index: Station.Index = @intCast(axis / 3);
     try line.stations[station_index].pollWw();
@@ -758,13 +758,13 @@ fn mclAxisSlider(params: [][]const u8) !void {
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
 
-    if (axis_id < 1 or axis_id > line.axes) {
+    if (axis_id < 1 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
 
-    const axis_index: mcl.Line.Axis.Index = @intCast(axis_id - 1);
+    const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
     const station_index: mcl.Station.Index = @intCast(axis_index / 3);
-    const local_axis_index: mcl.Station.Axis.Index = @intCast(axis_index % 3);
+    const local_axis_index: mcl.Axis.Index.Station = @intCast(axis_index % 3);
 
     const station = line.stations[station_index];
     try station.pollWr();
@@ -791,12 +791,12 @@ fn mclAxisReleaseServo(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
-    if (axis_id < 1 or axis_id > line.axes) {
+    if (axis_id < 1 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
 
-    const axis_index: mcl.Line.Axis.Index = @intCast(axis_id - 1);
-    const local_axis_index: mcl.Station.Axis.Index = @intCast(axis_index % 3);
+    const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
+    const local_axis_index: mcl.Axis.Index.Station = @intCast(axis_index % 3);
     const station = line.stations[axis_index / 3];
 
     station.ww.target_axis_number = local_axis_index + 1;
@@ -817,12 +817,12 @@ fn mclClearErrors(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
-    if (axis_id < 1 or axis_id > line.axes) {
+    if (axis_id < 1 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
 
-    const axis_index: mcl.Line.Axis.Index = @intCast(axis_id - 1);
-    const local_axis_index: mcl.Station.Axis.Index = @intCast(axis_index % 3);
+    const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
+    const local_axis_index: mcl.Axis.Index.Station = @intCast(axis_index % 3);
     const station = line.stations[axis_index / 3];
 
     station.ww.target_axis_number = local_axis_index + 1;
@@ -843,13 +843,13 @@ fn mclClearSliderInfo(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
-    if (axis_id < 1 or axis_id > line.axes) {
+    if (axis_id < 1 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
 
-    const axis_index: mcl.Line.Axis.Index = @intCast(axis_id - 1);
+    const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
     const station = line.stations[axis_index / 3];
-    const local_axis_index: mcl.Station.Axis.Index = @intCast(axis_index % 3);
+    const local_axis_index: mcl.Axis.Index.Station = @intCast(axis_index % 3);
 
     station.ww.target_axis_number = local_axis_index + 1;
     try station.sendWw();
@@ -924,7 +924,7 @@ fn mclIsolate(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
-    if (axis_id == 0 or axis_id > line.axes) {
+    if (axis_id == 0 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
 
@@ -956,9 +956,9 @@ fn mclIsolate(params: [][]const u8) !void {
         } else break :link null;
     };
 
-    const axis_index: mcl.Line.Axis.Index = @intCast(axis_id - 1);
+    const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
     const station = line.stations[axis_index / 3];
-    const local_axis: mcl.Station.Axis.Index = @intCast(axis_index % 3);
+    const local_axis: mcl.Axis.Index.Station = @intCast(axis_index % 3);
 
     try waitCommandReady(station);
     if (link_axis) |a| {
@@ -1040,12 +1040,13 @@ fn mclSliderLocation(params: [][]const u8) !void {
     const line: mcl.Line = mcl.lines[line_idx];
 
     try line.pollWr();
-    const station, const axis_index = if (try line.search(slider_id)) |t|
-        t
-    else
-        return error.SliderNotFound;
+    const main, _ =
+        if (line.search(slider_id)) |t| t else return error.SliderNotFound;
 
-    const location: Distance = station.wr.slider_location.axis(axis_index);
+    const station = main.station;
+
+    const location: Distance =
+        station.wr.slider_location.axis(main.index.station);
 
     std.log.info(
         "Slider {d} location: {d}.{d}mm",
@@ -1071,10 +1072,10 @@ fn mclSliderAxis(params: [][]const u8) !void {
 
     try line.pollWr();
 
-    var axis: mcl.Line.Axis.Id = 1;
+    var axis: mcl.Axis.Id.Line = 1;
     for (line.stations) |station| {
         for (0..3) |_local_axis| {
-            const local_axis: mcl.Station.Axis.Index = @intCast(_local_axis);
+            const local_axis: mcl.Axis.Index.Station = @intCast(_local_axis);
             if (station.wr.slider_number.axis(local_axis) == slider_id) {
                 std.log.info(
                     "Slider {d} axis: {}",
@@ -1082,7 +1083,7 @@ fn mclSliderAxis(params: [][]const u8) !void {
                 );
             }
             axis += 1;
-            if (axis > line.axes) break;
+            if (axis > line.axes.len) break;
         }
     }
 }
@@ -1094,10 +1095,10 @@ fn mclHallStatus(params: [][]const u8) !void {
 
     try line.pollX();
 
-    var axis: mcl.Line.Axis.Id = 1;
+    var axis: mcl.Axis.Id.Line = 1;
     for (line.stations) |station| {
         for (0..3) |_local_axis| {
-            const local_axis: mcl.Station.Axis.Index = @intCast(_local_axis);
+            const local_axis: mcl.Axis.Index.Station = @intCast(_local_axis);
             const alarms = station.x.hall_alarm.axis(local_axis);
 
             if (alarms.back) {
@@ -1108,14 +1109,14 @@ fn mclHallStatus(params: [][]const u8) !void {
             }
 
             axis += 1;
-            if (axis > line.axes) break;
+            if (axis > line.axes.len) break;
         }
     }
 }
 
 fn mclAssertHall(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis = try std.fmt.parseInt(mcl.Line.Axis.Id, params[2], 0);
+    const axis = try std.fmt.parseInt(mcl.Axis.Id.Line, params[2], 0);
     const side: mcl.Direction =
         if (std.ascii.eqlIgnoreCase("back", params[3]) or
         std.ascii.eqlIgnoreCase("left", params[3]))
@@ -1127,7 +1128,7 @@ fn mclAssertHall(params: [][]const u8) !void {
         return error.InvalidHallAlarmSide;
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
-    if (axis == 0 or axis > line.axes) {
+    if (axis == 0 or axis > line.axes.len) {
         return error.InvalidAxis;
     }
 
@@ -1141,7 +1142,7 @@ fn mclAssertHall(params: [][]const u8) !void {
     }
 
     const station_ind: mcl.Station.Index = @intCast((axis - 1) / 3);
-    const local_axis: mcl.Station.Axis.Index = @intCast((axis - 1) % 3);
+    const local_axis: mcl.Axis.Index.Station = @intCast((axis - 1) % 3);
 
     const station = line.stations[station_ind];
     try station.pollX();
@@ -1168,22 +1169,21 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
-    if (axis_id == 0 or axis_id > line.axes) {
+    if (axis_id == 0 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
 
     try line.pollWr();
-    const station, const local_axis =
-        if (try line.search(slider_id)) |t| t else return error.SliderNotFound;
+    const main, const _aux =
+        if (line.search(slider_id)) |t| t else return error.SliderNotFound;
+    const station = main.station.*;
 
-    if (local_axis == 2) {
-        const next_station = station.next();
-        if (next_station != null and
-            next_station.?.wr.slider_number.axis1 == slider_id)
-        {
+    if (_aux) |aux| {
+        const next_station = aux.station.*;
+        if (next_station.wr.slider_number.axis1 == slider_id) {
             if (try mcl.stopTrafficTransmission(
                 station,
-                next_station.?,
+                next_station,
             )) |stopped| {
                 var direction: Direction = undefined;
                 var stopped_station: mcl.Station = undefined;
@@ -1226,17 +1226,16 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
     const line: mcl.Line = mcl.lines[line_idx];
 
     try line.pollWr();
-    const station, const local_axis =
-        if (try line.search(slider_id)) |t| t else return error.SliderNotFound;
+    const main, const _aux =
+        if (line.search(slider_id)) |t| t else return error.SliderNotFound;
+    const station = main.station.*;
 
-    if (local_axis == 2) {
-        const next_station = station.next();
-        if (next_station != null and
-            next_station.?.wr.slider_number.axis1 == slider_id)
-        {
+    if (_aux) |aux| {
+        const next_station = aux.station.*;
+        if (next_station.wr.slider_number.axis1 == slider_id) {
             if (try mcl.stopTrafficTransmission(
                 station,
-                next_station.?,
+                next_station,
             )) |stopped| {
                 var direction: Direction = undefined;
                 var stopped_station: mcl.Station = undefined;
@@ -1279,17 +1278,16 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
     const line = mcl.lines[line_idx];
 
     try line.pollWr();
-    const station, const local_axis =
-        if (try line.search(slider_id)) |t| t else return error.SliderNotFound;
+    const main, const _aux =
+        if (line.search(slider_id)) |t| t else return error.SliderNotFound;
+    const station = main.station.*;
 
-    if (local_axis == 2) {
-        const next_station = station.next();
-        if (next_station != null and
-            next_station.?.wr.slider_number.axis1 == slider_id)
-        {
+    if (_aux) |aux| {
+        const next_station = aux.station.*;
+        if (next_station.wr.slider_number.axis1 == slider_id) {
             if (try mcl.stopTrafficTransmission(
                 station,
-                next_station.?,
+                next_station,
             )) |stopped| {
                 var direction: Direction = undefined;
                 var stopped_station: mcl.Station = undefined;
@@ -1325,22 +1323,21 @@ fn mclSliderSpdMoveAxis(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
-    if (axis_id == 0 or axis_id > line.axes) {
+    if (axis_id == 0 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
 
     try line.pollWr();
-    const station, const local_axis =
-        if (try line.search(slider_id)) |t| t else return error.SliderNotFound;
+    const main, const _aux =
+        if (line.search(slider_id)) |t| t else return error.SliderNotFound;
+    const station = main.station.*;
 
-    if (local_axis == 2) {
-        const next_station = station.next();
-        if (next_station != null and
-            next_station.?.wr.slider_number.axis1 == slider_id)
-        {
+    if (_aux) |aux| {
+        const next_station = aux.station.*;
+        if (next_station.wr.slider_number.axis1 == slider_id) {
             if (try mcl.stopTrafficTransmission(
                 station,
-                next_station.?,
+                next_station,
             )) |stopped| {
                 var direction: Direction = undefined;
                 var stopped_station: mcl.Station = undefined;
@@ -1383,17 +1380,16 @@ fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
     const line: mcl.Line = mcl.lines[line_idx];
 
     try line.pollWr();
-    const station, const local_axis =
-        if (try line.search(slider_id)) |t| t else return error.SliderNotFound;
+    const main, const _aux =
+        if (line.search(slider_id)) |t| t else return error.SliderNotFound;
+    const station = main.station.*;
 
-    if (local_axis == 2) {
-        const next_station = station.next();
-        if (next_station != null and
-            next_station.?.wr.slider_number.axis1 == slider_id)
-        {
+    if (_aux) |aux| {
+        const next_station = aux.station.*;
+        if (next_station.wr.slider_number.axis1 == slider_id) {
             if (try mcl.stopTrafficTransmission(
                 station,
-                next_station.?,
+                next_station,
             )) |stopped| {
                 var direction: Direction = undefined;
                 var stopped_station: mcl.Station = undefined;
@@ -1436,17 +1432,16 @@ fn mclSliderSpdMoveDistance(params: [][]const u8) !void {
     const line = mcl.lines[line_idx];
 
     try line.pollWr();
-    const station, const local_axis =
-        if (try line.search(slider_id)) |t| t else return error.SliderNotFound;
+    const main, const _aux =
+        if (line.search(slider_id)) |t| t else return error.SliderNotFound;
+    const station = main.station.*;
 
-    if (local_axis == 2) {
-        const next_station = station.next();
-        if (next_station != null and
-            next_station.?.wr.slider_number.axis1 == slider_id)
-        {
+    if (_aux) |aux| {
+        const next_station = aux.station.*;
+        if (next_station.wr.slider_number.axis1 == slider_id) {
             if (try mcl.stopTrafficTransmission(
                 station,
-                next_station.?,
+                next_station,
             )) |stopped| {
                 var direction: Direction = undefined;
                 var stopped_station: mcl.Station = undefined;
@@ -1483,17 +1478,16 @@ fn mclSliderPushForward(params: [][]const u8) !void {
     const line = mcl.lines[line_idx];
 
     try line.pollWr();
-    const station, const local_axis =
-        if (try line.search(slider_id)) |t| t else return error.SliderNotFound;
+    const main, const _aux =
+        if (line.search(slider_id)) |t| t else return error.SliderNotFound;
+    const station = main.station.*;
 
-    if (local_axis == 2) {
-        const next_station = station.next();
-        if (next_station != null and
-            next_station.?.wr.slider_number.axis1 == slider_id)
-        {
+    if (_aux) |aux| {
+        const next_station = aux.station.*;
+        if (next_station.wr.slider_number.axis1 == slider_id) {
             if (try mcl.stopTrafficTransmission(
                 station,
-                next_station.?,
+                next_station,
             )) |stopped| {
                 var direction: Direction = undefined;
                 var stopped_station: mcl.Station = undefined;
@@ -1514,7 +1508,7 @@ fn mclSliderPushForward(params: [][]const u8) !void {
     station.ww.* = .{
         .command_code = .PushAxisSliderForward,
         .command_slider_number = slider_id,
-        .target_axis_number = local_axis + 1,
+        .target_axis_number = main.index.station + 1,
         .speed_percentage = line_speeds[line_idx],
         .acceleration_percentage = line_accelerations[line_idx],
     };
@@ -1530,17 +1524,16 @@ fn mclSliderPushBackward(params: [][]const u8) !void {
     const line = mcl.lines[line_idx];
 
     try line.pollWr();
-    const station, const local_axis =
-        if (try line.search(slider_id)) |t| t else return error.SliderNotFound;
+    const main, const _aux =
+        if (line.search(slider_id)) |t| t else return error.SliderNotFound;
+    const station = main.station.*;
 
-    if (local_axis == 2) {
-        const next_station = station.next();
-        if (next_station != null and
-            next_station.?.wr.slider_number.axis1 == slider_id)
-        {
+    if (_aux) |aux| {
+        const next_station = aux.station.*;
+        if (next_station.wr.slider_number.axis1 == slider_id) {
             if (try mcl.stopTrafficTransmission(
                 station,
-                next_station.?,
+                next_station,
             )) |stopped| {
                 var direction: Direction = undefined;
                 var stopped_station: mcl.Station = undefined;
@@ -1561,7 +1554,7 @@ fn mclSliderPushBackward(params: [][]const u8) !void {
     station.ww.* = .{
         .command_code = .PushAxisSliderBackward,
         .command_slider_number = slider_id,
-        .target_axis_number = local_axis + 1,
+        .target_axis_number = main.index.station + 1,
         .speed_percentage = line_speeds[line_idx],
         .acceleration_percentage = line_accelerations[line_idx],
     };
@@ -1575,10 +1568,10 @@ fn mclSliderPullForward(params: [][]const u8) !void {
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
 
-    if (axis == 0 or axis > line.axes) return error.InvalidAxis;
+    if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
 
-    const axis_index: mcl.Line.Axis.Index = @intCast(axis - 1);
-    const local_axis: mcl.Station.Axis.Index = @intCast(axis_index % 3);
+    const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
+    const local_axis: mcl.Axis.Index.Station = @intCast(axis_index % 3);
     const station = line.stations[axis_index / 3];
 
     if (local_axis == 2) {
@@ -1623,10 +1616,10 @@ fn mclSliderPullBackward(params: [][]const u8) !void {
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
 
-    if (axis == 0 or axis > line.axes) return error.InvalidAxis;
+    if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
 
-    const axis_index: mcl.Line.Axis.Index = @intCast(axis - 1);
-    const local_axis: mcl.Station.Axis.Index = @intCast(axis_index % 3);
+    const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
+    const local_axis: mcl.Axis.Index.Station = @intCast(axis_index % 3);
     const station = line.stations[axis_index / 3];
 
     if (local_axis == 2) {
@@ -1670,10 +1663,10 @@ fn mclSliderWaitPull(params: [][]const u8) !void {
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
 
-    if (axis < 1 or axis > line.axes) return error.InvalidAxis;
+    if (axis < 1 or axis > line.axes.len) return error.InvalidAxis;
 
-    const axis_index: mcl.Line.Axis.Index = @intCast(axis - 1);
-    const local_axis: mcl.Station.Axis.Index = @intCast(axis_index % 3);
+    const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
+    const local_axis: mcl.Axis.Index.Station = @intCast(axis_index % 3);
     const station = line.stations[axis_index / 3];
 
     while (true) {
@@ -1695,10 +1688,10 @@ fn mclSliderStopPull(params: [][]const u8) !void {
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
 
-    if (axis < 1 or axis > line.axes) return error.InvalidAxis;
+    if (axis < 1 or axis > line.axes.len) return error.InvalidAxis;
 
-    const axis_index: mcl.Line.Axis.Index = @intCast(axis - 1);
-    const local_axis: mcl.Station.Axis.Index = @intCast(axis_index % 3);
+    const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
+    const local_axis: mcl.Axis.Index.Station = @intCast(axis_index % 3);
     const station = line.stations[axis_index / 3];
 
     try station.setY(0x10 + @as(u6, local_axis));
@@ -1722,28 +1715,22 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
     while (true) {
         try command.checkCommandInterrupt();
         try line.pollWr();
-        const station, const axis_index =
-            if (try line.search(slider_id)) |t|
-            t
-            // Do not error here as the poll receiving CC-Link information can
-            // "move past" a backwards traveling slider during transmission, thus
-            // rendering the slider briefly invisible in the whole loop.
-        else
-            continue;
+        const main, _ = if (line.search(slider_id)) |t| t
+        // Do not error here as the poll receiving CC-Link information can
+        // "move past" a backwards traveling slider during transmission, thus
+        // rendering the slider briefly invisible in the whole loop.
+        else continue;
+        const station = main.station.*;
+        const wr = station.wr;
 
-        const system_axis: mcl.Line.Index = @as(
-            mcl.Line.Index,
-            station.index,
-        ) * 3 + axis_index;
-
-        if (station.wr.slider_state.axis(axis_index) == .PosMoveCompleted or
-            station.wr.slider_state.axis(axis_index) == .SpdMoveCompleted)
+        if (wr.slider_state.axis(main.index.station) == .PosMoveCompleted or
+            wr.slider_state.axis(main.index.station) == .SpdMoveCompleted)
         {
             break;
         }
 
-        if (system_axis < line.axes - 1) {
-            const next_axis_index = @rem(axis_index + 1, 3);
+        if (main.id.line < line.axes.len) {
+            const next_axis_index = @rem(main.index.station + 1, 3);
             const next_station = if (next_axis_index == 0)
                 line.stations[station.index + 1]
             else
@@ -1772,7 +1759,7 @@ fn mclRecoverSlider(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
-    if (axis < 1 or axis > line.axes) {
+    if (axis < 1 or axis > line.axes.len) {
         return error.InvalidAxis;
     }
 
@@ -1789,8 +1776,8 @@ fn mclRecoverSlider(params: [][]const u8) !void {
         } else return error.InvalidSensorSide;
     };
 
-    const axis_index: mcl.Line.Axis.Index = @intCast(axis - 1);
-    const local_axis_index: mcl.Station.Axis.Index = @intCast(axis_index % 3);
+    const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
+    const local_axis_index: mcl.Axis.Index.Station = @intCast(axis_index % 3);
 
     const station = line.stations[axis_index / 3];
     try waitCommandReady(station);
@@ -1826,11 +1813,11 @@ fn mclRecoverSlider(params: [][]const u8) !void {
 
 fn mclTrafficStop(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis = try std.fmt.parseUnsigned(mcl.Line.Axis.Id, params[1], 0);
+    const axis = try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[1], 0);
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
-    if (axis == 0 or axis > line.axes) {
+    if (axis == 0 or axis > line.axes.len) {
         return error.InvalidAxis;
     }
 
@@ -1846,7 +1833,7 @@ fn mclTrafficStop(params: [][]const u8) !void {
         } else return error.InvalidDirection;
     };
 
-    const axis_index: mcl.Line.Axis.Index = @intCast(axis - 1);
+    const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
     const station = line.stations[axis_index / 3];
     try station.poll();
 
@@ -1860,11 +1847,11 @@ fn mclTrafficStop(params: [][]const u8) !void {
 
 fn mclTrafficAllow(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis = try std.fmt.parseUnsigned(mcl.Line.Axis.Id, params[1], 0);
+    const axis = try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[1], 0);
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
-    if (axis == 0 or axis > line.axes) {
+    if (axis == 0 or axis > line.axes.len) {
         return error.InvalidAxis;
     }
 
@@ -1880,7 +1867,7 @@ fn mclTrafficAllow(params: [][]const u8) !void {
         } else return error.InvalidDirection;
     };
 
-    const axis_index: mcl.Line.Axis.Index = @intCast(axis - 1);
+    const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
     const station = line.stations[axis_index / 3];
     try station.poll();
 
@@ -1899,12 +1886,12 @@ fn mclWaitRecoverSlider(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
-    if (axis == 0 or axis > line.axes) {
+    if (axis == 0 or axis > line.axes.len) {
         return error.InvalidAxis;
     }
 
-    const axis_index: mcl.Line.Axis.Index = @intCast(axis - 1);
-    const local_axis_index: mcl.Station.Axis.Index = @intCast(axis_index % 3);
+    const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
+    const local_axis_index: mcl.Axis.Index.Station = @intCast(axis_index % 3);
     const station = line.stations[axis_index / 3];
 
     var slider_id: u16 = undefined;

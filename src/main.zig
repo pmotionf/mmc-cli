@@ -69,3 +69,7 @@ pub fn main() !void {
         };
     }
 }
+
+test {
+    std.testing.refAllDeclsRecursive(@This());
+}

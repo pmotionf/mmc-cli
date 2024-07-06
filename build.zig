@@ -56,6 +56,9 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
+    unit_tests.root_module.addImport("network", network_dep.module("network"));
+    unit_tests.root_module.addImport("mcl", mcl.module("mcl"));
+    unit_tests.root_module.addImport("chrono", chrono.module("chrono"));
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run unit tests");
