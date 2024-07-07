@@ -24,11 +24,11 @@ pub fn init(c: Config) !void {
 
     try mcl.Config.validate(.{ .lines = c.lines });
 
-    try mcl.init(allocator, .{ .lines = c.lines });
-
     arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     errdefer arena.deinit();
     allocator = arena.allocator();
+
+    try mcl.init(allocator, .{ .lines = c.lines });
 
     line_names = try allocator.alloc([]u8, c.line_names.len);
     line_speeds = try allocator.alloc(u7, c.lines.len);
