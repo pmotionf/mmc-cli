@@ -1269,6 +1269,16 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
     const distance_float = try std.fmt.parseFloat(f32, params[2]);
     if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
 
+    const move_direction: Direction = move_dir: {
+        if (distance_float > 0.0) {
+            break :move_dir .forward;
+        } else if (distance_float < 0.0) {
+            break :move_dir .backward;
+        } else {
+            return;
+        }
+    };
+
     const distance: Distance = .{
         .mm = @intFromFloat(distance_float),
         .um = @intFromFloat((distance_float - @trunc(distance_float)) * 1000),
@@ -1282,37 +1292,40 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
         if (line.search(slider_id)) |t| t else return error.SliderNotFound;
     const station = main.station.*;
 
+    // Direction of auxiliary axis from main axis.
+    var direction: Direction = undefined;
     if (_aux) |aux| {
-        const next_station = aux.station.*;
-        if (next_station.wr.slider_number.axis1 == slider_id) {
-            if (try mcl.stopTrafficTransmission(
-                station,
-                next_station,
-            )) |stopped| {
-                var direction: Direction = undefined;
-                var stopped_station: mcl.Station = undefined;
-                stopped_station, direction = stopped;
-                while (!stopped_station.x.transmission_stopped.to(direction)) {
-                    try command.checkCommandInterrupt();
-                    try stopped_station.pollX();
-                }
-                switch (direction) {
-                    .backward => try stopped_station.resetY(0x9),
-                    .forward => try stopped_station.resetY(0xA),
-                }
-            }
+        if (aux.index.line > main.index.line) {
+            direction = .forward;
+        } else {
+            direction = .backward;
+        }
+        station.y.stop_driver_transmission.setTo(direction, true);
+        try station.sendY();
+        defer {
+            station.y.stop_driver_transmission.setTo(direction, false);
+            station.sendY() catch {};
+        }
+        while (!station.x.transmission_stopped.to(direction)) {
+            try command.checkCommandInterrupt();
+            try station.pollX();
         }
     }
 
-    try waitCommandReady(station);
-    station.ww.* = .{
+    var cmd_station = station;
+    if (_aux != null and move_direction == direction) {
+        cmd_station = _aux.?.station.*;
+    }
+
+    try waitCommandReady(cmd_station);
+    cmd_station.ww.* = .{
         .command_code = .MoveSliderDistanceByPosition,
         .command_slider_number = slider_id,
         .location_distance = distance,
         .speed_percentage = line_speeds[line_idx],
         .acceleration_percentage = line_accelerations[line_idx],
     };
-    try sendCommand(station);
+    try sendCommand(cmd_station);
 }
 
 fn mclSliderSpdMoveAxis(params: [][]const u8) !void {
