@@ -1574,30 +1574,6 @@ fn mclSliderPullForward(params: [][]const u8) !void {
     const local_axis: mcl.Axis.Index.Station = @intCast(axis_index % 3);
     const station = line.stations[axis_index / 3];
 
-    if (local_axis == 2) {
-        const next_station = station.next();
-        if (next_station != null and
-            next_station.?.wr.slider_number.axis1 == slider_id)
-        {
-            if (try mcl.stopTrafficTransmission(
-                station,
-                next_station.?,
-            )) |stopped| {
-                var direction: Direction = undefined;
-                var stopped_station: mcl.Station = undefined;
-                stopped_station, direction = stopped;
-                while (!stopped_station.x.transmission_stopped.to(direction)) {
-                    try command.checkCommandInterrupt();
-                    try stopped_station.pollX();
-                }
-                switch (direction) {
-                    .backward => try stopped_station.resetY(0x9),
-                    .forward => try stopped_station.resetY(0xA),
-                }
-            }
-        }
-    }
-
     try waitCommandReady(station);
     station.ww.* = .{
         .command_code = .PullAxisSliderForward,
@@ -1621,30 +1597,6 @@ fn mclSliderPullBackward(params: [][]const u8) !void {
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
     const local_axis: mcl.Axis.Index.Station = @intCast(axis_index % 3);
     const station = line.stations[axis_index / 3];
-
-    if (local_axis == 2) {
-        const next_station = station.next();
-        if (next_station != null and
-            next_station.?.wr.slider_number.axis1 == slider_id)
-        {
-            if (try mcl.stopTrafficTransmission(
-                station,
-                next_station.?,
-            )) |stopped| {
-                var direction: Direction = undefined;
-                var stopped_station: mcl.Station = undefined;
-                stopped_station, direction = stopped;
-                while (!stopped_station.x.transmission_stopped.to(direction)) {
-                    try command.checkCommandInterrupt();
-                    try stopped_station.pollX();
-                }
-                switch (direction) {
-                    .backward => try stopped_station.resetY(0x9),
-                    .forward => try stopped_station.resetY(0xA),
-                }
-            }
-        }
-    }
 
     try waitCommandReady(station);
     station.ww.* = .{
