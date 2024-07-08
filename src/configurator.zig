@@ -24,37 +24,11 @@ const Options = struct {
     };
 };
 
-const Prompt = struct {
-    question: []const u8,
-    info: []const u8,
-    ptr: AnyPointer,
-    field_name: []const u8,
-};
-
 const AnyPointer = union(enum) {
-    arr_line: *[]mcl.Config.Line,
-    arr_range: *[]mcl.Config.Line.Range,
-    mcl_config: *command.Config,
-    range: *mcl.Config.Line.Range,
-    line: *mcl.Config.Line,
     str: *[]const u8,
     u8: *u8,
     u32: *u32,
     channel: *mcl.connection.Channel,
-};
-
-// fn MclType(comptime T: type, comptime name: []const u8, ptr: *T) type {
-//     const alloc = std.heap.page_allocator;
-//     var field_list = std.ArrayList(MclType).init(alloc);
-//     //NOTE do i need to deinint somewhere or does the memory automatically get freed when program ends
-
-// }
-
-const MclType = struct {
-    typ: type = undefined,
-    ptr: *anyopaque = undefined,
-    fields: std.ArrayList(MclType),
-    field_name: []const u8 = undefined,
 };
 
 pub fn main() !u8 {
@@ -120,62 +94,7 @@ pub fn main() !u8 {
         file_name = input;
     }
 
-    const alloc = std.heap.page_allocator;
-    var prompt_stack = std.ArrayList(Prompt).init(alloc);
-    defer prompt_stack.deinit();
-
-    var mcltype_tree = generateMclTypeTree(&config);
-    mcltype_tree = mcltype_tree;
     return 0;
-}
-
-fn generateMclTypeTree(config: *Config) MclType {
-    const alloc = std.heap.page_allocator;
-    var field_list = std.ArrayList(MclType).init(alloc);
-    field_list = field_list;
-    var head = MclType{
-        .field_name = "mcl",
-        .fields = field_list,
-        .ptr = @ptrCast(&config.modules[0].mcl),
-        .typ = @TypeOf(config.modules[0].mcl),
-    };
-
-    return recursiveTreeSearch(&head);
-}
-
-fn recursiveTreeSearch(head_ptr: *MclType) MclType {
-    switch (@typeInfo(head_ptr.typ)) {
-        .Array => {
-            const arr: *head_ptr.typ = @alignCast(@ptrCast(head_ptr.ptr));
-
-            for (&arr.*.len) |*v| {
-                recursiveTreeSearch(v);
-            }
-        },
-
-        .Struct => {},
-
-        else => {},
-    }
-}
-
-fn printPrompt(prompt_stack: *std.ArrayList(Prompt), prompt: Prompt) !void {
-    const stdout = std.io.getStdOut().writer();
-
-    try stdout.print("{s}\n\n", .{prompt.question});
-    try stdout.print("{s}\n", .{prompt.info});
-
-    try prompt_stack.append(prompt);
-}
-
-fn popPromptStack(prompt_stack: *std.ArrayList(Prompt)) Prompt {
-    return prompt_stack.orderedRemove(prompt_stack.items.len - 1);
-}
-
-fn saveConfig(file_name: []const u8, config: *const Config) !void {
-    const file: std.fs.File = std.fs.cwd().createFile(file_name, .{});
-    defer file.close();
-    try std.json.stringify(config.*, .{}, file.writer());
 }
 
 fn readInput(out: []const u8, buffer: []u8) ![]const u8 {
