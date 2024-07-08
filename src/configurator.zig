@@ -31,6 +31,21 @@ const AnyPointer = union(enum) {
     channel: *mcl.connection.Channel,
 };
 
+const TreeNode = struct {
+    value: Value = undefined,
+    nodes: std.ArrayList(TreeNode) = std.ArrayList(TreeNode).init(std.heap.page_allocator),
+    ptr: AnyPointer = undefined, //i want to use this for the getValue function and keep it null if it's not applicable, but there's probably a better way
+
+    const Value = union(enum) {
+        field_name: []const u8,
+        getValue: fn (AnyPointer) anyerror!void, //function to read input from user and update value.
+    };
+
+    fn deinit(self: TreeNode) void {
+        self.nodes.deinit();
+    }
+};
+
 pub fn main() !u8 {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -95,6 +110,24 @@ pub fn main() !u8 {
     }
 
     return 0;
+}
+
+fn generateTree() !TreeNode {}
+
+fn setLineName(ptr: AnyPointer) !void {
+    _ = ptr;
+}
+
+fn setAxes(ptr: AnyPointer) !void {
+    _ = ptr;
+}
+
+fn setChannel(ptr: AnyPointer) !void {
+    _ = ptr;
+}
+
+fn setStartOrEnd(ptr: AnyPointer) !void {
+    _ = ptr;
 }
 
 fn readInput(out: []const u8, buffer: []u8) ![]const u8 {
