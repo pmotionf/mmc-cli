@@ -1178,6 +1178,17 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
         if (line.search(slider_id)) |t| t else return error.SliderNotFound;
     var station: mcl.Station = main.station.*;
 
+    // Set command station in direction of movement command.
+    if (_aux) |aux| {
+        if ((main.index.line < aux.index.line and axis_id >= aux.id.line) or
+            (aux.index.line < main.index.line and axis_id <= aux.id.line))
+        {
+            station = aux.station.*;
+        }
+    }
+
+    try waitCommandReady(station);
+
     if (_aux) |aux| {
         // Direction of auxiliary axis from main axis.
         var direction: Direction = undefined;
@@ -1196,16 +1207,8 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
             try command.checkCommandInterrupt();
             try main.station.pollX();
         }
-
-        // Set command station in direction of movement command.
-        if ((main.index.line < aux.index.line and axis_id >= aux.id.line) or
-            (aux.index.line < main.index.line and axis_id <= aux.id.line))
-        {
-            station = aux.station.*;
-        }
     }
 
-    try waitCommandReady(station);
     station.ww.* = .{
         .command_code = .MoveSliderToAxisByPosition,
         .command_slider_number = slider_id,
@@ -1234,27 +1237,17 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
     const main: mcl.Axis, const _aux: ?mcl.Axis =
         if (line.search(slider_id)) |t| t else return error.SliderNotFound;
     var station: mcl.Station = main.station.*;
+    var direction: Direction = undefined;
 
+    // Set command station in direction of movement command.
     if (_aux) |aux| {
         // Direction of auxiliary axis from main axis.
-        var direction: Direction = undefined;
         if (aux.index.line > main.index.line) {
             direction = .forward;
         } else {
             direction = .backward;
         }
-        main.station.y.stop_driver_transmission.setTo(direction, true);
-        try main.station.sendY();
-        defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
-        }
-        while (!main.station.x.transmission_stopped.to(direction)) {
-            try command.checkCommandInterrupt();
-            try main.station.pollX();
-        }
 
-        // Set command station in direction of movement command.
         const current_location =
             main.station.wr.slider_location.axis(main.index.station).toFloat();
         if ((direction == .forward and location_float > current_location) or
@@ -1265,6 +1258,20 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
     }
 
     try waitCommandReady(station);
+
+    if (_aux) |_| {
+        main.station.y.stop_driver_transmission.setTo(direction, true);
+        try main.station.sendY();
+        defer {
+            main.station.y.stop_driver_transmission.setTo(direction, false);
+            main.station.sendY() catch {};
+        }
+        while (!main.station.x.transmission_stopped.to(direction)) {
+            try command.checkCommandInterrupt();
+            try main.station.pollX();
+        }
+    }
+
     station.ww.* = .{
         .command_code = .MoveSliderToLocationByPosition,
         .command_slider_number = slider_id,
@@ -1304,14 +1311,24 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
         if (line.search(slider_id)) |t| t else return error.SliderNotFound;
     var station: mcl.Station = main.station.*;
 
+    // Direction of auxiliary axis from main axis.
+    var direction: Direction = undefined;
+
     if (_aux) |aux| {
-        // Direction of auxiliary axis from main axis.
-        var direction: Direction = undefined;
         if (aux.index.line > main.index.line) {
             direction = .forward;
         } else {
             direction = .backward;
         }
+        // Set command station in direction of movement command.
+        if (move_direction == direction) {
+            station = aux.station.*;
+        }
+    }
+
+    try waitCommandReady(station);
+
+    if (_aux) |_| {
         main.station.y.stop_driver_transmission.setTo(direction, true);
         try main.station.sendY();
         defer {
@@ -1322,14 +1339,8 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
             try command.checkCommandInterrupt();
             try main.station.pollX();
         }
-
-        // Set command station in direction of movement command.
-        if (move_direction == direction) {
-            station = aux.station.*;
-        }
     }
 
-    try waitCommandReady(station);
     station.ww.* = .{
         .command_code = .MoveSliderDistanceByPosition,
         .command_slider_number = slider_id,
@@ -1357,6 +1368,17 @@ fn mclSliderSpdMoveAxis(params: [][]const u8) !void {
         if (line.search(slider_id)) |t| t else return error.SliderNotFound;
     var station: mcl.Station = main.station.*;
 
+    // Set command station in direction of movement command.
+    if (_aux) |aux| {
+        if ((main.index.line < aux.index.line and axis_id >= aux.id.line) or
+            (aux.index.line < main.index.line and axis_id <= aux.id.line))
+        {
+            station = aux.station.*;
+        }
+    }
+
+    try waitCommandReady(station);
+
     if (_aux) |aux| {
         // Direction of auxiliary axis from main axis.
         var direction: Direction = undefined;
@@ -1375,16 +1397,8 @@ fn mclSliderSpdMoveAxis(params: [][]const u8) !void {
             try command.checkCommandInterrupt();
             try main.station.pollX();
         }
-
-        // Set command station in direction of movement command.
-        if ((main.index.line < aux.index.line and axis_id >= aux.id.line) or
-            (aux.index.line < main.index.line and axis_id <= aux.id.line))
-        {
-            station = aux.station.*;
-        }
     }
 
-    try waitCommandReady(station);
     station.ww.* = .{
         .command_code = .MoveSliderToAxisBySpeed,
         .command_slider_number = slider_id,
@@ -1413,27 +1427,17 @@ fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
     const main, const _aux =
         if (line.search(slider_id)) |t| t else return error.SliderNotFound;
     var station: mcl.Station = main.station.*;
+    var direction: Direction = undefined;
 
+    // Set command station in direction of movement command.
     if (_aux) |aux| {
         // Direction of auxiliary axis from main axis.
-        var direction: Direction = undefined;
         if (aux.index.line > main.index.line) {
             direction = .forward;
         } else {
             direction = .backward;
         }
-        main.station.y.stop_driver_transmission.setTo(direction, true);
-        try main.station.sendY();
-        defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
-        }
-        while (!main.station.x.transmission_stopped.to(direction)) {
-            try command.checkCommandInterrupt();
-            try main.station.pollX();
-        }
 
-        // Set command station in direction of movement command.
         const current_location =
             main.station.wr.slider_location.axis(main.index.station).toFloat();
         if ((direction == .forward and location_float > current_location) or
@@ -1444,6 +1448,20 @@ fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
     }
 
     try waitCommandReady(station);
+
+    if (_aux) |_| {
+        main.station.y.stop_driver_transmission.setTo(direction, true);
+        try main.station.sendY();
+        defer {
+            main.station.y.stop_driver_transmission.setTo(direction, false);
+            main.station.sendY() catch {};
+        }
+        while (!main.station.x.transmission_stopped.to(direction)) {
+            try command.checkCommandInterrupt();
+            try main.station.pollX();
+        }
+    }
+
     station.ww.* = .{
         .command_code = .MoveSliderToLocationBySpeed,
         .command_slider_number = slider_id,
@@ -1483,14 +1501,24 @@ fn mclSliderSpdMoveDistance(params: [][]const u8) !void {
         if (line.search(slider_id)) |t| t else return error.SliderNotFound;
     var station: mcl.Station = main.station.*;
 
+    // Direction of auxiliary axis from main axis.
+    var direction: Direction = undefined;
+
     if (_aux) |aux| {
-        // Direction of auxiliary axis from main axis.
-        var direction: Direction = undefined;
         if (aux.index.line > main.index.line) {
             direction = .forward;
         } else {
             direction = .backward;
         }
+        // Set command station in direction of movement command.
+        if (move_direction == direction) {
+            station = aux.station.*;
+        }
+    }
+
+    try waitCommandReady(station);
+
+    if (_aux) |_| {
         main.station.y.stop_driver_transmission.setTo(direction, true);
         try main.station.sendY();
         defer {
@@ -1501,14 +1529,8 @@ fn mclSliderSpdMoveDistance(params: [][]const u8) !void {
             try command.checkCommandInterrupt();
             try main.station.pollX();
         }
-
-        // Set command station in direction of movement command.
-        if (move_direction == direction) {
-            station = aux.station.*;
-        }
     }
 
-    try waitCommandReady(station);
     station.ww.* = .{
         .command_code = .MoveSliderDistanceBySpeed,
         .command_slider_number = slider_id,
@@ -1531,15 +1553,24 @@ fn mclSliderPushForward(params: [][]const u8) !void {
     const main, const _aux =
         if (line.search(slider_id)) |t| t else return error.SliderNotFound;
     var station: mcl.Station = main.station.*;
+    // Direction of auxiliary axis from main axis.
+    var direction: Direction = undefined;
 
+    // Set command station in direction of movement command.
     if (_aux) |aux| {
-        // Direction of auxiliary axis from main axis.
-        var direction: Direction = undefined;
         if (aux.index.line > main.index.line) {
             direction = .forward;
         } else {
             direction = .backward;
         }
+        if (direction == .forward) {
+            station = aux.station.*;
+        }
+    }
+
+    try waitCommandReady(station);
+
+    if (_aux) |_| {
         main.station.y.stop_driver_transmission.setTo(direction, true);
         try main.station.sendY();
         defer {
@@ -1550,14 +1581,8 @@ fn mclSliderPushForward(params: [][]const u8) !void {
             try command.checkCommandInterrupt();
             try main.station.pollX();
         }
-
-        // Set command station in direction of movement command.
-        if (direction == .forward) {
-            station = aux.station.*;
-        }
     }
 
-    try waitCommandReady(station);
     station.ww.* = .{
         .command_code = .PushAxisSliderForward,
         .command_slider_number = slider_id,
@@ -1581,14 +1606,24 @@ fn mclSliderPushBackward(params: [][]const u8) !void {
         if (line.search(slider_id)) |t| t else return error.SliderNotFound;
     var station: mcl.Station = main.station.*;
 
+    // Direction of auxiliary axis from main axis.
+    var direction: Direction = undefined;
+
+    // Set command station in direction of movement command.
     if (_aux) |aux| {
-        // Direction of auxiliary axis from main axis.
-        var direction: Direction = undefined;
         if (aux.index.line > main.index.line) {
             direction = .forward;
         } else {
             direction = .backward;
         }
+        if (direction == .backward) {
+            station = aux.station.*;
+        }
+    }
+
+    try waitCommandReady(station);
+
+    if (_aux) |_| {
         main.station.y.stop_driver_transmission.setTo(direction, true);
         try main.station.sendY();
         defer {
@@ -1599,14 +1634,8 @@ fn mclSliderPushBackward(params: [][]const u8) !void {
             try command.checkCommandInterrupt();
             try main.station.pollX();
         }
-
-        // Set command station in direction of movement command.
-        if (direction == .backward) {
-            station = aux.station.*;
-        }
     }
 
-    try waitCommandReady(station);
     station.ww.* = .{
         .command_code = .PushAxisSliderBackward,
         .command_slider_number = slider_id,
