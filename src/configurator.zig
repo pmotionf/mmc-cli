@@ -170,7 +170,7 @@ pub fn main() !u8 {
 
         if (cur_node.getValue) |func| {
             //if getValue function is not null, which means it's a modifiable field
-            func(cur_node, &action_stack);
+            func(cur_node, &action_stack) catch continue;
         } else {
             while (true) {
                 const input = try readInput("Please select the field you want to modify:", &buffer);
@@ -268,8 +268,23 @@ fn setStr(node: Tree.Node) ![]const u8 {
 }
 
 fn setChannel(node: Tree.Node) ![]const u8 {
-    _ = node;
-    //TODO fill
+    const stdout = std.io.getStdOut().writer();
+
+    var buffer: [1024]u8 = undefined;
+    const input = try readInput("Please input a new channel number. (1~4)\n", &buffer);
+
+    _ = std.fmt.parseUnsigned(u2, input, 10) catch |err| {
+        try stdout.print("Please input a correct number.\n", .{});
+        return err;
+    }; //this will automatically handle cases where numbers are > 4 because it's a u2.
+
+    var aa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer aa.deinit();
+
+    const new_channel_concat = try std.fmt.allocPrint(aa.allocator(), "cc_link_{s}slot", .{input});
+
+    node.ptr.?.channel.* = @field(mcl.connection.Channel, new_channel_concat); //feels like this won't work.
+    try stdout.print("Channel successfully changed\n", .{});
 }
 
 fn setU8(node: Tree.Node) ![]const u8 {
