@@ -26,8 +26,8 @@ const Options = struct {
 
 const AnyPointer = union(enum) {
     str: *[]const u8,
-    u8: *u8,
-    u32: *u32,
+    u8: *u8, //start
+    u32: *u32, //end
     channel: *mcl.connection.Channel,
 };
 
@@ -114,16 +114,16 @@ pub fn main() !u8 {
     };
 
     //for this to work, config needs to be built in comptime.
-    try fillTree(&head, @TypeOf(config.modules[0].mcl.lines), config.modules[0].mcl.lines, null);
+    try fillTree(&head, @TypeOf(config.modules[0].mcl.lines), config.modules[0].mcl.lines, "Lines");
 
     return 0;
 }
 
-fn fillTree(parent: *TreeNode, comptime T: type, source: anytype, source_name: ?[]const u8) !void {
+fn fillTree(parent: *TreeNode, comptime T: type, source: anytype, source_name: []const u8) !void {
     switch (@typeInfo(T)) {
         .Array => |arrayInfo| {
             var head = TreeNode{
-                .value = TreeNode.Value{ .field_name = @typeName(T) },
+                .value = TreeNode.Value{ .field_name = source_name },
             };
 
             if (arrayInfo.len != 0) {
@@ -132,7 +132,7 @@ fn fillTree(parent: *TreeNode, comptime T: type, source: anytype, source_name: ?
                     //if the lines and the line_names are separated, the user won't be able to see informations about the line they are modifying in this structure. is that fine?
                 } else {
                     for (source) |item| {
-                        try fillTree(&head, arrayInfo.child, item, null);
+                        try fillTree(&head, arrayInfo.child, item, source_name[0 .. source_name.len - 1]); //remove the 's' at the end to convert to singular form
                     }
                 }
             }
@@ -148,10 +148,20 @@ fn fillTree(parent: *TreeNode, comptime T: type, source: anytype, source_name: ?
                 const val: field.type = @as(*const field.type, @alignCast(@ptrCast(field.default_value))).*;
                 try fillTree(&head, field.type, val, field.name);
             }
+            try parent.nodes.append(head);
         },
 
         else => {
-            //Just a normal field.
+            var end_node = TreeNode{};
+
+            switch (@typeInfo(T)) {
+                .Int => {
+                    if (isSpecificInteger(T, 8, .unsigned)) {
+                        //modifying start
+
+                    }
+                },
+            }
         },
     }
 }
@@ -173,7 +183,11 @@ fn setChannel(ptr: AnyPointer) !void {
     _ = ptr;
 }
 
-fn setStartOrEnd(ptr: AnyPointer) !void {
+fn setStart(ptr: AnyPointer) !void {
+    _ = ptr;
+}
+
+fn setEnd(ptr: AnyPointer) !void {
     _ = ptr;
 }
 
