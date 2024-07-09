@@ -32,9 +32,9 @@ const AnyPointer = union(enum) {
 };
 
 const TreeNode = struct {
-    value: Value = undefined,
-    nodes: std.ArrayList(TreeNode) = std.ArrayList(TreeNode).init(std.heap.page_allocator),
-    ptr: AnyPointer = undefined, //i want to use this for the getValue function and keep it null if it's not applicable, but there's probably a better way
+    value: Value = val,
+    nodes: std.ArrayList(TreeNode) = std.ArrayList(TreeNode).init(std.heap.page_allocator), //is a new instance of the list created each time? or would every TreeNode use the same ArrayList
+    ptr: ?AnyPointer = ptr, //i want to use this for the getValue function and keep it null if it's not applicable, but there's probably a better way
 
     const Value = union(enum) {
         field_name: []const u8,
@@ -109,10 +109,54 @@ pub fn main() !u8 {
         file_name = input;
     }
 
+    var head = TreeNode{
+        .value = TreeNode.Value{ .field_name = "mcl" },
+        .ptr = null,
+    };
+
+    //for this to work, config needs to be built in comptime.
+    fillTree(&head, @TypeOf(config.modules[0].mcl.lines), config.modules[0].mcl.lines);
+
     return 0;
 }
 
-fn generateTree() !TreeNode {}
+fn fillTree(parent: *TreeNode, comptime T: type, source: anytype) void {
+    switch (@typeInfo(T)) {
+        .Array => |arrayInfo| {
+            switch (try source.peekNextTokenType()) {
+                .array_begin => {
+                    //Typical array
+                    var head = TreeNode{
+                        .value = TreeNode.Value{.field_name = @typeName(T)},
+                        .ptr = null,
+                    };
+
+                    for(0..arrayInfo.len) |i| {
+                        fillTree(&head, arrayInfo.child, source);
+                    }
+                    parent.nodes.append(head);
+                },
+
+                .string => {
+                    //String
+                    //if the lines and the line_names are separated, the user won't be able to see informations about the line they are modifying in this structure. is that fine?
+                },
+            }
+        },
+
+        .Struct => |structInfo| {
+            var r: T = undefined;
+
+            var head = TreeNode{
+                .value = TreeNode.Value{.field_name = }
+            }
+        },
+
+        else => {
+            //Just a normal field.
+        },
+    }
+}
 
 fn setLineName(ptr: AnyPointer) !void {
     _ = ptr;
