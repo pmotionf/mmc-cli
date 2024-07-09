@@ -56,7 +56,7 @@ const Tree = struct {
         nodes: std.ArrayList(Node),
         ptr: ?AnyPointer = null, //i want to use this for the getValue function and keep it null if it's not applicable, but there's probably a better way
         field_name: []const u8,
-        getValue: ?*const fn (Node, *std.ArrayList([]const u8)) []const u8 = null, //function to read input from user and update value.
+        getValue: ?*const fn (Node) []const u8 = null, //function to read input from user and update value.
 
         fn init(field_name: []const u8) Node {
             var arr_list = std.ArrayList(Node).init(std.heap.page_allocator);
@@ -179,6 +179,7 @@ pub fn main() !u8 {
                     if (action_stack.items.len != 0) {
                         _ = action_stack.pop();
                         try stdout.print("Going to previous page.\n", .{});
+                        break;
                     } else {
                         try stdout.print("There's no more page history.\n", .{});
                     }
@@ -253,27 +254,31 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
     }
 }
 
-fn setStr(node: Tree.Node, action_stack: *std.ArrayList([]const u8)) ![]const u8 {
+fn setStr(node: Tree.Node) ![]const u8 {
+    const stdout = std.io.getStdOut().writer();
+    var buffer: [1024]u8 = undefined;
+
+    try stdout.print("Please input a new value for {s}.\n", .{node.field_name});
+
+    const input = try readInput("", &buffer);
+    const prev_val = node.ptr.?.str.*;
+    node.ptr.?.str.* = input;
+
+    try stdout.print("Changed value from {s} to {s}/\n", .{ prev_val, input });
+}
+
+fn setChannel(node: Tree.Node) ![]const u8 {
     _ = node;
-    _ = action_stack;
     //TODO fill
 }
 
-fn setChannel(node: Tree.Node, action_stack: *std.ArrayList([]const u8)) ![]const u8 {
+fn setU8(node: Tree.Node) ![]const u8 {
     _ = node;
-    _ = action_stack;
     //TODO fill
 }
 
-fn setU8(node: Tree.Node, action_stack: *std.ArrayList([]const u8)) ![]const u8 {
+fn setU32(node: Tree.Node) ![]const u8 {
     _ = node;
-    _ = action_stack;
-    //TODO fill
-}
-
-fn setU32(node: Tree.Node, action_stack: *std.ArrayList([]const u8)) ![]const u8 {
-    _ = node;
-    _ = action_stack;
     //TODO fill
 }
 
