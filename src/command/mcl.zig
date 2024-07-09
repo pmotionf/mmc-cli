@@ -768,7 +768,7 @@ fn mclAxisSlider(params: [][]const u8) !void {
     const station = line.stations[station_index];
     try station.pollWr();
 
-    const slider_id = station.wr.slider.id.axis(local_axis_index);
+    const slider_id = station.wr.slider.axis(local_axis_index).id;
 
     if (slider_id != 0) {
         std.log.info("Slider {d} on axis {d}.\n", .{ slider_id, axis_id });
@@ -901,8 +901,8 @@ fn mclWaitHomeSlider(params: [][]const u8) !void {
         try command.checkCommandInterrupt();
         try station.pollWr();
 
-        if (station.wr.slider.id.axis1 != 0) {
-            slider = station.wr.slider.id.axis1;
+        if (station.wr.slider.axis1.id != 0) {
+            slider = station.wr.slider.axis1.id;
             break;
         }
     }
@@ -1044,7 +1044,7 @@ fn mclSliderLocation(params: [][]const u8) !void {
 
     const station = main.station;
 
-    const location: f32 = station.wr.slider.location.axis(main.index.station);
+    const location: f32 = station.wr.slider.axis(main.index.station).location;
 
     std.log.info(
         "Slider {d} location: {d}mm",
@@ -1074,7 +1074,7 @@ fn mclSliderAxis(params: [][]const u8) !void {
     for (line.stations) |station| {
         for (0..3) |_local_axis| {
             const local_axis: mcl.Axis.Index.Station = @intCast(_local_axis);
-            if (station.wr.slider.id.axis(local_axis) == slider_id) {
+            if (station.wr.slider.axis(local_axis).id == slider_id) {
                 std.log.info(
                     "Slider {d} axis: {}",
                     .{ slider_id, axis },
@@ -1242,7 +1242,7 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
         }
 
         const current_location =
-            main.station.wr.slider.location.axis(main.index.station);
+            main.station.wr.slider.axis(main.index.station).location;
         if ((direction == .forward and location > current_location) or
             (direction == .backward and location < current_location))
         {
@@ -1422,7 +1422,7 @@ fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
         }
 
         const current_location =
-            main.station.wr.slider.location.axis(main.index.station);
+            main.station.wr.slider.axis(main.index.station).location;
         if ((direction == .forward and location > current_location) or
             (direction == .backward and location < current_location))
         {
@@ -1688,7 +1688,7 @@ fn mclSliderWaitPull(params: [][]const u8) !void {
         try command.checkCommandInterrupt();
         try station.pollX();
         try station.pollWr();
-        const slider_state = station.wr.slider.state.axis(local_axis);
+        const slider_state = station.wr.slider.axis(local_axis).state;
         if (slider_state == .PullForwardCompleted or
             slider_state == .PullBackwardCompleted) break;
         if (slider_state == .PullForwardFault or
@@ -1738,8 +1738,8 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
         const station = main.station.*;
         const wr = station.wr;
 
-        if (wr.slider.state.axis(main.index.station) == .PosMoveCompleted or
-            wr.slider.state.axis(main.index.station) == .SpdMoveCompleted)
+        if (wr.slider.axis(main.index.station).state == .PosMoveCompleted or
+            wr.slider.axis(main.index.station).state == .SpdMoveCompleted)
         {
             break;
         }
@@ -1751,9 +1751,9 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
             else
                 station;
             const slider_number =
-                next_station.wr.slider.id.axis(next_axis_index);
+                next_station.wr.slider.axis(next_axis_index).id;
             const slider_state =
-                next_station.wr.slider.state.axis(next_axis_index);
+                next_station.wr.slider.axis(next_axis_index).state;
             if (slider_number == slider_id and
                 (slider_state == .PosMoveCompleted or
                 slider_state == .SpdMoveCompleted))
@@ -1914,10 +1914,10 @@ fn mclWaitRecoverSlider(params: [][]const u8) !void {
         try command.checkCommandInterrupt();
         try station.pollWr();
 
-        const slider_number = station.wr.slider.id.axis(local_axis_index);
-        if (slider_number != 0 and station.wr.slider.state.axis(
+        const slider_number = station.wr.slider.axis(local_axis_index).id;
+        if (slider_number != 0 and station.wr.slider.axis(
             local_axis_index,
-        ) == .PosMoveCompleted) {
+        ).state == .PosMoveCompleted) {
             slider_id = slider_number;
             break;
         }
