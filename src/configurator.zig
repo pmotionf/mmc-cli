@@ -45,7 +45,7 @@ const Tree = struct {
     }
 
     fn navigate_tree(self: Tree, action_history: std.ArrayList([]const u8)) Tree.Node {
-        var cur_node: Tree.Node = undefined;
+        var cur_node: Tree.Node = self.root;
         for (action_history.items) |name| {
             cur_node = self.root.find_child(name).?;
         }
@@ -167,6 +167,7 @@ pub fn main() !u8 {
 
     var action_stack = std.ArrayList([]const u8).init(std.heap.page_allocator);
 
+    //TODO make ability to add new stuff, not just modify.
     while (true) {
         const cur_node = tree.navigate_tree(action_stack);
 
@@ -174,7 +175,10 @@ pub fn main() !u8 {
 
         if (cur_node.getValue) |func| {
             //if getValue function is not null, which means it's a modifiable field
-            func(cur_node) catch continue;
+            if (func(cur_node)) {
+                //TODO save to file
+                action_stack.clearRetainingCapacity(); //hmm
+            } else continue;
         } else {
             while (true) {
                 const input = try readInput("Please select the field you want to modify:", &buffer);
