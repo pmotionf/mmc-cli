@@ -31,6 +31,45 @@ const AnyPointer = union(enum) {
     channel: *mcl.connection.Channel,
 };
 
+//thin wrapper for Node
+const Tree = struct {
+    root: Node,
+
+    fn init(field_name: []const u8) Tree {
+        return Tree{ .root = Node.init(field_name) };
+    }
+
+    fn deinit(self: Tree) void {
+        _ = self;
+        //TODO deinit all arraylists inside node
+    }
+
+    fn treeDeinit(tree: *Tree) void {
+        _ = tree;
+        //TODO deinit all arraylists in the tree with recursion.
+    }
+
+    const Node = struct {
+        nodes: std.ArrayList(TreeNode),
+        ptr: ?AnyPointer = null, //i want to use this for the getValue function and keep it null if it's not applicable, but there's probably a better way
+        field_name: []const u8,
+        getValue: ?*const fn (AnyPointer) void = null, //function to read input from user and update value.
+
+        fn init(field_name: []const u8) void {
+            var arr_list = std.ArrayList(Node).init(std.heap.page_allocator);
+            arr_list = arr_list; //is there a way to not do this
+            return Node{
+                .nodes = arr_list,
+                .field_name = field_name,
+            };
+        }
+
+        fn deinit(self: TreeNode) void {
+            self.nodes.deinit();
+        }
+    };
+};
+
 const TreeNode = struct {
     value: Value = undefined,
     nodes: std.ArrayList(TreeNode) = std.ArrayList(TreeNode).init(std.heap.page_allocator), //is a new instance of the list created each time? or would every TreeNode use the same ArrayList
@@ -164,11 +203,6 @@ fn fillTree(parent: *TreeNode, comptime T: type, source_ptr: *anyopaque, source_
             }
         },
     }
-}
-
-fn treeDeinit(tree: *TreeNode) void {
-    _ = tree;
-    //TODO deinit all arraylists in the tree with recursion.
 }
 
 fn setLineName(ptr: AnyPointer) !void {
