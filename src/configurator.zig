@@ -45,9 +45,9 @@ const Tree = struct {
     }
 
     fn navigate_tree(self: Tree, action_history: std.ArrayList([]const u8)) Tree.Node {
-        var cur_node = undefined;
+        var cur_node: Tree.Node = undefined;
         for (action_history.items) |name| {
-            cur_node = self.root.find_child(name);
+            cur_node = self.root.find_child(name).?;
         }
         return cur_node;
     }
@@ -73,7 +73,7 @@ const Tree = struct {
 
         fn find_child(self: Tree.Node, name: []const u8) ?Tree.Node {
             for (self.nodes.items) |node| {
-                if (std.mem.eql(node.field_name, name)) {
+                if (std.mem.eql(u8, node.field_name, name)) {
                     return node;
                 }
             }
@@ -84,10 +84,14 @@ const Tree = struct {
         fn print(self: Tree.Node, indents: []const u8) !void {
             const stdout = std.io.getStdOut().writer();
 
-            try stdout.print(indents ++ "{s}:\n", .{self.field_name});
+            var aa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer aa.deinit();
+            const indented_print = try std.fmt.allocPrint(aa.allocator(), "{s}{s}:\n", .{ indents, self.field_name });
+
+            try stdout.print("{s}", .{indented_print});
 
             for (self.nodes.items) |node| {
-                try print(node, indents ++ "    ");
+                try print(node, try std.fmt.allocPrint(aa.allocator(), "{s}    ", indents));
             }
         }
     };
@@ -159,18 +163,18 @@ pub fn main() !u8 {
     var tree = Tree.init("mcl");
     const lines = &config.modules[0].mcl.lines;
 
-    try fillTree(&tree, @TypeOf(lines.*), @ptrCast(lines), "lines");
+    try fillTree(&tree.root, @TypeOf(lines.*), @ptrCast(lines), "lines");
 
     var action_stack = std.ArrayList([]const u8).init(std.heap.page_allocator);
 
     while (true) {
-        const cur_node = tree.navigate_tree(action_stack, &action_stack);
+        const cur_node = tree.navigate_tree(action_stack);
 
-        cur_node.print("");
+        try cur_node.print("");
 
         if (cur_node.getValue) |func| {
             //if getValue function is not null, which means it's a modifiable field
-            func(cur_node, &action_stack) catch continue;
+            func(cur_node) catch continue;
         } else {
             while (true) {
                 const input = try readInput("Please select the field you want to modify:", &buffer);
@@ -249,6 +253,10 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
                     end_node.ptr = AnyPointer{ .channel = casted_ptr };
                     end_node.getValue = setChannel;
                 },
+
+                else => {
+                    unreachable; //hopefully
+                },
             }
         },
     }
@@ -313,7 +321,7 @@ fn setU32(node: Tree.Node) ![]const u8 {
         return err;
     };
 
-    node.ptr.?.u8.* = num;
+    node.ptr.?.u32.* = num;
     try stdout.print("Number value successfully changed.\n", .{});
 }
 
