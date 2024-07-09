@@ -274,7 +274,7 @@ fn setChannel(node: Tree.Node) ![]const u8 {
     const input = try readInput("Please input a new channel number. (1~4)\n", &buffer);
 
     _ = std.fmt.parseUnsigned(u2, input, 10) catch |err| {
-        try stdout.print("Please input a correct number.\n", .{});
+        try stdout.print("Please input a correct channel number.\n", .{});
         return err;
     }; //this will automatically handle cases where numbers are > 4 because it's a u2.
 
@@ -288,13 +288,33 @@ fn setChannel(node: Tree.Node) ![]const u8 {
 }
 
 fn setU8(node: Tree.Node) ![]const u8 {
-    _ = node;
-    //TODO fill
+    const stdout = std.io.getStdOut().writer();
+
+    var buffer: [1024]u8 = undefined;
+    const input = try readInput("Please input a number.", &buffer);
+
+    const num = std.fmt.parseUnsigned(u8, input, 10) catch |err| {
+        try stdout.print("Please input a correct number.\n", .{});
+        return err;
+    };
+
+    node.ptr.?.u8.* = num;
+    try stdout.print("Number value successfully changed.\n", .{});
 }
 
 fn setU32(node: Tree.Node) ![]const u8 {
-    _ = node;
-    //TODO fill
+    const stdout = std.io.getStdOut().writer();
+
+    var buffer: [1024]u8 = undefined;
+    const input = try readInput("Please input a number.", &buffer);
+
+    const num = std.fmt.parseUnsigned(u32, input, 10) catch |err| {
+        try stdout.print("Please input a correct number.\n", .{});
+        return err;
+    };
+
+    node.ptr.?.u8.* = num;
+    try stdout.print("Number value successfully changed.\n", .{});
 }
 
 fn isSpecificInteger(comptime T: type, comptime bits: u16, comptime signedness: std.builtin.Signedness) bool {
