@@ -45,12 +45,12 @@ const Tree = struct {
     }
 
     const Node = struct {
-        nodes: std.ArrayList(TreeNode),
+        nodes: std.ArrayList(Node),
         ptr: ?AnyPointer = null, //i want to use this for the getValue function and keep it null if it's not applicable, but there's probably a better way
         field_name: []const u8,
         getValue: ?*const fn (AnyPointer) void = null, //function to read input from user and update value.
 
-        fn init(field_name: []const u8) void {
+        fn init(field_name: []const u8) Node {
             var arr_list = std.ArrayList(Node).init(std.heap.page_allocator);
             arr_list = arr_list; //is there a way to not do this.
             return Node{
@@ -59,7 +59,7 @@ const Tree = struct {
             };
         }
 
-        fn deinit(self: TreeNode) void {
+        fn deinit(self: Node) void {
             self.nodes.deinit();
         }
     };
@@ -131,14 +131,13 @@ pub fn main() !u8 {
     var head = Tree.init("mcl");
     const lines = &config.modules[0].mcl.lines;
 
-    //for this to work, config needs to be built in comptime.
     try fillTree(&head, @TypeOf(lines.*), @ptrCast(lines), "lines");
 
     return 0;
 }
 
 fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source_name: []const u8) !void {
-    var casted_ptr: *T = @alignCast(@ptrCast(source_ptr));
+    const casted_ptr: *T = @alignCast(@ptrCast(source_ptr));
     const source = casted_ptr.*;
 
     switch (@typeInfo(T)) {
@@ -149,13 +148,15 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
                 if (isSpecificInteger(@TypeOf(source[0]), 8, .unsigned)) {
                     //String
                     //if the lines and the line_names are separated, the user won't be able to see informations about the line they are modifying in this structure. is that fine?
+                    head.ptr = AnyPointer{ .str = casted_ptr };
+                    head.getValue = setStr;
                 } else {
                     for (source) |item| {
                         try fillTree(&head, arrayInfo.child, item, source_name[0 .. source_name.len - 1]); //remove the 's' at the end to convert to singular form
                     }
                 }
             }
-            try parent.nodes.append(head);
+            try parent.nodes.append(head); //im pretty sure data gets copied to the arraylist, not store a pointer to it ¯\_(ツ)_/¯
         },
 
         .Struct => |structInfo| {
@@ -169,21 +170,31 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
         },
 
         else => {
-            var end_node = Tree.Node.init("");
+            var end_node = Tree.Node.init(source_name);
 
             switch (@typeInfo(T)) {
                 .Int => {
                     if (isSpecificInteger(T, 8, .unsigned)) {
-                        //modifying start
-
+                        //modifying start or axes
+                        end_node.ptr = AnyPointer{ .u8 = casted_ptr };
+                        end_node.getValue = setU8;
+                    } else if (isSpecificInteger(T, 32, .unsigned)) {
+                        //modifying end
+                        end_node.ptr = AnyPointer{ .u32 = casted_ptr };
+                        end_node.getValue = setU32;
                     }
+                },
+
+                .Enum => {
+                    end_node.ptr = AnyPointer{ .channel = casted_ptr };
+                    end_node.getValue = setChannel;
                 },
             }
         },
     }
 }
 
-fn setLineName(ptr: AnyPointer) !void {
+fn setStr(ptr: AnyPointer) !void {
     _ = ptr;
 }
 
@@ -195,11 +206,11 @@ fn setChannel(ptr: AnyPointer) !void {
     _ = ptr;
 }
 
-fn setStart(ptr: AnyPointer) !void {
+fn setU8(ptr: AnyPointer) !void {
     _ = ptr;
 }
 
-fn setEnd(ptr: AnyPointer) !void {
+fn setU32(ptr: AnyPointer) !void {
     _ = ptr;
 }
 
