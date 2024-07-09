@@ -56,7 +56,7 @@ const Tree = struct {
         nodes: std.ArrayList(Node),
         ptr: ?AnyPointer = null, //i want to use this for the getValue function and keep it null if it's not applicable, but there's probably a better way
         field_name: []const u8,
-        getValue: ?*const fn (Node) void = null, //function to read input from user and update value.
+        getValue: ?*const fn (Node, *std.ArrayList([]const u8)) []const u8 = null, //function to read input from user and update value.
 
         fn init(field_name: []const u8) Node {
             var arr_list = std.ArrayList(Node).init(std.heap.page_allocator);
@@ -80,10 +80,15 @@ const Tree = struct {
             return null; //could not find node with given name.
         }
 
+        //prints the current node as well as all of its descendents.
         fn print(self: Tree.Node, indents: []const u8) !void {
             const stdout = std.io.getStdOut().writer();
 
             try stdout.print(indents ++ "{s}:\n", .{self.field_name});
+
+            for (self.nodes.items) |node| {
+                try print(node, indents ++ "    ");
+            }
         }
     };
 };
@@ -159,7 +164,32 @@ pub fn main() !u8 {
     var action_stack = std.ArrayList([]const u8).init(std.heap.page_allocator);
 
     while (true) {
-        const cur_node = tree.navigate_tree(action_stack);
+        const cur_node = tree.navigate_tree(action_stack, &action_stack);
+
+        cur_node.print("");
+
+        if (cur_node.getValue) |func| {
+            //if getValue function is not null, which means it's a modifiable field
+            func(cur_node, &action_stack);
+        } else {
+            while (true) {
+                const input = try readInput("Please select the field you want to modify:", &buffer);
+
+                if (std.mem.eql(input, "prev")) {
+                    if (action_stack.items.len != 0) {
+                        _ = action_stack.pop();
+                        try stdout.print("Going to previous page.\n", .{});
+                    } else {
+                        try stdout.print("There's no more page history.\n", .{});
+                    }
+                } else if (cur_node.find_child(input)) |_| {
+                    action_stack.append(input);
+                    break;
+                } else {
+                    try stdout.print("Could not find field. Try again.\n");
+                }
+            }
+        }
     }
 
     return 0;
@@ -223,23 +253,27 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
     }
 }
 
-fn setStr(node: Tree.Node) !void {
+fn setStr(node: Tree.Node, action_stack: *std.ArrayList([]const u8)) ![]const u8 {
     _ = node;
+    _ = action_stack;
     //TODO fill
 }
 
-fn setChannel(node: Tree.Node) !void {
+fn setChannel(node: Tree.Node, action_stack: *std.ArrayList([]const u8)) ![]const u8 {
     _ = node;
+    _ = action_stack;
     //TODO fill
 }
 
-fn setU8(node: Tree.Node) !void {
+fn setU8(node: Tree.Node, action_stack: *std.ArrayList([]const u8)) ![]const u8 {
     _ = node;
+    _ = action_stack;
     //TODO fill
 }
 
-fn setU32(node: Tree.Node) !void {
+fn setU32(node: Tree.Node, action_stack: *std.ArrayList([]const u8)) ![]const u8 {
     _ = node;
+    _ = action_stack;
     //TODO fill
 }
 
