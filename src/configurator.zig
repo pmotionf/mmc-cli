@@ -32,13 +32,13 @@ const AnyPointer = union(enum) {
 };
 
 const TreeNode = struct {
-    value: Value = val,
+    value: Value = undefined,
     nodes: std.ArrayList(TreeNode) = std.ArrayList(TreeNode).init(std.heap.page_allocator), //is a new instance of the list created each time? or would every TreeNode use the same ArrayList
-    ptr: ?AnyPointer = ptr, //i want to use this for the getValue function and keep it null if it's not applicable, but there's probably a better way
+    ptr: ?AnyPointer = null, //i want to use this for the getValue function and keep it null if it's not applicable, but there's probably a better way
 
     const Value = union(enum) {
         field_name: []const u8,
-        getValue: fn (AnyPointer) anyerror!void, //function to read input from user and update value.
+        getValue: *const fn (AnyPointer) void, //function to read input from user and update value.
     };
 
     fn deinit(self: TreeNode) void {
@@ -111,44 +111,42 @@ pub fn main() !u8 {
 
     var head = TreeNode{
         .value = TreeNode.Value{ .field_name = "mcl" },
-        .ptr = null,
     };
 
     //for this to work, config needs to be built in comptime.
-    fillTree(&head, @TypeOf(config.modules[0].mcl.lines), config.modules[0].mcl.lines);
+    try fillTree(&head, @TypeOf(config.modules[0].mcl.lines), config.modules[0].mcl.lines);
 
     return 0;
 }
 
-fn fillTree(parent: *TreeNode, comptime T: type, source: anytype) void {
+fn fillTree(parent: *TreeNode, comptime T: type, source: anytype) !void {
     switch (@typeInfo(T)) {
         .Array => |arrayInfo| {
-            switch (try source.peekNextTokenType()) {
-                .array_begin => {
-                    //Typical array
-                    var head = TreeNode{
-                        .value = TreeNode.Value{.field_name = @typeName(T)},
-                        .ptr = null,
-                    };
+            var head = TreeNode{
+                .value = TreeNode.Value{ .field_name = @typeName(T) },
+            };
 
-                    for(0..arrayInfo.len) |i| {
-                        fillTree(&head, arrayInfo.child, source);
-                    }
-                    parent.nodes.append(head);
-                },
-
-                .string => {
+            if (arrayInfo.len != 0) {
+                if (isSpecificInteger(@TypeOf(source[0]), 8, .unsigned)) {
                     //String
                     //if the lines and the line_names are separated, the user won't be able to see informations about the line they are modifying in this structure. is that fine?
-                },
+                } else {
+                    for (source) |item| {
+                        try fillTree(&head, arrayInfo.child, item);
+                    }
+                }
             }
+            try parent.nodes.append(head);
         },
 
         .Struct => |structInfo| {
-            var r: T = undefined;
-
             var head = TreeNode{
-                .value = TreeNode.Value{.field_name = }
+                .value = TreeNode.Value{ .field_name = @typeName(T) },
+            };
+            head = head;
+
+            inline for (structInfo.fields) |field| {
+                _ = field;
             }
         },
 
@@ -156,6 +154,11 @@ fn fillTree(parent: *TreeNode, comptime T: type, source: anytype) void {
             //Just a normal field.
         },
     }
+}
+
+fn treeDeinit(tree: *TreeNode) void {
+    _ = tree;
+    //TODO deinit all arraylists in the tree with recursion.
 }
 
 fn setLineName(ptr: AnyPointer) !void {
@@ -172,6 +175,13 @@ fn setChannel(ptr: AnyPointer) !void {
 
 fn setStartOrEnd(ptr: AnyPointer) !void {
     _ = ptr;
+}
+
+fn isSpecificInteger(comptime T: type, comptime bits: u16, comptime signedness: std.builtin.Signedness) bool {
+    return switch (@typeInfo(T)) {
+        .Int => |info| info.bits == bits and info.signedness == signedness,
+        else => false,
+    };
 }
 
 fn readInput(out: []const u8, buffer: []u8) ![]const u8 {
