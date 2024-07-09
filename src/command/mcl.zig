@@ -9,7 +9,6 @@ var line_speeds: []u7 = undefined;
 var line_accelerations: []u7 = undefined;
 
 const Direction = mcl.Direction;
-const Distance = mcl.Distance;
 const Station = mcl.Station;
 
 pub const Config = struct {
@@ -769,7 +768,7 @@ fn mclAxisSlider(params: [][]const u8) !void {
     const station = line.stations[station_index];
     try station.pollWr();
 
-    const slider_id = station.wr.slider_number.axis(local_axis_index);
+    const slider_id = station.wr.slider.id.axis(local_axis_index);
 
     if (slider_id != 0) {
         std.log.info("Slider {d} on axis {d}.\n", .{ slider_id, axis_id });
@@ -902,8 +901,8 @@ fn mclWaitHomeSlider(params: [][]const u8) !void {
         try command.checkCommandInterrupt();
         try station.pollWr();
 
-        if (station.wr.slider_number.axis1 != 0) {
-            slider = station.wr.slider_number.axis1;
+        if (station.wr.slider.id.axis1 != 0) {
+            slider = station.wr.slider.id.axis1;
             break;
         }
     }
@@ -1045,19 +1044,18 @@ fn mclSliderLocation(params: [][]const u8) !void {
 
     const station = main.station;
 
-    const location: Distance =
-        station.wr.slider_location.axis(main.index.station);
+    const location: f32 = station.wr.slider.location.axis(main.index.station);
 
     std.log.info(
-        "Slider {d} location: {d}.{d}mm",
-        .{ slider_id, location.mm, location.um },
+        "Slider {d} location: {}mm",
+        .{ slider_id, location },
     );
     if (result_var.len > 0) {
         var float_buf: [12]u8 = undefined;
         try command.variables.put(result_var, try std.fmt.bufPrint(
             &float_buf,
-            "{d}.{d}",
-            .{ location.mm, location.um },
+            "{}",
+            .{location},
         ));
     }
 }
@@ -1076,7 +1074,7 @@ fn mclSliderAxis(params: [][]const u8) !void {
     for (line.stations) |station| {
         for (0..3) |_local_axis| {
             const local_axis: mcl.Axis.Index.Station = @intCast(_local_axis);
-            if (station.wr.slider_number.axis(local_axis) == slider_id) {
+            if (station.wr.slider.id.axis(local_axis) == slider_id) {
                 std.log.info(
                     "Slider {d} axis: {}",
                     .{ slider_id, axis },
@@ -1222,13 +1220,8 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
 fn mclSliderPosMoveLocation(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
-    const location_float: f32 = try std.fmt.parseFloat(f32, params[2]);
+    const location: f32 = try std.fmt.parseFloat(f32, params[2]);
     if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
-
-    const location: Distance = .{
-        .mm = @intFromFloat(location_float),
-        .um = @intFromFloat((location_float - @trunc(location_float)) * 1000),
-    };
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
@@ -1249,9 +1242,9 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
         }
 
         const current_location =
-            main.station.wr.slider_location.axis(main.index.station).toFloat();
-        if ((direction == .forward and location_float > current_location) or
-            (direction == .backward and location_float < current_location))
+            main.station.wr.slider.location.axis(main.index.station);
+        if ((direction == .forward and location > current_location) or
+            (direction == .backward and location < current_location))
         {
             station = aux.station.*;
         }
@@ -1285,22 +1278,17 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
 fn mclSliderPosMoveDistance(params: [][]const u8) !void {
     const line_name = params[0];
     const slider_id = try std.fmt.parseInt(u16, params[1], 0);
-    const distance_float = try std.fmt.parseFloat(f32, params[2]);
+    const distance = try std.fmt.parseFloat(f32, params[2]);
     if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
 
     const move_direction: Direction = move_dir: {
-        if (distance_float > 0.0) {
+        if (distance > 0.0) {
             break :move_dir .forward;
-        } else if (distance_float < 0.0) {
+        } else if (distance < 0.0) {
             break :move_dir .backward;
         } else {
             return;
         }
-    };
-
-    const distance: Distance = .{
-        .mm = @intFromFloat(distance_float),
-        .um = @intFromFloat((distance_float - @trunc(distance_float)) * 1000),
     };
 
     const line_idx: usize = try matchLine(line_names, line_name);
@@ -1412,13 +1400,8 @@ fn mclSliderSpdMoveAxis(params: [][]const u8) !void {
 fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
-    const location_float: f32 = try std.fmt.parseFloat(f32, params[2]);
+    const location: f32 = try std.fmt.parseFloat(f32, params[2]);
     if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
-
-    const location: Distance = .{
-        .mm = @intFromFloat(location_float),
-        .um = @intFromFloat((location_float - @trunc(location_float)) * 1000),
-    };
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
@@ -1439,9 +1422,9 @@ fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
         }
 
         const current_location =
-            main.station.wr.slider_location.axis(main.index.station).toFloat();
-        if ((direction == .forward and location_float > current_location) or
-            (direction == .backward and location_float < current_location))
+            main.station.wr.slider.location.axis(main.index.station);
+        if ((direction == .forward and location > current_location) or
+            (direction == .backward and location < current_location))
         {
             station = aux.station.*;
         }
@@ -1475,22 +1458,17 @@ fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
 fn mclSliderSpdMoveDistance(params: [][]const u8) !void {
     const line_name = params[0];
     const slider_id = try std.fmt.parseInt(u16, params[1], 0);
-    const distance_float = try std.fmt.parseFloat(f32, params[2]);
+    const distance = try std.fmt.parseFloat(f32, params[2]);
     if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
 
     const move_direction: Direction = move_dir: {
-        if (distance_float > 0.0) {
+        if (distance > 0.0) {
             break :move_dir .forward;
-        } else if (distance_float < 0.0) {
+        } else if (distance < 0.0) {
             break :move_dir .backward;
         } else {
             return;
         }
-    };
-
-    const distance: Distance = .{
-        .mm = @intFromFloat(distance_float),
-        .um = @intFromFloat((distance_float - @trunc(distance_float)) * 1000),
     };
 
     const line_idx: usize = try matchLine(line_names, line_name);
@@ -1710,7 +1688,7 @@ fn mclSliderWaitPull(params: [][]const u8) !void {
         try command.checkCommandInterrupt();
         try station.pollX();
         try station.pollWr();
-        const slider_state = station.wr.slider_state.axis(local_axis);
+        const slider_state = station.wr.slider.state.axis(local_axis);
         if (slider_state == .PullForwardCompleted or
             slider_state == .PullBackwardCompleted) break;
         if (slider_state == .PullForwardFault or
@@ -1760,8 +1738,8 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
         const station = main.station.*;
         const wr = station.wr;
 
-        if (wr.slider_state.axis(main.index.station) == .PosMoveCompleted or
-            wr.slider_state.axis(main.index.station) == .SpdMoveCompleted)
+        if (wr.slider.state.axis(main.index.station) == .PosMoveCompleted or
+            wr.slider.state.axis(main.index.station) == .SpdMoveCompleted)
         {
             break;
         }
@@ -1773,9 +1751,9 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
             else
                 station;
             const slider_number =
-                next_station.wr.slider_number.axis(next_axis_index);
+                next_station.wr.slider.id.axis(next_axis_index);
             const slider_state =
-                next_station.wr.slider_state.axis(next_axis_index);
+                next_station.wr.slider.state.axis(next_axis_index);
             if (slider_number == slider_id and
                 (slider_state == .PosMoveCompleted or
                 slider_state == .SpdMoveCompleted))
@@ -1936,8 +1914,8 @@ fn mclWaitRecoverSlider(params: [][]const u8) !void {
         try command.checkCommandInterrupt();
         try station.pollWr();
 
-        const slider_number = station.wr.slider_number.axis(local_axis_index);
-        if (slider_number != 0 and station.wr.slider_state.axis(
+        const slider_number = station.wr.slider.id.axis(local_axis_index);
+        if (slider_number != 0 and station.wr.slider.state.axis(
             local_axis_index,
         ) == .PosMoveCompleted) {
             slider_id = slider_number;

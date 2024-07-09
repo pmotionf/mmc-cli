@@ -4,6 +4,10 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const version = b.addModule("version", .{
+        .root_source_file = b.path("version.zig"),
+    });
+
     const mdfunc_lib_path = b.option(
         []const u8,
         "mdfunc",
@@ -33,6 +37,7 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
+    exe.root_module.addImport("version", version);
     exe.root_module.addImport("network", network_dep.module("network"));
     exe.root_module.addImport("mcl", mcl.module("mcl"));
     exe.root_module.addImport("chrono", chrono.module("chrono"));
@@ -56,6 +61,7 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
+    unit_tests.root_module.addImport("version", version);
     unit_tests.root_module.addImport("network", network_dep.module("network"));
     unit_tests.root_module.addImport("mcl", mcl.module("mcl"));
     unit_tests.root_module.addImport("chrono", chrono.module("chrono"));
