@@ -44,9 +44,12 @@ const Tree = struct {
         //TODO deinit all arraylists inside node
     }
 
-    fn navigate_tree(action_history: std.ArrayList([]const u8)) Tree.Node {
+    fn navigate_tree(self: Tree, action_history: std.ArrayList([]const u8)) Tree.Node {
         var cur_node = undefined;
-        for (action_history.items) |name| {}
+        for (action_history.items) |name| {
+            cur_node = self.root.find_child(name);
+        }
+        return cur_node;
     }
 
     const Node = struct {
@@ -66,6 +69,21 @@ const Tree = struct {
 
         fn deinit(self: Node) void {
             self.nodes.deinit();
+        }
+
+        fn find_child(self: Tree.Node, name: []const u8) ?Tree.Node {
+            for (self.nodes.items) |node| {
+                if (std.mem.eql(node.field_name, name)) {
+                    return node;
+                }
+            }
+            return null; //could not find node with given name.
+        }
+
+        fn print(self: Tree.Node, indents: []const u8) !void {
+            const stdout = std.io.getStdOut().writer();
+
+            try stdout.print(indents ++ "{s}:\n", .{self.field_name});
         }
     };
 };
@@ -133,15 +151,15 @@ pub fn main() !u8 {
         file_name = input;
     }
 
-    var head = Tree.init("mcl");
+    var tree = Tree.init("mcl");
     const lines = &config.modules[0].mcl.lines;
 
-    try fillTree(&head, @TypeOf(lines.*), @ptrCast(lines), "lines");
+    try fillTree(&tree, @TypeOf(lines.*), @ptrCast(lines), "lines");
 
     var action_stack = std.ArrayList([]const u8).init(std.heap.page_allocator);
 
     while (true) {
-        navigate_tree(action_stack);
+        const cur_node = tree.navigate_tree(action_stack);
     }
 
     return 0;
