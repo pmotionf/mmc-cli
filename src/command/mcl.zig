@@ -1047,14 +1047,14 @@ fn mclSliderLocation(params: [][]const u8) !void {
     const location: f32 = station.wr.slider.location.axis(main.index.station);
 
     std.log.info(
-        "Slider {d} location: {}mm",
+        "Slider {d} location: {d}mm",
         .{ slider_id, location },
     );
     if (result_var.len > 0) {
         var float_buf: [12]u8 = undefined;
         try command.variables.put(result_var, try std.fmt.bufPrint(
             &float_buf,
-            "{}",
+            "{d}",
             .{location},
         ));
     }
