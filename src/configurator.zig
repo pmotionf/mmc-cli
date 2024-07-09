@@ -114,12 +114,12 @@ pub fn main() !u8 {
     };
 
     //for this to work, config needs to be built in comptime.
-    try fillTree(&head, @TypeOf(config.modules[0].mcl.lines), config.modules[0].mcl.lines, "Lines");
+    try fillTree(&head, @TypeOf(config.modules[0].mcl.lines), @ptrCast(&config.modules[0].mcl.lines), "Lines");
 
     return 0;
 }
 
-fn fillTree(parent: *TreeNode, comptime T: type, source: anytype, source_name: []const u8) !void {
+fn fillTree(parent: *TreeNode, comptime T: type, source_ptr: *anyopaque, source_name: []const u8) !void {
     switch (@typeInfo(T)) {
         .Array => |arrayInfo| {
             var head = TreeNode{
