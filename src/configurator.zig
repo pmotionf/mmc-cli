@@ -114,12 +114,12 @@ pub fn main() !u8 {
     };
 
     //for this to work, config needs to be built in comptime.
-    try fillTree(&head, @TypeOf(config.modules[0].mcl.lines), config.modules[0].mcl.lines);
+    try fillTree(&head, @TypeOf(config.modules[0].mcl.lines), config.modules[0].mcl.lines, null);
 
     return 0;
 }
 
-fn fillTree(parent: *TreeNode, comptime T: type, source: anytype) !void {
+fn fillTree(parent: *TreeNode, comptime T: type, source: anytype, source_name: ?[]const u8) !void {
     switch (@typeInfo(T)) {
         .Array => |arrayInfo| {
             var head = TreeNode{
@@ -132,7 +132,7 @@ fn fillTree(parent: *TreeNode, comptime T: type, source: anytype) !void {
                     //if the lines and the line_names are separated, the user won't be able to see informations about the line they are modifying in this structure. is that fine?
                 } else {
                     for (source) |item| {
-                        try fillTree(&head, arrayInfo.child, item);
+                        try fillTree(&head, arrayInfo.child, item, null);
                     }
                 }
             }
@@ -143,10 +143,10 @@ fn fillTree(parent: *TreeNode, comptime T: type, source: anytype) !void {
             var head = TreeNode{
                 .value = TreeNode.Value{ .field_name = @typeName(T) },
             };
-            head = head;
 
             inline for (structInfo.fields) |field| {
-                _ = field;
+                const val: field.type = @as(*const field.type, @alignCast(@ptrCast(field.default_value))).*;
+                try fillTree(&head, field.type, val, field.name);
             }
         },
 
