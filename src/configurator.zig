@@ -44,11 +44,16 @@ const Tree = struct {
         //TODO deinit all arraylists inside node
     }
 
+    fn navigate_tree(action_history: std.ArrayList([]const u8)) Tree.Node {
+        var cur_node = undefined;
+        for (action_history.items) |name| {}
+    }
+
     const Node = struct {
         nodes: std.ArrayList(Node),
         ptr: ?AnyPointer = null, //i want to use this for the getValue function and keep it null if it's not applicable, but there's probably a better way
         field_name: []const u8,
-        getValue: ?*const fn (AnyPointer) void = null, //function to read input from user and update value.
+        getValue: ?*const fn (Node) void = null, //function to read input from user and update value.
 
         fn init(field_name: []const u8) Node {
             var arr_list = std.ArrayList(Node).init(std.heap.page_allocator);
@@ -133,6 +138,12 @@ pub fn main() !u8 {
 
     try fillTree(&head, @TypeOf(lines.*), @ptrCast(lines), "lines");
 
+    var action_stack = std.ArrayList([]const u8).init(std.heap.page_allocator);
+
+    while (true) {
+        navigate_tree(action_stack);
+    }
+
     return 0;
 }
 
@@ -194,24 +205,24 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
     }
 }
 
-fn setStr(ptr: AnyPointer) !void {
-    _ = ptr;
+fn setStr(node: Tree.Node) !void {
+    _ = node;
+    //TODO fill
 }
 
-fn setAxes(ptr: AnyPointer) !void {
-    _ = ptr;
+fn setChannel(node: Tree.Node) !void {
+    _ = node;
+    //TODO fill
 }
 
-fn setChannel(ptr: AnyPointer) !void {
-    _ = ptr;
+fn setU8(node: Tree.Node) !void {
+    _ = node;
+    //TODO fill
 }
 
-fn setU8(ptr: AnyPointer) !void {
-    _ = ptr;
-}
-
-fn setU32(ptr: AnyPointer) !void {
-    _ = ptr;
+fn setU32(node: Tree.Node) !void {
+    _ = node;
+    //TODO fill
 }
 
 fn isSpecificInteger(comptime T: type, comptime bits: u16, comptime signedness: std.builtin.Signedness) bool {
