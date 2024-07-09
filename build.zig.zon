@@ -8,8 +8,8 @@
             .hash = "12206c7cbba4130ac158f7759c81ae4186c3e9f914bc79b0544492d85405ba01aaa4",
         },
         .mcl = .{
-            .url = "https://github.com/pmotionf/mcl/archive/38450d2.tar.gz",
-            .hash = "1220d2507b415ced16031964e5d5a39dce156aa0834740c5e9d881a5e14a019fa211",
+            .url = "https://github.com/pmotionf/mcl/archive/230d7c2.tar.gz",
+            .hash = "1220d37252d9ff6bb8217e2215ca1cc2f8ca063a03524421c3df729bcbe7d95adff4",
         },
         .chrono = .{
             .url = "https://github.com/pmotionf/chrono/archive/68247b6.tar.gz",
