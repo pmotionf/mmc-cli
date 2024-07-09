@@ -44,11 +44,6 @@ const Tree = struct {
         //TODO deinit all arraylists inside node
     }
 
-    fn treeDeinit(tree: *Tree) void {
-        _ = tree;
-        //TODO deinit all arraylists in the tree with recursion.
-    }
-
     const Node = struct {
         nodes: std.ArrayList(TreeNode),
         ptr: ?AnyPointer = null, //i want to use this for the getValue function and keep it null if it's not applicable, but there's probably a better way
@@ -57,7 +52,7 @@ const Tree = struct {
 
         fn init(field_name: []const u8) void {
             var arr_list = std.ArrayList(Node).init(std.heap.page_allocator);
-            arr_list = arr_list; //is there a way to not do this
+            arr_list = arr_list; //is there a way to not do this.
             return Node{
                 .nodes = arr_list,
                 .field_name = field_name,
@@ -68,21 +63,6 @@ const Tree = struct {
             self.nodes.deinit();
         }
     };
-};
-
-const TreeNode = struct {
-    value: Value = undefined,
-    nodes: std.ArrayList(TreeNode) = std.ArrayList(TreeNode).init(std.heap.page_allocator), //is a new instance of the list created each time? or would every TreeNode use the same ArrayList
-    ptr: ?AnyPointer = null, //i want to use this for the getValue function and keep it null if it's not applicable, but there's probably a better way
-
-    const Value = union(enum) {
-        field_name: []const u8,
-        getValue: *const fn (AnyPointer) void, //function to read input from user and update value.
-    };
-
-    fn deinit(self: TreeNode) void {
-        self.nodes.deinit();
-    }
 };
 
 pub fn main() !u8 {
@@ -148,22 +128,22 @@ pub fn main() !u8 {
         file_name = input;
     }
 
-    var head = TreeNode{
-        .value = TreeNode.Value{ .field_name = "mcl" },
-    };
+    var head = Tree.init("mcl");
+    const lines = &config.modules[0].mcl.lines;
 
     //for this to work, config needs to be built in comptime.
-    try fillTree(&head, @TypeOf(config.modules[0].mcl.lines), @ptrCast(&config.modules[0].mcl.lines), "Lines");
+    try fillTree(&head, @TypeOf(lines.*), @ptrCast(lines), "lines");
 
     return 0;
 }
 
-fn fillTree(parent: *TreeNode, comptime T: type, source_ptr: *anyopaque, source_name: []const u8) !void {
+fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source_name: []const u8) !void {
+    var casted_ptr: *T = @alignCast(@ptrCast(source_ptr));
+    const source = casted_ptr.*;
+
     switch (@typeInfo(T)) {
         .Array => |arrayInfo| {
-            var head = TreeNode{
-                .value = TreeNode.Value{ .field_name = source_name },
-            };
+            var head = Tree.Node.init(source_name);
 
             if (arrayInfo.len != 0) {
                 if (isSpecificInteger(@TypeOf(source[0]), 8, .unsigned)) {
@@ -179,9 +159,7 @@ fn fillTree(parent: *TreeNode, comptime T: type, source_ptr: *anyopaque, source_
         },
 
         .Struct => |structInfo| {
-            var head = TreeNode{
-                .value = TreeNode.Value{ .field_name = @typeName(T) },
-            };
+            var head = Tree.Node.init(source_name);
 
             inline for (structInfo.fields) |field| {
                 const val: field.type = @as(*const field.type, @alignCast(@ptrCast(field.default_value))).*;
@@ -191,7 +169,7 @@ fn fillTree(parent: *TreeNode, comptime T: type, source_ptr: *anyopaque, source_
         },
 
         else => {
-            var end_node = TreeNode{};
+            var end_node = Tree.Node.init("");
 
             switch (@typeInfo(T)) {
                 .Int => {
