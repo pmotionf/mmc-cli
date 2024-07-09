@@ -56,7 +56,7 @@ const Tree = struct {
         nodes: std.ArrayList(Node),
         ptr: ?AnyPointer = null, //i want to use this for the getValue function and keep it null if it's not applicable, but there's probably a better way
         field_name: []const u8,
-        getValue: ?*const fn (Node) []const u8 = null, //function to read input from user and update value.
+        getValue: ?*const fn (Node) anyerror!void = null, //function to read input from user and update value.
 
         fn init(field_name: []const u8) Node {
             var arr_list = std.ArrayList(Node).init(std.heap.page_allocator);
@@ -91,7 +91,7 @@ const Tree = struct {
             try stdout.print("{s}", .{indented_print});
 
             for (self.nodes.items) |node| {
-                try print(node, try std.fmt.allocPrint(aa.allocator(), "{s}    ", indents));
+                try print(node, try std.fmt.allocPrint(aa.allocator(), "{s}    ", .{indents}));
             }
         }
     };
@@ -179,7 +179,7 @@ pub fn main() !u8 {
             while (true) {
                 const input = try readInput("Please select the field you want to modify:", &buffer);
 
-                if (std.mem.eql(input, "prev")) {
+                if (std.mem.eql(u8, input, "prev")) {
                     if (action_stack.items.len != 0) {
                         _ = action_stack.pop();
                         try stdout.print("Going to previous page.\n", .{});
@@ -188,10 +188,10 @@ pub fn main() !u8 {
                         try stdout.print("There's no more page history.\n", .{});
                     }
                 } else if (cur_node.find_child(input)) |_| {
-                    action_stack.append(input);
+                    try action_stack.append(input);
                     break;
                 } else {
-                    try stdout.print("Could not find field. Try again.\n");
+                    try stdout.print("Could not find field. Try again.\n", .{});
                 }
             }
         }
@@ -262,7 +262,7 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
     }
 }
 
-fn setStr(node: Tree.Node) ![]const u8 {
+fn setStr(node: Tree.Node) !void {
     const stdout = std.io.getStdOut().writer();
     var buffer: [1024]u8 = undefined;
 
@@ -275,7 +275,7 @@ fn setStr(node: Tree.Node) ![]const u8 {
     try stdout.print("Changed value from {s} to {s}/\n", .{ prev_val, input });
 }
 
-fn setChannel(node: Tree.Node) ![]const u8 {
+fn setChannel(node: Tree.Node) !void {
     const stdout = std.io.getStdOut().writer();
 
     var buffer: [1024]u8 = undefined;
@@ -295,7 +295,7 @@ fn setChannel(node: Tree.Node) ![]const u8 {
     try stdout.print("Channel successfully changed\n", .{});
 }
 
-fn setU8(node: Tree.Node) ![]const u8 {
+fn setU8(node: Tree.Node) !void {
     const stdout = std.io.getStdOut().writer();
 
     var buffer: [1024]u8 = undefined;
@@ -310,7 +310,7 @@ fn setU8(node: Tree.Node) ![]const u8 {
     try stdout.print("Number value successfully changed.\n", .{});
 }
 
-fn setU32(node: Tree.Node) ![]const u8 {
+fn setU32(node: Tree.Node) !void {
     const stdout = std.io.getStdOut().writer();
 
     var buffer: [1024]u8 = undefined;
