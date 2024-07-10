@@ -178,7 +178,7 @@ pub fn main() !u8 {
             if (func(cur_node)) {
                 //TODO save to file
                 action_stack.clearRetainingCapacity(); //hmm
-            } else continue;
+            } else |_| continue;
         } else {
             while (true) {
                 const input = try readInput("Please select the field you want to modify:", &buffer);
@@ -208,26 +208,39 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
     const casted_ptr: *T = @alignCast(@ptrCast(source_ptr));
     const source = casted_ptr.*;
 
-    switch (@typeInfo(T)) {
-        .Array => |arrayInfo| {
-            var head = Tree.Node.init(source_name);
+    const stdout = std.io.getStdOut().writer();
 
-            if (arrayInfo.len != 0) {
-                if (isSpecificInteger(@TypeOf(source[0]), 8, .unsigned)) {
-                    //String
-                    //if the lines and the line_names are separated, the user won't be able to see informations about the line they are modifying in this structure. is that fine?
-                    head.ptr = AnyPointer{ .str = casted_ptr };
-                    head.getValue = setStr;
-                } else {
-                    for (source) |item| {
-                        try fillTree(&head, arrayInfo.child, item, source_name[0 .. source_name.len - 1]); //remove the 's' at the end to convert to singular form
+    switch (@typeInfo(T)) {
+        .Pointer => |pointerInfo| {
+            switch (pointerInfo.size) {
+                .Slice => {
+                    try stdout.print("{s}\n", .{"Array"});
+                    var head = Tree.Node.init(source_name);
+
+                    if (source.len != 0) {
+                        if (isSpecificInteger(@TypeOf(source[0]), 8, .unsigned)) {
+                            //String
+                            //if the lines and the line_names are separated, the user won't be able to see informations about the line they are modifying in this structure. is that fine?
+                            // head.ptr = AnyPointer{ .str = casted_ptr };
+                            // head.getValue = setStr;
+                        } else {
+                            for (source) |*item| {
+                                try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1]); //remove the 's' at the end to convert to singular form
+                            }
+                        }
                     }
-                }
+                    try parent.nodes.append(head); //im pretty sure data gets copied to the arraylist, not store a pointer to it ¯\_(ツ)_/¯
+                },
+
+                else => {
+                    try stdout.print("Unsupported type: {}\n", .{@typeInfo(T)});
+                    return error.UnsupportedType;
+                },
             }
-            try parent.nodes.append(head); //im pretty sure data gets copied to the arraylist, not store a pointer to it ¯\_(ツ)_/¯
         },
 
         .Struct => |structInfo| {
+            try stdout.print("{s}\n", .{"Struct"});
             var head = Tree.Node.init(source_name);
 
             inline for (structInfo.fields) |field| {
@@ -242,6 +255,7 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
 
             switch (@typeInfo(T)) {
                 .Int => {
+                    try stdout.print("{s}\n", .{"Int"});
                     if (isSpecificInteger(T, 8, .unsigned)) {
                         //modifying start or axes
                         end_node.ptr = AnyPointer{ .u8 = casted_ptr };
@@ -254,12 +268,14 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
                 },
 
                 .Enum => {
+                    try stdout.print("{s}\n", .{"Enum"});
                     end_node.ptr = AnyPointer{ .channel = casted_ptr };
                     end_node.getValue = setChannel;
                 },
 
                 else => {
-                    unreachable; //hopefully
+                    try stdout.print("Unsupported type: {}\n", .{@typeInfo(T)});
+                    return error.UnsupportedType;
                 },
             }
         },
