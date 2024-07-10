@@ -30,8 +30,8 @@ const AnyPointer = union(enum) {
     u32: *u32, //end
     u10: *u10, //axes
     channel: *mcl.connection.Channel,
-    lines: *[]mcl.Config.Line,
-    ranges: *[]mcl.Config.Line.Range,
+    @"[]Config.Line": *[]mcl.Config.Line,
+    @"[]Config.Line.Range": *[]mcl.Config.Line.Range,
 };
 
 //thin wrapper for Node
@@ -52,12 +52,12 @@ const Tree = struct {
     fn navigate_tree(self: Tree, action_history: std.ArrayList([]const u8)) !Tree.Node {
         var cur_node: Tree.Node = self.root;
         for (action_history.items) |name| {
-            const split = std.mem.splitSequence(u8, name, " ");
+            var split = std.mem.splitSequence(u8, name, " ");
             const first = split.next().?;
-            const num: ?u32 = undefined;
+            var num: ?u64 = undefined;
 
             if (split.next()) |n| {
-                num = try std.fmt.parseUnsigned(u32, n, 10);
+                num = try std.fmt.parseUnsigned(u64, n, 10);
             } else {
                 num = null;
             }
@@ -91,7 +91,7 @@ const Tree = struct {
             self.nodes.deinit();
         }
 
-        fn find_child(self: Tree.Node, name: []const u8, num: ?u32) ?Tree.Node {
+        fn find_child(self: Tree.Node, name: []const u8, num: ?u64) ?Tree.Node {
             for (self.nodes.items, 0..) |node, i| {
                 if (num) |n| {
                     if (std.mem.eql(u8, node.field_name, name) and n == i) {
@@ -107,7 +107,7 @@ const Tree = struct {
         }
 
         //prints the current node as well as all of its descendents.
-        fn print(self: Tree.Node, indents: []const u8, num: ?u32) !void {
+        fn print(self: Tree.Node, indents: []const u8, num: ?u64) !void {
             const stdout = std.io.getStdOut().writer();
 
             var aa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -117,10 +117,11 @@ const Tree = struct {
             try stdout.print("{s}", .{indented_print});
 
             for (self.nodes.items, 0..) |node, i| {
+                const j = @as(u64, i);
                 if (num) |n| {
-                    try print(node, try std.fmt.allocPrint(aa.allocator(), "{d}. {s}    ", .{ n, indents }), if (self.is_array) i else null);
+                    try print(node, try std.fmt.allocPrint(aa.allocator(), "{d}. {s}    ", .{ n, indents }), if (self.is_array) j else null);
                 } else {
-                    try print(node, try std.fmt.allocPrint(aa.allocator(), "{s}    ", .{indents}), if (self.is_array) i else null);
+                    try print(node, try std.fmt.allocPrint(aa.allocator(), "{s}    ", .{indents}), if (self.is_array) j else null);
                 }
             }
         }
@@ -204,7 +205,7 @@ pub fn main() !u8 {
     while (true) {
         const cur_node = try tree.navigate_tree(action_stack);
 
-        try cur_node.print("");
+        try cur_node.print("", null);
 
         if (cur_node.getValue) |func| {
             //if getValue function is not null, which means it's a modifiable field
@@ -215,17 +216,17 @@ pub fn main() !u8 {
         } else {
             while (true) : ({
                 try stdout.print("\n\n\n", .{});
-                try cur_node.print("");
+                try cur_node.print("", null);
             }) {
                 const input = try readInput("Please select a field to modify or type 'add' to add a new item.", &buffer);
 
-                const split = std.mem.splitSequence(u8, input, " ");
+                var split = std.mem.splitSequence(u8, input, " ");
                 const node_name = split.next().?;
-                const node_num: ?u32 = undefined;
+                var node_num: ?u64 = undefined;
 
                 if (cur_node.is_array) {
                     if (split.next()) |num_str| {
-                        node_num = std.fmt.parseUnsigned(u32, num_str, 10);
+                        node_num = try std.fmt.parseUnsigned(u64, num_str, 10);
                     } else {
                         try stdout.print("Please add the '{s}' number you want to modify.\n", .{cur_node.field_name});
                         continue;
@@ -273,9 +274,9 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
         .Pointer => |pointerInfo| {
             switch (pointerInfo.size) {
                 .Slice => {
-                    try stdout.print("{s}\n", .{"Array"});
                     var head = Tree.Node.init(source_name);
                     head.is_array = true;
+                    @field(head.ptr.?, @typeName(T)) = casted_ptr;
 
                     if (source.len != 0) {
                         switch (@typeInfo(@TypeOf(source[0]))) {
@@ -310,7 +311,6 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
         },
 
         .Struct => |structInfo| {
-            try stdout.print("{s}\n", .{"Struct"});
             var head = Tree.Node.init(source_name);
 
             inline for (structInfo.fields) |field| {
@@ -324,7 +324,6 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
             var end_node = Tree.Node.init(source_name);
             switch (@typeInfo(T)) {
                 .Int => |info| {
-                    try stdout.print("{s}\n", .{"Int"});
 
                     //TODO: refactor
                     switch (info.bits) {
@@ -351,7 +350,6 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
                 },
 
                 .Enum => {
-                    try stdout.print("{s}\n", .{"Enum"});
                     end_node.ptr = AnyPointer{ .channel = casted_ptr };
                     end_node.getValue = setChannel;
                 },
