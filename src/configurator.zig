@@ -30,6 +30,8 @@ const AnyPointer = union(enum) {
     u32: *u32, //end
     u10: *u10, //axes
     channel: *mcl.connection.Channel,
+    lines: *[]mcl.Config.Line,
+    ranges: *[]mcl.Config.Line.Range,
 };
 
 //thin wrapper for Node
@@ -180,7 +182,7 @@ pub fn main() !u8 {
             //if getValue function is not null, which means it's a modifiable field
             if (func(cur_node)) {
                 //TODO save to file
-                action_stack.clearRetainingCapacity(); //hmm
+                action_stack.clearRetainingCapacity(); //hmm. i want to send the user back to the main screen but also be able to go back but that's kinda difficult with this format.
             } else |_| continue;
         } else {
             while (true) : ({
@@ -198,7 +200,10 @@ pub fn main() !u8 {
                     } else {
                         try stdout.print("There's no more page history.\n", .{});
                     }
-                } else if (cur_node.find_child(input)) |_| {
+                } else if(std.mem.eql(u8, input, "add")){
+
+                }
+                }else if (cur_node.find_child(input)) |_| {
                     try action_stack.append(input);
                     break;
                 } else {
@@ -224,6 +229,7 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
                 .Slice => {
                     try stdout.print("{s}\n", .{"Array"});
                     var head = Tree.Node.init(source_name);
+                    head.is_array = true;
 
                     if (source.len != 0) {
                         switch (@typeInfo(@TypeOf(source[0]))) {
