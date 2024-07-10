@@ -325,17 +325,12 @@ fn setChannel(node: Tree.Node) !void {
     var buffer: [1024]u8 = undefined;
     const input = try readInput("Please input a new channel number. (1~4)\n", &buffer);
 
-    _ = std.fmt.parseUnsigned(u2, input, 10) catch |err| {
+    const num = std.fmt.parseUnsigned(u2, input, 10) catch |err| {
         try stdout.print("Please input a correct channel number.\n", .{});
         return err;
     }; //this will automatically handle cases where numbers are > 4 because it's a u2.
 
-    var aa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer aa.deinit();
-
-    const new_channel_concat = try std.fmt.allocPrint(aa.allocator(), "cc_link_{s}slot", .{input});
-
-    node.ptr.?.channel.* = @field(mcl.connection.Channel, new_channel_concat); //feels like this won't work.
+    node.ptr.?.channel = @enumFromInt(num);
     try stdout.print("Channel successfully changed\n", .{});
 }
 
