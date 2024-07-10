@@ -255,9 +255,16 @@ pub fn main() !u8 {
                         const list_type = std.meta.stringToEnum(@TypeOf(ListTypes), cur_node.field_name);
 
                         switch (list_type) {
-                            .lines => {},
+                            .lines => {
+                                var new_line = mcl.Config.Line{};
+                                try fillTree(cur_node, @TypeOf(mcl.Config.Line), @ptrCast(&new_line), "")
+                            },
 
                             .ranges => {},
+
+                            else => {
+                                return error.UnsupportedType;
+                            }
                         }
                     } else {
                         try stdout.print("You can only add items to lists.\n", .{});
