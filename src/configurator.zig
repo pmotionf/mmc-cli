@@ -264,24 +264,30 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
         else => {
             var end_node = Tree.Node.init(source_name);
             switch (@typeInfo(T)) {
-                .Int => {
+                .Int => |info| {
                     try stdout.print("{s}\n", .{"Int"});
 
                     //TODO: refactor
-                    if (isSpecificInteger(T, 8, .unsigned)) {
-                        //modifying start or axes
-                        end_node.ptr = AnyPointer{ .u8 = casted_ptr };
-                        end_node.getValue = setU8;
-                    } else if (isSpecificInteger(T, 32, .unsigned)) {
-                        //modifying end
-                        end_node.ptr = AnyPointer{ .u32 = casted_ptr };
-                        end_node.getValue = setU32;
-                    } else if (isSpecificInteger(T, 10, .unsigned)) {
-                        end_node.ptr = AnyPointer{ .u10 = casted_ptr };
-                        end_node.getValue = setU10;
-                    } else {
-                        try stdout.print("Unsupported type: {}\n", .{@typeInfo(T)});
-                        return error.UnsupportedType;
+                    switch (info.bits) {
+                        8 => {
+                            end_node.ptr = AnyPointer{ .u8 = casted_ptr };
+                            end_node.getValue = setU8;
+                        },
+
+                        10 => {
+                            end_node.ptr = AnyPointer{ .u10 = casted_ptr };
+                            end_node.getValue = setU10;
+                        },
+
+                        32 => {
+                            end_node.ptr = AnyPointer{ .u32 = casted_ptr };
+                            end_node.getValue = setU32;
+                        },
+
+                        else => {
+                            try stdout.print("Unsupported type: {}\n", .{@typeInfo(T)});
+                            return error.UnsupportedType;
+                        },
                     }
                 },
 
