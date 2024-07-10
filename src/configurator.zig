@@ -103,7 +103,7 @@ const Tree = struct {
                     }
                 }
             }
-            return null; //could not find node with given name.
+            return null; //could not find node with given name and/or index #.
         }
 
         //prints the current node as well as all of its descendents.
@@ -195,6 +195,7 @@ pub fn main() !u8 {
 
     try fillTree(&tree.root, @TypeOf(lines.*), @ptrCast(lines), "lines");
 
+    //TODO change this to an arraylist of splits so you don't have to calculate the second argument in two places
     var action_stack = std.ArrayList([]const u8).init(std.heap.page_allocator);
 
     // defer tree.deinit();s
@@ -218,6 +219,20 @@ pub fn main() !u8 {
             }) {
                 const input = try readInput("Please select a field to modify or type 'add' to add a new item.", &buffer);
 
+                const split = std.mem.splitSequence(u8, input, " ");
+                const node_name = split.next().?;
+                const node_num: ?u32 = undefined;
+
+                if (cur_node.is_array) {
+                    if (split.next()) |num_str| {
+                        node_num = std.fmt.parseUnsigned(u32, num_str, 10);
+                    } else {
+                        try stdout.print("Please add the '{s}' number you want to modify.\n", .{cur_node.field_name});
+                        continue;
+                    }
+                }
+                //If it's not a number, then just ignore all the arguments the user put afterwards.
+
                 //TODO add a quit command
                 if (std.mem.eql(u8, input, "prev")) {
                     if (action_stack.items.len != 0) {
@@ -234,7 +249,7 @@ pub fn main() !u8 {
                     } else {
                         try stdout.print("You can only add items to lists.\n", .{});
                     }
-                } else if (cur_node.find_child(input)) |_| {
+                } else if (cur_node.find_child(node_name, node_num)) |_| {
                     try action_stack.append(input);
                     break;
                 } else {
