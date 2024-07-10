@@ -34,6 +34,11 @@ const AnyPointer = union(enum) {
     @"[]Config.Line.Range": *[]mcl.Config.Line.Range,
 };
 
+const ListTypes = enum {
+    lines,
+    ranges,
+};
+
 //thin wrapper for Node
 const Tree = struct {
     root: Node,
@@ -49,8 +54,9 @@ const Tree = struct {
         self.root.nodes.deinit();
     }
 
-    fn navigate_tree(self: Tree, action_history: std.ArrayList([]const u8)) !Tree.Node {
-        var cur_node: Tree.Node = self.root;
+    fn navigate_tree(self: Tree, action_history: std.ArrayList([]const u8)) !*Tree.Node {
+        var cur_node: *Tree.Node = @constCast(&self.root);
+
         for (action_history.items) |name| {
             var split = std.mem.splitSequence(u8, name, " ");
             const first = split.next().?;
@@ -91,8 +97,8 @@ const Tree = struct {
             self.nodes.deinit();
         }
 
-        fn find_child(self: Tree.Node, name: []const u8, num: ?u64) ?Tree.Node {
-            for (self.nodes.items, 0..) |node, i| {
+        fn find_child(self: Tree.Node, name: []const u8, num: ?u64) ?*Tree.Node {
+            for (self.nodes.items, 0..) |*node, i| {
                 if (num) |n| {
                     if (std.mem.eql(u8, node.field_name, name) and n == i) {
                         return node;
@@ -199,7 +205,7 @@ pub fn main() !u8 {
     //TODO change this to an arraylist of splits so you don't have to calculate the second argument in two places
     var action_stack = std.ArrayList([]const u8).init(std.heap.page_allocator);
 
-    // defer tree.deinit();s
+    defer tree.deinit();
 
     //TODO make ability to add new stuff, not just modify.
     while (true) {
@@ -209,7 +215,7 @@ pub fn main() !u8 {
 
         if (cur_node.getValue) |func| {
             //if getValue function is not null, which means it's a modifiable field
-            if (func(cur_node)) {
+            if (func(cur_node.*)) {
                 //TODO save to file
                 action_stack.clearRetainingCapacity(); //hmm. i want to send the user back to the main screen but also be able to go back but that's kinda difficult with this format.
             } else |_| continue;
@@ -245,8 +251,14 @@ pub fn main() !u8 {
                     }
                 } else if (std.mem.eql(u8, input, "add")) {
                     if (cur_node.is_array) {
-                        const @"♩¨̮(ง ˙˘˙ )ว♩¨̮" = "happy";
-                        try stdout.print("{s}\n", .{@"♩¨̮(ง ˙˘˙ )ว♩¨̮"});
+                        var new_child = Tree.Node.init(cur_node.field_name[0 .. cur_node.field_name.len - 1]);
+                        const list_type = std.meta.stringToEnum(@TypeOf(ListTypes), cur_node.field_name);
+
+                        switch (list_type) {
+                            .lines => {},
+
+                            .ranges => {},
+                        }
                     } else {
                         try stdout.print("You can only add items to lists.\n", .{});
                     }
@@ -269,12 +281,13 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
 
     const stdout = std.io.getStdOut().writer();
 
+    var head = Tree.Node.init(source_name);
+
     //TODO refactor. 3 nested switches (; ꒪ö꒪)
     switch (@typeInfo(T)) {
         .Pointer => |pointerInfo| {
             switch (pointerInfo.size) {
                 .Slice => {
-                    var head = Tree.Node.init(source_name);
                     head.is_array = true;
                     @field(head.ptr.?, @typeName(T)) = casted_ptr;
 
@@ -311,8 +324,6 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
         },
 
         .Struct => |structInfo| {
-            var head = Tree.Node.init(source_name);
-
             inline for (structInfo.fields) |field| {
                 const val_ptr = &@field(casted_ptr.*, field.name);
                 try fillTree(&head, field.type, @ptrCast(val_ptr), field.name);
@@ -321,25 +332,24 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
         },
 
         else => {
-            var end_node = Tree.Node.init(source_name);
             switch (@typeInfo(T)) {
                 .Int => |info| {
 
                     //TODO: refactor
                     switch (info.bits) {
                         8 => {
-                            end_node.ptr = AnyPointer{ .u8 = casted_ptr };
-                            end_node.getValue = setU8;
+                            head.ptr = AnyPointer{ .u8 = casted_ptr };
+                            head.getValue = setU8;
                         },
 
                         10 => {
-                            end_node.ptr = AnyPointer{ .u10 = casted_ptr };
-                            end_node.getValue = setU10;
+                            head.ptr = AnyPointer{ .u10 = casted_ptr };
+                            head.getValue = setU10;
                         },
 
                         32 => {
-                            end_node.ptr = AnyPointer{ .u32 = casted_ptr };
-                            end_node.getValue = setU32;
+                            head.ptr = AnyPointer{ .u32 = casted_ptr };
+                            head.getValue = setU32;
                         },
 
                         else => {
@@ -350,8 +360,8 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
                 },
 
                 .Enum => {
-                    end_node.ptr = AnyPointer{ .channel = casted_ptr };
-                    end_node.getValue = setChannel;
+                    head.ptr = AnyPointer{ .channel = casted_ptr };
+                    head.getValue = setChannel;
                 },
 
                 else => {
