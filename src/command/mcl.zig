@@ -1178,8 +1178,9 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
 
     // Set command station in direction of movement command.
     if (_aux) |aux| {
-        if ((main.index.line < aux.index.line and axis_id >= aux.id.line) or
-            (aux.index.line < main.index.line and axis_id <= aux.id.line))
+        if (((main.index.line < aux.index.line and axis_id >= aux.id.line) or
+            (aux.index.line < main.index.line and axis_id <= aux.id.line)) and
+            aux.station.wr.slider.axis(aux.index.station).enabled)
         {
             station = aux.station.*;
         }
@@ -1243,8 +1244,9 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
 
         const current_location =
             main.station.wr.slider.axis(main.index.station).location;
-        if ((direction == .forward and location > current_location) or
-            (direction == .backward and location < current_location))
+        if (((direction == .forward and location > current_location) or
+            (direction == .backward and location < current_location)) and
+            aux.station.wr.slider.axis(aux.index.station).enabled)
         {
             station = aux.station.*;
         }
@@ -1309,7 +1311,9 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
             direction = .backward;
         }
         // Set command station in direction of movement command.
-        if (move_direction == direction) {
+        if (move_direction == direction and
+            aux.station.wr.slider.axis(aux.index.station).enabled)
+        {
             station = aux.station.*;
         }
     }
@@ -1358,8 +1362,9 @@ fn mclSliderSpdMoveAxis(params: [][]const u8) !void {
 
     // Set command station in direction of movement command.
     if (_aux) |aux| {
-        if ((main.index.line < aux.index.line and axis_id >= aux.id.line) or
-            (aux.index.line < main.index.line and axis_id <= aux.id.line))
+        if (((main.index.line < aux.index.line and axis_id >= aux.id.line) or
+            (aux.index.line < main.index.line and axis_id <= aux.id.line)) and
+            aux.station.wr.slider.axis(aux.index.station).enabled)
         {
             station = aux.station.*;
         }
@@ -1423,8 +1428,9 @@ fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
 
         const current_location =
             main.station.wr.slider.axis(main.index.station).location;
-        if ((direction == .forward and location > current_location) or
-            (direction == .backward and location < current_location))
+        if (((direction == .forward and location > current_location) or
+            (direction == .backward and location < current_location)) and
+            aux.station.wr.slider.axis(aux.index.station).enabled)
         {
             station = aux.station.*;
         }
@@ -1489,7 +1495,9 @@ fn mclSliderSpdMoveDistance(params: [][]const u8) !void {
             direction = .backward;
         }
         // Set command station in direction of movement command.
-        if (move_direction == direction) {
+        if (move_direction == direction and
+            aux.station.wr.slider.axis(aux.index.station).enabled)
+        {
             station = aux.station.*;
         }
     }
