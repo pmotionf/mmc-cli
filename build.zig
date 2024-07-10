@@ -54,6 +54,20 @@ pub fn build(b: *std.Build) !void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
+    const check_exe = b.addExecutable(.{
+        .name = "mmc-cli",
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    check_exe.root_module.addImport("version", version);
+    check_exe.root_module.addImport("network", network_dep.module("network"));
+    check_exe.root_module.addImport("mcl", mcl.module("mcl"));
+    check_exe.root_module.addImport("chrono", chrono.module("chrono"));
+
+    const check = b.step("check", "Check if `mmc-cli` compiles");
+    check.dependOn(&check_exe.step);
+
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
     const unit_tests = b.addTest(.{
