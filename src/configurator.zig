@@ -43,16 +43,16 @@ const Tree = struct {
     }
 
     fn deinit(self: Tree) void {
-        for(self.root.nodes.items) |node| {
+        for (self.root.nodes.items) |node| {
             node.deinit();
         }
         self.root.nodes.deinit();
     }
 
-    fn navigate_tree(self: Tree, action_history: std.ArrayList([]const u8)) Tree.Node {
+    fn navigate_tree(self: Tree, action_history: std.ArrayList([]const u8), num: ?u32) Tree.Node {
         var cur_node: Tree.Node = self.root;
         for (action_history.items) |name| {
-            cur_node = self.root.find_child(name).?;
+            cur_node = self.root.find_child(name, num).?;
         }
         return cur_node;
     }
@@ -75,13 +75,13 @@ const Tree = struct {
         }
 
         fn deinit(self: Node) void {
-            for(self.nodes.items) |child|{
+            for (self.nodes.items) |child| {
                 child.deinit();
             }
             self.nodes.deinit();
         }
 
-        fn find_child(self: Tree.Node, name: []const u8) ?Tree.Node {
+        fn find_child(self: Tree.Node, name: []const u8, num: ?u32) ?Tree.Node {
             for (self.nodes.items) |node| {
                 if (std.mem.eql(u8, node.field_name, name)) {
                     return node;
@@ -91,7 +91,7 @@ const Tree = struct {
         }
 
         //prints the current node as well as all of its descendents.
-        fn print(self: Tree.Node, indents: []const u8) !void {
+        fn print(self: Tree.Node, indents: []const u8, num: ?u32) !void {
             const stdout = std.io.getStdOut().writer();
 
             var aa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -100,8 +100,12 @@ const Tree = struct {
 
             try stdout.print("{s}", .{indented_print});
 
-            for (self.nodes.items) |node| {
-                try print(node, try std.fmt.allocPrint(aa.allocator(), "{s}    ", .{indents}));
+            for (self.nodes.items, 0..) |node, i| {
+                if (num) |n| {
+                    try print(node, try std.fmt.allocPrint(aa.allocator(), "{d}. {s}    ", .{ n, indents }), if (self.is_array) i else null);
+                } else {
+                    try print(node, try std.fmt.allocPrint(aa.allocator(), "{s}    ", .{indents}), if (self.is_array) i else null);
+                }
             }
         }
     };
@@ -177,6 +181,8 @@ pub fn main() !u8 {
 
     var action_stack = std.ArrayList([]const u8).init(std.heap.page_allocator);
 
+    // defer tree.deinit();s
+
     //TODO make ability to add new stuff, not just modify.
     while (true) {
         const cur_node = tree.navigate_tree(action_stack);
@@ -194,7 +200,7 @@ pub fn main() !u8 {
                 try stdout.print("\n\n\n", .{});
                 try cur_node.print("");
             }) {
-                const input = try readInput("Please select the field you want to modify:", &buffer);
+                const input = try readInput("Please select a field to modify or type 'add' to add a new item.", &buffer);
 
                 //TODO add a quit command
                 if (std.mem.eql(u8, input, "prev")) {
@@ -205,10 +211,14 @@ pub fn main() !u8 {
                     } else {
                         try stdout.print("There's no more page history.\n", .{});
                     }
-                } else if(std.mem.eql(u8, input, "add")){
-
-                }
-                }else if (cur_node.find_child(input)) |_| {
+                } else if (std.mem.eql(u8, input, "add")) {
+                    if (cur_node.is_array) {
+                        const @"♩¨̮(ง ˙˘˙ )ว♩¨̮" = "happy";
+                        try stdout.print("{s}\n", .{@"♩¨̮(ง ˙˘˙ )ว♩¨̮"});
+                    } else {
+                        try stdout.print("You can only add items to lists.\n", .{});
+                    }
+                } else if (cur_node.find_child(input)) |_| {
                     try action_stack.append(input);
                     break;
                 } else {
@@ -218,7 +228,6 @@ pub fn main() !u8 {
             try stdout.print("\n\n\n", .{});
         }
     }
-
     return 0;
 }
 
@@ -228,6 +237,7 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
 
     const stdout = std.io.getStdOut().writer();
 
+    //TODO refactor. 3 nested switches (; ꒪ö꒪)
     switch (@typeInfo(T)) {
         .Pointer => |pointerInfo| {
             switch (pointerInfo.size) {
