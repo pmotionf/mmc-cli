@@ -49,10 +49,20 @@ const Tree = struct {
         self.root.nodes.deinit();
     }
 
-    fn navigate_tree(self: Tree, action_history: std.ArrayList([]const u8), num: ?u32) Tree.Node {
+    fn navigate_tree(self: Tree, action_history: std.ArrayList([]const u8)) !Tree.Node {
         var cur_node: Tree.Node = self.root;
         for (action_history.items) |name| {
-            cur_node = self.root.find_child(name, num).?;
+            const split = std.mem.splitSequence(u8, name, " ");
+            const first = split.next().?;
+            const num: ?u32 = undefined;
+
+            if (split.next()) |n| {
+                num = try std.fmt.parseUnsigned(u32, n, 10);
+            } else {
+                num = null;
+            }
+
+            cur_node = self.root.find_child(first, num) orelse return error.ChildNotFound;
         }
         return cur_node;
     }
@@ -191,7 +201,7 @@ pub fn main() !u8 {
 
     //TODO make ability to add new stuff, not just modify.
     while (true) {
-        const cur_node = tree.navigate_tree(action_stack);
+        const cur_node = try tree.navigate_tree(action_stack);
 
         try cur_node.print("");
 
