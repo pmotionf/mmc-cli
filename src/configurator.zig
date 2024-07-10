@@ -28,6 +28,7 @@ const AnyPointer = union(enum) {
     str: *[]const u8,
     u8: *u8, //start
     u32: *u32, //end
+    u10: *u10, //axes
     channel: *mcl.connection.Channel,
 };
 
@@ -225,6 +226,7 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
                                     head.ptr = AnyPointer{ .str = casted_ptr };
                                     head.getValue = setStr;
                                 } else {
+                                    //TODO i don't want to put this piece of code in two places
                                     for (source) |*item| {
                                         try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1]); //remove the 's' at the end to convert to singular form
                                     }
@@ -237,17 +239,6 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
                                 }
                             },
                         }
-                        // if (isSpecificInteger(@TypeOf(source[0]), 8, .unsigned)) {
-                        //     @compileLog(isSpecificInteger(@TypeOf(source[0]), 8, .unsigned));
-                        //     //String
-                        //     //if the lines and the line_names are separated, the user won't be able to see informations about the line they are modifying in this structure. is that fine?
-                        //     head.ptr = AnyPointer{ .str = casted_ptr };
-                        //     head.getValue = setStr;
-                        // } else {
-                        //     for (source) |*item| {
-                        //         try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1]); //remove the 's' at the end to convert to singular form
-                        //     }
-                        // }
                     }
                     try parent.nodes.append(head); //im pretty sure data gets copied to the arraylist, not store a pointer to it ¯\_(ツ)_/¯
                 },
@@ -264,18 +255,19 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
             var head = Tree.Node.init(source_name);
 
             inline for (structInfo.fields) |field| {
-                const val: field.type = @as(*const field.type, @alignCast(@ptrCast(field.default_value))).*;
-                try fillTree(&head, field.type, val, field.name);
+                const val_ptr = &@field(casted_ptr.*, field.name);
+                try fillTree(&head, field.type, @ptrCast(val_ptr), field.name);
             }
             try parent.nodes.append(head);
         },
 
         else => {
             var end_node = Tree.Node.init(source_name);
-
             switch (@typeInfo(T)) {
                 .Int => {
                     try stdout.print("{s}\n", .{"Int"});
+
+                    //TODO: refactor
                     if (isSpecificInteger(T, 8, .unsigned)) {
                         //modifying start or axes
                         end_node.ptr = AnyPointer{ .u8 = casted_ptr };
@@ -284,6 +276,12 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
                         //modifying end
                         end_node.ptr = AnyPointer{ .u32 = casted_ptr };
                         end_node.getValue = setU32;
+                    } else if (isSpecificInteger(T, 10, .unsigned)) {
+                        end_node.ptr = AnyPointer{ .u10 = casted_ptr };
+                        end_node.getValue = setU10;
+                    } else {
+                        try stdout.print("Unsupported type: {}\n", .{@typeInfo(T)});
+                        return error.UnsupportedType;
                     }
                 },
 
@@ -362,6 +360,21 @@ fn setU32(node: Tree.Node) !void {
     };
 
     node.ptr.?.u32.* = num;
+    try stdout.print("Number value successfully changed.\n", .{});
+}
+
+fn setU10(node: Tree.Node) !void {
+    const stdout = std.io.getStdOut().writer();
+
+    var buffer: [1024]u8 = undefined;
+    const input = try readInput("Please input a number.", &buffer);
+
+    const num = std.fmt.parseUnsigned(u10, input, 10) catch |err| {
+        try stdout.print("Please input a correct number.\n", .{});
+        return err;
+    };
+
+    node.ptr.?.u10.* = num;
     try stdout.print("Number value successfully changed.\n", .{});
 }
 
