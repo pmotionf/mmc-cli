@@ -55,6 +55,8 @@ const Tree = struct {
 
     const Node = struct {
         nodes: std.ArrayList(Node),
+        is_array: bool = false,
+
         ptr: ?AnyPointer = null, //i want to use this for the getValue function and keep it null if it's not applicable, but there's probably a better way
         field_name: []const u8,
         getValue: ?*const fn (Node) anyerror!void = null, //function to read input from user and update value.
@@ -181,9 +183,13 @@ pub fn main() !u8 {
                 action_stack.clearRetainingCapacity(); //hmm
             } else |_| continue;
         } else {
-            while (true) {
+            while (true) : ({
+                try stdout.print("\n\n\n", .{});
+                try cur_node.print("");
+            }) {
                 const input = try readInput("Please select the field you want to modify:", &buffer);
 
+                //TODO add a quit command
                 if (std.mem.eql(u8, input, "prev")) {
                     if (action_stack.items.len != 0) {
                         _ = action_stack.pop();
@@ -199,6 +205,7 @@ pub fn main() !u8 {
                     try stdout.print("Could not find field. Try again.\n", .{});
                 }
             }
+            try stdout.print("\n\n\n", .{});
         }
     }
 
@@ -227,8 +234,8 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
                                     head.getValue = setStr;
                                 } else {
                                     //TODO i don't want to put this piece of code in two places
-                                    for (source) |*item| {
-                                        try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1]); //remove the 's' at the end to convert to singular form
+                                    for (casted_ptr.*, 0..) |*item, i| {
+                                        try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1] ++ i); //remove the 's' at the end to convert to singular form
                                     }
                                 }
                             },
@@ -330,7 +337,7 @@ fn setChannel(node: Tree.Node) !void {
         return err;
     }; //this will automatically handle cases where numbers are > 4 because it's a u2.
 
-    node.ptr.?.channel = @enumFromInt(num);
+    node.ptr.?.channel.* = @as(mcl.connection.Channel, @enumFromInt(num - 1));
     try stdout.print("Channel successfully changed\n", .{});
 }
 
