@@ -82,9 +82,15 @@ const Tree = struct {
         }
 
         fn find_child(self: Tree.Node, name: []const u8, num: ?u32) ?Tree.Node {
-            for (self.nodes.items) |node| {
-                if (std.mem.eql(u8, node.field_name, name)) {
-                    return node;
+            for (self.nodes.items, 0..) |node, i| {
+                if (num) |n| {
+                    if (std.mem.eql(u8, node.field_name, name) and n == i) {
+                        return node;
+                    }
+                } else {
+                    if (std.mem.eql(u8, node.field_name, name)) {
+                        return node;
+                    }
                 }
             }
             return null; //could not find node with given name.
