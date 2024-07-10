@@ -218,16 +218,36 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
                     var head = Tree.Node.init(source_name);
 
                     if (source.len != 0) {
-                        if (isSpecificInteger(@TypeOf(source[0]), 8, .unsigned)) {
-                            //String
-                            //if the lines and the line_names are separated, the user won't be able to see informations about the line they are modifying in this structure. is that fine?
-                            // head.ptr = AnyPointer{ .str = casted_ptr };
-                            // head.getValue = setStr;
-                        } else {
-                            for (source) |*item| {
-                                try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1]); //remove the 's' at the end to convert to singular form
-                            }
+                        switch (@typeInfo(@TypeOf(source[0]))) {
+                            .Int => |intInfo| {
+                                if (intInfo.bits == 8 and intInfo.signedness == .unsigned) {
+                                    //String
+                                    head.ptr = AnyPointer{ .str = casted_ptr };
+                                    head.getValue = setStr;
+                                } else {
+                                    for (source) |*item| {
+                                        try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1]); //remove the 's' at the end to convert to singular form
+                                    }
+                                }
+                            },
+
+                            else => {
+                                for (source) |*item| {
+                                    try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1]); //remove the 's' at the end to convert to singular form
+                                }
+                            },
                         }
+                        // if (isSpecificInteger(@TypeOf(source[0]), 8, .unsigned)) {
+                        //     @compileLog(isSpecificInteger(@TypeOf(source[0]), 8, .unsigned));
+                        //     //String
+                        //     //if the lines and the line_names are separated, the user won't be able to see informations about the line they are modifying in this structure. is that fine?
+                        //     head.ptr = AnyPointer{ .str = casted_ptr };
+                        //     head.getValue = setStr;
+                        // } else {
+                        //     for (source) |*item| {
+                        //         try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1]); //remove the 's' at the end to convert to singular form
+                        //     }
+                        // }
                     }
                     try parent.nodes.append(head); //im pretty sure data gets copied to the arraylist, not store a pointer to it ¯\_(ツ)_/¯
                 },
