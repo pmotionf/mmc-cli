@@ -77,7 +77,7 @@ const Tree = struct {
         nodes: std.ArrayList(Node),
         is_array: bool = false,
 
-        ptr: ?AnyPointer = null, //i want to use this for the getValue function and keep it null if it's not applicable, but there's probably a better way
+        ptr: ?AnyPointer = null,
         field_name: []const u8,
         getValue: ?*const fn (Node) anyerror!void = null, //function to read input from user and update value.
 
@@ -123,6 +123,7 @@ const Tree = struct {
             try stdout.print("{s}", .{indented_print});
 
             for (self.nodes.items, 0..) |node, i| {
+                try stdout.print("hehehehha\n", .{});
                 const j = @as(u64, i);
                 if (num) |n| {
                     try print(node, try std.fmt.allocPrint(aa.allocator(), "{d}. {s}    ", .{ n, indents }), if (self.is_array) j else null);
@@ -190,9 +191,9 @@ pub fn main() !u8 {
     }
     // Load existing config file.
 
-    var ll = [1]mcl.Config.Line{create_default_line()};
+    // var ll = [1]mcl.Config.Line{create_default_line()};
 
-    config.modules[0].mcl.lines = &ll;
+    // config.modules[0].mcl.lines = &ll;
 
     var buffer: [1024]u8 = undefined;
 
@@ -206,6 +207,7 @@ pub fn main() !u8 {
 
     _ = try fillTree(&tree.root, @TypeOf(lines.*), @ptrCast(lines), "lines");
 
+    try stdout.print("{},{}", .{ tree.root.nodes.items.len, tree.root.nodes.items[0] });
     //TODO change this to an arraylist of splits so you don't have to calculate the second argument in two places
     var action_stack = std.ArrayList([]const u8).init(std.heap.page_allocator);
 
