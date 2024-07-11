@@ -190,6 +190,10 @@ pub fn main() !u8 {
     }
     // Load existing config file.
 
+    var ll = [1]mcl.Config.Line{create_default_line()};
+
+    config.modules[0].mcl.lines = &ll;
+
     var buffer: [1024]u8 = undefined;
 
     if (new_file) {
@@ -251,27 +255,13 @@ pub fn main() !u8 {
                     }
                 } else if (std.mem.eql(u8, input, "add")) {
                     if (cur_node.is_array) {
-                        var new_node = undefined;
-                        if (std.mem.eql(u8, cur_node.field_name, "lines")) {
-                            new_node = Tree.Node.init("line");
-                            var new_line = create_default_line();
+                        // var new_node: Tree.Node = undefined;
+                        // if (std.mem.eql(u8, cur_node.field_name, "lines")) {
+                        //     new_node = Tree.Node.init("line");
+                        //     var new_line = [1]mcl.Config.Line{create_default_line()};
+                        //     const prev_lines = cur_node.ptr.?.@"[]Config.Line".*;
 
-                            try fillTree(new_node, @TypeOf(mcl.Config.Line), @ptrCast(new_ptr), "line");
-                        }
-                        // const list_type = std.meta.stringToEnum(@TypeOf(ListTypes), cur_node.field_name);
-
-                        // switch (list_type) {
-                        //     .lines => {
-                        //         cur_node.ptr.?.@"[]Config.Line".* = cur_node.ptr.?.@"[]Config.Line".* ++ mcl.Config.Line{};
-                        //         const new_ptr = cur_node.ptr.?.@"[]Config.Line" + (cur_node.ptr.?.@"[]Config.Line".*.len - 1);
-                        //         try fillTree(cur_node, @TypeOf(mcl.Config.Line), @ptrCast(new_ptr), "line");
-                        //     },
-
-                        //     .ranges => {},
-
-                        //     else => {
-                        //         return error.UnsupportedType;
-                        //     },
+                        //     new_node = try fillTree(null, @TypeOf(mcl.Config.Line), @ptrCast(new_ptr), "line");
                         // }
                     } else {
                         try stdout.print("You can only add items to lists.\n", .{});
@@ -303,7 +293,19 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
             switch (pointerInfo.size) {
                 .Slice => {
                     head.is_array = true;
-                    @field(head.ptr.?, @typeName(T)) = casted_ptr;
+                    switch (pointerInfo.child) {
+                        mcl.Config.Line => {
+                            head.ptr = AnyPointer{ .@"[]Config.Line" = casted_ptr };
+                        },
+
+                        mcl.Config.Line.Range => {
+                            head.ptr = AnyPointer{ .@"[]Config.Line.Range" = casted_ptr };
+                        },
+
+                        else => {
+                            return error.UnsupportedType;
+                        },
+                    }
 
                     if (source.len != 0) {
                         switch (@typeInfo(@TypeOf(source[0]))) {
@@ -377,11 +379,14 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                             return error.UnsupportedType;
                         },
                     }
+
+                    return head; //doesn't really matter
                 },
 
                 .Enum => {
                     head.ptr = AnyPointer{ .channel = casted_ptr };
                     head.getValue = setChannel;
+                    return head; //doesn't really matter
                 },
 
                 else => {
