@@ -200,7 +200,7 @@ pub fn main() !u8 {
     var tree = Tree.init("mcl");
     const lines = &config.modules[0].mcl.lines;
 
-    try fillTree(&tree.root, @TypeOf(lines.*), @ptrCast(lines), "lines");
+    _ = try fillTree(&tree.root, @TypeOf(lines.*), @ptrCast(lines), "lines");
 
     //TODO change this to an arraylist of splits so you don't have to calculate the second argument in two places
     var action_stack = std.ArrayList([]const u8).init(std.heap.page_allocator);
@@ -251,21 +251,28 @@ pub fn main() !u8 {
                     }
                 } else if (std.mem.eql(u8, input, "add")) {
                     if (cur_node.is_array) {
-                        var new_child = Tree.Node.init(cur_node.field_name[0 .. cur_node.field_name.len - 1]);
-                        const list_type = std.meta.stringToEnum(@TypeOf(ListTypes), cur_node.field_name);
+                        var new_node = undefined;
+                        if (std.mem.eql(u8, cur_node.field_name, "lines")) {
+                            new_node = Tree.Node.init("line");
+                            var new_line = create_default_line();
 
-                        switch (list_type) {
-                            .lines => {
-                                var new_line = mcl.Config.Line{};
-                                try fillTree(cur_node, @TypeOf(mcl.Config.Line), @ptrCast(&new_line), "")
-                            },
-
-                            .ranges => {},
-
-                            else => {
-                                return error.UnsupportedType;
-                            }
+                            try fillTree(new_node, @TypeOf(mcl.Config.Line), @ptrCast(new_ptr), "line");
                         }
+                        // const list_type = std.meta.stringToEnum(@TypeOf(ListTypes), cur_node.field_name);
+
+                        // switch (list_type) {
+                        //     .lines => {
+                        //         cur_node.ptr.?.@"[]Config.Line".* = cur_node.ptr.?.@"[]Config.Line".* ++ mcl.Config.Line{};
+                        //         const new_ptr = cur_node.ptr.?.@"[]Config.Line" + (cur_node.ptr.?.@"[]Config.Line".*.len - 1);
+                        //         try fillTree(cur_node, @TypeOf(mcl.Config.Line), @ptrCast(new_ptr), "line");
+                        //     },
+
+                        //     .ranges => {},
+
+                        //     else => {
+                        //         return error.UnsupportedType;
+                        //     },
+                        // }
                     } else {
                         try stdout.print("You can only add items to lists.\n", .{});
                     }
@@ -282,7 +289,7 @@ pub fn main() !u8 {
     return 0;
 }
 
-fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source_name: []const u8) !void {
+fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, source_name: []const u8) !Tree.Node {
     const casted_ptr: *T = @alignCast(@ptrCast(source_ptr));
     const source = casted_ptr.*;
 
@@ -308,19 +315,22 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
                                 } else {
                                     //TODO i don't want to put this piece of code in two places
                                     for (casted_ptr.*, 0..) |*item, i| {
-                                        try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1] ++ i); //remove the 's' at the end to convert to singular form
+                                        _ = try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1] ++ i); //remove the 's' at the end to convert to singular form
                                     }
                                 }
                             },
 
                             else => {
                                 for (source) |*item| {
-                                    try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1]); //remove the 's' at the end to convert to singular form
+                                    _ = try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1]); //remove the 's' at the end to convert to singular form
                                 }
                             },
                         }
                     }
-                    try parent.nodes.append(head); //im pretty sure data gets copied to the arraylist, not store a pointer to it ¯\_(ツ)_/¯
+                    if (parent) |p| {
+                        try p.nodes.append(head); //im pretty sure data gets copied to the arraylist, not store a pointer to it ¯\_(ツ)_/¯
+                    }
+                    return head;
                 },
 
                 else => {
@@ -333,9 +343,12 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
         .Struct => |structInfo| {
             inline for (structInfo.fields) |field| {
                 const val_ptr = &@field(casted_ptr.*, field.name);
-                try fillTree(&head, field.type, @ptrCast(val_ptr), field.name);
+                _ = try fillTree(&head, field.type, @ptrCast(val_ptr), field.name);
             }
-            try parent.nodes.append(head);
+            if (parent) |p| {
+                try p.nodes.append(head);
+            }
+            return head;
         },
 
         else => {
@@ -448,7 +461,6 @@ fn setU10(node: Tree.Node) !void {
         try stdout.print("Please input a correct number.\n", .{});
         return err;
     };
-
     node.ptr.?.u10.* = num;
     try stdout.print("Number value successfully changed.\n", .{});
 }
@@ -457,6 +469,21 @@ fn isSpecificInteger(comptime T: type, comptime bits: u16, comptime signedness: 
     return switch (@typeInfo(T)) {
         .Int => |info| info.bits == bits and info.signedness == signedness,
         else => false,
+    };
+}
+
+fn create_default_line() mcl.Config.Line {
+    return mcl.Config.Line{
+        .axes = 0,
+        .ranges = &.{},
+    };
+}
+
+fn create_default_range() mcl.Config.Line.Range {
+    return mcl.Config.Line.Range{
+        .channel = mcl.Config.connection.Channel{.cc_link_1slot},
+        .start = 0,
+        .end = 0,
     };
 }
 
