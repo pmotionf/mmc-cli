@@ -43,8 +43,10 @@ const Tree = struct {
     }
 
     fn deinit(self: Tree) void {
-        _ = self;
-        //TODO deinit all arraylists inside node
+        for (self.root.nodes.items) |node| {
+            node.deinit();
+        }
+        self.root.nodes.deinit();
     }
 
     fn navigate_tree(self: Tree, action_history: std.ArrayList([]const u8)) Tree.Node {
@@ -73,6 +75,9 @@ const Tree = struct {
         }
 
         fn deinit(self: Node) void {
+            for (self.nodes.items) |child| {
+                child.deinit();
+            }
             self.nodes.deinit();
         }
 
