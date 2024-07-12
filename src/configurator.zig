@@ -30,6 +30,8 @@ const AnyPointer = union(enum) {
     u32: *u32, //end
     u10: *u10, //axes
     channel: *mcl.connection.Channel,
+    lines: *[]mcl.Config.Line,
+    ranges: *[]mcl.Config.Line.Range,
 };
 
 //thin wrapper for Node
@@ -198,6 +200,8 @@ pub fn main() !u8 {
                     } else {
                         try stdout.print("There's no more page history.\n", .{});
                     }
+                } else if (std.mem.eql(u8, input, "add")) {
+                    //stuff
                 } else if (cur_node.find_child(input)) |_| {
                     try action_stack.append(input);
                     break;
@@ -222,7 +226,6 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
         .Pointer => |pointerInfo| {
             switch (pointerInfo.size) {
                 .Slice => {
-                    try stdout.print("{s}\n", .{"Array"});
                     var head = Tree.Node.init(source_name);
 
                     if (source.len != 0) {
@@ -233,6 +236,7 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
                                     head.ptr = AnyPointer{ .str = casted_ptr };
                                     head.getValue = setStr;
                                 } else {
+                                    head.is_array = true;
                                     //TODO i don't want to put this piece of code in two places
                                     for (casted_ptr.*, 0..) |*item, i| {
                                         try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1] ++ i); //remove the 's' at the end to convert to singular form
