@@ -30,8 +30,8 @@ const AnyPointer = union(enum) {
     u32: *u32, //end
     u10: *u10, //axes
     channel: *mcl.connection.Channel,
-    lines: *[]mcl.Config.Line,
-    ranges: *[]mcl.Config.Line.Range,
+    @"[]Config.Line": *[]mcl.Config.Line,
+    @"[]Config.Line.Range": *[]mcl.Config.Line.Range,
 };
 
 //thin wrapper for Node
@@ -49,15 +49,15 @@ const Tree = struct {
         self.root.nodes.deinit();
     }
 
-    fn navigate_tree(self: Tree, action_history: std.ArrayList([]const u8)) !Tree.Node {
-        var cur_node: Tree.Node = self.root;
-        for (action_history.items) |name| {
-            var split = std.mem.splitSequence(u8, name, " ");
+    fn navigate_tree(self: *Tree, action_history: std.ArrayList([]const u8)) !*Tree.Node {
+        var cur_node: *Tree.Node = @constCast(&self.root);
+        for (action_history.items) |*name| {
+            var split = std.mem.splitSequence(u8, name.*, " ");
             const first = split.next().?;
-            var num: ?u32 = undefined;
+            var num: ?u64 = undefined;
 
             if (split.next()) |n| {
-                num = try std.fmt.parseUnsigned(u32, n, 10);
+                num = try std.fmt.parseUnsigned(u64, n, 10);
             } else {
                 num = null;
             }
@@ -91,8 +91,8 @@ const Tree = struct {
             self.nodes.deinit();
         }
 
-        fn find_child(self: Tree.Node, name: []const u8, num: ?u32) ?Tree.Node {
-            for (self.nodes.items, 0..) |node, i| {
+        fn find_child(self: Tree.Node, name: []const u8, num: ?u64) ?*Tree.Node {
+            for (self.nodes.items, 0..) |*node, i| {
                 if (num) |n| {
                     if (std.mem.eql(u8, node.field_name, name) and n == i) {
                         return node;
@@ -107,7 +107,7 @@ const Tree = struct {
         }
 
         //prints the current node as well as all of its descendents.
-        fn print(self: Tree.Node, indents: []const u8) !void {
+        fn print(self: Tree.Node, indents: []const u8, num: ?u64) !void {
             const stdout = std.io.getStdOut().writer();
 
             var aa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -116,8 +116,13 @@ const Tree = struct {
 
             try stdout.print("{s}", .{indented_print});
 
-            for (self.nodes.items) |node| {
-                try print(node, try std.fmt.allocPrint(aa.allocator(), "{s}    ", .{indents}));
+            for (self.nodes.items, 0..) |node, i| {
+                const j = @as(u64, i);
+                if (num) |n| {
+                    try print(node, try std.fmt.allocPrint(aa.allocator(), "{d}. {s}    ", .{ n, indents }), if (self.is_array) j else null);
+                } else {
+                    try print(node, try std.fmt.allocPrint(aa.allocator(), "{s}    ", .{indents}), if (self.is_array) j else null);
+                }
             }
         }
     };
@@ -179,6 +184,10 @@ pub fn main() !u8 {
     }
     // Load existing config file.
 
+    var ll = [1]mcl.Config.Line{create_default_line()};
+
+    config.modules[0].mcl.lines = &ll;
+
     var buffer: [1024]u8 = undefined;
 
     if (new_file) {
@@ -189,7 +198,7 @@ pub fn main() !u8 {
     var tree = Tree.init("mcl");
     const lines = &config.modules[0].mcl.lines;
 
-    try fillTree(&tree.root, @TypeOf(lines.*), @ptrCast(lines), "lines");
+    _ = try fillTree(&tree.root, @TypeOf(lines.*), @ptrCast(lines), "lines");
 
     defer tree.deinit();
 
@@ -201,28 +210,28 @@ pub fn main() !u8 {
     while (true) {
         const cur_node = try tree.navigate_tree(action_stack);
 
-        try cur_node.print("");
+        try cur_node.print("", null);
 
         if (cur_node.getValue) |func| {
             //if getValue function is not null, which means it's a modifiable field
-            if (func(cur_node)) {
+            if (func(cur_node.*)) {
                 //TODO save to file
                 action_stack.clearRetainingCapacity(); //hmm
             } else |_| continue;
         } else {
             while (true) : ({
                 try stdout.print("\n\n\n", .{});
-                try cur_node.print("");
+                try cur_node.print("", null);
             }) {
                 const input = try readInput("Please select the field you want to modify:", &buffer);
 
                 var split = std.mem.splitSequence(u8, input, " ");
                 const node_name = split.next().?;
-                var node_num: ?u32 = undefined;
+                var node_num: ?u64 = null;
 
                 if (cur_node.is_array) {
                     if (split.next()) |num_str| {
-                        node_num = try std.fmt.parseUnsigned(u32, num_str, 10);
+                        node_num = try std.fmt.parseUnsigned(u64, num_str, 10);
                     } else {
                         try stdout.print("Please add the '{s}' number you want to modify.\n", .{cur_node.field_name});
                         continue;
@@ -260,18 +269,17 @@ pub fn main() !u8 {
     return 0;
 }
 
-fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source_name: []const u8) !void {
+fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, source_name: []const u8) !Tree.Node {
     const casted_ptr: *T = @alignCast(@ptrCast(source_ptr));
     const source = casted_ptr.*;
 
     const stdout = std.io.getStdOut().writer();
 
+    var head = Tree.Node.init(source_name);
     switch (@typeInfo(T)) {
         .Pointer => |pointerInfo| {
             switch (pointerInfo.size) {
                 .Slice => {
-                    var head = Tree.Node.init(source_name);
-
                     if (source.len != 0) {
                         switch (@typeInfo(@TypeOf(source[0]))) {
                             .Int => |intInfo| {
@@ -281,21 +289,37 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
                                     head.getValue = setStr;
                                 } else {
                                     head.is_array = true;
+                                    switch (pointerInfo.child) {
+                                        mcl.Config.Line => {
+                                            head.ptr = AnyPointer{ .@"[]Config.Line" = casted_ptr };
+                                        },
+
+                                        mcl.Config.Line.Range => {
+                                            head.ptr = AnyPointer{ .@"[]Config.Line.Range" = casted_ptr };
+                                        },
+
+                                        else => {
+                                            return error.UnsupportedType;
+                                        },
+                                    }
                                     //TODO i don't want to put this piece of code in two places
                                     for (casted_ptr.*, 0..) |*item, i| {
-                                        try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1] ++ i); //remove the 's' at the end to convert to singular form
+                                        _ = try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1] ++ i); //remove the 's' at the end to convert to singular form
                                     }
                                 }
                             },
 
                             else => {
-                                for (source) |*item| {
-                                    try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1]); //remove the 's' at the end to convert to singular form
+                                for (casted_ptr.*) |*item| {
+                                    _ = try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1]); //remove the 's' at the end to convert to singular form
                                 }
                             },
                         }
                     }
-                    try parent.nodes.append(head); //im pretty sure data gets copied to the arraylist, not store a pointer to it ¯\_(ツ)_/¯
+                    if (parent) |p| {
+                        try p.nodes.append(head); //im pretty sure data gets copied to the arraylist, not store a pointer to it ¯\_(ツ)_/¯
+                    }
+                    return head;
                 },
 
                 else => {
@@ -307,17 +331,18 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
 
         .Struct => |structInfo| {
             try stdout.print("{s}\n", .{"Struct"});
-            var head = Tree.Node.init(source_name);
 
             inline for (structInfo.fields) |field| {
                 const val_ptr = &@field(casted_ptr.*, field.name);
-                try fillTree(&head, field.type, @ptrCast(val_ptr), field.name);
+                _ = try fillTree(&head, field.type, @ptrCast(val_ptr), field.name);
             }
-            try parent.nodes.append(head);
+            if (parent) |p| {
+                try p.nodes.append(head);
+            }
+            return head;
         },
 
         else => {
-            var end_node = Tree.Node.init(source_name);
             switch (@typeInfo(T)) {
                 .Int => |info| {
                     try stdout.print("{s}\n", .{"Int"});
@@ -325,18 +350,18 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
                     //TODO: refactor
                     switch (info.bits) {
                         8 => {
-                            end_node.ptr = AnyPointer{ .u8 = casted_ptr };
-                            end_node.getValue = setU8;
+                            head.ptr = AnyPointer{ .u8 = casted_ptr };
+                            head.getValue = setU8;
                         },
 
                         10 => {
-                            end_node.ptr = AnyPointer{ .u10 = casted_ptr };
-                            end_node.getValue = setU10;
+                            head.ptr = AnyPointer{ .u10 = casted_ptr };
+                            head.getValue = setU10;
                         },
 
                         32 => {
-                            end_node.ptr = AnyPointer{ .u32 = casted_ptr };
-                            end_node.getValue = setU32;
+                            head.ptr = AnyPointer{ .u32 = casted_ptr };
+                            head.getValue = setU32;
                         },
 
                         else => {
@@ -344,12 +369,14 @@ fn fillTree(parent: *Tree.Node, comptime T: type, source_ptr: *anyopaque, source
                             return error.UnsupportedType;
                         },
                     }
+                    return head; //doesnt really matter
                 },
 
                 .Enum => {
                     try stdout.print("{s}\n", .{"Enum"});
-                    end_node.ptr = AnyPointer{ .channel = casted_ptr };
-                    end_node.getValue = setChannel;
+                    head.ptr = AnyPointer{ .channel = casted_ptr };
+                    head.getValue = setChannel;
+                    return head; //doesnt really matter
                 },
 
                 else => {
@@ -438,6 +465,21 @@ fn isSpecificInteger(comptime T: type, comptime bits: u16, comptime signedness: 
     return switch (@typeInfo(T)) {
         .Int => |info| info.bits == bits and info.signedness == signedness,
         else => false,
+    };
+}
+
+fn create_default_line() mcl.Config.Line {
+    return mcl.Config.Line{
+        .axes = 0,
+        .ranges = &.{},
+    };
+}
+
+fn create_default_range() mcl.Config.Line.Range {
+    return mcl.Config.Line.Range{
+        .channel = mcl.Config.connection.Channel{.cc_link_1slot},
+        .start = 0,
+        .end = 0,
     };
 }
 
