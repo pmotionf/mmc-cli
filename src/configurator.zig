@@ -49,10 +49,20 @@ const Tree = struct {
         self.root.nodes.deinit();
     }
 
-    fn navigate_tree(self: Tree, action_history: std.ArrayList([]const u8)) Tree.Node {
+    fn navigate_tree(self: Tree, action_history: std.ArrayList([]const u8)) !Tree.Node {
         var cur_node: Tree.Node = self.root;
         for (action_history.items) |name| {
-            cur_node = self.root.find_child(name).?;
+            var split = std.mem.splitSequence(u8, name, " ");
+            const first = split.next().?;
+            var num: ?u32 = undefined;
+
+            if (split.next()) |n| {
+                num = try std.fmt.parseUnsigned(u32, n, 10);
+            } else {
+                num = null;
+            }
+
+            cur_node = self.root.find_child(first, num) orelse return error.ChildNotFound;
         }
         return cur_node;
     }
@@ -81,10 +91,16 @@ const Tree = struct {
             self.nodes.deinit();
         }
 
-        fn find_child(self: Tree.Node, name: []const u8) ?Tree.Node {
-            for (self.nodes.items) |node| {
-                if (std.mem.eql(u8, node.field_name, name)) {
-                    return node;
+        fn find_child(self: Tree.Node, name: []const u8, num: ?u32) ?Tree.Node {
+            for (self.nodes.items, 0..) |node, i| {
+                if (num) |n| {
+                    if (std.mem.eql(u8, node.field_name, name) and n == i) {
+                        return node;
+                    }
+                } else {
+                    if (std.mem.eql(u8, node.field_name, name)) {
+                        return node;
+                    }
                 }
             }
             return null; //could not find node with given name.
@@ -175,11 +191,15 @@ pub fn main() !u8 {
 
     try fillTree(&tree.root, @TypeOf(lines.*), @ptrCast(lines), "lines");
 
+    defer tree.deinit();
+
     var action_stack = std.ArrayList([]const u8).init(std.heap.page_allocator);
+
+    defer action_stack.deinit();
 
     //TODO make ability to add new stuff, not just modify.
     while (true) {
-        const cur_node = tree.navigate_tree(action_stack);
+        const cur_node = try tree.navigate_tree(action_stack);
 
         try cur_node.print("");
 
@@ -196,6 +216,20 @@ pub fn main() !u8 {
             }) {
                 const input = try readInput("Please select the field you want to modify:", &buffer);
 
+                var split = std.mem.splitSequence(u8, input, " ");
+                const node_name = split.next().?;
+                var node_num: ?u32 = undefined;
+
+                if (cur_node.is_array) {
+                    if (split.next()) |num_str| {
+                        node_num = try std.fmt.parseUnsigned(u32, num_str, 10);
+                    } else {
+                        try stdout.print("Please add the '{s}' number you want to modify.\n", .{cur_node.field_name});
+                        continue;
+                    }
+                }
+                //If it's not a number, then just ignore all the arguments the user put afterwards.
+
                 //TODO add a quit command
                 if (std.mem.eql(u8, input, "prev")) {
                     if (action_stack.items.len != 0) {
@@ -206,8 +240,13 @@ pub fn main() !u8 {
                         try stdout.print("There's no more page history.\n", .{});
                     }
                 } else if (std.mem.eql(u8, input, "add")) {
-                    //stuff
-                } else if (cur_node.find_child(input)) |_| {
+                    if (cur_node.is_array) {
+                        const @"♩¨̮(ง ˙˘˙ )ว♩¨̮" = "happy";
+                        try stdout.print("{s}\n", .{@"♩¨̮(ง ˙˘˙ )ว♩¨̮"});
+                    } else {
+                        try stdout.print("You can only add items to lists.\n", .{});
+                    }
+                } else if (cur_node.find_child(node_name, node_num)) |_| {
                     try action_stack.append(input);
                     break;
                 } else {
