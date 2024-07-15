@@ -229,11 +229,16 @@ pub fn main() !u8 {
                 const node_name = split.next().?;
                 var node_num: ?u64 = null;
 
+                try stdout.print("hi{}\n", .{cur_node.is_array});
                 if (cur_node.is_array) {
+                    try stdout.print("ho\n", .{});
+
                     if (split.next()) |num_str| {
+                        try stdout.print("he\n", .{});
                         node_num = try std.fmt.parseUnsigned(u64, num_str, 10);
                     } else {
                         try stdout.print("Please add the '{s}' number you want to modify.\n", .{cur_node.field_name});
+                        try stdout.print("ha\n", .{});
                         continue;
                     }
                 }
@@ -288,30 +293,29 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                                     head.ptr = AnyPointer{ .str = casted_ptr };
                                     head.getValue = setStr;
                                 } else {
-                                    head.is_array = true;
-                                    switch (pointerInfo.child) {
-                                        mcl.Config.Line => {
-                                            head.ptr = AnyPointer{ .@"[]Config.Line" = casted_ptr };
-                                        },
-
-                                        mcl.Config.Line.Range => {
-                                            head.ptr = AnyPointer{ .@"[]Config.Line.Range" = casted_ptr };
-                                        },
-
-                                        else => {
-                                            return error.UnsupportedType;
-                                        },
-                                    }
-                                    //TODO i don't want to put this piece of code in two places
-                                    for (casted_ptr.*, 0..) |*item, i| {
-                                        _ = try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1] ++ i); //remove the 's' at the end to convert to singular form
-                                    }
+                                    return error.UnsupportedType;
                                 }
                             },
 
                             else => {
-                                for (casted_ptr.*) |*item| {
-                                    _ = try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1]); //remove the 's' at the end to convert to singular form
+                                head.is_array = true;
+                                try stdout.print("yes\n", .{});
+                                switch (pointerInfo.child) {
+                                    mcl.Config.Line => {
+                                        head.ptr = AnyPointer{ .@"[]Config.Line" = casted_ptr };
+                                    },
+
+                                    mcl.Config.Line.Range => {
+                                        head.ptr = AnyPointer{ .@"[]Config.Line.Range" = casted_ptr };
+                                    },
+
+                                    else => {
+                                        return error.UnsupportedType;
+                                    },
+                                }
+                                //TODO i don't want to put this piece of code in two places
+                                for (casted_ptr.*, 0..) |*item, i| {
+                                    _ = try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1] ++ i); //remove the 's' at the end to convert to singular form
                                 }
                             },
                         }
@@ -330,8 +334,6 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
         },
 
         .Struct => |structInfo| {
-            try stdout.print("{s}\n", .{"Struct"});
-
             inline for (structInfo.fields) |field| {
                 const val_ptr = &@field(casted_ptr.*, field.name);
                 _ = try fillTree(&head, field.type, @ptrCast(val_ptr), field.name);
@@ -345,8 +347,6 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
         else => {
             switch (@typeInfo(T)) {
                 .Int => |info| {
-                    try stdout.print("{s}\n", .{"Int"});
-
                     //TODO: refactor
                     switch (info.bits) {
                         8 => {
