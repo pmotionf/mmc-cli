@@ -110,18 +110,22 @@ const Tree = struct {
         fn print(self: Tree.Node, indents: []const u8, num: ?u64) !void {
             const stdout = std.io.getStdOut().writer();
 
+            if (num) |n| {
+                try stdout.print("{s}{d}. {s}:\n", .{ indents, n, self.field_name });
+            } else {
+                try stdout.print("{s}{s}:\n", .{ indents, self.field_name });
+            }
+
             var aa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
             defer aa.deinit();
-            const indented_print = try std.fmt.allocPrint(aa.allocator(), "{s}{s}:\n", .{ indents, self.field_name });
-
-            try stdout.print("{s}", .{indented_print});
 
             for (self.nodes.items, 0..) |node, i| {
                 const j = @as(u64, i);
-                if (num) |n| {
-                    try print(node, try std.fmt.allocPrint(aa.allocator(), "{d}. {s}    ", .{ n, indents }), if (self.is_array) j else null);
+
+                if (self.is_array) {
+                    try print(node, try std.fmt.allocPrint(aa.allocator(), "{s}    ", .{indents}), j + 1);
                 } else {
-                    try print(node, try std.fmt.allocPrint(aa.allocator(), "{s}    ", .{indents}), if (self.is_array) j else null);
+                    try print(node, try std.fmt.allocPrint(aa.allocator(), "{s}    ", .{indents}), null);
                 }
             }
         }
@@ -279,13 +283,15 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
     const source = casted_ptr.*;
 
     const stdout = std.io.getStdOut().writer();
-
     var head = Tree.Node.init(source_name);
+
     switch (@typeInfo(T)) {
         .Pointer => |pointerInfo| {
             switch (pointerInfo.size) {
                 .Slice => {
                     if (source.len != 0) {
+                        try stdout.print("1{s}\n", .{source_name});
+                        try stdout.print("slice\n", .{});
                         switch (@typeInfo(@TypeOf(source[0]))) {
                             .Int => |intInfo| {
                                 if (intInfo.bits == 8 and intInfo.signedness == .unsigned) {
@@ -293,13 +299,30 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                                     head.ptr = AnyPointer{ .str = casted_ptr };
                                     head.getValue = setStr;
                                 } else {
-                                    return error.UnsupportedType;
+                                    head.is_array = true;
+                                    switch (pointerInfo.child) {
+                                        mcl.Config.Line => {
+                                            head.ptr = AnyPointer{ .@"[]Config.Line" = casted_ptr };
+                                        },
+
+                                        mcl.Config.Line.Range => {
+                                            head.ptr = AnyPointer{ .@"[]Config.Line.Range" = casted_ptr };
+                                        },
+
+                                        else => {
+                                            return error.UnsupportedType;
+                                        },
+                                    }
+                                    //TODO i don't want to put this piece of code in two places
+                                    for (casted_ptr.*, 0..) |*item, i| {
+                                        _ = try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1] ++ i); //remove the 's' at the end to convert to singular form
+                                    }
                                 }
                             },
 
                             else => {
+                                try stdout.print("else{s}\n", .{source_name});
                                 head.is_array = true;
-                                try stdout.print("yes\n", .{});
                                 switch (pointerInfo.child) {
                                     mcl.Config.Line => {
                                         head.ptr = AnyPointer{ .@"[]Config.Line" = casted_ptr };
@@ -313,9 +336,9 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                                         return error.UnsupportedType;
                                     },
                                 }
-                                //TODO i don't want to put this piece of code in two places
-                                for (casted_ptr.*, 0..) |*item, i| {
-                                    _ = try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1] ++ i); //remove the 's' at the end to convert to singular form
+
+                                for (casted_ptr.*) |*item| {
+                                    _ = try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1]); //remove the 's' at the end to convert to singular form
                                 }
                             },
                         }
@@ -342,6 +365,10 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                 try p.nodes.append(head);
             }
             return head;
+        },
+
+        .Array => {
+            try stdout.print("{s}\n", .{source_name});
         },
 
         else => {
