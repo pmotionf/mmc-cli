@@ -51,18 +51,29 @@ const Tree = struct {
 
     fn navigate_tree(self: *Tree, action_history: std.ArrayList([]const u8)) !*Tree.Node {
         var cur_node: *Tree.Node = @constCast(&self.root);
-        for (action_history.items) |*name| {
-            var split = std.mem.splitSequence(u8, name.*, " ");
+
+        if (action_history.items.len != 0) {
+            std.log.debug("1{s}\n", .{action_history.items[0]});
+        }
+
+        for (0..action_history.items.len) |i| {
+            const name = action_history.items[i];
+
+            var split = std.mem.splitSequence(u8, name, " ");
             const first = split.next().?;
+            const num_str: ?[]const u8 = split.next();
             var num: ?u64 = undefined;
 
-            if (split.next()) |n| {
-                num = try std.fmt.parseUnsigned(u64, n, 10);
+            if (num_str != null and !std.mem.eql(u8, num_str.?, "")) {
+                num = try std.fmt.parseUnsigned(u64, num_str.?, 10);
             } else {
                 num = null;
             }
 
             cur_node = self.root.find_child(first, num) orelse return error.ChildNotFound;
+        }
+        if (action_history.items.len != 0) {
+            std.log.debug("2{s}\n", .{action_history.items[0]});
         }
         return cur_node;
     }
@@ -73,7 +84,8 @@ const Tree = struct {
 
         ptr: ?AnyPointer = null, //i want to use this for the getValue function and keep it null if it's not applicable, but there's probably a better way
         field_name: []const u8,
-        getValue: ?*const fn (Node) anyerror!void = null, //function to read input from user and update value.
+        getValue: ?*const fn (*Node) anyerror!void = null, //function to read input from user and update value.
+        field_value: []const u8 = "",
 
         fn init(field_name: []const u8) Node {
             var arr_list = std.ArrayList(Node).init(std.heap.page_allocator);
@@ -94,7 +106,7 @@ const Tree = struct {
         fn find_child(self: Tree.Node, name: []const u8, num: ?u64) ?*Tree.Node {
             for (self.nodes.items, 0..) |*node, i| {
                 if (num) |n| {
-                    if (std.mem.eql(u8, node.field_name, name) and n == i) {
+                    if (std.mem.eql(u8, node.field_name, name) and n - 1 == i) {
                         return node;
                     }
                 } else {
@@ -111,9 +123,9 @@ const Tree = struct {
             const stdout = std.io.getStdOut().writer();
 
             if (num) |n| {
-                try stdout.print("{s}{d}. {s}:\n", .{ indents, n, self.field_name });
+                try stdout.print("{s}{d}. {s}: {s}\n", .{ indents, n, self.field_name, self.field_value });
             } else {
-                try stdout.print("{s}{s}:\n", .{ indents, self.field_name });
+                try stdout.print("{s}{s}: {s}\n", .{ indents, self.field_name, self.field_value });
             }
 
             var aa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -188,7 +200,7 @@ pub fn main() !u8 {
     }
     // Load existing config file.
 
-    var ll = [1]mcl.Config.Line{create_default_line()};
+    var ll = [2]mcl.Config.Line{ create_default_line(), create_default_line() };
 
     config.modules[0].mcl.lines = &ll;
 
@@ -212,13 +224,16 @@ pub fn main() !u8 {
 
     //TODO make ability to add new stuff, not just modify.
     while (true) {
+        if (action_stack.items.len != 0) {
+            std.log.debug("hoi {s}", .{action_stack.items[0]});
+        }
         const cur_node = try tree.navigate_tree(action_stack);
 
         try cur_node.print("", null);
 
         if (cur_node.getValue) |func| {
             //if getValue function is not null, which means it's a modifiable field
-            if (func(cur_node.*)) {
+            if (func(cur_node)) {
                 //TODO save to file
                 action_stack.clearRetainingCapacity(); //hmm
             } else |_| continue;
@@ -226,29 +241,14 @@ pub fn main() !u8 {
             while (true) : ({
                 try stdout.print("\n\n\n", .{});
                 try cur_node.print("", null);
+                if (action_stack.items.len != 0) {
+                    std.log.debug("pop {s}", .{action_stack.items[0]});
+                }
             }) {
                 const input = try readInput("Please select the field you want to modify:", &buffer);
 
-                var split = std.mem.splitSequence(u8, input, " ");
-                const node_name = split.next().?;
-                var node_num: ?u64 = null;
-
-                try stdout.print("hi{}\n", .{cur_node.is_array});
-                if (cur_node.is_array) {
-                    try stdout.print("ho\n", .{});
-
-                    if (split.next()) |num_str| {
-                        try stdout.print("he\n", .{});
-                        node_num = try std.fmt.parseUnsigned(u64, num_str, 10);
-                    } else {
-                        try stdout.print("Please add the '{s}' number you want to modify.\n", .{cur_node.field_name});
-                        try stdout.print("ha\n", .{});
-                        continue;
-                    }
-                }
-                //If it's not a number, then just ignore all the arguments the user put afterwards.
-
                 //TODO add a quit command
+                //TODO add a remove command
                 if (std.mem.eql(u8, input, "prev")) {
                     if (action_stack.items.len != 0) {
                         _ = action_stack.pop();
@@ -264,11 +264,29 @@ pub fn main() !u8 {
                     } else {
                         try stdout.print("You can only add items to lists.\n", .{});
                     }
-                } else if (cur_node.find_child(node_name, node_num)) |_| {
-                    try action_stack.append(input);
-                    break;
                 } else {
-                    try stdout.print("Could not find field. Try again.\n", .{});
+                    var split = std.mem.splitSequence(u8, input, " ");
+                    const node_name = split.next().?;
+                    var node_num: ?u64 = null;
+
+                    if (cur_node.is_array) {
+                        if (split.next()) |num_str| {
+                            node_num = try std.fmt.parseUnsigned(u64, num_str, 10);
+                        } else {
+                            try stdout.print("Please add the '{s}' number you want to modify.\n", .{cur_node.field_name});
+                            continue;
+                        }
+                    }
+
+                    const next_node = cur_node.find_child(node_name, node_num);
+
+                    if (next_node) |_| {
+                        try action_stack.append(input);
+                    } else {
+                        try stdout.print("Could not find field. Try again.\n", .{});
+                    }
+
+                    break;
                 }
             }
             try stdout.print("\n\n\n", .{});
@@ -290,14 +308,13 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
             switch (pointerInfo.size) {
                 .Slice => {
                     if (source.len != 0) {
-                        try stdout.print("1{s}\n", .{source_name});
-                        try stdout.print("slice\n", .{});
                         switch (@typeInfo(@TypeOf(source[0]))) {
                             .Int => |intInfo| {
                                 if (intInfo.bits == 8 and intInfo.signedness == .unsigned) {
                                     //String
                                     head.ptr = AnyPointer{ .str = casted_ptr };
                                     head.getValue = setStr;
+                                    head.field_value = casted_ptr.*;
                                 } else {
                                     head.is_array = true;
                                     switch (pointerInfo.child) {
@@ -321,7 +338,6 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                             },
 
                             else => {
-                                try stdout.print("else{s}\n", .{source_name});
                                 head.is_array = true;
                                 switch (pointerInfo.child) {
                                     mcl.Config.Line => {
@@ -374,6 +390,12 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
         else => {
             switch (@typeInfo(T)) {
                 .Int => |info| {
+
+                    //TODO: fix. turns out field_value is pointing at buf and doesn't actually own a copy of the data, so it get's lost :(
+                    var buf: [256]u8 = undefined;
+                    const str = try std.fmt.bufPrint(&buf, "{}", .{casted_ptr.*});
+                    head.field_value = str;
+
                     //TODO: refactor
                     switch (info.bits) {
                         8 => {
@@ -396,13 +418,21 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                             return error.UnsupportedType;
                         },
                     }
+                    if (parent) |p| {
+                        try p.nodes.append(head);
+                    }
+
                     return head; //doesnt really matter
                 },
 
                 .Enum => {
-                    try stdout.print("{s}\n", .{"Enum"});
+                    head.field_name = @tagName(casted_ptr.*);
                     head.ptr = AnyPointer{ .channel = casted_ptr };
                     head.getValue = setChannel;
+                    if (parent) |p| {
+                        try p.nodes.append(head);
+                    }
+
                     return head; //doesnt really matter
                 },
 
@@ -415,7 +445,7 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
     }
 }
 
-fn setStr(node: Tree.Node) !void {
+fn setStr(node: *Tree.Node) !void {
     const stdout = std.io.getStdOut().writer();
     var buffer: [1024]u8 = undefined;
 
@@ -428,7 +458,7 @@ fn setStr(node: Tree.Node) !void {
     try stdout.print("Changed value from {s} to {s}/\n", .{ prev_val, input });
 }
 
-fn setChannel(node: Tree.Node) !void {
+fn setChannel(node: *Tree.Node) !void {
     const stdout = std.io.getStdOut().writer();
 
     var buffer: [1024]u8 = undefined;
@@ -443,7 +473,7 @@ fn setChannel(node: Tree.Node) !void {
     try stdout.print("Channel successfully changed\n", .{});
 }
 
-fn setU8(node: Tree.Node) !void {
+fn setU8(node: *Tree.Node) !void {
     const stdout = std.io.getStdOut().writer();
 
     var buffer: [1024]u8 = undefined;
@@ -458,7 +488,7 @@ fn setU8(node: Tree.Node) !void {
     try stdout.print("Number value successfully changed.\n", .{});
 }
 
-fn setU32(node: Tree.Node) !void {
+fn setU32(node: *Tree.Node) !void {
     const stdout = std.io.getStdOut().writer();
 
     var buffer: [1024]u8 = undefined;
@@ -473,7 +503,7 @@ fn setU32(node: Tree.Node) !void {
     try stdout.print("Number value successfully changed.\n", .{});
 }
 
-fn setU10(node: Tree.Node) !void {
+fn setU10(node: *Tree.Node) !void {
     const stdout = std.io.getStdOut().writer();
 
     var buffer: [1024]u8 = undefined;
