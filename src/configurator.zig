@@ -259,8 +259,18 @@ pub fn main() !u8 {
                     }
                 } else if (std.mem.eql(u8, input, "add")) {
                     if (cur_node.is_array) {
-                        const @"♩¨̮(ง ˙˘˙ )ว♩¨̮" = "happy";
-                        try stdout.print("{s}\n", .{@"♩¨̮(ง ˙˘˙ )ว♩¨̮"});
+                        if (std.mem.eql(u8, cur_node.field_name, "lines")) {
+                            var new_line = [1]mcl.Config.Line{create_default_line()};
+                            const added_lines = try allocator.alloc(mcl.Config.Line, config.modules[0].mcl.lines.len + 1);
+                            std.mem.copyForwards(mcl.Config.Line, added_lines, config.modules[0].mcl.lines);
+                            copyStartingFromIndex(mcl.Config.Line, added_lines, &new_line, config.modules[0].mcl.lines.len);
+
+                            config.modules[0].mcl.lines = added_lines;
+
+                            const new_line_ptr: *mcl.Config.Line = config.modules[0].mcl.lines.ptr + (config.modules[0].mcl.lines.len - 2);
+                            const new_node = fillTree(null, @TypeOf(mcl.Config.Line), new_line_ptr, "line");
+                            try cur_node.nodes.append(new_node);
+                        } else if (std.mem.eql(u8, cur_node.field_name, "ranges")) {}
                     } else {
                         try stdout.print("You can only add items to lists.\n", .{});
                     }
@@ -538,6 +548,13 @@ fn create_default_range() mcl.Config.Line.Range {
         .start = 0,
         .end = 0,
     };
+}
+
+///Copies slice from source to dest starting from a specified index
+fn copyStartingFromIndex(comptime T: type, dest: []T, source: []T, idx: usize) void {
+    for (0..idx) |i| {
+        dest[i + idx] = source[i];
+    }
 }
 
 fn readInput(out: []const u8, buffer: []u8) ![]const u8 {
