@@ -267,8 +267,8 @@ pub fn main() !u8 {
 
                             config.modules[0].mcl.lines = added_lines;
 
-                            const new_line_ptr: *mcl.Config.Line = config.modules[0].mcl.lines.ptr + (config.modules[0].mcl.lines.len - 2);
-                            const new_node = fillTree(null, @TypeOf(mcl.Config.Line), new_line_ptr, "line");
+                            const new_line_ptr: *mcl.Config.Line = @as(*mcl.Config.Line, @ptrCast(config.modules[0].mcl.lines.ptr + (config.modules[0].mcl.lines.len - 2)));
+                            const new_node = try fillTree(null, mcl.Config.Line, new_line_ptr, "line");
                             try cur_node.nodes.append(new_node);
                         } else if (std.mem.eql(u8, cur_node.field_name, "ranges")) {}
                     } else {
@@ -552,7 +552,7 @@ fn create_default_range() mcl.Config.Line.Range {
 
 ///Copies slice from source to dest starting from a specified index
 fn copyStartingFromIndex(comptime T: type, dest: []T, source: []T, idx: usize) void {
-    for (0..idx) |i| {
+    for (0..dest.len - idx) |i| {
         dest[i + idx] = source[i];
     }
 }
