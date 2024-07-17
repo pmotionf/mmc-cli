@@ -32,6 +32,26 @@ const AnyPointer = union(enum) {
     channel: *mcl.connection.Channel,
     @"[]Config.Line": *[]mcl.Config.Line,
     @"[]Config.Line.Range": *[]mcl.Config.Line.Range,
+
+    fn getValue(self: AnyPointer) switch(self){
+        .str => *[]const u8,
+        .u8 => *u8,
+        .u32 => *u32,
+        .u10 => *u10,
+        .channel => *mcl.connection.Channel,
+        .@"[]Config.Line" => *[]mcl.Config.Line,
+        .@"[]Config.Line.Range" => *[]mcl.Config.Line.Range,
+    } {
+        switch(self){
+        .str => return self.str,
+        .u8 => return self.u8,
+        .u32 => return self.u32,
+        .u10 => return self.u10,
+        .channel => return self.channel,
+        .@"[]Config.Line" => return self.@"[]Config.Line",
+        .@"[]Config.Line.Range" => return self.@"[]Config.Line.Range",
+    }
+    }
 };
 
 //thin wrapper for Node
@@ -444,7 +464,7 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                     //TODO: fix. turns out field_value is pointing at buf and doesn't actually own a copy of the data, so it get's lost :(
                     var buf: [256]u8 = undefined;
                     const str = try std.fmt.bufPrint(&buf, "{}", .{casted_ptr.*});
-                    head.field_value = str;
+                    head.field_value = 
 
                     //TODO: refactor
                     switch (info.bits) {
