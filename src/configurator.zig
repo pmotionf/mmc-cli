@@ -224,9 +224,6 @@ pub fn main() !u8 {
 
     //TODO make ability to add new stuff, not just modify.
     while (true) {
-        if (action_stack.items.len != 0) {
-            std.log.debug("hoi {s}", .{action_stack.items[0]});
-        }
         const cur_node = try tree.navigate_tree(action_stack);
 
         try cur_node.print("", null);
@@ -241,11 +238,10 @@ pub fn main() !u8 {
             while (true) : ({
                 try stdout.print("\n\n\n", .{});
                 try cur_node.print("", null);
-                if (action_stack.items.len != 0) {
-                    std.log.debug("pop {s}", .{action_stack.items[0]});
-                }
             }) {
                 const input = try readInput("Please select the field you want to modify:", &buffer);
+                var split = std.mem.splitSequence(u8, input, " ");
+                const first_arg = split.next().?;
 
                 //TODO add a quit command
                 //TODO add a remove command
@@ -270,30 +266,74 @@ pub fn main() !u8 {
                             const new_line_ptr: *mcl.Config.Line = @as(*mcl.Config.Line, @ptrCast(config.modules[0].mcl.lines.ptr + (config.modules[0].mcl.lines.len - 2)));
                             const new_node = try fillTree(null, mcl.Config.Line, new_line_ptr, "line");
                             try cur_node.nodes.append(new_node);
-                        } else if (std.mem.eql(u8, cur_node.field_name, "ranges")) {}
+                        } else if (std.mem.eql(u8, cur_node.field_name, "ranges")) {
+                            //
+                        }
                     } else {
                         try stdout.print("You can only add items to lists.\n", .{});
                     }
+                } else if (std.mem.eql(u8, first_arg, "remove")) {
+                    if (cur_node.is_array) {
+                        if (cur_node.nodes.items.len == 0) {
+                            try stdout.print("You must keep at least one item in a list.\n", .{});
+                        }
+
+                        const next_split = split.next();
+                        var num_str: []const u8 = undefined;
+                        if (next_split == null) {
+                            try stdout.print("Please specify the number for the item you want to remove.\n", .{});
+                            continue;
+                        } else {
+                            num_str = next_split.?;
+                        }
+
+                        const num = std.fmt.parseUnsigned(u64, num_str, 10) catch {
+                            try stdout.print("Please input a correct number.\n", .{});
+                            continue;
+                        };
+
+                        if (num < 1 or num > config.modules[0].mcl.lines.len) {
+                            try stdout.print("Number must be between 1 and {d}\n", .{config.modules[0].mcl.lines.len});
+                            continue;
+                        }
+
+                        if (std.mem.eql(u8, cur_node.field_name, "lines")) {
+                            const remove_line = try allocator.alloc(mcl.Config.Line, config.modules[0].mcl.lines.len - 1);
+                            std.mem.copyForwards(mcl.Config.Line, remove_line, config.modules[0].mcl.lines[0 .. num - 1]);
+                            copyStartingFromIndex(mcl.Config.Line, remove_line, config.modules[0].mcl.lines[num..config.modules[0].mcl.lines.len], num - 1);
+                            allocator.free(config.modules[0].mcl.lines);
+
+                            config.modules[0].mcl.lines = remove_line;
+
+                            _ = cur_node.nodes.orderedRemove(num - 1);
+                        } else if (std.mem.eql(u8, cur_node.field_name, "ranges")) {
+                            //
+                        }
+                    } else {
+                        try stdout.print("You can only use 'remove' for lists.\n", .{});
+                    }
                 } else {
-                    var split = std.mem.splitSequence(u8, input, " ");
-                    const node_name = split.next().?;
                     var node_num: ?u64 = null;
 
                     if (cur_node.is_array) {
                         if (split.next()) |num_str| {
-                            node_num = try std.fmt.parseUnsigned(u64, num_str, 10);
+                            node_num = std.fmt.parseUnsigned(u64, num_str, 10) catch {
+                                try stdout.print("Please type in a correct number. (1~{d})\n", .{cur_node.nodes.items.len});
+                                continue;
+                            };
                         } else {
                             try stdout.print("Please add the '{s}' number you want to modify.\n", .{cur_node.field_name});
                             continue;
                         }
                     }
 
-                    const next_node = cur_node.find_child(node_name, node_num);
+                    const next_node = cur_node.find_child(first_arg, node_num);
 
                     if (next_node) |_| {
                         try action_stack.append(input);
                     } else {
                         try stdout.print("Could not find field. Try again.\n", .{});
+                        continue;
                     }
 
                     break;
