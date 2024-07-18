@@ -32,26 +32,6 @@ const AnyPointer = union(enum) {
     channel: *mcl.connection.Channel,
     @"[]Config.Line": *[]mcl.Config.Line,
     @"[]Config.Line.Range": *[]mcl.Config.Line.Range,
-
-    fn getValue(self: AnyPointer) switch(self){
-        .str => *[]const u8,
-        .u8 => *u8,
-        .u32 => *u32,
-        .u10 => *u10,
-        .channel => *mcl.connection.Channel,
-        .@"[]Config.Line" => *[]mcl.Config.Line,
-        .@"[]Config.Line.Range" => *[]mcl.Config.Line.Range,
-    } {
-        switch(self){
-        .str => return self.str,
-        .u8 => return self.u8,
-        .u32 => return self.u32,
-        .u10 => return self.u10,
-        .channel => return self.channel,
-        .@"[]Config.Line" => return self.@"[]Config.Line",
-        .@"[]Config.Line.Range" => return self.@"[]Config.Line.Range",
-    }
-    }
 };
 
 //thin wrapper for Node
@@ -143,6 +123,7 @@ const Tree = struct {
             const stdout = std.io.getStdOut().writer();
 
             if (num) |n| {
+                // try stdout.print("{s}{d}. {s}: {s}\n", .{ indents, n, self.field_name, self.field_value });
                 try stdout.print("{s}{d}. {s}: {s}\n", .{ indents, n, self.field_name, self.field_value });
             } else {
                 try stdout.print("{s}{s}: {s}\n", .{ indents, self.field_name, self.field_value });
@@ -234,7 +215,7 @@ pub fn main() !u8 {
     var tree = Tree.init("mcl");
     const lines = &config.modules[0].mcl.lines;
 
-    _ = try fillTree(&tree.root, @TypeOf(lines.*), @ptrCast(lines), "lines");
+    _ = try fillTree(&tree.root, @TypeOf(lines.*), @ptrCast(lines), "lines", allocator);
 
     defer tree.deinit();
 
@@ -284,7 +265,7 @@ pub fn main() !u8 {
                             config.modules[0].mcl.lines = added_lines;
 
                             const new_line_ptr: *mcl.Config.Line = @as(*mcl.Config.Line, @ptrCast(config.modules[0].mcl.lines.ptr + (config.modules[0].mcl.lines.len - 2)));
-                            const new_node = try fillTree(null, mcl.Config.Line, new_line_ptr, "line");
+                            const new_node = try fillTree(null, mcl.Config.Line, new_line_ptr, "line", allocator);
                             try cur_node.nodes.append(new_node);
                         } else if (std.mem.eql(u8, cur_node.field_name, "ranges")) {
                             //
@@ -366,7 +347,7 @@ pub fn main() !u8 {
     return 0;
 }
 
-fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, source_name: []const u8) !Tree.Node {
+fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, source_name: []const u8, allocator: ?std.mem.Allocator) !Tree.Node {
     const casted_ptr: *T = @alignCast(@ptrCast(source_ptr));
     const source = casted_ptr.*;
 
@@ -402,7 +383,7 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                                     }
                                     //TODO i don't want to put this piece of code in two places
                                     for (casted_ptr.*, 0..) |*item, i| {
-                                        _ = try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1] ++ i); //remove the 's' at the end to convert to singular form
+                                        _ = try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1] ++ i, allocator); //remove the 's' at the end to convert to singular form
                                     }
                                 }
                             },
@@ -424,7 +405,7 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                                 }
 
                                 for (casted_ptr.*) |*item| {
-                                    _ = try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1]); //remove the 's' at the end to convert to singular form
+                                    _ = try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1], allocator); //remove the 's' at the end to convert to singular form
                                 }
                             },
                         }
@@ -445,7 +426,7 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
         .Struct => |structInfo| {
             inline for (structInfo.fields) |field| {
                 const val_ptr = &@field(casted_ptr.*, field.name);
-                _ = try fillTree(&head, field.type, @ptrCast(val_ptr), field.name);
+                _ = try fillTree(&head, field.type, @ptrCast(val_ptr), field.name, allocator);
             }
             if (parent) |p| {
                 try p.nodes.append(head);
@@ -460,11 +441,16 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
         else => {
             switch (@typeInfo(T)) {
                 .Int => |info| {
-
-                    //TODO: fix. turns out field_value is pointing at buf and doesn't actually own a copy of the data, so it get's lost :(
                     var buf: [256]u8 = undefined;
                     const str = try std.fmt.bufPrint(&buf, "{}", .{casted_ptr.*});
-                    head.field_value = 
+
+                    if (allocator) |alloc| {
+                        //TODO free this memory with node.free() by passing the same allocator.
+                        head.field_value = try alloc.alloc(u8, str.len);
+                    } else {
+                        return error.MissingAllocator;
+                    }
+                    std.mem.copyForwards(u8, @constCast(head.field_value), str);
 
                     //TODO: refactor
                     switch (info.bits) {
