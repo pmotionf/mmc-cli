@@ -195,9 +195,9 @@ pub fn main() !u8 {
     }
     // Load existing config file.
 
-    var ll = [2]mcl.Config.Line{ create_default_line(), create_default_line() };
+    var line = [1]mcl.Config.Line{create_default_line()};
 
-    config.modules[0].mcl.lines = &ll;
+    config.modules[0].mcl.lines = &line;
 
     var buffer: [1024]u8 = undefined;
 
@@ -259,22 +259,45 @@ pub fn main() !u8 {
                             copyStartingFromIndex(mcl.Config.Line, added_lines, &new_line, config.modules[0].mcl.lines.len);
 
                             config.modules[0].mcl.lines = added_lines;
+                            var new_line_ptr: *mcl.Config.Line = undefined;
 
-                            const new_line_ptr: *mcl.Config.Line = @as(*mcl.Config.Line, @ptrCast(config.modules[0].mcl.lines.ptr + (config.modules[0].mcl.lines.len - 2)));
+                            if (cur_node.nodes.items.len == 0) {
+                                new_line_ptr = @as(*mcl.Config.Line, @ptrCast(config.modules[0].mcl.lines.ptr));
+                            } else {
+                                new_line_ptr = @as(*mcl.Config.Line, @ptrCast(config.modules[0].mcl.lines.ptr + (config.modules[0].mcl.lines.len - 2)));
+                            }
+
                             const new_node = try fillTree(null, mcl.Config.Line, new_line_ptr, "line", allocator);
                             try cur_node.nodes.append(new_node);
 
                             try save_config(file_name, config);
                         } else if (std.mem.eql(u8, cur_node.field_name, "ranges")) {
-                            //
+                            var new_range = [1]mcl.Config.Line.Range{create_default_range()};
+                            const added_ranges = try allocator.alloc(mcl.Config.Line.Range, config.modules[0].mcl.lines.len + 1);
+                            std.mem.copyForwards(mcl.Config.Line.Range, added_ranges, cur_node.ptr.?.@"[]Config.Line.Range".*);
+                            copyStartingFromIndex(mcl.Config.Line.Range, added_ranges, &new_range, cur_node.ptr.?.@"[]Config.Line.Range".len);
+
+                            cur_node.ptr.?.@"[]Config.Line.Range" = @constCast(&added_ranges);
+                            var new_line_ptr: *mcl.Config.Line.Range = undefined;
+
+                            if (cur_node.nodes.items.len == 0) {
+                                new_line_ptr = @as(*mcl.Config.Line.Range, @ptrCast(cur_node.ptr.?.@"[]Config.Line.Range".ptr));
+                            } else {
+                                new_line_ptr = @as(*mcl.Config.Line.Range, @ptrCast(cur_node.ptr.?.@"[]Config.Line.Range".ptr + (cur_node.ptr.?.@"[]Config.Line.Range".len - 2)));
+                            }
+
+                            const new_node = try fillTree(null, mcl.Config.Line.Range, new_line_ptr, "range", allocator);
+                            try cur_node.nodes.append(new_node);
+
+                            try save_config(file_name, config);
                         }
                     } else {
                         try stdout.print("You can only add items to lists.\n", .{});
                     }
                 } else if (std.mem.eql(u8, first_arg, "remove")) {
                     if (cur_node.is_array) {
-                        if (cur_node.nodes.items.len == 1) {
-                            try stdout.print("You must keep at least one item in a list.\n", .{});
+                        if (cur_node.nodes.items.len == 0) {
+                            try stdout.print("There is nothing to remove.\n", .{});
                             continue;
                         }
 
@@ -307,7 +330,7 @@ pub fn main() !u8 {
 
                             _ = cur_node.nodes.orderedRemove(num - 1);
                         } else if (std.mem.eql(u8, cur_node.field_name, "ranges")) {
-                            //
+                            //TODO fill
                         }
 
                         try save_config(file_name, config);
@@ -355,6 +378,8 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
     const stdout = std.io.getStdOut().writer();
     var head = Tree.Node.init(source_name);
 
+    try stdout.print("{s}\n", .{source_name});
+
     switch (@typeInfo(T)) {
         .Pointer => |pointerInfo| {
             switch (pointerInfo.size) {
@@ -364,10 +389,12 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                             .Int => |intInfo| {
                                 if (intInfo.bits == 8 and intInfo.signedness == .unsigned) {
                                     //String
+                                    try stdout.print("string!\n", .{});
                                     head.ptr = AnyPointer{ .str = casted_ptr };
                                     head.getValue = setStr;
                                     head.field_value = casted_ptr.*;
                                 } else {
+                                    try stdout.print("intarr!\n", .{});
                                     head.is_array = true;
                                     switch (pointerInfo.child) {
                                         mcl.Config.Line => {
@@ -391,8 +418,10 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
 
                             else => {
                                 head.is_array = true;
+                                try stdout.print("array!\n", .{});
                                 switch (pointerInfo.child) {
                                     mcl.Config.Line => {
+                                        try stdout.print("line!\n", .{});
                                         head.ptr = AnyPointer{ .@"[]Config.Line" = casted_ptr };
                                     },
 
@@ -426,6 +455,7 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
         },
 
         .Struct => |structInfo| {
+            try stdout.print("struct!\n", .{});
             inline for (structInfo.fields) |field| {
                 const val_ptr = &@field(casted_ptr.*, field.name);
                 _ = try fillTree(&head, field.type, @ptrCast(val_ptr), field.name, allocator);
@@ -437,12 +467,14 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
         },
 
         .Array => {
-            try stdout.print("{s}\n", .{source_name});
+            try stdout.print("arrrrr!{s}\n", .{source_name});
         },
 
         else => {
             switch (@typeInfo(T)) {
                 .Int => |info| {
+                    try stdout.print("int!\n", .{});
+
                     var buf: [256]u8 = undefined;
                     const str = try std.fmt.bufPrint(&buf, "{}", .{casted_ptr.*});
 
@@ -484,6 +516,8 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                 },
 
                 .Enum => {
+                    try stdout.print("enum!\n", .{});
+
                     head.field_name = @tagName(casted_ptr.*);
                     head.ptr = AnyPointer{ .channel = casted_ptr };
                     head.getValue = setChannel;
@@ -550,7 +584,7 @@ fn setU8(node: *Tree.Node, alloc: std.mem.Allocator) !void {
 
     var buf: [256]u8 = undefined;
     const str = try std.fmt.bufPrint(&buf, "{}", .{num});
-    node.field_value = alloc.alloc(u8, str.len);
+    node.field_value = try alloc.alloc(u8, str.len);
     std.mem.copyForwards(u8, @constCast(node.field_value), str);
 
     try stdout.print("Number value successfully changed.\n", .{});
@@ -571,7 +605,7 @@ fn setU32(node: *Tree.Node, alloc: std.mem.Allocator) !void {
 
     var buf: [256]u8 = undefined;
     const str = try std.fmt.bufPrint(&buf, "{}", .{num});
-    node.field_value = alloc.alloc(u8, str.len);
+    node.field_value = try alloc.alloc(u8, str.len);
     std.mem.copyForwards(u8, @constCast(node.field_value), str);
 
     try stdout.print("Number value successfully changed.\n", .{});
@@ -592,7 +626,7 @@ fn setU10(node: *Tree.Node, alloc: std.mem.Allocator) !void {
 
     var buf: [256]u8 = undefined;
     const str = try std.fmt.bufPrint(&buf, "{}", .{num});
-    node.field_value = alloc.alloc(u8, str.len);
+    node.field_value = try alloc.alloc(u8, str.len);
     std.mem.copyForwards(u8, @constCast(node.field_value), str);
 
     try stdout.print("Number value successfully changed.\n", .{});
@@ -614,7 +648,7 @@ fn create_default_line() mcl.Config.Line {
 
 fn create_default_range() mcl.Config.Line.Range {
     return mcl.Config.Line.Range{
-        .channel = mcl.Config.connection.Channel{.cc_link_1slot},
+        .channel = mcl.connection.Channel.cc_link_1slot,
         .start = 0,
         .end = 0,
     };
