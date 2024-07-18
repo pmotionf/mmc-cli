@@ -78,7 +78,7 @@ const Tree = struct {
 
         ptr: ?AnyPointer = null, //i want to use this for the getValue function and keep it null if it's not applicable, but there's probably a better way
         field_name: []const u8,
-        getValue: ?*const fn (*Node) anyerror!void = null, //function to read input from user and update value.
+        getValue: ?*const fn (*Node, std.mem.Allocator) anyerror!void = null, //function to read input from user and update value.
         field_value: []const u8 = "",
 
         fn init(field_name: []const u8) Node {
@@ -226,7 +226,7 @@ pub fn main() !u8 {
 
         if (cur_node.getValue) |func| {
             //if getValue function is not null, which means it's a modifiable field
-            if (func(cur_node)) {
+            if (func(cur_node, allocator)) {
                 try save_config(file_name, config);
                 action_stack.clearRetainingCapacity(); //hmm
             } else |_| continue;
@@ -397,6 +397,7 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                                     },
 
                                     mcl.Config.Line.Range => {
+                                        try stdout.print("range!!\n", .{});
                                         head.ptr = AnyPointer{ .@"[]Config.Line.Range" = casted_ptr };
                                     },
 
@@ -502,7 +503,8 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
     }
 }
 
-fn setStr(node: *Tree.Node) !void {
+fn setStr(node: *Tree.Node, alloc: std.mem.Allocator) !void {
+    _ = alloc;
     const stdout = std.io.getStdOut().writer();
     var buffer: [1024]u8 = undefined;
 
@@ -516,7 +518,8 @@ fn setStr(node: *Tree.Node) !void {
     try stdout.print("Changed value from {s} to {s}/\n", .{ prev_val, input });
 }
 
-fn setChannel(node: *Tree.Node) !void {
+fn setChannel(node: *Tree.Node, alloc: std.mem.Allocator) !void {
+    _ = alloc;
     const stdout = std.io.getStdOut().writer();
 
     var buffer: [1024]u8 = undefined;
@@ -528,10 +531,11 @@ fn setChannel(node: *Tree.Node) !void {
     }; //this will automatically handle cases where numbers are > 3 because it's a u2.
 
     node.ptr.?.channel.* = @as(mcl.connection.Channel, @enumFromInt(num));
+    node.field_value = @tagName(node.ptr.?.channel.*);
     try stdout.print("Channel successfully changed\n", .{});
 }
 
-fn setU8(node: *Tree.Node) !void {
+fn setU8(node: *Tree.Node, alloc: std.mem.Allocator) !void {
     const stdout = std.io.getStdOut().writer();
 
     var buffer: [1024]u8 = undefined;
@@ -543,10 +547,16 @@ fn setU8(node: *Tree.Node) !void {
     };
 
     node.ptr.?.u8.* = num;
+
+    var buf: [256]u8 = undefined;
+    const str = try std.fmt.bufPrint(&buf, "{}", .{num});
+    node.field_value = alloc.alloc(u8, str.len);
+    std.mem.copyForwards(u8, @constCast(node.field_value), str);
+
     try stdout.print("Number value successfully changed.\n", .{});
 }
 
-fn setU32(node: *Tree.Node) !void {
+fn setU32(node: *Tree.Node, alloc: std.mem.Allocator) !void {
     const stdout = std.io.getStdOut().writer();
 
     var buffer: [1024]u8 = undefined;
@@ -558,10 +568,16 @@ fn setU32(node: *Tree.Node) !void {
     };
 
     node.ptr.?.u32.* = num;
+
+    var buf: [256]u8 = undefined;
+    const str = try std.fmt.bufPrint(&buf, "{}", .{num});
+    node.field_value = alloc.alloc(u8, str.len);
+    std.mem.copyForwards(u8, @constCast(node.field_value), str);
+
     try stdout.print("Number value successfully changed.\n", .{});
 }
 
-fn setU10(node: *Tree.Node) !void {
+fn setU10(node: *Tree.Node, alloc: std.mem.Allocator) !void {
     const stdout = std.io.getStdOut().writer();
 
     var buffer: [1024]u8 = undefined;
@@ -573,6 +589,12 @@ fn setU10(node: *Tree.Node) !void {
     };
 
     node.ptr.?.u10.* = num;
+
+    var buf: [256]u8 = undefined;
+    const str = try std.fmt.bufPrint(&buf, "{}", .{num});
+    node.field_value = alloc.alloc(u8, str.len);
+    std.mem.copyForwards(u8, @constCast(node.field_value), str);
+
     try stdout.print("Number value successfully changed.\n", .{});
 }
 
