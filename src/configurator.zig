@@ -52,10 +52,6 @@ const Tree = struct {
     fn navigate_tree(self: *Tree, action_history: std.ArrayList([]const u8)) !*Tree.Node {
         var cur_node: *Tree.Node = @constCast(&self.root);
 
-        if (action_history.items.len != 0) {
-            std.log.debug("1{s}\n", .{action_history.items[0]});
-        }
-
         for (0..action_history.items.len) |i| {
             const name = action_history.items[i];
 
@@ -70,7 +66,7 @@ const Tree = struct {
                 num = null;
             }
 
-            cur_node = self.root.find_child(first, num) orelse return error.ChildNotFound;
+            cur_node = cur_node.find_child(first, num) orelse return error.ChildNotFound;
         }
 
         return cur_node;
@@ -207,7 +203,8 @@ pub fn main() !u8 {
 
     if (new_file) {
         const input = try readInput("Please input the new config file name:", &buffer);
-        file_name = input;
+        file_name = try std.fmt.allocPrint(allocator, "{s}.json", .{input});
+        try save_config(file_name, config);
     }
 
     var tree = Tree.init("mcl");
@@ -230,7 +227,7 @@ pub fn main() !u8 {
         if (cur_node.getValue) |func| {
             //if getValue function is not null, which means it's a modifiable field
             if (func(cur_node)) {
-                //TODO save to file
+                try save_config(file_name, config);
                 action_stack.clearRetainingCapacity(); //hmm
             } else |_| continue;
         } else {
@@ -240,6 +237,7 @@ pub fn main() !u8 {
             }) {
                 const input = try readInput("Please select the field you want to modify:", &buffer);
                 var split = std.mem.splitSequence(u8, input, " ");
+
                 const first_arg = split.next().?;
 
                 //TODO add a quit command
@@ -265,6 +263,8 @@ pub fn main() !u8 {
                             const new_line_ptr: *mcl.Config.Line = @as(*mcl.Config.Line, @ptrCast(config.modules[0].mcl.lines.ptr + (config.modules[0].mcl.lines.len - 2)));
                             const new_node = try fillTree(null, mcl.Config.Line, new_line_ptr, "line", allocator);
                             try cur_node.nodes.append(new_node);
+
+                            try save_config(file_name, config);
                         } else if (std.mem.eql(u8, cur_node.field_name, "ranges")) {
                             //
                         }
@@ -273,8 +273,9 @@ pub fn main() !u8 {
                     }
                 } else if (std.mem.eql(u8, first_arg, "remove")) {
                     if (cur_node.is_array) {
-                        if (cur_node.nodes.items.len == 0) {
+                        if (cur_node.nodes.items.len == 1) {
                             try stdout.print("You must keep at least one item in a list.\n", .{});
+                            continue;
                         }
 
                         const next_split = split.next();
@@ -308,6 +309,8 @@ pub fn main() !u8 {
                         } else if (std.mem.eql(u8, cur_node.field_name, "ranges")) {
                             //
                         }
+
+                        try save_config(file_name, config);
                     } else {
                         try stdout.print("You can only use 'remove' for lists.\n", .{});
                     }
@@ -329,7 +332,7 @@ pub fn main() !u8 {
                     const next_node = cur_node.find_child(first_arg, node_num);
 
                     if (next_node) |_| {
-                        try action_stack.append(input);
+                        try action_stack.append(try allocator.dupe(u8, input));
                     } else {
                         try stdout.print("Could not find field. Try again.\n", .{});
                         continue;
@@ -508,6 +511,7 @@ fn setStr(node: *Tree.Node) !void {
     const input = try readInput("", &buffer);
     const prev_val = node.ptr.?.str.*;
     node.ptr.?.str.* = input;
+    node.field_value = input;
 
     try stdout.print("Changed value from {s} to {s}/\n", .{ prev_val, input });
 }
@@ -516,14 +520,14 @@ fn setChannel(node: *Tree.Node) !void {
     const stdout = std.io.getStdOut().writer();
 
     var buffer: [1024]u8 = undefined;
-    const input = try readInput("Please input a new channel number. (1~4)\n", &buffer);
+    const input = try readInput("Please input a new channel number. (0~3)\n", &buffer);
 
     const num = std.fmt.parseUnsigned(u2, input, 10) catch |err| {
         try stdout.print("Please input a correct channel number.\n", .{});
         return err;
-    }; //this will automatically handle cases where numbers are > 4 because it's a u2.
+    }; //this will automatically handle cases where numbers are > 3 because it's a u2.
 
-    node.ptr.?.channel.* = @as(mcl.connection.Channel, @enumFromInt(num - 1));
+    node.ptr.?.channel.* = @as(mcl.connection.Channel, @enumFromInt(num));
     try stdout.print("Channel successfully changed\n", .{});
 }
 
@@ -604,7 +608,7 @@ fn copyStartingFromIndex(comptime T: type, dest: []T, source: []T, idx: usize) v
 fn save_config(file_name: []const u8, config: Config) !void {
     const file = try std.fs.cwd().createFile(file_name, .{});
     defer file.close();
-    try std.json.stringify(config, .{}, file.writer());
+    try std.json.stringify(config, .{ .whitespace = .indent_tab }, file.writer());
 }
 
 fn readInput(out: []const u8, buffer: []u8) ![]const u8 {
