@@ -42,9 +42,9 @@ const Tree = struct {
         return Tree{ .root = Node.init(field_name) };
     }
 
-    fn deinit(self: Tree) void {
+    fn deinit(self: Tree, alloc: std.mem.Allocator) void {
         for (self.root.nodes.items) |node| {
-            node.deinit();
+            node.deinit(alloc);
         }
         self.root.nodes.deinit();
     }
@@ -72,9 +72,7 @@ const Tree = struct {
 
             cur_node = self.root.find_child(first, num) orelse return error.ChildNotFound;
         }
-        if (action_history.items.len != 0) {
-            std.log.debug("2{s}\n", .{action_history.items[0]});
-        }
+
         return cur_node;
     }
 
@@ -96,11 +94,12 @@ const Tree = struct {
             };
         }
 
-        fn deinit(self: Node) void {
+        fn deinit(self: Node, alloc: std.mem.Allocator) void {
             for (self.nodes.items) |child| {
-                child.deinit();
+                child.deinit(alloc);
             }
             self.nodes.deinit();
+            alloc.free(self.field_value);
         }
 
         fn find_child(self: Tree.Node, name: []const u8, num: ?u64) ?*Tree.Node {
@@ -123,7 +122,6 @@ const Tree = struct {
             const stdout = std.io.getStdOut().writer();
 
             if (num) |n| {
-                // try stdout.print("{s}{d}. {s}: {s}\n", .{ indents, n, self.field_name, self.field_value });
                 try stdout.print("{s}{d}. {s}: {s}\n", .{ indents, n, self.field_name, self.field_value });
             } else {
                 try stdout.print("{s}{s}: {s}\n", .{ indents, self.field_name, self.field_value });
@@ -217,7 +215,7 @@ pub fn main() !u8 {
 
     _ = try fillTree(&tree.root, @TypeOf(lines.*), @ptrCast(lines), "lines", allocator);
 
-    defer tree.deinit();
+    defer tree.deinit(allocator);
 
     var action_stack = std.ArrayList([]const u8).init(std.heap.page_allocator);
 
@@ -601,6 +599,12 @@ fn copyStartingFromIndex(comptime T: type, dest: []T, source: []T, idx: usize) v
     for (0..dest.len - idx) |i| {
         dest[i + idx] = source[i];
     }
+}
+
+fn save_config(file_name: []const u8, config: Config) !void {
+    const file = try std.fs.cwd().createFile(file_name, .{});
+    defer file.close();
+    try std.json.stringify(config, .{}, file.writer());
 }
 
 fn readInput(out: []const u8, buffer: []u8) ![]const u8 {
