@@ -32,6 +32,18 @@ const AnyPointer = union(enum) {
     channel: *mcl.connection.Channel,
     @"[]Config.Line": *[]mcl.Config.Line,
     @"[]Config.Line.Range": *[]mcl.Config.Line.Range,
+
+    fn which(self: AnyPointer) []const u8 {
+        switch (self) {
+            .str => return "str",
+            .u8 => return "u8",
+            .u32 => return "u32",
+            .u10 => return "u10",
+            .channel => return "channel",
+            .@"[]Config.Line" => return "lines",
+            .@"[]Config.Line.Range" => return "ranges",
+        }
+    }
 };
 
 //thin wrapper for Node
@@ -222,6 +234,10 @@ pub fn main() !u8 {
     while (true) {
         const cur_node = try tree.navigate_tree(action_stack);
 
+        if (cur_node.ptr) |p| {
+            try stdout.print("yeah: {s}\n", .{p.which()});
+        }
+
         try cur_node.print("", null);
 
         if (cur_node.getValue) |func| {
@@ -262,8 +278,10 @@ pub fn main() !u8 {
                             var new_line_ptr: *mcl.Config.Line = undefined;
 
                             if (cur_node.nodes.items.len == 0) {
+                                try stdout.print("zero\n", .{});
                                 new_line_ptr = @as(*mcl.Config.Line, @ptrCast(config.modules[0].mcl.lines.ptr));
                             } else {
+                                try stdout.print("more\n", .{});
                                 new_line_ptr = @as(*mcl.Config.Line, @ptrCast(config.modules[0].mcl.lines.ptr + (config.modules[0].mcl.lines.len - 2)));
                             }
 
@@ -384,49 +402,26 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
         .Pointer => |pointerInfo| {
             switch (pointerInfo.size) {
                 .Slice => {
-                    if (source.len != 0) {
-                        switch (@typeInfo(@TypeOf(source[0]))) {
-                            .Int => |intInfo| {
-                                if (intInfo.bits == 8 and intInfo.signedness == .unsigned) {
-                                    //String
-                                    try stdout.print("string!\n", .{});
-                                    head.ptr = AnyPointer{ .str = casted_ptr };
-                                    head.getValue = setStr;
-                                    head.field_value = casted_ptr.*;
-                                } else {
-                                    try stdout.print("intarr!\n", .{});
-                                    head.is_array = true;
-                                    switch (pointerInfo.child) {
-                                        mcl.Config.Line => {
-                                            head.ptr = AnyPointer{ .@"[]Config.Line" = casted_ptr };
-                                        },
-
-                                        mcl.Config.Line.Range => {
-                                            head.ptr = AnyPointer{ .@"[]Config.Line.Range" = casted_ptr };
-                                        },
-
-                                        else => {
-                                            return error.UnsupportedType;
-                                        },
-                                    }
-                                    //TODO i don't want to put this piece of code in two places
-                                    for (casted_ptr.*, 0..) |*item, i| {
-                                        _ = try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1] ++ i, allocator); //remove the 's' at the end to convert to singular form
-                                    }
-                                }
-                            },
-
-                            else => {
+                    try stdout.print("{}\n", .{pointerInfo.child});
+                    switch (@typeInfo(@TypeOf(pointerInfo.child))) {
+                        .Int => |intInfo| {
+                            if (intInfo.bits == 8 and intInfo.signedness == .unsigned) {
+                                //String
+                                try stdout.print("string!\n", .{});
+                                head.ptr = AnyPointer{ .str = casted_ptr };
+                                head.getValue = setStr;
+                                head.field_value = casted_ptr.*;
+                            } else {
+                                try stdout.print("intarr!\n", .{});
                                 head.is_array = true;
-                                try stdout.print("array!\n", .{});
+
+                                //TODO this is wrong
                                 switch (pointerInfo.child) {
                                     mcl.Config.Line => {
-                                        try stdout.print("line!\n", .{});
                                         head.ptr = AnyPointer{ .@"[]Config.Line" = casted_ptr };
                                     },
 
                                     mcl.Config.Line.Range => {
-                                        try stdout.print("range!!\n", .{});
                                         head.ptr = AnyPointer{ .@"[]Config.Line.Range" = casted_ptr };
                                     },
 
@@ -434,15 +429,42 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                                         return error.UnsupportedType;
                                     },
                                 }
-
-                                for (casted_ptr.*) |*item| {
-                                    _ = try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1], allocator); //remove the 's' at the end to convert to singular form
+                                //TODO i don't want to put this piece of code in two places
+                                for (casted_ptr.*, 0..) |*item, i| {
+                                    //remove the 's' at the end to convert to singular form
+                                    _ = try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1] ++ i, allocator);
                                 }
-                            },
-                        }
+                            }
+                        },
+
+                        else => {
+                            head.is_array = true;
+                            try stdout.print("array!\n", .{});
+                            switch (pointerInfo.child) {
+                                mcl.Config.Line => {
+                                    try stdout.print("line!\n", .{});
+                                    head.ptr = AnyPointer{ .@"[]Config.Line" = casted_ptr };
+                                },
+
+                                mcl.Config.Line.Range => {
+                                    try stdout.print("range!!\n", .{});
+                                    head.ptr = AnyPointer{ .@"[]Config.Line.Range" = casted_ptr };
+                                },
+
+                                else => {
+                                    return error.UnsupportedType;
+                                },
+                            }
+
+                            for (casted_ptr.*) |*item| {
+                                //remove the 's' at the end to convert to singular form
+                                _ = try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1], allocator);
+                            }
+                        },
                     }
+
                     if (parent) |p| {
-                        try p.nodes.append(head); //im pretty sure data gets copied to the arraylist, not store a pointer to it ¯\_(ツ)_/¯
+                        try p.nodes.append(head);
                     }
                     return head;
                 },
