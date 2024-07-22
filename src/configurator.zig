@@ -40,6 +40,7 @@ const AnyPointer = union(enum) {
             .u8 => return "u8",
             .u32 => return "u32",
             .u10 => return "u10",
+            .u64 => return "u64",
             .channel => return "channel",
             .@"[]Config.Line" => return "lines",
             .@"[]Config.Line.Range" => return "ranges",
@@ -242,6 +243,7 @@ pub fn main() !u8 {
         try cur_node.print("", null);
 
         if (cur_node.getValue) |func| {
+            try stdout.print("field!!\n", .{});
             //if getValue function is not null, which means it's a modifiable field
             if (func(cur_node, allocator)) {
                 try save_config(file_name, config);
@@ -397,23 +399,18 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
     const stdout = std.io.getStdOut().writer();
     var head = Tree.Node.init(source_name);
 
-    try stdout.print("{s}\n", .{source_name});
-
     switch (@typeInfo(T)) {
         .Pointer => |pointerInfo| {
             switch (pointerInfo.size) {
                 .Slice => {
-                    try stdout.print("{}\n", .{pointerInfo.child});
                     switch (@typeInfo(@TypeOf(pointerInfo.child))) {
                         .Int => |intInfo| {
                             if (intInfo.bits == 8 and intInfo.signedness == .unsigned) {
                                 //String
-                                try stdout.print("string!\n", .{});
                                 head.ptr = AnyPointer{ .str = casted_ptr };
                                 head.getValue = setStr;
                                 head.field_value = casted_ptr.*;
                             } else {
-                                try stdout.print("intarr!\n", .{});
                                 head.is_array = true;
 
                                 //TODO this is wrong
@@ -440,15 +437,12 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
 
                         else => {
                             head.is_array = true;
-                            try stdout.print("array!\n", .{});
                             switch (pointerInfo.child) {
                                 mcl.Config.Line => {
-                                    try stdout.print("line!\n", .{});
                                     head.ptr = AnyPointer{ .@"[]Config.Line" = casted_ptr };
                                 },
 
                                 mcl.Config.Line.Range => {
-                                    try stdout.print("range!!\n", .{});
                                     head.ptr = AnyPointer{ .@"[]Config.Line.Range" = casted_ptr };
                                 },
 
@@ -478,7 +472,6 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
         },
 
         .Struct => |structInfo| {
-            try stdout.print("struct!\n", .{});
             inline for (structInfo.fields) |field| {
                 const val_ptr = &@field(casted_ptr.*, field.name);
                 _ = try fillTree(&head, field.type, @ptrCast(val_ptr), field.name, allocator);
@@ -489,15 +482,9 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
             return head;
         },
 
-        .Array => {
-            try stdout.print("arrrrr!{s}\n", .{source_name});
-        },
-
         else => {
             switch (@typeInfo(T)) {
                 .Int => |_| {
-                    try stdout.print("int!\n", .{});
-
                     var buf: [256]u8 = undefined;
                     const str = try std.fmt.bufPrint(&buf, "{}", .{casted_ptr.*});
 
@@ -510,7 +497,7 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                     std.mem.copyForwards(u8, @constCast(head.field_value), str);
 
                     //TODO: refactor. you can probably use casting and it will works. set all num values to u64 and cast whenever needed.
-                    head.ptr = AnyPointer{ .u64 = casted_ptr };
+                    head.ptr = AnyPointer{ .u64 = @alignCast(@ptrCast(casted_ptr)) };
                     // switch (info.bits) {
                     //     8 => {
                     //         head.ptr = AnyPointer{ .u8 = casted_ptr };
@@ -540,8 +527,6 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                 },
 
                 .Enum => {
-                    try stdout.print("enum!\n", .{});
-
                     head.field_name = @tagName(casted_ptr.*);
                     head.ptr = AnyPointer{ .channel = casted_ptr };
                     head.getValue = setChannel;
