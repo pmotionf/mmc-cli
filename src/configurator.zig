@@ -243,7 +243,6 @@ pub fn main() !u8 {
         try cur_node.print("", null);
 
         if (cur_node.getValue) |func| {
-            try stdout.print("field!!\n", .{});
             //if getValue function is not null, which means it's a modifiable field
             if (func(cur_node, allocator)) {
                 try save_config(file_name, config);
@@ -277,16 +276,8 @@ pub fn main() !u8 {
                             std.mem.copyForwards(mcl.Config.Line, added_lines, config.modules[0].mcl.lines);
                             copyStartingFromIndex(mcl.Config.Line, added_lines, &new_line, config.modules[0].mcl.lines.len);
 
+                            const new_line_ptr: *mcl.Config.Line = @ptrCast(added_lines.ptr + config.modules[0].mcl.lines.len);
                             config.modules[0].mcl.lines = added_lines;
-                            var new_line_ptr: *mcl.Config.Line = undefined;
-
-                            if (cur_node.nodes.items.len == 0) {
-                                try stdout.print("zero\n", .{});
-                                new_line_ptr = @as(*mcl.Config.Line, @ptrCast(config.modules[0].mcl.lines.ptr));
-                            } else {
-                                try stdout.print("more\n", .{});
-                                new_line_ptr = @as(*mcl.Config.Line, @ptrCast(config.modules[0].mcl.lines.ptr + (config.modules[0].mcl.lines.len - 2)));
-                            }
 
                             const new_node = try fillTree(null, mcl.Config.Line, new_line_ptr, "line", allocator);
                             try cur_node.nodes.append(new_node);
@@ -498,27 +489,8 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
 
                     //TODO: refactor. you can probably use casting and it will works. set all num values to u64 and cast whenever needed.
                     head.ptr = AnyPointer{ .u64 = @alignCast(@ptrCast(casted_ptr)) };
-                    // switch (info.bits) {
-                    //     8 => {
-                    //         head.ptr = AnyPointer{ .u8 = casted_ptr };
-                    //         head.getValue = setU8;
-                    //     },
+                    head.getValue = setU64;
 
-                    //     10 => {
-                    //         head.ptr = AnyPointer{ .u10 = casted_ptr };
-                    //         head.getValue = setU10;
-                    //     },
-
-                    //     32 => {
-                    //         head.ptr = AnyPointer{ .u32 = casted_ptr };
-                    //         head.getValue = setU32;
-                    //     },
-
-                    //     else => {
-                    //         try stdout.print("Unsupported type: {}\n", .{@typeInfo(T)});
-                    //         return error.UnsupportedType;
-                    //     },
-                    // }
                     if (parent) |p| {
                         try p.nodes.append(head);
                     }
