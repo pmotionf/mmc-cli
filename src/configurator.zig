@@ -29,6 +29,7 @@ const AnyPointer = union(enum) {
     u8: *u8, //start
     u32: *u32, //end
     u10: *u10, //axes
+    u64: *u64,
     channel: *mcl.connection.Channel,
     @"[]Config.Line": *[]mcl.Config.Line,
     @"[]Config.Line.Range": *[]mcl.Config.Line.Range,
@@ -291,7 +292,7 @@ pub fn main() !u8 {
                             try save_config(file_name, config);
                         } else if (std.mem.eql(u8, cur_node.field_name, "ranges")) {
                             var new_range = [1]mcl.Config.Line.Range{create_default_range()};
-                            const added_ranges = try allocator.alloc(mcl.Config.Line.Range, config.modules[0].mcl.lines.len + 1);
+                            const added_ranges = try allocator.alloc(mcl.Config.Line.Range, cur_node.ptr.?.@"[]Config.Line.Range".len + 1);
                             std.mem.copyForwards(mcl.Config.Line.Range, added_ranges, cur_node.ptr.?.@"[]Config.Line.Range".*);
                             copyStartingFromIndex(mcl.Config.Line.Range, added_ranges, &new_range, cur_node.ptr.?.@"[]Config.Line.Range".len);
 
@@ -494,7 +495,7 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
 
         else => {
             switch (@typeInfo(T)) {
-                .Int => |info| {
+                .Int => |_| {
                     try stdout.print("int!\n", .{});
 
                     var buf: [256]u8 = undefined;
@@ -508,28 +509,29 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                     }
                     std.mem.copyForwards(u8, @constCast(head.field_value), str);
 
-                    //TODO: refactor
-                    switch (info.bits) {
-                        8 => {
-                            head.ptr = AnyPointer{ .u8 = casted_ptr };
-                            head.getValue = setU8;
-                        },
+                    //TODO: refactor. you can probably use casting and it will works. set all num values to u64 and cast whenever needed.
+                    head.ptr = AnyPointer{ .u64 = casted_ptr };
+                    // switch (info.bits) {
+                    //     8 => {
+                    //         head.ptr = AnyPointer{ .u8 = casted_ptr };
+                    //         head.getValue = setU8;
+                    //     },
 
-                        10 => {
-                            head.ptr = AnyPointer{ .u10 = casted_ptr };
-                            head.getValue = setU10;
-                        },
+                    //     10 => {
+                    //         head.ptr = AnyPointer{ .u10 = casted_ptr };
+                    //         head.getValue = setU10;
+                    //     },
 
-                        32 => {
-                            head.ptr = AnyPointer{ .u32 = casted_ptr };
-                            head.getValue = setU32;
-                        },
+                    //     32 => {
+                    //         head.ptr = AnyPointer{ .u32 = casted_ptr };
+                    //         head.getValue = setU32;
+                    //     },
 
-                        else => {
-                            try stdout.print("Unsupported type: {}\n", .{@typeInfo(T)});
-                            return error.UnsupportedType;
-                        },
-                    }
+                    //     else => {
+                    //         try stdout.print("Unsupported type: {}\n", .{@typeInfo(T)});
+                    //         return error.UnsupportedType;
+                    //     },
+                    // }
                     if (parent) |p| {
                         try p.nodes.append(head);
                     }
@@ -645,6 +647,27 @@ fn setU10(node: *Tree.Node, alloc: std.mem.Allocator) !void {
     };
 
     node.ptr.?.u10.* = num;
+
+    var buf: [256]u8 = undefined;
+    const str = try std.fmt.bufPrint(&buf, "{}", .{num});
+    node.field_value = try alloc.alloc(u8, str.len);
+    std.mem.copyForwards(u8, @constCast(node.field_value), str);
+
+    try stdout.print("Number value successfully changed.\n", .{});
+}
+
+fn setU64(node: *Tree.Node, alloc: std.mem.Allocator) !void {
+    const stdout = std.io.getStdOut().writer();
+
+    var buffer: [1024]u8 = undefined;
+    const input = try readInput("Please input a number.", &buffer);
+
+    const num = std.fmt.parseUnsigned(u64, input, 10) catch |err| {
+        try stdout.print("Please input a correct number.\n", .{});
+        return err;
+    };
+
+    node.ptr.?.u64.* = num;
 
     var buf: [256]u8 = undefined;
     const str = try std.fmt.bufPrint(&buf, "{}", .{num});
