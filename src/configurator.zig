@@ -37,6 +37,7 @@ const AnyPointer = union(enum) {
     @"[][]const u8": *[][]const u8,
     mcl: *command.Config,
 
+    //TODO remember why i made this
     fn which(self: AnyPointer) []const u8 {
         switch (self) {
             .str => return "str",
@@ -225,7 +226,7 @@ pub fn main() !u8 {
     if (new_file) {
         const input = try readInput("Please input the new config file name:", &buffer);
         file_name = try std.fmt.allocPrint(allocator, "{s}.json", .{input});
-        try save_config(file_name, config);
+        try create_config(file_name, config, allocator);
     }
 
     var tree = Tree.init("mcl");
@@ -733,18 +734,44 @@ fn save_config(file_name: []const u8, config: Config) !void {
     try std.json.stringify(config, .{ .whitespace = .indent_tab }, file.writer());
 }
 
-fn create_config(file_name: []const u8, config: Config) !void {
-    const file = std.fs.cwd().createFile(file_name, .{ .exclusive = true }) catch |err| {
+// fn create_config(file_name: []const u8, config: Config, allocator: std.mem.Allocator) !void {
+//     const file = try std.fs.cwd().createFile(file_name, .{});
+//     defer file.close();
+
+//     std.fs.accessAbsolute(file_name, .{}) catch |err| {
+//         switch (err) {
+//             error.FileNotFound => {
+//                 try std.json.stringify(config, .{ .whitespace = .indent_tab }, file.writer());
+//             },
+//             else => {
+//                 return err;
+//             },
+//         }
+//     };
+
+//     try std.io.getStdOut().writer().print("File '{s}' already exists.\n", .{file_name});
+//     const config_parse = try Config.parse(allocator, file);
+//     try std.json.stringify(config_parse.value, .{ .whitespace = .indent_tab }, file.writer());
+// }
+
+fn create_config(file_name: []const u8, config: Config, allocator: std.mem.Allocator) !void {
+    const file = std.fs.cwd().openFile(file_name, .{}) catch |err| {
         switch (err) {
-            error.PathAlreadyExists => {
-                try std.io.getStdOut().writer().print("File '{s}' already exists.\n", .{file_name});
-                return;
+            error.FileNotFound => {
+                const file = try std.fs.cwd().createFile(file_name, .{});
+                defer file.close();
+                try std.json.stringify(config, .{ .whitespace = .indent_tab }, file.writer());
             },
-            else => return err,
+            else => {
+                return err;
+            },
         }
     };
-    defer file.close();
-    try std.json.stringify(config, .{ .whitespace = .indent_tab }, file.writer());
+
+    //else the file already existed
+    try std.io.getStdOut().writer().print("File '{s}' already exists.\n", .{file_name});
+    const config_parse = try Config.parse(allocator, file);
+    try std.json.stringify(config_parse.value, .{ .whitespace = .indent_tab }, file.writer());
 }
 
 fn readInput(out: []const u8, buffer: []u8) ![]const u8 {
