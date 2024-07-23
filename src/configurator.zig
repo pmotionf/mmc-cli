@@ -300,8 +300,6 @@ pub fn main() !u8 {
 
                             const new_node = try fillTree(null, mcl.Config.Line.Range, new_range_ptr, "range", allocator);
                             try cur_node.nodes.append(new_node);
-
-                            try stdout.print("lleenn{}\n", .{cur_node.ptr.?.@"[]Config.Line.Range".len});
                         } else if (std.mem.eql(u8, cur_node.field_name, "line_names")) {
                             var new_name = [1][]const u8{try allocator.dupe(u8, try readInput("Please input a new line name: ", &buffer))};
                             const added_names = try allocator.alloc([]const u8, config.modules[0].mcl.line_names.len + 1);
@@ -363,7 +361,14 @@ pub fn main() !u8 {
 
                             _ = cur_node.nodes.orderedRemove(num - 1);
                         } else if (std.mem.eql(u8, cur_node.field_name, "line_names")) {
-                            //TODO fill
+                            const remove_name = try allocator.alloc([]const u8, config.modules[0].mcl.line_names.len - 1);
+                            std.mem.copyForwards([]const u8, remove_name, config.modules[0].mcl.line_names[0 .. num - 1]);
+                            copyStartingFromIndex([]const u8, remove_name, config.modules[0].mcl.line_names[num..config.modules[0].mcl.line_names.len], num - 1);
+                            allocator.free(config.modules[0].mcl.line_names);
+
+                            config.modules[0].mcl.line_names = remove_name;
+
+                            _ = cur_node.nodes.orderedRemove(num - 1);
                         }
 
                         try save_config(file_name, config);
