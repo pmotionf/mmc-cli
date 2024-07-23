@@ -246,10 +246,6 @@ pub fn main() !u8 {
     while (true) {
         const cur_node = try tree.navigate_tree(action_stack);
 
-        if (cur_node.ptr) |p| {
-            try stdout.print("yeah: {s}\n", .{p.which()});
-        }
-
         try cur_node.print("", null);
 
         if (cur_node.getValue) |func| {
@@ -298,10 +294,12 @@ pub fn main() !u8 {
                             copyStartingFromIndex(mcl.Config.Line.Range, added_ranges, &new_range, cur_node.ptr.?.@"[]Config.Line.Range".len);
 
                             const new_range_ptr: *mcl.Config.Line.Range = @ptrCast(added_ranges.ptr + cur_node.ptr.?.@"[]Config.Line.Range".len);
-                            cur_node.ptr.?.@"[]Config.Line.Range" = @constCast(&added_ranges);
+                            cur_node.ptr.?.@"[]Config.Line.Range".* = @constCast(added_ranges);
 
                             const new_node = try fillTree(null, mcl.Config.Line.Range, new_range_ptr, "range", allocator);
                             try cur_node.nodes.append(new_node);
+
+                            try stdout.print("lleenn{}\n", .{cur_node.ptr.?.@"[]Config.Line.Range".len});
                         } else if (std.mem.eql(u8, cur_node.field_name, "line_names")) {
                             var new_name = [1][]const u8{try allocator.dupe(u8, try readInput("Please input a new line name: ", &buffer))};
                             const added_names = try allocator.alloc([]const u8, config.modules[0].mcl.line_names.len + 1);
@@ -359,6 +357,8 @@ pub fn main() !u8 {
                             _ = cur_node.nodes.orderedRemove(num - 1);
                         } else if (std.mem.eql(u8, cur_node.field_name, "ranges")) {
                             //TODO fill
+                        } else if (std.mem.eql(u8, cur_node.field_name, "line_names")) {
+                            //TODO fill
                         }
 
                         try save_config(file_name, config);
@@ -410,7 +410,6 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
         .Pointer => |pointerInfo| {
             switch (pointerInfo.size) {
                 .Slice => {
-                    try stdout.print("aa {}\n", .{pointerInfo.child});
                     switch (pointerInfo.child) {
                         u8 => {
                             //String
