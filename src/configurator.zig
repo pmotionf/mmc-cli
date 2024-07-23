@@ -547,18 +547,18 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
 }
 
 fn setStr(node: *Tree.Node, alloc: std.mem.Allocator) !void {
-    _ = alloc;
     const stdout = std.io.getStdOut().writer();
     var buffer: [1024]u8 = undefined;
 
     try stdout.print("Please input a new value for {s}.\n", .{node.field_name});
 
     const input = try readInput("", &buffer);
+    const input_dupe = try alloc.dupe(u8, input);
     const prev_val = node.ptr.?.str.*;
-    node.ptr.?.str.* = input;
-    node.field_value = input;
+    node.ptr.?.str.* = input_dupe;
+    node.field_value = input_dupe;
 
-    try stdout.print("Changed value from {s} to {s}/\n", .{ prev_val, input });
+    try stdout.print("Changed value from {s} to {s}\n", .{ prev_val, input });
 }
 
 fn setChannel(node: *Tree.Node, alloc: std.mem.Allocator) !void {
