@@ -242,7 +242,6 @@ pub fn main() !u8 {
 
     defer action_stack.deinit();
 
-    //TODO make ability to add new stuff, not just modify.
     while (true) {
         const cur_node = try tree.navigate_tree(action_stack);
 
@@ -252,20 +251,23 @@ pub fn main() !u8 {
             //if getValue function is not null, which means it's a modifiable field
             if (func(cur_node, allocator)) {
                 try save_config(file_name, config);
-                action_stack.clearRetainingCapacity(); //hmm
+                _ = action_stack.pop(); //after modifying a field, go back to its parent node.
+                // action_stack.clearRetainingCapacity();
             } else |_| continue;
         } else {
             while (true) : ({
                 try stdout.print("\n\n\n", .{});
                 try cur_node.print("", null);
             }) {
-                const input = try readInput("Please select the field you want to modify:", &buffer);
+                if (cur_node.is_array) {
+                    try stdout.print("Type 'add' to add an item or 'remove <#>' to remove an item or ", .{});
+                }
+                const input = try readInput("select the field you want to modify:", &buffer);
                 var split = std.mem.splitSequence(u8, input, " ");
 
                 const first_arg = split.next().?;
 
                 //TODO add a quit command
-                //TODO add a remove command
                 if (std.mem.eql(u8, input, "prev")) {
                     if (action_stack.items.len != 0) {
                         _ = action_stack.pop();
@@ -309,12 +311,8 @@ pub fn main() !u8 {
                             const new_name_ptr: *[]const u8 = @ptrCast(added_names.ptr + config.modules[0].mcl.line_names.len);
                             config.modules[0].mcl.line_names = @constCast(added_names);
 
-                            const new_node = try fillTree(null, []const u8, @ptrCast(new_name_ptr), "name", allocator);
+                            const new_node = try fillTree(null, []const u8, @ptrCast(new_name_ptr), "line_name", allocator);
                             try cur_node.nodes.append(new_node);
-
-                            for (config.modules[0].mcl.line_names) |n| {
-                                try stdout.print("ayy {s}\n", .{n});
-                            }
                         }
                         try save_config(file_name, config);
                     } else {
@@ -356,7 +354,14 @@ pub fn main() !u8 {
 
                             _ = cur_node.nodes.orderedRemove(num - 1);
                         } else if (std.mem.eql(u8, cur_node.field_name, "ranges")) {
-                            //TODO fill
+                            const remove_range = try allocator.alloc(mcl.Config.Line.Range, cur_node.ptr.?.@"[]Config.Line.Range".*.len - 1);
+                            std.mem.copyForwards(mcl.Config.Line.Range, remove_range, cur_node.ptr.?.@"[]Config.Line.Range".*[0 .. num - 1]);
+                            copyStartingFromIndex(mcl.Config.Line.Range, remove_range, cur_node.ptr.?.@"[]Config.Line.Range".*[num..cur_node.ptr.?.@"[]Config.Line.Range".*.len], num - 1);
+                            allocator.free(cur_node.ptr.?.@"[]Config.Line.Range".*);
+
+                            cur_node.ptr.?.@"[]Config.Line.Range".* = remove_range;
+
+                            _ = cur_node.nodes.orderedRemove(num - 1);
                         } else if (std.mem.eql(u8, cur_node.field_name, "line_names")) {
                             //TODO fill
                         }
@@ -477,7 +482,6 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                     const str = try std.fmt.bufPrint(&buf, "{}", .{casted_ptr.*});
 
                     if (allocator) |alloc| {
-                        //TODO free this memory with node.free() by passing the same allocator.
                         head.field_value = try alloc.alloc(u8, str.len);
                     } else {
                         return error.MissingAllocator;
@@ -713,12 +717,20 @@ fn copyStartingFromIndex(comptime T: type, dest: []T, source: []T, idx: usize) v
 }
 
 fn save_config(file_name: []const u8, config: Config) !void {
-    const file = try std.fs.cwd().createFile(file_name, .{ .exclusive = true }) catch |err| switch (err) {
-        error.PathAlreadyExists => {
-            try std.io.getStdOut().writer().print("File '{s}' already exists.", .{file_name});
-            return;
-        },
-        else => return err,
+    const file = try std.fs.cwd().createFile(file_name, .{});
+    defer file.close();
+    try std.json.stringify(config, .{ .whitespace = .indent_tab }, file.writer());
+}
+
+fn create_config(file_name: []const u8, config: Config) !void {
+    const file = std.fs.cwd().createFile(file_name, .{ .exclusive = true }) catch |err| {
+        switch (err) {
+            error.PathAlreadyExists => {
+                try std.io.getStdOut().writer().print("File '{s}' already exists.\n", .{file_name});
+                return;
+            },
+            else => return err,
+        }
     };
     defer file.close();
     try std.json.stringify(config, .{ .whitespace = .indent_tab }, file.writer());
