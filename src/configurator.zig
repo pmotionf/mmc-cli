@@ -30,9 +30,12 @@ const AnyPointer = union(enum) {
     u32: *u32, //end
     u10: *u10, //axes
     u64: *u64,
+    u7: *u7,
     channel: *mcl.connection.Channel,
     @"[]Config.Line": *[]mcl.Config.Line,
     @"[]Config.Line.Range": *[]mcl.Config.Line.Range,
+    @"[][]const u8": *[][]const u8,
+    mcl: *command.Config,
 
     fn which(self: AnyPointer) []const u8 {
         switch (self) {
@@ -41,9 +44,12 @@ const AnyPointer = union(enum) {
             .u32 => return "u32",
             .u10 => return "u10",
             .u64 => return "u64",
+            .u7 => return "u7",
             .channel => return "channel",
             .@"[]Config.Line" => return "lines",
             .@"[]Config.Line.Range" => return "ranges",
+            .@"[][]const u8" => return "strings",
+            .mcl => return "mcl",
         }
     }
 };
@@ -215,6 +221,7 @@ pub fn main() !u8 {
 
     var buffer: [1024]u8 = undefined;
 
+    //TODO make sure a previous file does not get overwritten if the specified file already exists
     if (new_file) {
         const input = try readInput("Please input the new config file name:", &buffer);
         file_name = try std.fmt.allocPrint(allocator, "{s}.json", .{input});
@@ -222,9 +229,12 @@ pub fn main() !u8 {
     }
 
     var tree = Tree.init("mcl");
-    const lines = &config.modules[0].mcl.lines;
+    tree.root.ptr = AnyPointer{ .mcl = &config.modules[0].mcl };
+    // const lines = &config.modules[0].mcl.lines;
 
-    _ = try fillTree(&tree.root, @TypeOf(lines.*), @ptrCast(lines), "lines", allocator);
+    tree.root = try fillTree(null, command.Config, @ptrCast(tree.root.ptr.?.mcl), "mcl", allocator);
+
+    // _ = try fillTree(&tree.root, @TypeOf(lines.*), @ptrCast(lines), "lines", allocator);
 
     defer tree.deinit(allocator);
 
@@ -281,28 +291,34 @@ pub fn main() !u8 {
 
                             const new_node = try fillTree(null, mcl.Config.Line, new_line_ptr, "line", allocator);
                             try cur_node.nodes.append(new_node);
-
-                            try save_config(file_name, config);
                         } else if (std.mem.eql(u8, cur_node.field_name, "ranges")) {
                             var new_range = [1]mcl.Config.Line.Range{create_default_range()};
                             const added_ranges = try allocator.alloc(mcl.Config.Line.Range, cur_node.ptr.?.@"[]Config.Line.Range".len + 1);
                             std.mem.copyForwards(mcl.Config.Line.Range, added_ranges, cur_node.ptr.?.@"[]Config.Line.Range".*);
                             copyStartingFromIndex(mcl.Config.Line.Range, added_ranges, &new_range, cur_node.ptr.?.@"[]Config.Line.Range".len);
 
+                            const new_range_ptr: *mcl.Config.Line.Range = @ptrCast(added_ranges.ptr + cur_node.ptr.?.@"[]Config.Line.Range".len);
                             cur_node.ptr.?.@"[]Config.Line.Range" = @constCast(&added_ranges);
-                            var new_line_ptr: *mcl.Config.Line.Range = undefined;
 
-                            if (cur_node.nodes.items.len == 0) {
-                                new_line_ptr = @as(*mcl.Config.Line.Range, @ptrCast(cur_node.ptr.?.@"[]Config.Line.Range".ptr));
-                            } else {
-                                new_line_ptr = @as(*mcl.Config.Line.Range, @ptrCast(cur_node.ptr.?.@"[]Config.Line.Range".ptr + (cur_node.ptr.?.@"[]Config.Line.Range".len - 2)));
-                            }
+                            const new_node = try fillTree(null, mcl.Config.Line.Range, new_range_ptr, "range", allocator);
+                            try cur_node.nodes.append(new_node);
+                        } else if (std.mem.eql(u8, cur_node.field_name, "line_names")) {
+                            var new_name = [1][]const u8{try allocator.dupe(u8, try readInput("Please input a new line name: ", &buffer))};
+                            const added_names = try allocator.alloc([]const u8, config.modules[0].mcl.line_names.len + 1);
+                            std.mem.copyForwards([]const u8, added_names, config.modules[0].mcl.line_names);
+                            copyStartingFromIndex([]const u8, added_names, &new_name, config.modules[0].mcl.line_names.len);
 
-                            const new_node = try fillTree(null, mcl.Config.Line.Range, new_line_ptr, "range", allocator);
+                            const new_name_ptr: *[]const u8 = @ptrCast(added_names.ptr + config.modules[0].mcl.line_names.len);
+                            config.modules[0].mcl.line_names = @constCast(added_names);
+
+                            const new_node = try fillTree(null, []const u8, @ptrCast(new_name_ptr), "name", allocator);
                             try cur_node.nodes.append(new_node);
 
-                            try save_config(file_name, config);
+                            for (config.modules[0].mcl.line_names) |n| {
+                                try stdout.print("ayy {s}\n", .{n});
+                            }
                         }
+                        try save_config(file_name, config);
                     } else {
                         try stdout.print("You can only add items to lists.\n", .{});
                     }
@@ -394,36 +410,13 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
         .Pointer => |pointerInfo| {
             switch (pointerInfo.size) {
                 .Slice => {
-                    switch (@typeInfo(@TypeOf(pointerInfo.child))) {
-                        .Int => |intInfo| {
-                            if (intInfo.bits == 8 and intInfo.signedness == .unsigned) {
-                                //String
-                                head.ptr = AnyPointer{ .str = casted_ptr };
-                                head.getValue = setStr;
-                                head.field_value = casted_ptr.*;
-                            } else {
-                                head.is_array = true;
-
-                                //TODO this is wrong
-                                switch (pointerInfo.child) {
-                                    mcl.Config.Line => {
-                                        head.ptr = AnyPointer{ .@"[]Config.Line" = casted_ptr };
-                                    },
-
-                                    mcl.Config.Line.Range => {
-                                        head.ptr = AnyPointer{ .@"[]Config.Line.Range" = casted_ptr };
-                                    },
-
-                                    else => {
-                                        return error.UnsupportedType;
-                                    },
-                                }
-                                //TODO i don't want to put this piece of code in two places
-                                for (casted_ptr.*, 0..) |*item, i| {
-                                    //remove the 's' at the end to convert to singular form
-                                    _ = try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1] ++ i, allocator);
-                                }
-                            }
+                    try stdout.print("aa {}\n", .{pointerInfo.child});
+                    switch (pointerInfo.child) {
+                        u8 => {
+                            //String
+                            head.ptr = AnyPointer{ .str = casted_ptr };
+                            head.getValue = setStr;
+                            head.field_value = casted_ptr.*;
                         },
 
                         else => {
@@ -437,7 +430,12 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                                     head.ptr = AnyPointer{ .@"[]Config.Line.Range" = casted_ptr };
                                 },
 
+                                []const u8 => {
+                                    head.ptr = AnyPointer{ .@"[][]const u8" = casted_ptr };
+                                },
+
                                 else => {
+                                    try stdout.print("Unsupported Type: {any}\n", .{T});
                                     return error.UnsupportedType;
                                 },
                             }
@@ -475,7 +473,7 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
 
         else => {
             switch (@typeInfo(T)) {
-                .Int => |_| {
+                .Int => |info| {
                     var buf: [256]u8 = undefined;
                     const str = try std.fmt.bufPrint(&buf, "{}", .{casted_ptr.*});
 
@@ -487,9 +485,39 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                     }
                     std.mem.copyForwards(u8, @constCast(head.field_value), str);
 
-                    //TODO: refactor. you can probably use casting and it will works. set all num values to u64 and cast whenever needed.
-                    head.ptr = AnyPointer{ .u64 = @alignCast(@ptrCast(casted_ptr)) };
-                    head.getValue = setU64;
+                    // try stdout.print("align {}\n", .{@alignOf(@TypeOf(casted_ptr))});
+                    // try stdout.print("align2 {}\n", .{@alignOf(*u64)});
+
+                    // try stdout.print("indeed {s}\n", .{source_name});
+                    // head.ptr = AnyPointer{ .u64 = @alignCast(@ptrCast(casted_ptr)) };
+                    // head.getValue = setU64;
+
+                    switch (info.bits) {
+                        8 => {
+                            head.ptr = AnyPointer{ .u8 = casted_ptr };
+                            head.getValue = setU8;
+                        },
+
+                        10 => {
+                            head.ptr = AnyPointer{ .u10 = casted_ptr };
+                            head.getValue = setU10;
+                        },
+
+                        32 => {
+                            head.ptr = AnyPointer{ .u32 = casted_ptr };
+                            head.getValue = setU32;
+                        },
+
+                        7 => {
+                            head.ptr = AnyPointer{ .u7 = casted_ptr };
+                            head.getValue = setU7;
+                        },
+
+                        else => {
+                            try stdout.print("Unsupported type: {}\n", .{@typeInfo(T)});
+                            return error.UnsupportedType;
+                        },
+                    }
 
                     if (parent) |p| {
                         try p.nodes.append(head);
@@ -499,7 +527,7 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                 },
 
                 .Enum => {
-                    head.field_name = @tagName(casted_ptr.*);
+                    head.field_name = "channel";
                     head.ptr = AnyPointer{ .channel = casted_ptr };
                     head.getValue = setChannel;
                     if (parent) |p| {
@@ -625,6 +653,27 @@ fn setU64(node: *Tree.Node, alloc: std.mem.Allocator) !void {
     };
 
     node.ptr.?.u64.* = num;
+
+    var buf: [256]u8 = undefined;
+    const str = try std.fmt.bufPrint(&buf, "{}", .{num});
+    node.field_value = try alloc.alloc(u8, str.len);
+    std.mem.copyForwards(u8, @constCast(node.field_value), str);
+
+    try stdout.print("Number value successfully changed.\n", .{});
+}
+
+fn setU7(node: *Tree.Node, alloc: std.mem.Allocator) !void {
+    const stdout = std.io.getStdOut().writer();
+
+    var buffer: [1024]u8 = undefined;
+    const input = try readInput("Please input a number.", &buffer);
+
+    const num = std.fmt.parseUnsigned(u7, input, 10) catch |err| {
+        try stdout.print("Please input a correct number.\n", .{});
+        return err;
+    };
+
+    node.ptr.?.u7.* = num;
 
     var buf: [256]u8 = undefined;
     const str = try std.fmt.bufPrint(&buf, "{}", .{num});
