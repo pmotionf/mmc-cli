@@ -491,6 +491,7 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                     // head.ptr = AnyPointer{ .u64 = @alignCast(@ptrCast(casted_ptr)) };
                     // head.getValue = setU64;
 
+                    //TODO refactor so that everything is u64 but there's a weird alignment error that i cannot fix
                     switch (info.bits) {
                         8 => {
                             head.ptr = AnyPointer{ .u8 = casted_ptr };
@@ -712,7 +713,13 @@ fn copyStartingFromIndex(comptime T: type, dest: []T, source: []T, idx: usize) v
 }
 
 fn save_config(file_name: []const u8, config: Config) !void {
-    const file = try std.fs.cwd().createFile(file_name, .{});
+    const file = try std.fs.cwd().createFile(file_name, .{ .exclusive = true }) catch |err| switch (err) {
+        error.PathAlreadyExists => {
+            try std.io.getStdOut().writer().print("File '{s}' already exists.", .{file_name});
+            return;
+        },
+        else => return err,
+    };
     defer file.close();
     try std.json.stringify(config, .{ .whitespace = .indent_tab }, file.writer());
 }
