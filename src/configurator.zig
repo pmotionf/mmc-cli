@@ -343,27 +343,33 @@ pub fn main() !u8 {
                         }
 
                         if (std.mem.eql(u8, cur_node.field_name, "lines")) {
-                            const remove_line = try allocator.alloc(mcl.Config.Line, config.modules[0].mcl.lines.len - 1);
+                            const lines_len = config.modules[0].mcl.lines.len;
+
+                            const remove_line = try allocator.alloc(mcl.Config.Line, lines_len - 1);
                             std.mem.copyForwards(mcl.Config.Line, remove_line, config.modules[0].mcl.lines[0 .. num - 1]);
-                            copyStartingFromIndex(mcl.Config.Line, remove_line, config.modules[0].mcl.lines[num..config.modules[0].mcl.lines.len], num - 1);
+                            copyStartingFromIndex(mcl.Config.Line, remove_line, config.modules[0].mcl.lines[num..lines_len], num - 1);
                             allocator.free(config.modules[0].mcl.lines);
 
                             config.modules[0].mcl.lines = remove_line;
 
                             _ = cur_node.nodes.orderedRemove(num - 1);
                         } else if (std.mem.eql(u8, cur_node.field_name, "ranges")) {
-                            const remove_range = try allocator.alloc(mcl.Config.Line.Range, cur_node.ptr.?.@"[]Config.Line.Range".*.len - 1);
+                            const ranges_len = cur_node.ptr.?.@"[]Config.Line.Range".*.len;
+
+                            const remove_range = try allocator.alloc(mcl.Config.Line.Range, ranges_len - 1);
                             std.mem.copyForwards(mcl.Config.Line.Range, remove_range, cur_node.ptr.?.@"[]Config.Line.Range".*[0 .. num - 1]);
-                            copyStartingFromIndex(mcl.Config.Line.Range, remove_range, cur_node.ptr.?.@"[]Config.Line.Range".*[num..cur_node.ptr.?.@"[]Config.Line.Range".*.len], num - 1);
+                            copyStartingFromIndex(mcl.Config.Line.Range, remove_range, cur_node.ptr.?.@"[]Config.Line.Range".*[num..ranges_len], num - 1);
                             allocator.free(cur_node.ptr.?.@"[]Config.Line.Range".*);
 
                             cur_node.ptr.?.@"[]Config.Line.Range".* = remove_range;
 
                             _ = cur_node.nodes.orderedRemove(num - 1);
                         } else if (std.mem.eql(u8, cur_node.field_name, "line_names")) {
-                            const remove_name = try allocator.alloc([]const u8, config.modules[0].mcl.line_names.len - 1);
+                            const names_len = config.modules[0].mcl.line_names.len;
+
+                            const remove_name = try allocator.alloc([]const u8, names_len - 1);
                             std.mem.copyForwards([]const u8, remove_name, config.modules[0].mcl.line_names[0 .. num - 1]);
-                            copyStartingFromIndex([]const u8, remove_name, config.modules[0].mcl.line_names[num..config.modules[0].mcl.line_names.len], num - 1);
+                            copyStartingFromIndex([]const u8, remove_name, config.modules[0].mcl.line_names[num..names_len], num - 1);
                             allocator.free(config.modules[0].mcl.line_names);
 
                             config.modules[0].mcl.line_names = remove_name;
