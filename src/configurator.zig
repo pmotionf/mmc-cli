@@ -36,23 +36,6 @@ const AnyPointer = union(enum) {
     @"[]Config.Line.Range": *[]mcl.Config.Line.Range,
     @"[][]const u8": *[][]const u8,
     mcl: *command.Config,
-
-    //TODO remember why i made this
-    fn which(self: AnyPointer) []const u8 {
-        switch (self) {
-            .str => return "str",
-            .u8 => return "u8",
-            .u32 => return "u32",
-            .u10 => return "u10",
-            .u64 => return "u64",
-            .u7 => return "u7",
-            .channel => return "channel",
-            .@"[]Config.Line" => return "lines",
-            .@"[]Config.Line.Range" => return "ranges",
-            .@"[][]const u8" => return "strings",
-            .mcl => return "mcl",
-        }
-    }
 };
 
 //thin wrapper for Node
@@ -249,7 +232,7 @@ pub fn main() !u8 {
 
     var message: []const u8 = "";
 
-    while (true) {
+    outer: while (true) {
         const cur_node = try tree.navigate_tree(action_stack);
 
         try cur_node.print("", null);
@@ -359,7 +342,7 @@ pub fn main() !u8 {
                             continue;
                         };
 
-                        //All the 'remove' code is just like the 'add' code but backwards.
+                        //All the 'remove' code is kind of like the 'add' code but backwards.
 
                         if (std.mem.eql(u8, cur_node.field_name, "lines")) {
                             const lines_len = config.modules[0].mcl.lines.len;
@@ -415,6 +398,9 @@ pub fn main() !u8 {
                     } else {
                         try stdout.print("You can only use 'remove' for lists.\n", .{});
                     }
+                } else if (std.mem.eql(u8, input, "quit")) {
+                    try save_config(file_name, config);
+                    break :outer;
                 } else {
                     var node_num: ?u64 = null;
 
@@ -464,7 +450,7 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                 .Slice => {
                     switch (pointerInfo.child) {
                         u8 => {
-                            //String
+                            //A slice of u8 is a string.
                             head.ptr = AnyPointer{ .str = casted_ptr };
                             head.getValue = setStr;
                             head.field_value = casted_ptr.*;
@@ -492,7 +478,7 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                             }
 
                             for (casted_ptr.*) |*item| {
-                                //remove the 's' at the end to convert to singular form because it is assumed all array names end with an 's'
+                                //remove the 's' at the end to convert to singular form for source_name because it is assumed all array names end with an 's'
                                 _ = try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1], allocator);
                             }
                         },
