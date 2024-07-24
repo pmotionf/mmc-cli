@@ -70,6 +70,7 @@ const Tree = struct {
         self.root.nodes.deinit();
     }
 
+    ///Navigates through the tree with the user's action history. This function assumes that the path in `action_history` is always valid.
     fn navigate_tree(self: *Tree, action_history: std.ArrayList([]const u8)) !*Tree.Node {
         var cur_node: *Tree.Node = @constCast(&self.root);
 
@@ -79,7 +80,7 @@ const Tree = struct {
             var split = std.mem.splitSequence(u8, name, " ");
             const first = split.next().?;
             const num_str: ?[]const u8 = split.next();
-            var num: ?u64 = undefined;
+            var num: ?u64 = undefined; //num is the index number of an item in the array
 
             if (num_str != null and !std.mem.eql(u8, num_str.?, "")) {
                 num = try std.fmt.parseUnsigned(u64, num_str.?, 10);
@@ -100,7 +101,9 @@ const Tree = struct {
         ///The pointer to the value that the node is representing.
         ptr: ?AnyPointer = null,
         field_name: []const u8,
-        getValue: ?*const fn (*Node, std.mem.Allocator) anyerror!void = null, //function to read input from user and update value.
+
+        ///Function to read input from user and update value. Can be used to check if the node is a modifiable value.
+        getValue: ?*const fn (*Node, std.mem.Allocator) anyerror!void = null,
         field_value: []const u8 = "",
 
         fn init(field_name: []const u8) Node {
@@ -120,6 +123,7 @@ const Tree = struct {
             alloc.free(self.field_value);
         }
 
+        ///Returns the pointer to the child of this node found with the node name and/or index value if it is in an array.
         fn find_child(self: Tree.Node, name: []const u8, num: ?u64) ?*Tree.Node {
             for (self.nodes.items, 0..) |*node, i| {
                 if (num) |n| {
@@ -132,10 +136,10 @@ const Tree = struct {
                     }
                 }
             }
-            return null; //could not find node with given name.
+            return null; //could not find node with given name and/or index #.
         }
 
-        //prints the current node as well as all of its descendents.
+        ///Formatted prints the current node as well as all of its descendents.
         fn print(self: Tree.Node, indents: []const u8, num: ?u64) !void {
             const stdout = std.io.getStdOut().writer();
 
@@ -243,13 +247,15 @@ pub fn main() !u8 {
 
     defer action_stack.deinit();
 
+    var message: []const u8 = "";
+
     while (true) {
         const cur_node = try tree.navigate_tree(action_stack);
 
         try cur_node.print("", null);
 
+        //if getValue function is not null, which means it's a modifiable field
         if (cur_node.getValue) |func| {
-            //if getValue function is not null, which means it's a modifiable field
             if (func(cur_node, allocator)) {
                 try save_config(file_name, config);
                 _ = action_stack.pop(); //after modifying a field, go back to its parent node.
@@ -257,6 +263,7 @@ pub fn main() !u8 {
         } else {
             while (true) : ({
                 try stdout.print("\n\n\n", .{});
+                try stdout.print("{s}\n", .{message});
                 try cur_node.print("", null);
             }) {
                 if (cur_node.is_array) {
@@ -271,10 +278,10 @@ pub fn main() !u8 {
                 if (std.mem.eql(u8, input, "prev")) {
                     if (action_stack.items.len != 0) {
                         _ = action_stack.pop();
-                        try stdout.print("Going to previous page.\n", .{});
+                        message = "Going to previous page.";
                         break;
                     } else {
-                        try stdout.print("There's no more page history.\n", .{});
+                        message = "There's no more page history.";
                     }
                 } else if (std.mem.eql(u8, input, "add")) {
                     if (cur_node.is_array) {
@@ -314,26 +321,26 @@ pub fn main() !u8 {
                         }
                         try save_config(file_name, config);
                     } else {
-                        try stdout.print("You can only add items to lists.\n", .{});
+                        message = "You can only add items to lists.";
                     }
                 } else if (std.mem.eql(u8, first_arg, "remove")) {
                     if (cur_node.is_array) {
                         if (cur_node.nodes.items.len == 0) {
-                            try stdout.print("There is nothing to remove.\n", .{});
+                            message = "There is nothing to remove.";
                             continue;
                         }
 
                         const next_split = split.next();
                         var num_str: []const u8 = undefined;
                         if (next_split == null) {
-                            try stdout.print("Please specify the number for the item you want to remove.\n", .{});
+                            message = "Please specify the number for the item you want to remove.";
                             continue;
                         } else {
                             num_str = next_split.?;
                         }
 
                         const num = std.fmt.parseUnsigned(u64, num_str, 10) catch {
-                            try stdout.print("Please input a correct number.\n", .{});
+                            message = "Please input a correct number.";
                             continue;
                         };
 
@@ -387,11 +394,11 @@ pub fn main() !u8 {
                     if (cur_node.is_array) {
                         if (split.next()) |num_str| {
                             node_num = std.fmt.parseUnsigned(u64, num_str, 10) catch {
-                                try stdout.print("Please type in a correct number. (1~{d})\n", .{cur_node.nodes.items.len});
+                                message = try formatString("Please type in a correct number. (1~{d})", .{cur_node.nodes.items.len}, allocator);
                                 continue;
                             };
                         } else {
-                            try stdout.print("Please add the '{s}' number you want to modify.\n", .{cur_node.field_name});
+                            message = try formatString("Please add the '{s}' number you want to modify.", .{cur_node.field_name}, allocator);
                             continue;
                         }
                     }
@@ -401,7 +408,7 @@ pub fn main() !u8 {
                     if (next_node) |_| {
                         try action_stack.append(try allocator.dupe(u8, input));
                     } else {
-                        try stdout.print("Could not find field. Try again.\n", .{});
+                        message = "Could not find field. Try again.";
                         continue;
                     }
 
@@ -763,6 +770,10 @@ fn create_config(file_name: []const u8, config: Config, allocator: std.mem.Alloc
     defer file.close();
     try std.json.stringify(config, .{ .whitespace = .indent_tab }, file.writer());
     return null;
+}
+
+fn formatString(comptime str: []const u8, arguments: anytype, allocator: std.mem.Allocator) ![]u8 {
+    return try std.fmt.allocPrint(allocator, str, arguments);
 }
 
 fn readInput(out: []const u8, buffer: []u8) ![]const u8 {
