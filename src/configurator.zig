@@ -265,6 +265,8 @@ pub fn main() !u8 {
                 try stdout.print("\n\n\n", .{});
                 try stdout.print("{s}\n", .{message});
                 try cur_node.print("", null);
+
+                message = "";
             }) {
                 if (cur_node.is_array) {
                     try stdout.print("Type 'add' to add an item or 'remove <#>' to remove an item or ", .{});
@@ -344,16 +346,11 @@ pub fn main() !u8 {
                             continue;
                         };
 
-                        if (num < 1 or num > config.modules[0].mcl.lines.len) {
-                            try stdout.print("Number must be between 1 and {d}\n", .{config.modules[0].mcl.lines.len});
-                            continue;
-                        }
-
                         if (std.mem.eql(u8, cur_node.field_name, "lines")) {
                             const lines_len = config.modules[0].mcl.lines.len;
 
                             if (num < 1 or num > lines_len) {
-                                try stdout.print("Line number must be between 1 and {d}\n", .{lines_len});
+                                message = try formatString("Line number must be between 1 and {d}", .{lines_len}, allocator);
                                 continue;
                             }
 
@@ -369,7 +366,7 @@ pub fn main() !u8 {
                             const ranges_len = cur_node.ptr.?.@"[]Config.Line.Range".*.len;
 
                             if (num < 1 or num > ranges_len) {
-                                try stdout.print("Range number must be between 1 and {d}\n", .{ranges_len});
+                                message = try formatString("Range number must be between 1 and {d}", .{ranges_len}, allocator);
                                 continue;
                             }
 
@@ -385,7 +382,7 @@ pub fn main() !u8 {
                             const names_len = config.modules[0].mcl.line_names.len;
 
                             if (num < 1 or num > names_len) {
-                                try stdout.print("Range number must be between 1 and {d}\n", .{names_len});
+                                message = try formatString("Name number must be between 1 and {d}", .{names_len}, allocator);
                                 continue;
                             }
 
