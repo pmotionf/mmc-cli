@@ -232,6 +232,8 @@ pub fn main() !u8 {
 
     var message: []const u8 = "";
 
+    try stdout.print("You can type 'quit' to quit the program.\n", .{});
+
     outer: while (true) {
         const cur_node = try tree.navigate_tree(action_stack);
 
@@ -403,6 +405,7 @@ pub fn main() !u8 {
                         message = "The number of lines must equal the number of line names.";
                         continue;
                     }
+                    try stdout.print("Saving and quitting program..\n", .{});
 
                     try save_config(file_name, config);
                     break :outer;
