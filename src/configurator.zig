@@ -97,14 +97,15 @@ const Tree = struct {
         nodes: std.ArrayList(Node),
         is_array: bool = false,
 
-        ptr: ?AnyPointer = null, //i want to use this for the getValue function and keep it null if it's not applicable, but there's probably a better way
+        ///The pointer to the value that the node is representing.
+        ptr: ?AnyPointer = null,
         field_name: []const u8,
         getValue: ?*const fn (*Node, std.mem.Allocator) anyerror!void = null, //function to read input from user and update value.
         field_value: []const u8 = "",
 
         fn init(field_name: []const u8) Node {
             var arr_list = std.ArrayList(Node).init(std.heap.page_allocator);
-            arr_list = arr_list; //is there a way to not do this.
+            arr_list = arr_list; //is there a way to not do this. im pretty sure arraylists need to be mutable
             return Node{
                 .nodes = arr_list,
                 .field_name = field_name,
