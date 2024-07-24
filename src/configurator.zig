@@ -274,6 +274,7 @@ pub fn main() !u8 {
                 const input = try readInput("select the field you want to modify:", &buffer);
                 var split = std.mem.splitSequence(u8, input, " ");
 
+                //split the input by spaces and get the first word in the input
                 const first_arg = split.next().?;
 
                 //TODO add a quit command
@@ -287,15 +288,27 @@ pub fn main() !u8 {
                     }
                 } else if (std.mem.eql(u8, input, "add")) {
                     if (cur_node.is_array) {
+                        //All the 'add' code is fundamentally the same, but I can't figure out how to generalize them because they are different types.
+
                         if (std.mem.eql(u8, cur_node.field_name, "lines")) {
                             var new_line = [1]mcl.Config.Line{create_default_line()};
+
+                            //allocate extra memory for the new 'line'.
                             const added_lines = try allocator.alloc(mcl.Config.Line, config.modules[0].mcl.lines.len + 1);
+
+                            //First copy the original 'lines' to the new memory
                             std.mem.copyForwards(mcl.Config.Line, added_lines, config.modules[0].mcl.lines);
+
+                            //Then copy the new 'line' right after it
                             copyStartingFromIndex(mcl.Config.Line, added_lines, &new_line, config.modules[0].mcl.lines.len);
 
+                            //Make a pointer that points to the new line in the newly allocated slice.
                             const new_line_ptr: *mcl.Config.Line = @ptrCast(added_lines.ptr + config.modules[0].mcl.lines.len);
+
+                            //Then replace the actual 'lines' with the new 'lines'
                             config.modules[0].mcl.lines = added_lines;
 
+                            //Make a new node that represents the new line.
                             const new_node = try fillTree(null, mcl.Config.Line, new_line_ptr, "line", allocator);
                             try cur_node.nodes.append(new_node);
                         } else if (std.mem.eql(u8, cur_node.field_name, "ranges")) {
@@ -345,6 +358,8 @@ pub fn main() !u8 {
                             message = "Please input a correct number.";
                             continue;
                         };
+
+                        //All the 'remove' code is just like the 'add' code but backwards.
 
                         if (std.mem.eql(u8, cur_node.field_name, "lines")) {
                             const lines_len = config.modules[0].mcl.lines.len;
@@ -404,6 +419,8 @@ pub fn main() !u8 {
                     var node_num: ?u64 = null;
 
                     if (cur_node.is_array) {
+
+                        //If the cur_node is an array, then there must be a number afterwards
                         if (split.next()) |num_str| {
                             node_num = std.fmt.parseUnsigned(u64, num_str, 10) catch {
                                 message = try formatString("Please type in a correct number. (1~{d})", .{cur_node.nodes.items.len}, allocator);
