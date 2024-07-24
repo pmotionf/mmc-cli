@@ -352,6 +352,11 @@ pub fn main() !u8 {
                         if (std.mem.eql(u8, cur_node.field_name, "lines")) {
                             const lines_len = config.modules[0].mcl.lines.len;
 
+                            if (num < 1 or num > lines_len) {
+                                try stdout.print("Line number must be between 1 and {d}\n", .{lines_len});
+                                continue;
+                            }
+
                             const remove_line = try allocator.alloc(mcl.Config.Line, lines_len - 1);
                             std.mem.copyForwards(mcl.Config.Line, remove_line, config.modules[0].mcl.lines[0 .. num - 1]);
                             copyStartingFromIndex(mcl.Config.Line, remove_line, config.modules[0].mcl.lines[num..lines_len], num - 1);
@@ -363,6 +368,11 @@ pub fn main() !u8 {
                         } else if (std.mem.eql(u8, cur_node.field_name, "ranges")) {
                             const ranges_len = cur_node.ptr.?.@"[]Config.Line.Range".*.len;
 
+                            if (num < 1 or num > ranges_len) {
+                                try stdout.print("Range number must be between 1 and {d}\n", .{ranges_len});
+                                continue;
+                            }
+
                             const remove_range = try allocator.alloc(mcl.Config.Line.Range, ranges_len - 1);
                             std.mem.copyForwards(mcl.Config.Line.Range, remove_range, cur_node.ptr.?.@"[]Config.Line.Range".*[0 .. num - 1]);
                             copyStartingFromIndex(mcl.Config.Line.Range, remove_range, cur_node.ptr.?.@"[]Config.Line.Range".*[num..ranges_len], num - 1);
@@ -373,6 +383,11 @@ pub fn main() !u8 {
                             _ = cur_node.nodes.orderedRemove(num - 1);
                         } else if (std.mem.eql(u8, cur_node.field_name, "line_names")) {
                             const names_len = config.modules[0].mcl.line_names.len;
+
+                            if (num < 1 or num > names_len) {
+                                try stdout.print("Range number must be between 1 and {d}\n", .{names_len});
+                                continue;
+                            }
 
                             const remove_name = try allocator.alloc([]const u8, names_len - 1);
                             std.mem.copyForwards([]const u8, remove_name, config.modules[0].mcl.line_names[0 .. num - 1]);
