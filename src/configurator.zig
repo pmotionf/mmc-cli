@@ -492,7 +492,7 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                             }
 
                             for (casted_ptr.*) |*item| {
-                                //remove the 's' at the end to convert to singular form
+                                //remove the 's' at the end to convert to singular form because it is assumed all array names end with an 's'
                                 _ = try fillTree(&head, @TypeOf(source[0]), @ptrCast(item), source_name[0 .. source_name.len - 1], allocator);
                             }
                         },
@@ -579,6 +579,8 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                 },
 
                 .Enum => {
+                    //when more enums are added, there probably needs to be an if/switch statement unless they can somehow be put together.
+
                     head.field_name = "channel";
                     head.ptr = AnyPointer{ .channel = casted_ptr };
                     head.getValue = setChannel;
