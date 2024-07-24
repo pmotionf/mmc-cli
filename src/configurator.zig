@@ -271,7 +271,7 @@ pub fn main() !u8 {
                     }
                 } else if (std.mem.eql(u8, input, "add")) {
                     if (cur_node.is_array) {
-                        //All the 'add' code is fundamentally the same, but I can't figure out how to generalize them because they are different types.
+                        //All the 'add' code are fundamentally the same, but I can't figure out how to generalize them because they are different types.
 
                         if (std.mem.eql(u8, cur_node.field_name, "lines")) {
                             var new_line = [1]mcl.Config.Line{create_default_line()};
@@ -399,6 +399,11 @@ pub fn main() !u8 {
                         try stdout.print("You can only use 'remove' for lists.\n", .{});
                     }
                 } else if (std.mem.eql(u8, input, "quit")) {
+                    if (config.modules[0].mcl.line_names.len != config.modules[0].mcl.lines.len) {
+                        message = "The number of lines must equal the number of line names.";
+                        continue;
+                    }
+
                     try save_config(file_name, config);
                     break :outer;
                 } else {
