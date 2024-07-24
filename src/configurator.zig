@@ -225,7 +225,11 @@ pub fn main() !u8 {
         config.modules[0].mcl.lines = &line;
         const input = try readInput("Please input the new config file name:", &buffer);
         file_name = try std.fmt.allocPrint(allocator, "{s}.json", .{input});
-        try save_config(file_name, config);
+        const maybe_existing_config = try create_config(file_name, config, allocator);
+
+        if (maybe_existing_config) |con| {
+            config = con;
+        }
     }
 
     var tree = Tree.init("mcl");
@@ -753,24 +757,51 @@ fn save_config(file_name: []const u8, config: Config) !void {
 //     try std.json.stringify(config_parse.value, .{ .whitespace = .indent_tab }, file.writer());
 // }
 
-fn create_config(file_name: []const u8, config: Config, allocator: std.mem.Allocator) !void {
-    const file = std.fs.cwd().openFile(file_name, .{}) catch |err| {
+// fn create_config(file_name: []const u8, config: Config, allocator: std.mem.Allocator) !?Config {
+//     const file = std.fs.cwd().openFile(file_name, .{}) catch |err| {
+//         switch (err) {
+//             error.FileNotFound => {
+//                 const file = try std.fs.cwd().createFile(file_name, .{});
+//                 defer file.close();
+//                 try std.json.stringify(config, .{ .whitespace = .indent_tab }, file.writer());
+//                 return null;
+//             },
+//             else => {
+//                 return err;
+//             },
+//         }
+//     };
+
+//     //else the file already existed
+//     try std.io.getStdOut().writer().print("File '{s}' already exists.\n", .{file_name});
+//     const config_parse = try Config.parse(allocator, file);
+//     try std.json.stringify(config_parse.value, .{ .whitespace = .indent_tab }, file.writer());
+// }
+
+///Attempts to create new config file. If the file name already exists, it will load that existing file and return the config.
+fn create_config(file_name: []const u8, config: Config, allocator: std.mem.Allocator) !?Config {
+    const file = std.fs.cwd().createFile(file_name, .{ .exclusive = true }) catch |err| {
         switch (err) {
-            error.FileNotFound => {
-                const file = try std.fs.cwd().createFile(file_name, .{});
-                defer file.close();
-                try std.json.stringify(config, .{ .whitespace = .indent_tab }, file.writer());
+            error.PathAlreadyExists => {
+                try std.io.getStdOut().writer().print("File '{s}' already exists.\n", .{file_name});
+
+                const f = try std.fs.cwd().openFile(file_name, .{});
+                defer f.close();
+                const config_parsed = try Config.parse(allocator, f);
+                return config_parsed.value;
             },
+
             else => {
                 return err;
             },
         }
     };
 
-    //else the file already existed
-    try std.io.getStdOut().writer().print("File '{s}' already exists.\n", .{file_name});
-    const config_parse = try Config.parse(allocator, file);
-    try std.json.stringify(config_parse.value, .{ .whitespace = .indent_tab }, file.writer());
+    //didn't get caught in the PathAlreadyExists error, so the file name is new
+
+    defer file.close();
+    try std.json.stringify(config, .{ .whitespace = .indent_tab }, file.writer());
+    return null;
 }
 
 fn readInput(out: []const u8, buffer: []u8) ![]const u8 {
