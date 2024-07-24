@@ -216,17 +216,16 @@ pub fn main() !u8 {
     }
     // Load existing config file.
 
-    var line = [1]mcl.Config.Line{create_default_line()};
-
-    config.modules[0].mcl.lines = &line;
-
     var buffer: [1024]u8 = undefined;
 
     //TODO make sure a previous file does not get overwritten if the specified file already exists
     if (new_file) {
+        var line = [1]mcl.Config.Line{create_default_line()};
+
+        config.modules[0].mcl.lines = &line;
         const input = try readInput("Please input the new config file name:", &buffer);
         file_name = try std.fmt.allocPrint(allocator, "{s}.json", .{input});
-        try create_config(file_name, config, allocator);
+        try save_config(file_name, config);
     }
 
     var tree = Tree.init("mcl");
