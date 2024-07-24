@@ -218,7 +218,6 @@ pub fn main() !u8 {
 
     var buffer: [1024]u8 = undefined;
 
-    //TODO make sure a previous file does not get overwritten if the specified file already exists
     if (new_file) {
         var line = [1]mcl.Config.Line{create_default_line()};
 
@@ -234,11 +233,8 @@ pub fn main() !u8 {
 
     var tree = Tree.init("mcl");
     tree.root.ptr = AnyPointer{ .mcl = &config.modules[0].mcl };
-    // const lines = &config.modules[0].mcl.lines;
 
     tree.root = try fillTree(null, command.Config, @ptrCast(tree.root.ptr.?.mcl), "mcl", allocator);
-
-    // _ = try fillTree(&tree.root, @TypeOf(lines.*), @ptrCast(lines), "lines", allocator);
 
     defer tree.deinit(allocator);
 
@@ -256,7 +252,6 @@ pub fn main() !u8 {
             if (func(cur_node, allocator)) {
                 try save_config(file_name, config);
                 _ = action_stack.pop(); //after modifying a field, go back to its parent node.
-                // action_stack.clearRetainingCapacity();
             } else |_| continue;
         } else {
             while (true) : ({
@@ -511,6 +506,7 @@ fn fillTree(parent: ?*Tree.Node, comptime T: type, source_ptr: *anyopaque, sourc
                     // head.getValue = setU64;
 
                     //TODO refactor so that everything is u64 but there's a weird alignment error that i cannot fix
+                    //the above commented code is what I attempted to do
                     switch (info.bits) {
                         8 => {
                             head.ptr = AnyPointer{ .u8 = casted_ptr };
@@ -585,14 +581,19 @@ fn setChannel(node: *Tree.Node, alloc: std.mem.Allocator) !void {
     const stdout = std.io.getStdOut().writer();
 
     var buffer: [1024]u8 = undefined;
-    const input = try readInput("Please input a new channel number. (0~3)\n", &buffer);
+    const input = try readInput("Please input a new channel number. (1~4)\n", &buffer);
 
-    const num = std.fmt.parseUnsigned(u2, input, 10) catch |err| {
+    const num = std.fmt.parseUnsigned(u3, input, 10) catch |err| {
         try stdout.print("Please input a correct channel number.\n", .{});
         return err;
-    }; //this will automatically handle cases where numbers are > 3 because it's a u2.
+    };
 
-    node.ptr.?.channel.* = @as(mcl.connection.Channel, @enumFromInt(num));
+    if (num < 1 or num > 4) {
+        try stdout.print("Channel number must be between 1 and 4.\n", .{});
+        return error.InvalidChannel;
+    }
+
+    node.ptr.?.channel.* = @as(mcl.connection.Channel, @enumFromInt(num - 1));
     node.field_value = @tagName(node.ptr.?.channel.*);
     try stdout.print("Channel successfully changed\n", .{});
 }
@@ -736,47 +737,6 @@ fn save_config(file_name: []const u8, config: Config) !void {
     defer file.close();
     try std.json.stringify(config, .{ .whitespace = .indent_tab }, file.writer());
 }
-
-// fn create_config(file_name: []const u8, config: Config, allocator: std.mem.Allocator) !void {
-//     const file = try std.fs.cwd().createFile(file_name, .{});
-//     defer file.close();
-
-//     std.fs.accessAbsolute(file_name, .{}) catch |err| {
-//         switch (err) {
-//             error.FileNotFound => {
-//                 try std.json.stringify(config, .{ .whitespace = .indent_tab }, file.writer());
-//             },
-//             else => {
-//                 return err;
-//             },
-//         }
-//     };
-
-//     try std.io.getStdOut().writer().print("File '{s}' already exists.\n", .{file_name});
-//     const config_parse = try Config.parse(allocator, file);
-//     try std.json.stringify(config_parse.value, .{ .whitespace = .indent_tab }, file.writer());
-// }
-
-// fn create_config(file_name: []const u8, config: Config, allocator: std.mem.Allocator) !?Config {
-//     const file = std.fs.cwd().openFile(file_name, .{}) catch |err| {
-//         switch (err) {
-//             error.FileNotFound => {
-//                 const file = try std.fs.cwd().createFile(file_name, .{});
-//                 defer file.close();
-//                 try std.json.stringify(config, .{ .whitespace = .indent_tab }, file.writer());
-//                 return null;
-//             },
-//             else => {
-//                 return err;
-//             },
-//         }
-//     };
-
-//     //else the file already existed
-//     try std.io.getStdOut().writer().print("File '{s}' already exists.\n", .{file_name});
-//     const config_parse = try Config.parse(allocator, file);
-//     try std.json.stringify(config_parse.value, .{ .whitespace = .indent_tab }, file.writer());
-// }
 
 ///Attempts to create new config file. If the file name already exists, it will load that existing file and return the config.
 fn create_config(file_name: []const u8, config: Config, allocator: std.mem.Allocator) !?Config {
