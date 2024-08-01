@@ -54,6 +54,13 @@ pub fn build(b: *std.Build) !void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
+    const mcl_mock = b.dependency("mcl", .{
+        .target = target,
+        .optimize = optimize,
+        .mdfunc = mdfunc_lib_path,
+        .mdfunc_mock = true,
+    });
+
     const check_exe = b.addExecutable(.{
         .name = "mmc-cli",
         .root_source_file = b.path("src/main.zig"),
@@ -62,7 +69,7 @@ pub fn build(b: *std.Build) !void {
     });
     check_exe.root_module.addImport("version", version);
     check_exe.root_module.addImport("network", network_dep.module("network"));
-    check_exe.root_module.addImport("mcl", mcl.module("mcl"));
+    check_exe.root_module.addImport("mcl", mcl_mock.module("mcl"));
     check_exe.root_module.addImport("chrono", chrono.module("chrono"));
 
     const check = b.step("check", "Check if `mmc-cli` compiles");
@@ -77,7 +84,7 @@ pub fn build(b: *std.Build) !void {
     });
     unit_tests.root_module.addImport("version", version);
     unit_tests.root_module.addImport("network", network_dep.module("network"));
-    unit_tests.root_module.addImport("mcl", mcl.module("mcl"));
+    unit_tests.root_module.addImport("mcl", mcl_mock.module("mcl"));
     unit_tests.root_module.addImport("chrono", chrono.module("chrono"));
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
