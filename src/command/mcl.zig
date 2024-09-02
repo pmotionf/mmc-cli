@@ -351,34 +351,20 @@ pub fn init(c: Config) !void {
         .execute = &mclCalibrate,
     });
     errdefer _ = command.registry.orderedRemove("CALIBRATE");
-    try command.registry.put("HOME_SLIDER", .{
-        .name = "HOME_SLIDER",
+    try command.registry.put("SET_LINE_ZERO", .{
+        .name = "SET_LINE_ZERO",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
         },
-        .short_description = "Home an unrecognized slider on the first axis.",
+        .short_description = "Set line zero position.",
         .long_description =
-        \\Home an unrecognized slider on the first axis. The unrecognized
-        \\slider must be positioned in the correct homing position.
+        \\Set a system line's zero position based on a current slider's 
+        \\position. Aforementioned slider must be located at first axis of
+        \\system line. 
         ,
-        .execute = &mclHomeSlider,
+        .execute = &setLineZero,
     });
-    errdefer _ = command.registry.orderedRemove("HOME_SLIDER");
-    try command.registry.put("WAIT_HOME_SLIDER", .{
-        .name = "WAIT_HOME_SLIDER",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "result variable", .resolve = false, .optional = true },
-        },
-        .short_description = "Wait until homing of slider is complete.",
-        .long_description =
-        \\Wait until homing is complete and a slider is recognized on the first
-        \\axis. If an optional result variable name is provided, then store the
-        \\recognized slider ID in the variable.
-        ,
-        .execute = &mclWaitHomeSlider,
-    });
-    errdefer _ = command.registry.orderedRemove("WAIT_HOME_SLIDER");
+    errdefer _ = command.registry.orderedRemove("SET_LINE_ZERO");
     try command.registry.put("ISOLATE", .{
         .name = "ISOLATE",
         .parameters = &[_]command.Command.Parameter{
@@ -875,46 +861,15 @@ fn mclCalibrate(params: [][]const u8) !void {
     try sendCommand(station);
 }
 
-fn mclHomeSlider(params: [][]const u8) !void {
+fn setLineZero(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
 
     const station = line.stations[0];
-
     try waitCommandReady(station);
-    station.ww.command_code = .Home;
+    station.ww.command_code = .SetLineZero;
     try sendCommand(station);
-}
-
-fn mclWaitHomeSlider(params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const result_var: []const u8 = params[1];
-
-    const line_idx: usize = try matchLine(line_names, line_name);
-    const line: mcl.Line = mcl.lines[line_idx];
-
-    const station = line.stations[0];
-
-    var slider: ?u16 = null;
-    while (true) {
-        try command.checkCommandInterrupt();
-        try station.pollWr();
-
-        if (station.wr.slider.axis1.id != 0) {
-            slider = station.wr.slider.axis1.id;
-            break;
-        }
-    }
-
-    std.log.info("Slider {d} homed.\n", .{slider.?});
-    if (result_var.len > 0) {
-        var int_buf: [8]u8 = undefined;
-        try command.variables.put(
-            result_var,
-            try std.fmt.bufPrint(&int_buf, "{d}", .{slider.?}),
-        );
-    }
 }
 
 fn mclIsolate(params: [][]const u8) !void {
