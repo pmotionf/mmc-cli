@@ -3,7 +3,7 @@ const std = @import("std");
 const network = @import("network");
 const command = @import("command.zig");
 
-pub const std_options = .{
+pub const std_options: std.Options = .{
     .logFn = command.logFn,
 };
 
