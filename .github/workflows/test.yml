@@ -1,0 +1,30 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [self-hosted]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Log masks
+        run: echo "::add-mask::$NAME_MASK"
+
+      - uses: actions/checkout@v4
+
+      - name: Run zig fmt
+        if: matrix.os == 'self-hosted'
+        run: zig fmt --check .
+
+      - name: Run tests
+        run: zig build test -Dmdfunc=$MDFUNC_PATH --summary all
