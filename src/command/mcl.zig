@@ -11,7 +11,7 @@ var line_accelerations: []u7 = undefined;
 const Direction = mcl.Direction;
 const Station = mcl.Station;
 
-const RegisterType = enum { X, Y, Wr, Ww };
+const RegisterType = enum { x, y, wr, ww };
 var register_log_file: ?std.fs.File = null;
 var register_list: [4]?RegisterType = std.mem.zeroes([4]?RegisterType);
 
@@ -1948,9 +1948,8 @@ fn setLogRegister(params: [][]const u8) !void {
         register_list[register_idx] = null;
         register_idx += 1;
     }
-    // const registers = [4][]const u8{ "X", "Y", "Ww", "Wr" };
-    var iterator_len: u8 = 0;
-    var register_iterator = std.mem.tokenizeSequence(u8, params[0], "_");
+    var iterator_len: u8 = 0; // Used for checking register validity
+    var register_iterator = std.mem.tokenizeSequence(u8, params[0], ",");
     while (register_iterator.next()) |token| {
         if (std.meta.stringToEnum(RegisterType, token)) |item| {
             register_idx = 0;
@@ -1973,8 +1972,8 @@ fn setLogRegister(params: [][]const u8) !void {
             buf_len += @tagName(register).len + 1;
             register_idx += 1;
         }
-        if (iterator_len != register_idx) return error.InvalidRegister;
-    } else return error.InvalidRegister;
+        if (iterator_len != register_idx) return error.InvalidRegister2;
+    } else return error.InvalidRegister1;
     std.log.info("{s}", .{info_buffer[0 .. buf_len - 1]});
 
     var path_buffer: [512]u8 = undefined;
@@ -2003,16 +2002,6 @@ fn setLogRegister(params: [][]const u8) !void {
     };
     std.log.info("{s}", .{file_path});
 
-    // Shall be defined in comptime
-    const _x: mcl.registers.X = .{};
-    const _y: mcl.registers.Y = .{};
-    const _wr: mcl.registers.Wr = .{};
-    const _ww: mcl.registers.Ww = .{};
-    const register_X_fields = registerToString("", _x);
-    const register_Y_fields = registerToString("", _y);
-    const register_Wr_fields = registerToString("", _wr);
-    const register_Ww_fields = registerToString("", _ww);
-
     if (register_log_file) |f| {
         f.close();
     }
@@ -2020,30 +2009,65 @@ fn setLogRegister(params: [][]const u8) !void {
     register_idx = 0;
     if (register_log_file) |f| {
         while (register_list[register_idx]) |register| {
-            try f.writer().print("{s}", .{switch (register) {
-                .X => register_X_fields,
-                .Y => register_Y_fields,
-                .Wr => register_Wr_fields,
-                .Ww => register_Ww_fields,
-            }});
+            inline for (@typeInfo(@TypeOf(register)).@"enum".fields) |register_enum| {
+                if (@intFromEnum(register) == register_enum.value) {
+                    const field_string = registerFieldToString("", @FieldType(mcl.registers, register_enum.name));
+                    try f.writer().print("{s}", .{field_string});
+                    break;
+                }
+            }
             register_idx += 1;
-            if (register_list[register_idx]) |_| try f.writer().writeByte(',');
         }
         try f.writer().writeByte('\n');
     }
 }
 
-fn logRegister(_: [][]const u8) !void {}
+fn logRegister(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const axis_id = try std.fmt.parseInt(i16, params[1], 0);
 
-fn registerToString(comptime parent: []const u8, comptime parent_field: anytype) []const u8 {
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+
+    if (axis_id < 1 or axis_id > line.axes.len) {
+        return error.InvalidAxis;
+    }
+
+    const axis: mcl.Axis.Index.Line = @intCast(axis_id - 1);
+
+    const station_index: Station.Index = @intCast(axis / 3);
+
+    var register_idx: u2 = 0;
+    // TODO poll the only desired registers
+    try line.stations[station_index].pollX();
+    try line.stations[station_index].pollY();
+    try line.stations[station_index].pollWr();
+    try line.stations[station_index].pollWw();
+
+    register_idx = 0;
+    if (register_log_file) |f| {
+        while (register_list[register_idx]) |register| {
+            inline for (@typeInfo(@TypeOf(register)).@"enum".fields) |register_enum| {
+                if (@intFromEnum(register) == register_enum.value) {
+                    try registerValueToString(f.writer(), @field(line.stations[station_index], register_enum.name));
+                    break;
+                }
+            }
+            register_idx += 1;
+        }
+        try f.writer().writeByte('\n');
+    }
+}
+
+fn registerFieldToString(comptime parent: []const u8, comptime ParentType: type) []const u8 {
     comptime var result: []const u8 = "";
-    inline for (@typeInfo(@TypeOf(parent_field)).@"struct".fields) |child_field| {
+    inline for (@typeInfo(ParentType).@"struct".fields) |child_field| {
         if (child_field.name[0] == '_') continue;
         if (@typeInfo(child_field.type) == .@"struct") {
             if (parent.len == 0) {
-                result = result ++ comptime registerToString(child_field.name, @field(parent_field, child_field.name));
+                result = result ++ comptime registerFieldToString(child_field.name, child_field.type);
             } else {
-                result = result ++ comptime registerToString(parent ++ "." ++ child_field.name, @field(parent_field, child_field.name));
+                result = result ++ comptime registerFieldToString(parent ++ "." ++ child_field.name, child_field.type);
             }
         } else {
             if (parent.len == 0) {
@@ -2051,10 +2075,21 @@ fn registerToString(comptime parent: []const u8, comptime parent_field: anytype)
             } else {
                 result = result ++ parent ++ "." ++ child_field.name;
             }
+            result = result ++ ",";
         }
-        result = result ++ ",";
     }
-    return result[0 .. result.len - 1];
+    return result;
+}
+
+fn registerValueToString(f: std.fs.File.Writer, parent_field: anytype) !void {
+    inline for (@typeInfo(@TypeOf(parent_field.*)).@"struct".fields) |child_field| {
+        if (child_field.name[0] == '_') continue;
+        if (comptime @typeInfo(child_field.type) == .@"struct") {
+            try registerValueToString(f, &@field(parent_field.*, child_field.name));
+        } else {
+            try std.fmt.format(f, "{},", .{@field(parent_field.*, child_field.name)});
+        }
+    }
 }
 
 fn matchLine(names: [][]const u8, name: []const u8) !usize {
