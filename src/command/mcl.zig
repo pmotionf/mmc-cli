@@ -11,6 +11,10 @@ var line_accelerations: []u7 = undefined;
 const Direction = mcl.Direction;
 const Station = mcl.Station;
 
+const RegisterType = enum { X, Y, Wr, Ww };
+var register_log_file: ?std.fs.File = null;
+var register_list: [4]?RegisterType = std.mem.zeroes([4]?RegisterType);
+
 pub const Config = struct {
     line_names: [][]const u8,
     lines: []mcl.Config.Line,
@@ -624,11 +628,51 @@ pub fn init(c: Config) !void {
         .execute = &mclSliderStopPull,
     });
     errdefer _ = command.registry.orderedRemove("STOP_PULL_SLIDER");
+    try command.registry.put("SET_LOG_REGISTER", .{
+        .name = "SET_LOG_REGISTER",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "register list" },
+            .{ .name = "path", .optional = true },
+        },
+        .short_description = "Setup for LOG_REGISTER command.",
+        .long_description =
+        \\Create a log file for logging register value based on the register list
+        \\provided by the user. The "register list" shall be written with comma "," 
+        \\separator, e.g. X,Wr to log register X and Wr only. Valid registers are 
+        \\X, Y, Wr, and Ww. If a path is not provided, the the default logging file
+        \\containing all the register value triggerred by LOG_REGISTER will be 
+        \\created in the current working directory as the following:
+        \\"mmc-register-[register list]-YYYY.MM.DD-HH.MM.SS.csv". 
+        \\
+        \\Note that this command will not log any register value, the register 
+        \\will be logged by LOG_REGISTER command. 
+        ,
+        .execute = &setLogRegister,
+    });
+    errdefer _ = command.registry.orderedRemove("SET_LOG_REGISTER");
+    try command.registry.put("LOG_REGISTER", .{
+        .name = "LOG_REGISTER",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+        },
+        .short_description = "Log the specified register value.",
+        .long_description =
+        \\Poll the specified register and write the value to logging file created
+        \\by SET_LOG_REGISTER. The station register value to be saved depends on the
+        \\provided axis.
+        ,
+        .execute = &logRegister,
+    });
+    errdefer _ = command.registry.orderedRemove("LOG_REGISTER");
 }
 
 pub fn deinit() void {
     arena.deinit();
     line_names = undefined;
+    if (register_log_file) |f| {
+        f.close();
+    }
 }
 
 fn mclVersion(_: [][]const u8) !void {
@@ -1894,6 +1938,100 @@ fn mclWaitRecoverSlider(params: [][]const u8) !void {
             try std.fmt.bufPrint(&int_buf, "{d}", .{slider_id}),
         );
     }
+}
+
+fn setLogRegister(params: [][]const u8) !void {
+    const path = params[1];
+    // Reset register list
+    var register_idx: u2 = 0;
+    while (register_list[register_idx]) |_| {
+        register_list[register_idx] = null;
+        register_idx += 1;
+    }
+    // const registers = [4][]const u8{ "X", "Y", "Ww", "Wr" };
+    var iterator_len: u8 = 0;
+    var register_iterator = std.mem.tokenizeSequence(u8, params[0], "_");
+    while (register_iterator.next()) |token| {
+        if (std.meta.stringToEnum(RegisterType, token)) |item| {
+            register_idx = 0;
+            while (register_list[register_idx]) |_| register_idx += 1;
+            register_list[register_idx] = item;
+        }
+        iterator_len += 1;
+    }
+
+    // Check register validity and print if valid
+    var info_buffer: [64]u8 = undefined;
+    const prefix = "Ready to log register: ";
+    @memcpy(info_buffer[0..prefix.len], prefix);
+    var buf_len = prefix.len;
+    if (register_list[0]) |_| {
+        register_idx = 0;
+        while (register_list[register_idx]) |register| {
+            @memcpy(info_buffer[buf_len .. buf_len + @tagName(register).len], @tagName(register));
+            @memcpy(info_buffer[buf_len + @tagName(register).len .. buf_len + @tagName(register).len + 1], ",");
+            buf_len += @tagName(register).len + 1;
+            register_idx += 1;
+        }
+        if (iterator_len != register_idx) return error.InvalidRegister;
+    } else return error.InvalidRegister;
+    std.log.info("{s}", .{info_buffer[0 .. buf_len - 1]});
+
+    var path_buffer: [512]u8 = undefined;
+    const file_path = if (path.len > 0) path else p: {
+        var timestamp: u64 = @intCast(std.time.timestamp());
+        timestamp += std.time.s_per_hour * 9;
+        const days_since_epoch: i32 = @intCast(timestamp / std.time.s_per_day);
+        const ymd =
+            command.chrono.date.YearMonthDay.fromDaysSinceUnixEpoch(days_since_epoch);
+        const time_day: u32 = @intCast(timestamp % std.time.s_per_day);
+        const time = try command.chrono.Time.fromNumSecondsFromMidnight(time_day, 0);
+
+        break :p try std.fmt.bufPrint(
+            &path_buffer,
+            "mmc-register-{s}-{}.{:0>2}.{:0>2}-{:0>2}.{:0>2}.{:0>2}.csv",
+            .{
+                info_buffer[prefix.len .. buf_len - 1],
+                ymd.year,
+                ymd.month.number(),
+                ymd.day,
+                time.hour(),
+                time.minute(),
+                time.second(),
+            },
+        );
+    };
+    std.log.info("{s}", .{file_path});
+
+    // Shall be defined in comptime
+    const register_X_fields = registerToString("X");
+    const register_Y_fields = registerToString("Y");
+    const register_Wr_fields = registerToString("Wr");
+    const register_Ww_fields = registerToString("Ww");
+
+    if (register_log_file) |f| {
+        f.close();
+    }
+    register_log_file = try std.fs.cwd().createFile(file_path, .{});
+    register_idx = 0;
+    if (register_log_file) |f| {
+        while (register_list[register_idx]) |register| {
+            try f.writer().print("{s}", .{switch (register) {
+                .X => register_X_fields,
+                .Y => register_Y_fields,
+                .Wr => register_Wr_fields,
+                .Ww => register_Ww_fields,
+            }});
+            register_idx += 1;
+            if (register_list[register_idx]) |_| try f.writer().writeByte(',');
+        }
+    }
+}
+
+fn logRegister(_: [][]const u8) !void {}
+
+fn registerToString(comptime register: []const u8) []const u8 {
+    return register;
 }
 
 fn matchLine(names: [][]const u8, name: []const u8) !usize {
