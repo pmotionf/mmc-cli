@@ -2004,10 +2004,14 @@ fn setLogRegister(params: [][]const u8) !void {
     std.log.info("{s}", .{file_path});
 
     // Shall be defined in comptime
-    const register_X_fields = registerToString("X");
-    const register_Y_fields = registerToString("Y");
-    const register_Wr_fields = registerToString("Wr");
-    const register_Ww_fields = registerToString("Ww");
+    const _x: mcl.registers.X = .{};
+    const _y: mcl.registers.Y = .{};
+    const _wr: mcl.registers.Wr = .{};
+    const _ww: mcl.registers.Ww = .{};
+    const register_X_fields = registerToString("", _x);
+    const register_Y_fields = registerToString("", _y);
+    const register_Wr_fields = registerToString("", _wr);
+    const register_Ww_fields = registerToString("", _ww);
 
     if (register_log_file) |f| {
         f.close();
@@ -2025,13 +2029,32 @@ fn setLogRegister(params: [][]const u8) !void {
             register_idx += 1;
             if (register_list[register_idx]) |_| try f.writer().writeByte(',');
         }
+        try f.writer().writeByte('\n');
     }
 }
 
 fn logRegister(_: [][]const u8) !void {}
 
-fn registerToString(comptime register: []const u8) []const u8 {
-    return register;
+fn registerToString(comptime parent: []const u8, comptime parent_field: anytype) []const u8 {
+    comptime var result: []const u8 = "";
+    inline for (@typeInfo(@TypeOf(parent_field)).@"struct".fields) |child_field| {
+        if (child_field.name[0] == '_') continue;
+        if (@typeInfo(child_field.type) == .@"struct") {
+            if (parent.len == 0) {
+                result = result ++ comptime registerToString(child_field.name, @field(parent_field, child_field.name));
+            } else {
+                result = result ++ comptime registerToString(parent ++ "." ++ child_field.name, @field(parent_field, child_field.name));
+            }
+        } else {
+            if (parent.len == 0) {
+                result = result ++ child_field.name;
+            } else {
+                result = result ++ parent ++ "." ++ child_field.name;
+            }
+        }
+        result = result ++ ",";
+    }
+    return result[0 .. result.len - 1];
 }
 
 fn matchLine(names: [][]const u8, name: []const u8) !usize {
