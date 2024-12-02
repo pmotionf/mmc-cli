@@ -10,10 +10,16 @@ var line_accelerations: []u7 = undefined;
 
 const Direction = mcl.Direction;
 const Station = mcl.Station;
+const Registers = struct {
+    x: mcl.registers.X,
+    y: mcl.registers.Y,
+    wr: mcl.registers.Wr,
+    ww: mcl.registers.Ww,
+};
 
 const RegisterType = enum { x, y, wr, ww };
 var register_log_file: ?std.fs.File = null;
-var register_list: [4]?RegisterType = std.mem.zeroes([4]?RegisterType);
+var register_list = std.EnumArray(RegisterType, bool).initFill(false);
 
 pub const Config = struct {
     line_names: [][]const u8,
@@ -1945,36 +1951,48 @@ fn setLogRegister(params: [][]const u8) !void {
     const path = params[1];
     // Reset register list
     var register_idx: u2 = 0;
-    while (register_list[register_idx]) |_| {
-        register_list[register_idx] = null;
-        register_idx += 1;
+    var register_iterator = register_list.iterator();
+    while (register_iterator.next()) |reg_entry| {
+        // reg_entry.value = false;
+        register_list.set(reg_entry.key, false);
     }
-    var iterator_len: u8 = 0; // Used for checking register validity
-    var register_iterator = std.mem.tokenizeSequence(u8, params[0], ",");
-    while (register_iterator.next()) |token| {
+    // var iterator_len: u8 = 0; // Used for checking register validity
+    var iterator = std.mem.tokenizeSequence(u8, params[0], ",");
+    while (iterator.next()) |token| {
         if (std.meta.stringToEnum(RegisterType, token)) |item| {
-            register_idx = 0;
-            while (register_list[register_idx]) |_| register_idx += 1;
-            register_list[register_idx] = item;
+            register_list.set(item, true);
+        } else {
+            return error.InvalidRegister;
         }
-        iterator_len += 1;
     }
 
-    // Check register validity and print if valid
     var info_buffer: [64]u8 = undefined;
     const prefix = "Ready to log register: ";
     @memcpy(info_buffer[0..prefix.len], prefix);
     var buf_len = prefix.len;
-    if (register_list[0]) |_| {
-        register_idx = 0;
-        while (register_list[register_idx]) |register| {
-            @memcpy(info_buffer[buf_len .. buf_len + @tagName(register).len], @tagName(register));
-            @memcpy(info_buffer[buf_len + @tagName(register).len .. buf_len + @tagName(register).len + 1], ",");
-            buf_len += @tagName(register).len + 1;
-            register_idx += 1;
-        }
-        if (iterator_len != register_idx) return error.InvalidRegister;
-    } else return error.InvalidRegister;
+    register_iterator.index = 0;
+    while (register_iterator.next()) |reg_entry| {
+        if (!register_list.get(reg_entry.key)) continue;
+        @memcpy(info_buffer[buf_len .. buf_len + @tagName(reg_entry.key).len], @tagName(reg_entry.key));
+        @memcpy(info_buffer[buf_len + @tagName(reg_entry.key).len .. buf_len + @tagName(reg_entry.key).len + 1], ",");
+        buf_len += @tagName(reg_entry.key).len + 1;
+    }
+
+    // // Check register validity and print if valid
+    // var info_buffer: [64]u8 = undefined;
+    // const prefix = "Ready to log register: ";
+    // @memcpy(info_buffer[0..prefix.len], prefix);
+    // var buf_len = prefix.len;
+    // if (register_list[0]) |_| {
+    //     register_idx = 0;
+    //     while (register_list[register_idx]) |register| {
+    //         @memcpy(info_buffer[buf_len .. buf_len + @tagName(register).len], @tagName(register));
+    //         @memcpy(info_buffer[buf_len + @tagName(register).len .. buf_len + @tagName(register).len + 1], ",");
+    //         buf_len += @tagName(register).len + 1;
+    //         register_idx += 1;
+    //     }
+    //     if (iterator_len != register_idx) return error.InvalidRegister;
+    // } else return error.InvalidRegister;
     std.log.info("{s}", .{info_buffer[0 .. buf_len - 1]});
 
     var path_buffer: [512]u8 = undefined;
@@ -2009,15 +2027,16 @@ fn setLogRegister(params: [][]const u8) !void {
     register_log_file = try std.fs.cwd().createFile(file_path, .{});
     register_idx = 0;
     if (register_log_file) |f| {
-        while (register_list[register_idx]) |register| {
-            inline for (@typeInfo(@TypeOf(register)).@"enum".fields) |register_enum| {
-                if (@intFromEnum(register) == register_enum.value) {
+        register_iterator.index = 0;
+        while (register_iterator.next()) |reg_entry| {
+            if (!register_list.get(reg_entry.key)) continue;
+            inline for (@typeInfo(@TypeOf(reg_entry.key)).@"enum".fields) |register_enum| {
+                if (@intFromEnum(reg_entry.key) == register_enum.value) {
                     const field_string = registerFieldToString("", @FieldType(mcl.registers, register_enum.name));
                     try f.writer().print("{s}", .{field_string});
                     break;
                 }
             }
-            register_idx += 1;
         }
         try f.writer().writeByte('\n');
     }
@@ -2043,21 +2062,22 @@ fn logRegister(params: [][]const u8) !void {
 
     var register_idx: u2 = 0;
     // TODO poll the only desired registers
-    try line.stations[station_index].pollX();
-    try line.stations[station_index].pollY();
-    try line.stations[station_index].pollWr();
-    try line.stations[station_index].pollWw();
+    // try line.stations[station_index].pollX();
+    // try line.stations[station_index].pollY();
+    // try line.stations[station_index].pollWr();
+    // try line.stations[station_index].pollWw();
 
     register_idx = 0;
     if (register_log_file) |f| {
-        while (register_list[register_idx]) |register| {
-            inline for (@typeInfo(@TypeOf(register)).@"enum".fields) |register_enum| {
-                if (@intFromEnum(register) == register_enum.value) {
+        var register_iterator = register_list.iterator();
+        while (register_iterator.next()) |reg_entry| {
+            if (!register_list.get(reg_entry.key)) continue;
+            inline for (@typeInfo(@TypeOf(reg_entry.key)).@"enum".fields) |register_enum| {
+                if (@intFromEnum(reg_entry.key) == register_enum.value) {
                     try registerValueToString(f.writer(), @field(line.stations[station_index], register_enum.name));
                     break;
                 }
             }
-            register_idx += 1;
         }
         try f.writer().writeByte('\n');
     }
