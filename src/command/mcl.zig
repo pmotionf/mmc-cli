@@ -634,43 +634,43 @@ pub fn init(c: Config) !void {
         .execute = &mclSliderStopPull,
     });
     errdefer _ = command.registry.orderedRemove("STOP_PULL_SLIDER");
-    try command.registry.put("SET_LOG_REGISTER", .{
-        .name = "SET_LOG_REGISTER",
+    try command.registry.put("SET_LOG_REGISTERS", .{
+        .name = "SET_LOG_REGISTERS",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "register list" },
+            .{ .name = "axis" },
             .{ .name = "path", .optional = true },
         },
-        .short_description = "Setup for LOG_REGISTER command.",
+        .short_description = "Setup for LOG_REGISTERS command.",
         .long_description =
         \\Create a log file for logging register value based on the register list
         \\provided by the user. The "register list" shall be written with comma "," 
-        \\separator, e.g. X,Wr to log register X and Wr only. Valid registers are 
-        \\X, Y, Wr, and Ww. If a path is not provided, the the default logging file
-        \\containing all the register value triggerred by LOG_REGISTER will be 
-        \\created in the current working directory as the following:
+        \\separator, e.g. x,wr to log register X and Wr only. Valid registers are 
+        \\x, y, wr, and ww. The station in which register value to be saved depends on 
+        \\the provided axis. If a path is not provided, the the default logging file
+        \\containing all the register value triggerred by LOG_REGISTER will be created 
+        \\in the current working directory as the following:
         \\"mmc-register-[register list]-YYYY.MM.DD-HH.MM.SS.csv". 
         \\
         \\Note that this command will not log any register value, the register 
         \\will be logged by LOG_REGISTER command. 
         ,
-        .execute = &setLogRegister,
+        .execute = &setLogRegisters,
     });
-    errdefer _ = command.registry.orderedRemove("SET_LOG_REGISTER");
-    try command.registry.put("LOG_REGISTER", .{
-        .name = "LOG_REGISTER",
+    errdefer _ = command.registry.orderedRemove("SET_LOG_REGISTERS");
+    try command.registry.put("LOG_REGISTERS", .{
+        .name = "LOG_REGISTERS",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "axis" },
         },
         .short_description = "Log the specified register value.",
         .long_description =
         \\Poll the specified register and write the value to logging file created
-        \\by SET_LOG_REGISTER. The station register value to be saved depends on the
-        \\provided axis.
+        \\by SET_LOG_REGISTER command.
         ,
-        .execute = &logRegister,
+        .execute = &logRegisters,
     });
-    errdefer _ = command.registry.orderedRemove("LOG_REGISTER");
+    errdefer _ = command.registry.orderedRemove("LOG_REGISTERS");
 }
 
 pub fn deinit() void {
@@ -1947,7 +1947,7 @@ fn mclWaitRecoverSlider(params: [][]const u8) !void {
     }
 }
 
-fn setLogRegister(params: [][]const u8) !void {
+fn setLogRegisters(params: [][]const u8) !void {
     const path = params[1];
     // Reset register list
     var register_idx: u2 = 0;
@@ -2042,7 +2042,7 @@ fn setLogRegister(params: [][]const u8) !void {
     }
 }
 
-fn logRegister(params: [][]const u8) !void {
+fn logRegisters(params: [][]const u8) !void {
     if (register_log_file) |_| {} else {
         return error.LoggingFileNotFound;
     }
