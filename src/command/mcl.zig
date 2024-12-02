@@ -673,6 +673,7 @@ pub fn deinit() void {
     if (register_log_file) |f| {
         f.close();
     }
+    register_log_file = null;
 }
 
 fn mclVersion(_: [][]const u8) !void {
@@ -1972,8 +1973,8 @@ fn setLogRegister(params: [][]const u8) !void {
             buf_len += @tagName(register).len + 1;
             register_idx += 1;
         }
-        if (iterator_len != register_idx) return error.InvalidRegister2;
-    } else return error.InvalidRegister1;
+        if (iterator_len != register_idx) return error.InvalidRegister;
+    } else return error.InvalidRegister;
     std.log.info("{s}", .{info_buffer[0 .. buf_len - 1]});
 
     var path_buffer: [512]u8 = undefined;
@@ -2023,6 +2024,9 @@ fn setLogRegister(params: [][]const u8) !void {
 }
 
 fn logRegister(params: [][]const u8) !void {
+    if (register_log_file) |_| {} else {
+        return error.LoggingFileNotFound;
+    }
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(i16, params[1], 0);
 
