@@ -20,6 +20,7 @@ const Registers = struct {
 const RegisterType = enum { x, y, wr, ww };
 var register_log_file: ?std.fs.File = null;
 var register_list = std.EnumArray(RegisterType, bool).initFill(false);
+var station_id_log: std.ArrayList(u8) = undefined;
 
 pub const Config = struct {
     line_names: [][]const u8,
@@ -36,6 +37,7 @@ pub fn init(c: Config) !void {
     arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     errdefer arena.deinit();
     allocator = arena.allocator();
+    station_id_log = std.ArrayList(u8).init(allocator);
 
     try mcl.init(allocator, .{ .lines = c.lines });
 
@@ -637,19 +639,21 @@ pub fn init(c: Config) !void {
     try command.registry.put("SET_LOG_REGISTERS", .{
         .name = "SET_LOG_REGISTERS",
         .parameters = &[_]command.Command.Parameter{
-            .{ .name = "register list" },
+            .{ .name = "line name" },
             .{ .name = "axis" },
+            .{ .name = "register list" },
             .{ .name = "path", .optional = true },
         },
         .short_description = "Setup for LOG_REGISTERS command.",
         .long_description =
         \\Create a log file for logging register value based on the register list
-        \\provided by the user. The "register list" shall be written with comma "," 
-        \\separator, e.g. x,wr to log register X and Wr only. Valid registers are 
-        \\x, y, wr, and ww. The station in which register value to be saved depends on 
-        \\the provided axis. If a path is not provided, the the default logging file
-        \\containing all the register value triggerred by LOG_REGISTER will be created 
-        \\in the current working directory as the following:
+        \\and axis provided by the user. Both "register list" and "axis" shall be 
+        \\written with comma "," separator, e.g., "> SET_LOG_REGISTER x,wr 1,4".
+        \\Valid registers are x, y, wr, and ww. The station in which register value 
+        \\to be saved depends on the provided axis. If a path is not provided, the 
+        \\default logging file containing all the register value triggerred by 
+        \\LOG_REGISTER will be created in the current working directory as the 
+        \\following:
         \\"mmc-register-[register list]-YYYY.MM.DD-HH.MM.SS.csv". 
         \\
         \\Note that this command will not log any register value, the register 
@@ -666,7 +670,7 @@ pub fn init(c: Config) !void {
         .short_description = "Log the specified register value.",
         .long_description =
         \\Poll the specified register and write the value to logging file created
-        \\by SET_LOG_REGISTER command.
+        \\by SET_LOG_REGISTER command. 
         ,
         .execute = &logRegisters,
     });
@@ -1948,17 +1952,34 @@ fn mclWaitRecoverSlider(params: [][]const u8) !void {
 }
 
 fn setLogRegisters(params: [][]const u8) !void {
-    const path = params[1];
+    const line_name: []const u8 = params[0];
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+
     // Reset register list
-    var register_idx: u2 = 0;
     var register_iterator = register_list.iterator();
     while (register_iterator.next()) |reg_entry| {
-        // reg_entry.value = false;
         register_list.set(reg_entry.key, false);
     }
-    // var iterator_len: u8 = 0; // Used for checking register validity
-    var iterator = std.mem.tokenizeSequence(u8, params[0], ",");
-    while (iterator.next()) |token| {
+
+    // Iterate over axis list from parameters
+    var axis_input_iterator = std.mem.tokenizeSequence(u8, params[1], ",");
+    outer: while (axis_input_iterator.next()) |token| {
+        const axis_index = try std.fmt.parseInt(mcl.Station.Id, token, 0) - 1;
+        if (axis_index < 0 or axis_index > line.axes.len - 1) {
+            return error.InvalidAxis;
+        }
+        const station_index: Station.Index = @intCast(axis_index / 3);
+        //TODO: Better checking than O(n)
+        for (station_id_log.items) |item| {
+            if (station_index + 1 == item) continue :outer;
+        }
+        try station_id_log.append(station_index + 1);
+    }
+
+    // Iterate over register list from parameters
+    var reg_input_iterator = std.mem.tokenizeSequence(u8, params[2], ",");
+    while (reg_input_iterator.next()) |token| {
         if (std.meta.stringToEnum(RegisterType, token)) |item| {
             register_list.set(item, true);
         } else {
@@ -1970,6 +1991,7 @@ fn setLogRegisters(params: [][]const u8) !void {
     const prefix = "Ready to log register: ";
     @memcpy(info_buffer[0..prefix.len], prefix);
     var buf_len = prefix.len;
+
     register_iterator.index = 0;
     while (register_iterator.next()) |reg_entry| {
         if (!register_list.get(reg_entry.key)) continue;
@@ -1977,24 +1999,9 @@ fn setLogRegisters(params: [][]const u8) !void {
         @memcpy(info_buffer[buf_len + @tagName(reg_entry.key).len .. buf_len + @tagName(reg_entry.key).len + 1], ",");
         buf_len += @tagName(reg_entry.key).len + 1;
     }
-
-    // // Check register validity and print if valid
-    // var info_buffer: [64]u8 = undefined;
-    // const prefix = "Ready to log register: ";
-    // @memcpy(info_buffer[0..prefix.len], prefix);
-    // var buf_len = prefix.len;
-    // if (register_list[0]) |_| {
-    //     register_idx = 0;
-    //     while (register_list[register_idx]) |register| {
-    //         @memcpy(info_buffer[buf_len .. buf_len + @tagName(register).len], @tagName(register));
-    //         @memcpy(info_buffer[buf_len + @tagName(register).len .. buf_len + @tagName(register).len + 1], ",");
-    //         buf_len += @tagName(register).len + 1;
-    //         register_idx += 1;
-    //     }
-    //     if (iterator_len != register_idx) return error.InvalidRegister;
-    // } else return error.InvalidRegister;
     std.log.info("{s}", .{info_buffer[0 .. buf_len - 1]});
 
+    const path = params[3];
     var path_buffer: [512]u8 = undefined;
     const file_path = if (path.len > 0) path else p: {
         var timestamp: u64 = @intCast(std.time.timestamp());
@@ -2025,16 +2032,22 @@ fn setLogRegisters(params: [][]const u8) !void {
         f.close();
     }
     register_log_file = try std.fs.cwd().createFile(file_path, .{});
-    register_idx = 0;
     if (register_log_file) |f| {
         register_iterator.index = 0;
         while (register_iterator.next()) |reg_entry| {
             if (!register_list.get(reg_entry.key)) continue;
-            inline for (@typeInfo(@TypeOf(reg_entry.key)).@"enum".fields) |register_enum| {
-                if (@intFromEnum(reg_entry.key) == register_enum.value) {
-                    const field_string = registerFieldToString("", @FieldType(mcl.registers, register_enum.name));
-                    try f.writer().print("{s}", .{field_string});
-                    break;
+            for (station_id_log.items) |station_id| {
+                inline for (@typeInfo(@TypeOf(reg_entry.key)).@"enum".fields) |register_enum| {
+                    if (@intFromEnum(reg_entry.key) == register_enum.value) {
+                        var _buffer: [64]u8 = undefined;
+                        try registerFieldToString(
+                            f.writer(),
+                            try std.fmt.bufPrint(&_buffer, "station{d}", .{station_id}),
+                            "",
+                            @FieldType(mcl.registers, register_enum.name),
+                        );
+                        break;
+                    }
                 }
             }
         }
@@ -2047,35 +2060,29 @@ fn logRegisters(params: [][]const u8) !void {
         return error.LoggingFileNotFound;
     }
     const line_name: []const u8 = params[0];
-    const axis_id = try std.fmt.parseInt(i16, params[1], 0);
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
 
-    if (axis_id < 1 or axis_id > line.axes.len) {
-        return error.InvalidAxis;
-    }
-
-    const axis: mcl.Axis.Index.Line = @intCast(axis_id - 1);
-
-    const station_index: Station.Index = @intCast(axis / 3);
-
-    var register_idx: u2 = 0;
     // TODO poll the only desired registers
     // try line.stations[station_index].pollX();
     // try line.stations[station_index].pollY();
     // try line.stations[station_index].pollWr();
     // try line.stations[station_index].pollWw();
 
-    register_idx = 0;
     if (register_log_file) |f| {
         var register_iterator = register_list.iterator();
         while (register_iterator.next()) |reg_entry| {
             if (!register_list.get(reg_entry.key)) continue;
-            inline for (@typeInfo(@TypeOf(reg_entry.key)).@"enum".fields) |register_enum| {
-                if (@intFromEnum(reg_entry.key) == register_enum.value) {
-                    try registerValueToString(f.writer(), @field(line.stations[station_index], register_enum.name));
-                    break;
+            for (station_id_log.items) |station_id| {
+                inline for (@typeInfo(@TypeOf(reg_entry.key)).@"enum".fields) |register_enum| {
+                    if (@intFromEnum(reg_entry.key) == register_enum.value) {
+                        try registerValueToString(
+                            f.writer(),
+                            @field(line.stations[station_id - 1], register_enum.name),
+                        );
+                        break;
+                    }
                 }
             }
         }
@@ -2083,26 +2090,23 @@ fn logRegisters(params: [][]const u8) !void {
     }
 }
 
-fn registerFieldToString(comptime parent: []const u8, comptime ParentType: type) []const u8 {
-    comptime var result: []const u8 = "";
+fn registerFieldToString(f: std.fs.File.Writer, prefix: []const u8, comptime parent: []const u8, comptime ParentType: type) !void {
     inline for (@typeInfo(ParentType).@"struct".fields) |child_field| {
         if (child_field.name[0] == '_') continue;
         if (@typeInfo(child_field.type) == .@"struct") {
             if (parent.len == 0) {
-                result = result ++ comptime registerFieldToString(child_field.name, child_field.type);
+                try registerFieldToString(f, prefix, child_field.name, child_field.type);
             } else {
-                result = result ++ comptime registerFieldToString(parent ++ "." ++ child_field.name, child_field.type);
+                try registerFieldToString(f, prefix, parent ++ "." ++ child_field.name, child_field.type);
             }
         } else {
             if (parent.len == 0) {
-                result = result ++ child_field.name;
+                try std.fmt.format(f, "{s}_{s},", .{ prefix, child_field.name });
             } else {
-                result = result ++ parent ++ "." ++ child_field.name;
+                try std.fmt.format(f, "{s}_{s},", .{ prefix, parent ++ "." ++ child_field.name });
             }
-            result = result ++ ",";
         }
     }
-    return result;
 }
 
 fn registerValueToString(f: std.fs.File.Writer, parent_field: anytype) !void {
