@@ -2044,7 +2044,7 @@ fn setLogRegisters(params: [][]const u8) !void {
                             f.writer(),
                             try std.fmt.bufPrint(&_buffer, "station{d}", .{station_id}),
                             "",
-                            @FieldType(mcl.registers, register_enum.name),
+                            @FieldType(Registers, register_enum.name),
                         );
                         break;
                     }
@@ -2064,17 +2064,16 @@ fn logRegisters(params: [][]const u8) !void {
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
 
-    // TODO poll the only desired registers
-    // try line.stations[station_index].pollX();
-    // try line.stations[station_index].pollY();
-    // try line.stations[station_index].pollWr();
-    // try line.stations[station_index].pollWw();
-
     if (register_log_file) |f| {
         var register_iterator = register_list.iterator();
         while (register_iterator.next()) |reg_entry| {
             if (!register_list.get(reg_entry.key)) continue;
             for (station_id_log.items) |station_id| {
+                // TODO poll the only desired registers
+                try line.stations[station_id - 1].pollX();
+                try line.stations[station_id - 1].pollY();
+                try line.stations[station_id - 1].pollWr();
+                try line.stations[station_id - 1].pollWw();
                 inline for (@typeInfo(@TypeOf(reg_entry.key)).@"enum".fields) |register_enum| {
                     if (@intFromEnum(reg_entry.key) == register_enum.value) {
                         try registerValueToString(
