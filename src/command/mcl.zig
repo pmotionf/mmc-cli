@@ -1978,13 +1978,8 @@ fn setLogRegisters(params: [][]const u8) !void {
     const line: mcl.Line = mcl.lines[line_idx];
 
     var log: RegisterLogging = undefined;
-    log.line_name = line_name;
-
-    // Reset register list
-    // var register_iterator = register_list.iterator();
-    // while (register_iterator.next()) |reg_entry| {
-    //     register_list.set(reg_entry.key, false);
-    // }
+    const buf = try allocator.alloc(u8, line_name.len);
+    log.line_name = try std.fmt.bufPrint(buf, "{s}", .{line_name});
 
     // Get maximum number of station from the given line name
     log.station_id = try allocator.alloc(u8, line.stations.len);
@@ -2004,7 +1999,6 @@ fn setLogRegisters(params: [][]const u8) !void {
         }
         log.station_id[log.station_len] = station_index + 1;
         log.station_len += 1;
-        // try station_id_log.append(station_index + 1);
     }
 
     // Iterate over register list from parameters
@@ -2012,7 +2006,6 @@ fn setLogRegisters(params: [][]const u8) !void {
     while (reg_input_iterator.next()) |token| {
         if (std.meta.stringToEnum(RegisterLogging.RegisterType, token)) |item| {
             log.register_list.set(item, true);
-            // register_list.set(item, true);
         } else {
             return error.InvalidRegister;
         }
@@ -2024,7 +2017,6 @@ fn setLogRegisters(params: [][]const u8) !void {
     var buf_len = prefix.len;
 
     var register_iterator = log.register_list.iterator();
-    // register_iterator.index = 0;
     while (register_iterator.next()) |reg_entry| {
         if (!log.register_list.get(reg_entry.key)) continue;
         @memcpy(info_buffer[buf_len .. buf_len + @tagName(reg_entry.key).len], @tagName(reg_entry.key));
@@ -2084,10 +2076,6 @@ fn setLogRegisters(params: [][]const u8) !void {
         try f.writer().writeByte('\n');
     }
     try log_line.append(log);
-    std.log.debug("line_name: {s}", .{line_name});
-    std.log.debug("log.line_name: {s}", .{log.line_name});
-    std.log.debug("log.line_name.len: {}", .{log.line_name.len});
-    std.log.debug("log_line.line_name: {s}", .{log_line.items[log_line.items.len - 1].line_name});
 }
 
 fn logRegisters(params: [][]const u8) !void {
@@ -2095,18 +2083,6 @@ fn logRegisters(params: [][]const u8) !void {
     //     return error.LoggingFileNotFound;
     // }
     const line_name: []const u8 = params[0];
-    std.log.debug("line_name: {s}", .{line_name});
-    std.log.debug("#line_log: {d}", .{log_line.items.len});
-    std.log.debug("line_log.station_len: {d}", .{log_line.items[0].station_len});
-    std.log.debug("log_line.line_name: {s}", .{log_line.items[0].line_name});
-    for (0..5) |i| {
-        std.log.debug("{}", .{log_line.items[0].line_name[i]});
-    }
-    std.log.debug("log_line.line_name.len: {}", .{log_line.items[0].line_name.len});
-    std.log.debug("log_line.register_list.x: {}", .{log_line.items[0].register_list.get(.x)});
-    std.log.debug("log_line.register_list.y: {}", .{log_line.items[0].register_list.get(.y)});
-    std.log.debug("log_line.register_list.wr: {}", .{log_line.items[0].register_list.get(.wr)});
-    std.log.debug("log_line.register_list.ww: {}", .{log_line.items[0].register_list.get(.ww)});
     const log_idx = idx: {
         for (log_line.items, 0..) |line_item, i| {
             if (std.mem.eql(u8, line_name, line_item.line_name)) break :idx i;
@@ -2124,10 +2100,10 @@ fn logRegisters(params: [][]const u8) !void {
             for (log.station_id, 0..) |station_id, i| {
                 // TODO poll the only desired registers
                 if (i == log.station_len) break;
-                // try line.stations[station_id - 1].pollX();
-                // try line.stations[station_id - 1].pollY();
-                // try line.stations[station_id - 1].pollWr();
-                // try line.stations[station_id - 1].pollWw();
+                try line.stations[station_id - 1].pollX();
+                try line.stations[station_id - 1].pollY();
+                try line.stations[station_id - 1].pollWr();
+                try line.stations[station_id - 1].pollWw();
                 inline for (@typeInfo(@TypeOf(reg_entry.key)).@"enum".fields) |register_enum| {
                     if (@intFromEnum(reg_entry.key) == register_enum.value) {
                         try registerValueToString(
