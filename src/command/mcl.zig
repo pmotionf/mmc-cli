@@ -10,17 +10,35 @@ var line_accelerations: []u7 = undefined;
 
 const Direction = mcl.Direction;
 const Station = mcl.Station;
-const Registers = struct {
-    x: mcl.registers.X,
-    y: mcl.registers.Y,
-    wr: mcl.registers.Wr,
-    ww: mcl.registers.Ww,
+// const Registers = struct {
+//     x: mcl.registers.X,
+//     y: mcl.registers.Y,
+//     wr: mcl.registers.Wr,
+//     ww: mcl.registers.Ww,
+// };
+
+// const RegisterType = enum { x, y, wr, ww };
+// var register_log_file: ?std.fs.File = null;
+// var register_list = std.EnumArray(RegisterType, bool).initFill(false);
+// var station_id_log: std.ArrayList(u8) = undefined;
+
+const RegisterLogging = struct {
+    line_name: []const u8,
+    register_list: std.EnumArray(RegisterType, bool), // Specify which register to log for each line
+    station_id: []u8, // Specify the station to log based on axis provided by user
+    station_len: u8, // Specify the number of stations to be logged
+    log_file: ?std.fs.File = null,
+
+    const RegisterType = enum { x, y, wr, ww };
+    const Registers = struct {
+        x: mcl.registers.X,
+        y: mcl.registers.Y,
+        wr: mcl.registers.Wr,
+        ww: mcl.registers.Ww,
+    };
 };
 
-const RegisterType = enum { x, y, wr, ww };
-var register_log_file: ?std.fs.File = null;
-var register_list = std.EnumArray(RegisterType, bool).initFill(false);
-var station_id_log: std.ArrayList(u8) = undefined;
+var log_line: std.ArrayList(RegisterLogging) = undefined;
 
 pub const Config = struct {
     line_names: [][]const u8,
@@ -37,7 +55,8 @@ pub fn init(c: Config) !void {
     arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     errdefer arena.deinit();
     allocator = arena.allocator();
-    station_id_log = std.ArrayList(u8).init(allocator);
+    // station_id_log = std.ArrayList(u8).init(allocator);
+    log_line = std.ArrayList(RegisterLogging).init(allocator);
 
     try mcl.init(allocator, .{ .lines = c.lines });
 
@@ -680,10 +699,12 @@ pub fn init(c: Config) !void {
 pub fn deinit() void {
     arena.deinit();
     line_names = undefined;
-    if (register_log_file) |f| {
-        f.close();
+    for (log_line.items) |*line| {
+        if (line.log_file) |f| {
+            f.close();
+        }
+        line.log_file = null;
     }
-    register_log_file = null;
 }
 
 fn mclVersion(_: [][]const u8) !void {
@@ -1956,11 +1977,18 @@ fn setLogRegisters(params: [][]const u8) !void {
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
 
+    var log: RegisterLogging = undefined;
+    log.line_name = line_name;
+
     // Reset register list
-    var register_iterator = register_list.iterator();
-    while (register_iterator.next()) |reg_entry| {
-        register_list.set(reg_entry.key, false);
-    }
+    // var register_iterator = register_list.iterator();
+    // while (register_iterator.next()) |reg_entry| {
+    //     register_list.set(reg_entry.key, false);
+    // }
+
+    // Get maximum number of station from the given line name
+    log.station_id = try allocator.alloc(u8, line.stations.len);
+    log.station_len = 0;
 
     // Iterate over axis list from parameters
     var axis_input_iterator = std.mem.tokenizeSequence(u8, params[1], ",");
@@ -1971,17 +1999,20 @@ fn setLogRegisters(params: [][]const u8) !void {
         }
         const station_index: Station.Index = @intCast(axis_index / 3);
         //TODO: Better checking than O(n)
-        for (station_id_log.items) |item| {
+        for (log.station_id) |item| {
             if (station_index + 1 == item) continue :outer;
         }
-        try station_id_log.append(station_index + 1);
+        log.station_id[log.station_len] = station_index + 1;
+        log.station_len += 1;
+        // try station_id_log.append(station_index + 1);
     }
 
     // Iterate over register list from parameters
     var reg_input_iterator = std.mem.tokenizeSequence(u8, params[2], ",");
     while (reg_input_iterator.next()) |token| {
-        if (std.meta.stringToEnum(RegisterType, token)) |item| {
-            register_list.set(item, true);
+        if (std.meta.stringToEnum(RegisterLogging.RegisterType, token)) |item| {
+            log.register_list.set(item, true);
+            // register_list.set(item, true);
         } else {
             return error.InvalidRegister;
         }
@@ -1992,9 +2023,10 @@ fn setLogRegisters(params: [][]const u8) !void {
     @memcpy(info_buffer[0..prefix.len], prefix);
     var buf_len = prefix.len;
 
-    register_iterator.index = 0;
+    var register_iterator = log.register_list.iterator();
+    // register_iterator.index = 0;
     while (register_iterator.next()) |reg_entry| {
-        if (!register_list.get(reg_entry.key)) continue;
+        if (!log.register_list.get(reg_entry.key)) continue;
         @memcpy(info_buffer[buf_len .. buf_len + @tagName(reg_entry.key).len], @tagName(reg_entry.key));
         @memcpy(info_buffer[buf_len + @tagName(reg_entry.key).len .. buf_len + @tagName(reg_entry.key).len + 1], ",");
         buf_len += @tagName(reg_entry.key).len + 1;
@@ -2014,8 +2046,9 @@ fn setLogRegisters(params: [][]const u8) !void {
 
         break :p try std.fmt.bufPrint(
             &path_buffer,
-            "mmc-register-{s}-{}.{:0>2}.{:0>2}-{:0>2}.{:0>2}.{:0>2}.csv",
+            "mmc-register-{s}-{s}-{}.{:0>2}.{:0>2}-{:0>2}.{:0>2}.{:0>2}.csv",
             .{
+                line_name,
                 info_buffer[prefix.len .. buf_len - 1],
                 ymd.year,
                 ymd.month.number(),
@@ -2028,15 +2061,12 @@ fn setLogRegisters(params: [][]const u8) !void {
     };
     std.log.info("{s}", .{file_path});
 
-    if (register_log_file) |f| {
-        f.close();
-    }
-    register_log_file = try std.fs.cwd().createFile(file_path, .{});
-    if (register_log_file) |f| {
+    log.log_file = try std.fs.cwd().createFile(file_path, .{});
+    if (log.log_file) |f| {
         register_iterator.index = 0;
         while (register_iterator.next()) |reg_entry| {
-            if (!register_list.get(reg_entry.key)) continue;
-            for (station_id_log.items) |station_id| {
+            if (!log.register_list.get(reg_entry.key)) continue;
+            for (log.station_id) |station_id| {
                 inline for (@typeInfo(@TypeOf(reg_entry.key)).@"enum".fields) |register_enum| {
                     if (@intFromEnum(reg_entry.key) == register_enum.value) {
                         var _buffer: [64]u8 = undefined;
@@ -2044,7 +2074,7 @@ fn setLogRegisters(params: [][]const u8) !void {
                             f.writer(),
                             try std.fmt.bufPrint(&_buffer, "station{d}", .{station_id}),
                             "",
-                            @FieldType(Registers, register_enum.name),
+                            @FieldType(RegisterLogging.Registers, register_enum.name),
                         );
                         break;
                     }
@@ -2053,27 +2083,51 @@ fn setLogRegisters(params: [][]const u8) !void {
         }
         try f.writer().writeByte('\n');
     }
+    try log_line.append(log);
+    std.log.debug("line_name: {s}", .{line_name});
+    std.log.debug("log.line_name: {s}", .{log.line_name});
+    std.log.debug("log.line_name.len: {}", .{log.line_name.len});
+    std.log.debug("log_line.line_name: {s}", .{log_line.items[log_line.items.len - 1].line_name});
 }
 
 fn logRegisters(params: [][]const u8) !void {
-    if (register_log_file) |_| {} else {
-        return error.LoggingFileNotFound;
-    }
+    // if (register_log_file) |_| {} else {
+    //     return error.LoggingFileNotFound;
+    // }
     const line_name: []const u8 = params[0];
-
+    std.log.debug("line_name: {s}", .{line_name});
+    std.log.debug("#line_log: {d}", .{log_line.items.len});
+    std.log.debug("line_log.station_len: {d}", .{log_line.items[0].station_len});
+    std.log.debug("log_line.line_name: {s}", .{log_line.items[0].line_name});
+    for (0..5) |i| {
+        std.log.debug("{}", .{log_line.items[0].line_name[i]});
+    }
+    std.log.debug("log_line.line_name.len: {}", .{log_line.items[0].line_name.len});
+    std.log.debug("log_line.register_list.x: {}", .{log_line.items[0].register_list.get(.x)});
+    std.log.debug("log_line.register_list.y: {}", .{log_line.items[0].register_list.get(.y)});
+    std.log.debug("log_line.register_list.wr: {}", .{log_line.items[0].register_list.get(.wr)});
+    std.log.debug("log_line.register_list.ww: {}", .{log_line.items[0].register_list.get(.ww)});
+    const log_idx = idx: {
+        for (log_line.items, 0..) |line_item, i| {
+            if (std.mem.eql(u8, line_name, line_item.line_name)) break :idx i;
+        }
+        return error.LineNameNotFound;
+    };
+    var log = log_line.items[log_idx];
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
 
-    if (register_log_file) |f| {
-        var register_iterator = register_list.iterator();
+    if (log.log_file) |f| {
+        var register_iterator = log.register_list.iterator();
         while (register_iterator.next()) |reg_entry| {
-            if (!register_list.get(reg_entry.key)) continue;
-            for (station_id_log.items) |station_id| {
+            if (!log.register_list.get(reg_entry.key)) continue;
+            for (log.station_id, 0..) |station_id, i| {
                 // TODO poll the only desired registers
-                try line.stations[station_id - 1].pollX();
-                try line.stations[station_id - 1].pollY();
-                try line.stations[station_id - 1].pollWr();
-                try line.stations[station_id - 1].pollWw();
+                if (i == log.station_len) break;
+                // try line.stations[station_id - 1].pollX();
+                // try line.stations[station_id - 1].pollY();
+                // try line.stations[station_id - 1].pollWr();
+                // try line.stations[station_id - 1].pollWw();
                 inline for (@typeInfo(@TypeOf(reg_entry.key)).@"enum".fields) |register_enum| {
                     if (@intFromEnum(reg_entry.key) == register_enum.value) {
                         try registerValueToString(
