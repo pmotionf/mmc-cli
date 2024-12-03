@@ -1972,6 +1972,9 @@ fn mclWaitRecoverSlider(params: [][]const u8) !void {
     }
 }
 
+/// Create a logging file for logging register values specified by
+/// the desired register and desired axis. Every successfull setup
+/// can be accessed through log_line variable.
 fn setLogRegisters(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx: usize = try matchLine(line_names, line_name);
@@ -2078,10 +2081,10 @@ fn setLogRegisters(params: [][]const u8) !void {
     try log_line.append(log);
 }
 
+/// Write the register values to the logging file specified by
+/// line_name parameter. If the line has not ben set for logging,
+/// it will return error.
 fn logRegisters(params: [][]const u8) !void {
-    // if (register_log_file) |_| {} else {
-    //     return error.LoggingFileNotFound;
-    // }
     const line_name: []const u8 = params[0];
     const log_idx = idx: {
         for (log_line.items, 0..) |line_item, i| {
@@ -2119,6 +2122,7 @@ fn logRegisters(params: [][]const u8) !void {
     }
 }
 
+/// Write register fields name into the logging file.
 fn registerFieldToString(f: std.fs.File.Writer, prefix: []const u8, comptime parent: []const u8, comptime ParentType: type) !void {
     inline for (@typeInfo(ParentType).@"struct".fields) |child_field| {
         if (child_field.name[0] == '_') continue;
@@ -2138,6 +2142,7 @@ fn registerFieldToString(f: std.fs.File.Writer, prefix: []const u8, comptime par
     }
 }
 
+// Write register values into the logging file
 fn registerValueToString(f: std.fs.File.Writer, parent_field: anytype) !void {
     inline for (@typeInfo(@TypeOf(parent_field.*)).@"struct".fields) |child_field| {
         if (child_field.name[0] == '_') continue;
