@@ -10,17 +10,6 @@ var line_accelerations: []u7 = undefined;
 
 const Direction = mcl.Direction;
 const Station = mcl.Station;
-// const Registers = struct {
-//     x: mcl.registers.X,
-//     y: mcl.registers.Y,
-//     wr: mcl.registers.Wr,
-//     ww: mcl.registers.Ww,
-// };
-
-// const RegisterType = enum { x, y, wr, ww };
-// var register_log_file: ?std.fs.File = null;
-// var register_list = std.EnumArray(RegisterType, bool).initFill(false);
-// var station_id_log: std.ArrayList(u8) = undefined;
 
 const RegisterLogging = struct {
     line_name: []const u8,
@@ -55,7 +44,6 @@ pub fn init(c: Config) !void {
     arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     errdefer arena.deinit();
     allocator = arena.allocator();
-    // station_id_log = std.ArrayList(u8).init(allocator);
     log_line = std.ArrayList(RegisterLogging).init(allocator);
 
     try mcl.init(allocator, .{ .lines = c.lines });
