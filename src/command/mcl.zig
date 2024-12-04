@@ -1,6 +1,7 @@
 const std = @import("std");
 const command = @import("../command.zig");
 const mcl = @import("mcl");
+const chrono = @import("chrono");
 
 var arena: std.heap.ArenaAllocator = undefined;
 var allocator: std.mem.Allocator = undefined;
@@ -2020,9 +2021,9 @@ fn setLogRegisters(params: [][]const u8) !void {
         timestamp += std.time.s_per_hour * 9;
         const days_since_epoch: i32 = @intCast(timestamp / std.time.s_per_day);
         const ymd =
-            command.chrono.date.YearMonthDay.fromDaysSinceUnixEpoch(days_since_epoch);
+            chrono.date.YearMonthDay.fromDaysSinceUnixEpoch(days_since_epoch);
         const time_day: u32 = @intCast(timestamp % std.time.s_per_day);
-        const time = try command.chrono.Time.fromNumSecondsFromMidnight(time_day, 0);
+        const time = try chrono.Time.fromNumSecondsFromMidnight(time_day, 0);
 
         break :p try std.fmt.bufPrint(
             &path_buffer,

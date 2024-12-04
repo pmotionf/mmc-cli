@@ -3,7 +3,7 @@
 //! general purpose commands that facilitate easier use of the MMC CLI utility.
 
 const std = @import("std");
-pub const chrono = @import("chrono");
+const chrono = @import("chrono");
 
 const v = @import("version");
 
