@@ -12,10 +12,9 @@ const Direction = mcl.Direction;
 const Station = mcl.Station;
 
 const RegisterLogging = struct {
-    line_name: []const u8,
-    register_list: std.EnumArray(RegisterType, bool), // Specify which register to log for each line
-    station_id: []u8, // Specify the station to log based on axis provided by user
-    station_len: u8, // Specify the number of stations to be logged
+    line_index: u8,
+    register_lists: std.EnumArray(RegisterType, bool), // Specify which register to log for each line
+    station_indices: []u8, // Specify the station index to be logged based on axis provided by user
     log_file: ?std.fs.File = null,
 
     const RegisterType = enum { x, y, wr, ww };
@@ -27,7 +26,7 @@ const RegisterLogging = struct {
     };
 };
 
-var log_line: std.ArrayList(RegisterLogging) = undefined;
+var log_line: []RegisterLogging = undefined;
 
 pub const Config = struct {
     line_names: [][]const u8,
@@ -44,13 +43,13 @@ pub fn init(c: Config) !void {
     arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     errdefer arena.deinit();
     allocator = arena.allocator();
-    log_line = std.ArrayList(RegisterLogging).init(allocator);
 
     try mcl.init(allocator, .{ .lines = c.lines });
 
     line_names = try allocator.alloc([]u8, c.line_names.len);
     line_speeds = try allocator.alloc(u7, c.lines.len);
     line_accelerations = try allocator.alloc(u7, c.lines.len);
+    log_line = try allocator.alloc(RegisterLogging, c.lines.len);
     for (0..c.lines.len) |i| {
         line_names[i] = try allocator.alloc(u8, c.line_names[i].len);
         @memcpy(line_names[i], c.line_names[i]);
@@ -687,7 +686,7 @@ pub fn init(c: Config) !void {
 pub fn deinit() void {
     arena.deinit();
     line_names = undefined;
-    for (log_line.items) |*line| {
+    for (log_line) |*line| {
         if (line.log_file) |f| {
             f.close();
         }
@@ -1969,14 +1968,11 @@ fn setLogRegisters(params: [][]const u8) !void {
     const line: mcl.Line = mcl.lines[line_idx];
 
     var log: RegisterLogging = undefined;
-    const buf = try allocator.alloc(u8, line_name.len);
-    log.line_name = try std.fmt.bufPrint(buf, "{s}", .{line_name});
-
-    // Get maximum number of station from the given line name
-    log.station_id = try allocator.alloc(u8, line.stations.len);
-    log.station_len = 0;
+    log.line_index = @intCast(line_idx);
 
     // Iterate over axis list from parameters
+    var station_indices: []u8 = try allocator.alloc(u8, line.stations.len);
+    var idx: u8 = 0;
     var axis_input_iterator = std.mem.tokenizeSequence(u8, params[1], ",");
     outer: while (axis_input_iterator.next()) |token| {
         const axis_index = try std.fmt.parseInt(mcl.Station.Id, token, 0) - 1;
@@ -1985,18 +1981,19 @@ fn setLogRegisters(params: [][]const u8) !void {
         }
         const station_index: Station.Index = @intCast(axis_index / 3);
         //TODO: Better checking than O(n)
-        for (log.station_id) |item| {
-            if (station_index + 1 == item) continue :outer;
+        for (station_indices) |item| {
+            if (station_index == item) continue :outer;
         }
-        log.station_id[log.station_len] = station_index + 1;
-        log.station_len += 1;
+        station_indices[idx] = station_index;
+        idx += 1;
     }
+    log.station_indices = station_indices[0..idx];
 
     // Iterate over register list from parameters
     var reg_input_iterator = std.mem.tokenizeSequence(u8, params[2], ",");
     while (reg_input_iterator.next()) |token| {
         if (std.meta.stringToEnum(RegisterLogging.RegisterType, token)) |item| {
-            log.register_list.set(item, true);
+            log.register_lists.set(item, true);
         } else {
             return error.InvalidRegister;
         }
@@ -2007,9 +2004,9 @@ fn setLogRegisters(params: [][]const u8) !void {
     @memcpy(info_buffer[0..prefix.len], prefix);
     var buf_len = prefix.len;
 
-    var register_iterator = log.register_list.iterator();
+    var register_iterator = log.register_lists.iterator();
     while (register_iterator.next()) |reg_entry| {
-        if (!log.register_list.get(reg_entry.key)) continue;
+        if (!log.register_lists.get(reg_entry.key)) continue;
         @memcpy(info_buffer[buf_len .. buf_len + @tagName(reg_entry.key).len], @tagName(reg_entry.key));
         @memcpy(info_buffer[buf_len + @tagName(reg_entry.key).len .. buf_len + @tagName(reg_entry.key).len + 1], ",");
         buf_len += @tagName(reg_entry.key).len + 1;
@@ -2048,14 +2045,14 @@ fn setLogRegisters(params: [][]const u8) !void {
     if (log.log_file) |f| {
         register_iterator.index = 0;
         while (register_iterator.next()) |reg_entry| {
-            if (!log.register_list.get(reg_entry.key)) continue;
-            for (log.station_id) |station_id| {
+            if (!log.register_lists.get(reg_entry.key)) continue;
+            for (log.station_indices) |station_idx| {
                 inline for (@typeInfo(@TypeOf(reg_entry.key)).@"enum".fields) |register_enum| {
                     if (@intFromEnum(reg_entry.key) == register_enum.value) {
                         var _buffer: [64]u8 = undefined;
                         try registerFieldToString(
                             f.writer(),
-                            try std.fmt.bufPrint(&_buffer, "station{d}", .{station_id}),
+                            try std.fmt.bufPrint(&_buffer, "station{d}", .{station_idx + 1}),
                             "",
                             @FieldType(RegisterLogging.Registers, register_enum.name),
                         );
@@ -2066,7 +2063,7 @@ fn setLogRegisters(params: [][]const u8) !void {
         }
         try f.writer().writeByte('\n');
     }
-    try log_line.append(log);
+    log_line[line_idx] = log;
 }
 
 /// Write the register values to the logging file specified by
@@ -2074,32 +2071,32 @@ fn setLogRegisters(params: [][]const u8) !void {
 /// it will return error.
 fn logRegisters(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const log_idx = idx: {
-        for (log_line.items, 0..) |line_item, i| {
-            if (std.mem.eql(u8, line_name, line_item.line_name)) break :idx i;
-        }
-        return error.LineNameNotFound;
-    };
-    var log = log_line.items[log_idx];
     const line_idx: usize = try matchLine(line_names, line_name);
+    const log_idx = idx: {
+        for (log_line, 0..) |line_item, i| {
+            if (line_item.line_index == line_idx) break :idx i;
+        }
+        return error.LineNotReadyForLogging;
+    };
+    var log = log_line[log_idx];
+
     const line: mcl.Line = mcl.lines[line_idx];
 
     if (log.log_file) |f| {
-        var register_iterator = log.register_list.iterator();
+        var register_iterator = log.register_lists.iterator();
         while (register_iterator.next()) |reg_entry| {
-            if (!log.register_list.get(reg_entry.key)) continue;
-            for (log.station_id, 0..) |station_id, i| {
+            if (!log.register_lists.get(reg_entry.key)) continue;
+            for (log.station_indices) |station_idx| {
                 // TODO poll the only desired registers
-                if (i == log.station_len) break;
-                try line.stations[station_id - 1].pollX();
-                try line.stations[station_id - 1].pollY();
-                try line.stations[station_id - 1].pollWr();
-                try line.stations[station_id - 1].pollWw();
+                try line.stations[station_idx].pollX();
+                try line.stations[station_idx].pollY();
+                try line.stations[station_idx].pollWr();
+                try line.stations[station_idx].pollWw();
                 inline for (@typeInfo(@TypeOf(reg_entry.key)).@"enum".fields) |register_enum| {
                     if (@intFromEnum(reg_entry.key) == register_enum.value) {
                         try registerValueToString(
                             f.writer(),
-                            @field(line.stations[station_id - 1], register_enum.name),
+                            @field(line.stations[station_idx], register_enum.name),
                         );
                         break;
                     }
