@@ -13,9 +13,9 @@ const Direction = mcl.Direction;
 const Station = mcl.Station;
 
 const RegisterLogging = struct {
-    line_index: u8,
-    register_lists: std.EnumArray(RegisterType, bool), // Specify which register to log for each line
-    station_indices: []u8, // Specify the station index to be logged based on axis provided by user
+    line: mcl.Line.Index,
+    registers: std.EnumArray(RegisterType, bool), // Specify which register to log for each line
+    stations: []mcl.Station.Index, // Specify the station index to be logged based on axis provided by user
     log_file: ?std.fs.File = null,
 
     const RegisterType = enum { x, y, wr, ww };
@@ -27,7 +27,7 @@ const RegisterLogging = struct {
     };
 };
 
-var log_line: []RegisterLogging = undefined;
+var log_lines: []RegisterLogging = undefined;
 
 pub const Config = struct {
     line_names: [][]const u8,
@@ -50,7 +50,7 @@ pub fn init(c: Config) !void {
     line_names = try allocator.alloc([]u8, c.line_names.len);
     line_speeds = try allocator.alloc(u7, c.lines.len);
     line_accelerations = try allocator.alloc(u7, c.lines.len);
-    log_line = try allocator.alloc(RegisterLogging, c.lines.len);
+    log_lines = try allocator.alloc(RegisterLogging, c.lines.len);
     for (0..c.lines.len) |i| {
         line_names[i] = try allocator.alloc(u8, c.line_names[i].len);
         @memcpy(line_names[i], c.line_names[i]);
@@ -687,7 +687,7 @@ pub fn init(c: Config) !void {
 pub fn deinit() void {
     arena.deinit();
     line_names = undefined;
-    for (log_line) |*line| {
+    for (log_lines) |*line| {
         if (line.log_file) |f| {
             f.close();
         }
@@ -1969,10 +1969,10 @@ fn setLogRegisters(params: [][]const u8) !void {
     const line: mcl.Line = mcl.lines[line_idx];
 
     var log: RegisterLogging = undefined;
-    log.line_index = @intCast(line_idx);
+    log.line = @intCast(line_idx);
 
-    // Iterate over axis list from parameters
-    var station_indices: []u8 = try allocator.alloc(u8, line.stations.len);
+    var stations: []mcl.Station.Index = try allocator.alloc(mcl.Station.Index, line.stations.len);
+    errdefer allocator.free(stations);
     var idx: u8 = 0;
     var axis_input_iterator = std.mem.tokenizeSequence(u8, params[1], ",");
     outer: while (axis_input_iterator.next()) |token| {
@@ -1982,22 +1982,24 @@ fn setLogRegisters(params: [][]const u8) !void {
         }
         const station_index: Station.Index = @intCast(axis_index / 3);
         //TODO: Better checking than O(n)
-        for (station_indices) |item| {
+        for (stations) |item| {
             if (station_index == item) continue :outer;
         }
-        station_indices[idx] = station_index;
+        stations[idx] = station_index;
         idx += 1;
     }
-    log.station_indices = station_indices[0..idx];
+    log.stations = stations[0..idx];
 
-    // Iterate over register list from parameters
+    // Iterate over registers from parameters
     var reg_input_iterator = std.mem.tokenizeSequence(u8, params[2], ",");
-    while (reg_input_iterator.next()) |token| {
-        if (std.meta.stringToEnum(RegisterLogging.RegisterType, token)) |item| {
-            log.register_lists.set(item, true);
-        } else {
-            return error.InvalidRegister;
+    outer: while (reg_input_iterator.next()) |token| {
+        inline for (@typeInfo(RegisterLogging.RegisterType).@"enum".fields) |field| {
+            if (std.ascii.eqlIgnoreCase(field.name, token)) {
+                log.registers.set(@enumFromInt(field.value), true);
+                continue :outer;
+            }
         }
+        return error.InvalidRegister;
     }
 
     var info_buffer: [64]u8 = undefined;
@@ -2005,9 +2007,9 @@ fn setLogRegisters(params: [][]const u8) !void {
     @memcpy(info_buffer[0..prefix.len], prefix);
     var buf_len = prefix.len;
 
-    var register_iterator = log.register_lists.iterator();
+    var register_iterator = log.registers.iterator();
     while (register_iterator.next()) |reg_entry| {
-        if (!log.register_lists.get(reg_entry.key)) continue;
+        if (!log.registers.get(reg_entry.key)) continue;
         @memcpy(info_buffer[buf_len .. buf_len + @tagName(reg_entry.key).len], @tagName(reg_entry.key));
         @memcpy(info_buffer[buf_len + @tagName(reg_entry.key).len .. buf_len + @tagName(reg_entry.key).len + 1], ",");
         buf_len += @tagName(reg_entry.key).len + 1;
@@ -2046,8 +2048,8 @@ fn setLogRegisters(params: [][]const u8) !void {
     if (log.log_file) |f| {
         register_iterator.index = 0;
         while (register_iterator.next()) |reg_entry| {
-            if (!log.register_lists.get(reg_entry.key)) continue;
-            for (log.station_indices) |station_idx| {
+            if (!log.registers.get(reg_entry.key)) continue;
+            for (log.stations) |station_idx| {
                 inline for (@typeInfo(@TypeOf(reg_entry.key)).@"enum".fields) |register_enum| {
                     if (@intFromEnum(reg_entry.key) == register_enum.value) {
                         var _buffer: [64]u8 = undefined;
@@ -2064,7 +2066,7 @@ fn setLogRegisters(params: [][]const u8) !void {
         }
         try f.writer().writeByte('\n');
     }
-    log_line[line_idx] = log;
+    log_lines[line_idx] = log;
 }
 
 /// Write the register values to the logging file specified by
@@ -2074,25 +2076,25 @@ fn logRegisters(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx: usize = try matchLine(line_names, line_name);
     const log_idx = idx: {
-        for (log_line, 0..) |line_item, i| {
-            if (line_item.line_index == line_idx) break :idx i;
+        for (log_lines, 0..) |line_item, i| {
+            if (line_item.line == line_idx) break :idx i;
         }
         return error.LineNotReadyForLogging;
     };
-    var log = log_line[log_idx];
+    var log = log_lines[log_idx];
 
     const line: mcl.Line = mcl.lines[line_idx];
 
     if (log.log_file) |f| {
-        var register_iterator = log.register_lists.iterator();
+        var register_iterator = log.registers.iterator();
         while (register_iterator.next()) |reg_entry| {
-            if (!log.register_lists.get(reg_entry.key)) continue;
-            for (log.station_indices) |station_idx| {
+            if (!log.registers.get(reg_entry.key)) continue;
+            for (log.stations) |station_idx| {
                 // TODO poll the only desired registers
-                try line.stations[station_idx].pollX();
-                try line.stations[station_idx].pollY();
-                try line.stations[station_idx].pollWr();
-                try line.stations[station_idx].pollWw();
+                // try line.stations[station_idx].pollX();
+                // try line.stations[station_idx].pollY();
+                // try line.stations[station_idx].pollWr();
+                // try line.stations[station_idx].pollWw();
                 inline for (@typeInfo(@TypeOf(reg_entry.key)).@"enum".fields) |register_enum| {
                     if (@intFromEnum(reg_entry.key) == register_enum.value) {
                         try registerValueToString(
