@@ -48,17 +48,10 @@ pub fn init(c: Config) !void {
 
     try mcl.init(allocator, .{ .lines = c.lines });
 
-    // for (0..stations.len) |i| {
-    //     stations[i] = @intCast(i);
-    // }
     line_names = try allocator.alloc([]u8, c.line_names.len);
     line_speeds = try allocator.alloc(u7, c.lines.len);
     line_accelerations = try allocator.alloc(u7, c.lines.len);
     log_lines = try allocator.alloc(LogLine, c.lines.len);
-    // for (log_lines, 0..) |*line, line_idx| {
-    //     const station_length = mcl.lines[line_idx].stations.len;
-    //     line.stations = try allocator.alloc(mcl.Station.Index, station_length);
-    // }
     for (0..c.lines.len) |i| {
         for (&log_lines[i].stations) |*station| {
             station.* = false;
@@ -699,7 +692,7 @@ pub fn init(c: Config) !void {
         ,
         .execute = &resetLogRegisters,
     });
-    errdefer _ = command.registry.orderedRemove("REMOVE_LOG_REGISTERS");
+    errdefer _ = command.registry.orderedRemove("RESET_LOG_REGISTERS");
     try command.registry.put("STATUS_LOG_REGISTERS", .{
         .name = "STATUS_LOG_REGISTERS",
         .short_description = "Print the logging configurations entry.",
@@ -716,40 +709,28 @@ pub fn init(c: Config) !void {
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "path", .optional = true },
         },
-        .short_description = "Create a logging file.",
+        .short_description = "Create a logging file for the configured line.",
         .long_description =
-        \\Create a log file for logging register. If no logging configuration
-        \\detected, it will return error value. If a path is not provided, the
-        \\default logging file containing all the register value triggerred by
-        \\LOG_REGISTER will be created in the current working directory as the
-        \\following:
+        \\Create a log file for logging registers. If no logging configuration is 
+        \\detected, it will return an error value. If a path is not provided, a 
+        \\default log file containing all register values triggered by 
+        \\LOG_REGISTERS will be created in the current working directory as 
+        \\follows:
         \\"mmc-register-YYYY.MM.DD-HH.MM.SS.csv".
         \\
         \\Note that this command will not log any register value, the register
-        \\will be logged by LOG_REGISTER command.
+        \\will be logged by LOG_REGISTERS command.
         ,
         .execute = &pathLogRegisters,
     });
     errdefer _ = command.registry.orderedRemove("FILE_LOG_REGISTERS");
     try command.registry.put("LOG_REGISTERS", .{
         .name = "LOG_REGISTERS",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-        },
-        .short_description = "Log the specified register value.",
+        .short_description = "Log the register values.",
         .long_description =
-        \\Poll the specified register and write the value to logging file created
-        \\by SET_LOG_REGISTER command. 
-        ,
-        .execute = &logRegisters,
-    });
-    errdefer _ = command.registry.orderedRemove("LOG_REGISTERS");
-    try command.registry.put("LOG_REGISTERS", .{
-        .name = "LOG_REGISTERS",
-        .short_description = "Log the specified register value.",
-        .long_description =
-        \\Poll the specified register and write the value to logging file created
-        \\by SET_LOG_REGISTER command. 
+        \\This command will trigger the logging functionality on every line configured 
+        \\for logging the registers. It writes register values to the file specified 
+        \\by FILE_LOG_REGISTERS.
         ,
         .execute = &logRegisters,
     });
@@ -2062,7 +2043,7 @@ fn addLogRegisters(params: [][]const u8) !void {
     }
 
     var info_buffer: [64]u8 = undefined;
-    const prefix = "Ready to log register: ";
+    const prefix = "Ready to log registers: ";
     @memcpy(info_buffer[0..prefix.len], prefix);
     var buf_len = prefix.len;
 
@@ -2210,7 +2191,7 @@ fn logRegisters(_: [][]const u8) !void {
         try f.writer().writeByte('\n');
     } else {
         std.log.err("Logging file not configured", .{});
-        return error.LoggingFileNotConfigured;
+        return;
     }
 }
 
