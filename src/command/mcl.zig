@@ -2055,9 +2055,16 @@ fn addLogRegisters(params: [][]const u8) !void {
     var register_iterator = log.registers.iterator();
     while (register_iterator.next()) |reg_entry| {
         if (!log.registers.get(reg_entry.key)) continue;
-        @memcpy(info_buffer[buf_len .. buf_len + @tagName(reg_entry.key).len], @tagName(reg_entry.key));
-        @memcpy(info_buffer[buf_len + @tagName(reg_entry.key).len .. buf_len + @tagName(reg_entry.key).len + 1], ",");
-        buf_len += @tagName(reg_entry.key).len + 1;
+        const reg_tag: []const u8 = @tagName(reg_entry.key);
+        @memcpy(
+            info_buffer[buf_len .. buf_len + reg_tag.len],
+            @tagName(reg_entry.key),
+        );
+        @memcpy(
+            info_buffer[buf_len + reg_tag.len .. buf_len + reg_tag.len + 1],
+            ",",
+        );
+        buf_len += reg_tag.len + 1;
     }
     std.log.info("{s}", .{info_buffer[0 .. buf_len - 1]});
     log.status = true;
@@ -2116,10 +2123,10 @@ fn statusLogRegisters(_: [][]const u8) !void {
             .{":"},
         )).len;
 
-        var register_iterator = log_lines[line_idx].registers.iterator();
-        while (register_iterator.next()) |reg_entry| {
+        var reg_iterator = log_lines[line_idx].registers.iterator();
+        while (reg_iterator.next()) |reg_entry| {
             if (reg_entry.value.* == false) continue;
-            if (register_iterator.index - 1 != 0) {
+            if (reg_iterator.index - 1 != 0) {
                 buf_len += (try std.fmt.bufPrint(
                     buffer[buf_len..],
                     "{s}",
@@ -2174,16 +2181,24 @@ fn pathLogRegisters(params: [][]const u8) !void {
             if (log_lines[line_idx].status == false) continue;
             for (0..256) |station_idx| {
                 if (log_lines[line_idx].stations[station_idx] == false) continue;
-                var register_iterator = log_lines[line_idx].registers.iterator();
-                while (register_iterator.next()) |reg_entry| {
-                    inline for (@typeInfo(@TypeOf(reg_entry.key)).@"enum".fields) |register_enum| {
-                        if (@intFromEnum(reg_entry.key) == register_enum.value) {
+                var reg_iterator = log_lines[line_idx].registers.iterator();
+                while (reg_iterator.next()) |reg_entry| {
+                    const reg_type = @TypeOf(reg_entry.key);
+                    inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
+                        if (@intFromEnum(reg_entry.key) == reg_enum.value) {
                             var _buffer: [64]u8 = undefined;
                             try registerFieldToString(
                                 f.writer(),
-                                try std.fmt.bufPrint(&_buffer, "{s}_station{d}", .{ line_name, station_idx + 1 }),
+                                try std.fmt.bufPrint(
+                                    &_buffer,
+                                    "{s}_station{d}",
+                                    .{ line_name, station_idx + 1 },
+                                ),
                                 "",
-                                @FieldType(Registers, register_enum.name),
+                                @FieldType(
+                                    Registers,
+                                    reg_enum.name,
+                                ),
                             );
                             break;
                         }
@@ -2205,10 +2220,11 @@ fn logRegisters(_: [][]const u8) !void {
             if (log_lines[line_idx].status == false) continue;
             for (0..256) |station_idx| {
                 if (log_lines[line_idx].stations[station_idx] == false) continue;
-                var register_iterator = log_lines[line_idx].registers.iterator();
-                while (register_iterator.next()) |reg_entry| {
-                    inline for (@typeInfo(@TypeOf(reg_entry.key)).@"enum".fields) |register_enum| {
-                        if (@intFromEnum(reg_entry.key) == register_enum.value) {
+                var reg_iterator = log_lines[line_idx].registers.iterator();
+                while (reg_iterator.next()) |reg_entry| {
+                    const reg_type = @TypeOf(reg_entry.key);
+                    inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
+                        if (@intFromEnum(reg_entry.key) == reg_enum.value) {
                             switch (reg_entry.key) {
                                 .x => try mcl.lines[line_idx].stations[station_idx].pollX(),
                                 .y => try mcl.lines[line_idx].stations[station_idx].pollY(),
@@ -2217,7 +2233,10 @@ fn logRegisters(_: [][]const u8) !void {
                             }
                             try registerValueToString(
                                 f.writer(),
-                                @field(mcl.lines[line_idx].stations[station_idx], register_enum.name),
+                                @field(
+                                    mcl.lines[line_idx].stations[station_idx],
+                                    reg_enum.name,
+                                ),
                             );
                             break;
                         }
@@ -2234,20 +2253,43 @@ fn logRegisters(_: [][]const u8) !void {
 }
 
 /// Write register fields name into the logging file.
-fn registerFieldToString(f: std.fs.File.Writer, prefix: []const u8, comptime parent: []const u8, comptime ParentType: type) !void {
+fn registerFieldToString(
+    f: std.fs.File.Writer,
+    prefix: []const u8,
+    comptime parent: []const u8,
+    comptime ParentType: type,
+) !void {
     inline for (@typeInfo(ParentType).@"struct".fields) |child_field| {
         if (child_field.name[0] == '_') continue;
         if (@typeInfo(child_field.type) == .@"struct") {
             if (parent.len == 0) {
-                try registerFieldToString(f, prefix, child_field.name, child_field.type);
+                try registerFieldToString(
+                    f,
+                    prefix,
+                    child_field.name,
+                    child_field.type,
+                );
             } else {
-                try registerFieldToString(f, prefix, parent ++ "." ++ child_field.name, child_field.type);
+                try registerFieldToString(
+                    f,
+                    prefix,
+                    parent ++ "." ++ child_field.name,
+                    child_field.type,
+                );
             }
         } else {
             if (parent.len == 0) {
-                try std.fmt.format(f, "{s}_{s},", .{ prefix, child_field.name });
+                try std.fmt.format(
+                    f,
+                    "{s}_{s},",
+                    .{ prefix, child_field.name },
+                );
             } else {
-                try std.fmt.format(f, "{s}_{s},", .{ prefix, parent ++ "." ++ child_field.name });
+                try std.fmt.format(
+                    f,
+                    "{s}_{s},",
+                    .{ prefix, parent ++ "." ++ child_field.name },
+                );
             }
         }
     }
@@ -2255,16 +2297,24 @@ fn registerFieldToString(f: std.fs.File.Writer, prefix: []const u8, comptime par
 
 // Write register values into the logging file
 fn registerValueToString(f: std.fs.File.Writer, parent_field: anytype) !void {
-    inline for (@typeInfo(@TypeOf(parent_field.*)).@"struct".fields) |child_field| {
+    const parent_type = @TypeOf(parent_field.*);
+    inline for (@typeInfo(parent_type).@"struct".fields) |child_field| {
         if (child_field.name[0] == '_') continue;
         if (comptime @typeInfo(child_field.type) == .@"struct") {
-            try registerValueToString(f, &@field(parent_field.*, child_field.name));
+            try registerValueToString(
+                f,
+                &@field(parent_field.*, child_field.name),
+            );
         } else {
             const child_value = @field(parent_field.*, child_field.name);
             if (comptime @typeInfo(@TypeOf(child_value)) == .@"enum") {
                 const enum_integer = @intFromEnum(child_value);
                 const enum_name = @tagName(child_value);
-                try std.fmt.format(f, "{s} ({d}),", .{ enum_name, enum_integer });
+                try std.fmt.format(
+                    f,
+                    "{s} ({d}),",
+                    .{ enum_name, enum_integer },
+                );
             } else try std.fmt.format(f, "{},", .{child_value});
         }
     }
