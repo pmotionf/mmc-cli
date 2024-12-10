@@ -14,9 +14,12 @@ const Direction = mcl.Direction;
 const Station = mcl.Station;
 
 const LogLine = struct {
-    status: bool, // Flag if line is configured for logging or not
-    registers: std.EnumArray(RegisterType, bool), // Specify which registers to log for each line
-    stations: [256]bool, // Flag which stations to be logged based on axes provided by user
+    /// Flag if line is configured for logging or not
+    status: bool,
+    /// Specify which registers to log for each line
+    registers: std.EnumArray(RegisterType, bool),
+    /// Flag which stations to be logged based on axes provided by user
+    stations: [256]bool,
 
     const RegisterType = enum { x, y, wr, ww };
 };
@@ -698,7 +701,7 @@ pub fn init(c: Config) !void {
         .short_description = "Print the logging configurations entry.",
         .long_description =
         \\Print the logging configuration for each line (if any). The status
-        \\is given by "line_name;stations;registers" with stations and 
+        \\is given by "line_name:stations:registers" with stations and 
         \\registers are a comma-separated string. 
         ,
         .execute = &statusLogRegisters,
@@ -2078,30 +2081,62 @@ fn resetLogRegisters(_: [][]const u8) !void {
 }
 
 fn statusLogRegisters(_: [][]const u8) !void {
-    const stdout = std.io.getStdOut().writer();
+    // const stdout = std.io.getStdOut().writer();
+    var buffer: [8192]u8 = undefined;
+    var buf_len: usize = 0;
     for (0..line_names.len) |line_idx| {
         if (log_lines[line_idx].status == false) continue;
-
-        try stdout.print("{s}:", .{line_names[line_idx]});
+        buf_len += (try std.fmt.bufPrint(
+            buffer[buf_len..],
+            "{s}:",
+            .{line_names[line_idx]},
+        )).len;
         for (0..log_lines[line_idx].stations.len) |station_idx| {
             if (log_lines[line_idx].stations[station_idx] == false) continue;
             if (station_idx != 0) {
-                try stdout.writeByte(',');
+                buf_len += (try std.fmt.bufPrint(
+                    buffer[buf_len..],
+                    "{s}",
+                    .{","},
+                )).len;
             }
-            try stdout.print("{d}", .{station_idx});
+            buf_len += std.fmt.formatIntBuf(
+                buffer[buf_len..],
+                station_idx,
+                10,
+                .lower,
+                .{},
+            );
         }
-        try stdout.writeByte(':');
+        buf_len += (try std.fmt.bufPrint(
+            buffer[buf_len..],
+            "{s}",
+            .{":"},
+        )).len;
 
         var register_iterator = log_lines[line_idx].registers.iterator();
         while (register_iterator.next()) |reg_entry| {
             if (reg_entry.value.* == false) continue;
             if (register_iterator.index - 1 != 0) {
-                try stdout.writeByte(',');
+                buf_len += (try std.fmt.bufPrint(
+                    buffer[buf_len..],
+                    "{s}",
+                    .{","},
+                )).len;
             }
-            try stdout.print("{s}", .{@tagName(reg_entry.key)});
+            buf_len += (try std.fmt.bufPrint(
+                buffer[buf_len..],
+                "{s}",
+                .{@tagName(reg_entry.key)},
+            )).len;
         }
-        try stdout.writeByte('\n');
+        buf_len += (try std.fmt.bufPrint(
+            buffer[buf_len..],
+            "{s}",
+            .{"\n"},
+        )).len;
     }
+    std.log.info("{s}", .{buffer[0..buf_len]});
 }
 
 fn pathLogRegisters(params: [][]const u8) !void {
