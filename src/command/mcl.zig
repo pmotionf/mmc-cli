@@ -2026,10 +2026,11 @@ fn addLogRegisters(params: [][]const u8) !void {
     // Validate "axes" parameter
     var axis_input_iterator = std.mem.tokenizeSequence(u8, params[1], ",");
     while (axis_input_iterator.next()) |token| {
-        const axis_index = try std.fmt.parseInt(mcl.Station.Id, token, 0) - 1;
-        if (axis_index < 0 or axis_index > line.axes.len - 1) {
+        const axis_id = try std.fmt.parseInt(mcl.Axis.Id.Line, token, 0);
+        if (axis_id < 1 or axis_id > line.axes.len) {
             return error.InvalidAxis;
         }
+        const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
         const station_index: Station.Index = @intCast(axis_index / 3);
         log.stations[station_index] = true;
     }
