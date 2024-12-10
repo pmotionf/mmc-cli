@@ -2205,15 +2205,16 @@ fn logRegisters(_: [][]const u8) !void {
             if (log_lines[line_idx].status == false) continue;
             for (0..256) |station_idx| {
                 if (log_lines[line_idx].stations[station_idx] == false) continue;
-                // TODO poll the only desired registers
-                try mcl.lines[line_idx].stations[station_idx].pollX();
-                try mcl.lines[line_idx].stations[station_idx].pollY();
-                try mcl.lines[line_idx].stations[station_idx].pollWr();
-                try mcl.lines[line_idx].stations[station_idx].pollWw();
                 var register_iterator = log_lines[line_idx].registers.iterator();
                 while (register_iterator.next()) |reg_entry| {
                     inline for (@typeInfo(@TypeOf(reg_entry.key)).@"enum".fields) |register_enum| {
                         if (@intFromEnum(reg_entry.key) == register_enum.value) {
+                            switch (reg_entry.key) {
+                                .x => try mcl.lines[line_idx].stations[station_idx].pollX(),
+                                .y => try mcl.lines[line_idx].stations[station_idx].pollY(),
+                                .wr => try mcl.lines[line_idx].stations[station_idx].pollWr(),
+                                .ww => try mcl.lines[line_idx].stations[station_idx].pollWw(),
+                            }
                             try registerValueToString(
                                 f.writer(),
                                 @field(mcl.lines[line_idx].stations[station_idx], register_enum.name),
