@@ -662,8 +662,8 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Setup the logging configuration for the specified line. This will 
         \\overwrite the existing configuration for the specified line if any. 
-        \\It will log registers based on the given "registers" parameter on 
-        \\the station depending on the provided axes. Both "registers" and "axes"
+        \\It will log registers based on the given "registers" parameter on the 
+        \\station depending on the provided axes. Both "registers" and "axes"
         \\shall be provided as comma-separated values: 
         \\
         \\"ADD_LOG_REGISTER line_name 1,4,7 x,y" 
@@ -691,7 +691,8 @@ pub fn init(c: Config) !void {
         .name = "RESET_LOG_REGISTERS",
         .short_description = "Remove all logging configurations.",
         .long_description =
-        \\Remove all logging configurations for logging registers for every line.
+        \\Remove all logging configurations for logging registers for every 
+        \\line.
         ,
         .execute = &resetLogRegisters,
     });
@@ -700,9 +701,9 @@ pub fn init(c: Config) !void {
         .name = "STATUS_LOG_REGISTERS",
         .short_description = "Print the logging configurations entry.",
         .long_description =
-        \\Print the logging configuration for each line (if any). The status
-        \\is given by "line_name:stations:registers" with stations and 
-        \\registers are a comma-separated string. 
+        \\Print the logging configuration for each line (if any). The status is 
+        \\given by "line_name:stations:registers" with stations and registers 
+        \\are a comma-separated string. 
         ,
         .execute = &statusLogRegisters,
     });
@@ -714,9 +715,9 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Create a logging file for the configured line.",
         .long_description =
-        \\Create a log file for logging registers. If no logging configuration is 
-        \\detected, it will return an error value. If a path is not provided, a 
-        \\default log file containing all register values triggered by 
+        \\Create a log file for logging registers. If no logging configuration 
+        \\is detected, it will return an error value. If a path is not provided, 
+        \\a default log file containing all register values triggered by 
         \\LOG_REGISTERS will be created in the current working directory as 
         \\follows:
         \\"mmc-register-YYYY.MM.DD-HH.MM.SS.csv".
@@ -731,9 +732,9 @@ pub fn init(c: Config) !void {
         .name = "LOG_REGISTERS",
         .short_description = "Log the register values.",
         .long_description =
-        \\This command will trigger the logging functionality on every line configured 
-        \\for logging the registers. It writes register values to the file specified 
-        \\by FILE_LOG_REGISTERS.
+        \\This command will trigger the logging functionality on every line 
+        \\configured for logging the registers. It writes register values to 
+        \\the file specified by FILE_LOG_REGISTERS.
         ,
         .execute = &logRegisters,
     });
