@@ -750,15 +750,16 @@ pub fn deinit() void {
     log_file = null;
 }
 
-fn mclVersion(_: [][]const u8) !void {
+fn mclVersion(_: [][]const u8) !command.CommandStatus {
     std.log.info("MCL Version: {d}.{d}.{d}\n", .{
         mcl.version.major,
         mcl.version.minor,
         mcl.version.patch,
     });
+    return command.CommandStatus.task_finished;
 }
 
-fn mclConnect(_: [][]const u8) !void {
+fn mclConnect(_: [][]const u8) !command.CommandStatus {
     try mcl.open();
     for (mcl.lines) |line| {
         for (line.stations) |station| {
@@ -766,9 +767,10 @@ fn mclConnect(_: [][]const u8) !void {
             try station.send();
         }
     }
+    return command.CommandStatus.task_finished;
 }
 
-fn mclDisconnect(_: [][]const u8) !void {
+fn mclDisconnect(_: [][]const u8) !command.CommandStatus {
     for (mcl.lines) |line| {
         for (line.stations) |station| {
             station.y.cc_link_enable = false;
@@ -776,9 +778,10 @@ fn mclDisconnect(_: [][]const u8) !void {
         }
     }
     try mcl.close();
+    return command.CommandStatus.task_finished;
 }
 
-fn mclStationX(params: [][]const u8) !void {
+fn mclStationX(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(i16, params[1], 0);
 
@@ -795,9 +798,10 @@ fn mclStationX(params: [][]const u8) !void {
     try line.stations[station_index].pollX();
 
     std.log.info("{}", .{line.stations[station_index].x});
+    return command.CommandStatus.task_finished;
 }
 
-fn mclStationY(params: [][]const u8) !void {
+fn mclStationY(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(i16, params[1], 0);
 
@@ -814,9 +818,10 @@ fn mclStationY(params: [][]const u8) !void {
     try line.stations[station_index].pollY();
 
     std.log.info("{}", .{line.stations[station_index].y});
+    return command.CommandStatus.task_finished;
 }
 
-fn mclStationWr(params: [][]const u8) !void {
+fn mclStationWr(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(i16, params[1], 0);
 
@@ -833,9 +838,10 @@ fn mclStationWr(params: [][]const u8) !void {
     try line.stations[station_index].pollWr();
 
     std.log.info("{}", .{line.stations[station_index].wr});
+    return command.CommandStatus.task_finished;
 }
 
-fn mclStationWw(params: [][]const u8) !void {
+fn mclStationWw(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(i16, params[1], 0);
 
@@ -852,9 +858,10 @@ fn mclStationWw(params: [][]const u8) !void {
     try line.stations[station_index].pollWw();
 
     std.log.info("{}", .{line.stations[station_index].ww});
+    return command.CommandStatus.task_finished;
 }
 
-fn mclAxisSlider(params: [][]const u8) !void {
+fn mclAxisSlider(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(i16, params[1], 0);
     const result_var: []const u8 = params[2];
@@ -887,9 +894,10 @@ fn mclAxisSlider(params: [][]const u8) !void {
     } else {
         std.log.info("No slider recognized on axis {d}.\n", .{axis_id});
     }
+    return command.CommandStatus.task_finished;
 }
 
-fn mclAxisReleaseServo(params: [][]const u8) !void {
+fn mclAxisReleaseServo(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
 
@@ -913,9 +921,10 @@ fn mclAxisReleaseServo(params: [][]const u8) !void {
         try station.pollX();
         if (!station.x.servo_active.axis(local_axis_index)) break;
     }
+    return command.CommandStatus.task_finished;
 }
 
-fn mclClearErrors(params: [][]const u8) !void {
+fn mclClearErrors(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
 
@@ -939,9 +948,10 @@ fn mclClearErrors(params: [][]const u8) !void {
         try station.pollX();
         if (station.x.errors_cleared) break;
     }
+    return command.CommandStatus.task_finished;
 }
 
-fn mclClearSliderInfo(params: [][]const u8) !void {
+fn mclClearSliderInfo(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
 
@@ -966,9 +976,10 @@ fn mclClearSliderInfo(params: [][]const u8) !void {
         try station.pollX();
         if (station.x.axis_slider_info_cleared) break;
     }
+    return command.CommandStatus.task_finished;
 }
 
-fn mclCalibrate(params: [][]const u8) !void {
+fn mclCalibrate(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
@@ -978,9 +989,10 @@ fn mclCalibrate(params: [][]const u8) !void {
     station.ww.command_code = .Calibration;
     station.ww.command_slider_number = 1;
     try sendCommand(station);
+    return command.CommandStatus.task_finished;
 }
 
-fn setLineZero(params: [][]const u8) !void {
+fn setLineZero(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
@@ -989,9 +1001,10 @@ fn setLineZero(params: [][]const u8) !void {
     try waitCommandReady(station);
     station.ww.command_code = .SetLineZero;
     try sendCommand(station);
+    return command.CommandStatus.task_finished;
 }
 
-fn mclIsolate(params: [][]const u8) !void {
+fn mclIsolate(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const axis_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
 
@@ -1065,18 +1078,20 @@ fn mclIsolate(params: [][]const u8) !void {
         .target_axis_number = local_axis + 1,
     };
     try sendCommand(station);
+    return command.CommandStatus.task_finished;
 }
 
-fn mclSetSpeed(params: [][]const u8) !void {
+fn mclSetSpeed(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const slider_speed = try std.fmt.parseUnsigned(u8, params[1], 0);
     if (slider_speed < 1 or slider_speed > 100) return error.InvalidSpeed;
 
     const line_idx: usize = try matchLine(line_names, line_name);
     line_speeds[line_idx] = @intCast(slider_speed);
+    return command.CommandStatus.task_finished;
 }
 
-fn mclSetAcceleration(params: [][]const u8) !void {
+fn mclSetAcceleration(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const slider_acceleration = try std.fmt.parseUnsigned(u8, params[1], 0);
     if (slider_acceleration < 1 or slider_acceleration > 100)
@@ -1084,16 +1099,18 @@ fn mclSetAcceleration(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
     line_accelerations[line_idx] = @intCast(slider_acceleration);
+    return command.CommandStatus.task_finished;
 }
 
-fn mclGetSpeed(params: [][]const u8) !void {
+fn mclGetSpeed(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
 
     const line_idx: usize = try matchLine(line_names, line_name);
     std.log.info("Line {s} speed: {d}%", .{ line_name, line_speeds[line_idx] });
+    return command.CommandStatus.task_finished;
 }
 
-fn mclGetAcceleration(params: [][]const u8) !void {
+fn mclGetAcceleration(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
 
     const line_idx: usize = try matchLine(line_names, line_name);
@@ -1101,9 +1118,10 @@ fn mclGetAcceleration(params: [][]const u8) !void {
         "Line {s} acceleration: {d}%",
         .{ line_name, line_accelerations[line_idx] },
     );
+    return command.CommandStatus.task_finished;
 }
 
-fn mclSliderLocation(params: [][]const u8) !void {
+fn mclSliderLocation(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const slider_id = try std.fmt.parseInt(u16, params[1], 0);
     if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
@@ -1132,9 +1150,10 @@ fn mclSliderLocation(params: [][]const u8) !void {
             .{location},
         ));
     }
+    return command.CommandStatus.task_finished;
 }
 
-fn mclSliderAxis(params: [][]const u8) !void {
+fn mclSliderAxis(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const slider_id = try std.fmt.parseInt(u16, params[1], 0);
     if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
@@ -1158,9 +1177,10 @@ fn mclSliderAxis(params: [][]const u8) !void {
             if (axis > line.axes.len) break;
         }
     }
+    return command.CommandStatus.task_finished;
 }
 
-fn mclHallStatus(params: [][]const u8) !void {
+fn mclHallStatus(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
@@ -1184,9 +1204,10 @@ fn mclHallStatus(params: [][]const u8) !void {
             if (axis > line.axes.len) break;
         }
     }
+    return command.CommandStatus.task_finished;
 }
 
-fn mclAssertHall(params: [][]const u8) !void {
+fn mclAssertHall(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const axis = try std.fmt.parseInt(mcl.Axis.Id.Line, params[2], 0);
     const side: mcl.Direction =
@@ -1231,9 +1252,10 @@ fn mclAssertHall(params: [][]const u8) !void {
             }
         },
     }
+    return command.CommandStatus.task_finished;
 }
 
-fn mclSliderPosMoveAxis(params: [][]const u8) !void {
+fn mclSliderPosMoveAxis(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
     const axis_id: u16 = try std.fmt.parseInt(u16, params[2], 0);
@@ -1290,9 +1312,10 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
         .acceleration_percentage = line_accelerations[line_idx],
     };
     try sendCommand(station);
+    return command.CommandStatus.task_finished;
 }
 
-fn mclSliderPosMoveLocation(params: [][]const u8) !void {
+fn mclSliderPosMoveLocation(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
@@ -1349,9 +1372,10 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
         .acceleration_percentage = line_accelerations[line_idx],
     };
     try sendCommand(station);
+    return command.CommandStatus.task_finished;
 }
 
-fn mclSliderPosMoveDistance(params: [][]const u8) !void {
+fn mclSliderPosMoveDistance(params: [][]const u8) !command.CommandStatus {
     const line_name = params[0];
     const slider_id = try std.fmt.parseInt(u16, params[1], 0);
     const distance = try std.fmt.parseFloat(f32, params[2]);
@@ -1363,7 +1387,7 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
         } else if (distance < 0.0) {
             break :move_dir .backward;
         } else {
-            return;
+            return command.CommandStatus.task_finished;
         }
     };
 
@@ -1415,9 +1439,10 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
         .acceleration_percentage = line_accelerations[line_idx],
     };
     try sendCommand(station);
+    return command.CommandStatus.task_finished;
 }
 
-fn mclSliderSpdMoveAxis(params: [][]const u8) !void {
+fn mclSliderSpdMoveAxis(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
     const axis_id: u16 = try std.fmt.parseInt(u16, params[2], 0);
@@ -1474,9 +1499,10 @@ fn mclSliderSpdMoveAxis(params: [][]const u8) !void {
         .acceleration_percentage = line_accelerations[line_idx],
     };
     try sendCommand(station);
+    return command.CommandStatus.task_finished;
 }
 
-fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
+fn mclSliderSpdMoveLocation(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
@@ -1533,9 +1559,10 @@ fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
         .acceleration_percentage = line_speeds[line_idx],
     };
     try sendCommand(station);
+    return command.CommandStatus.task_finished;
 }
 
-fn mclSliderSpdMoveDistance(params: [][]const u8) !void {
+fn mclSliderSpdMoveDistance(params: [][]const u8) !command.CommandStatus {
     const line_name = params[0];
     const slider_id = try std.fmt.parseInt(u16, params[1], 0);
     const distance = try std.fmt.parseFloat(f32, params[2]);
@@ -1547,7 +1574,7 @@ fn mclSliderSpdMoveDistance(params: [][]const u8) !void {
         } else if (distance < 0.0) {
             break :move_dir .backward;
         } else {
-            return;
+            return command.CommandStatus.task_finished;
         }
     };
 
@@ -1599,9 +1626,10 @@ fn mclSliderSpdMoveDistance(params: [][]const u8) !void {
         .acceleration_percentage = line_accelerations[line_idx],
     };
     try sendCommand(station);
+    return command.CommandStatus.task_finished;
 }
 
-fn mclSliderPushForward(params: [][]const u8) !void {
+fn mclSliderPushForward(params: [][]const u8) !command.CommandStatus {
     const line_name = params[0];
     const slider_id = try std.fmt.parseInt(u16, params[1], 0);
     if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
@@ -1651,9 +1679,10 @@ fn mclSliderPushForward(params: [][]const u8) !void {
         .acceleration_percentage = line_accelerations[line_idx],
     };
     try sendCommand(station);
+    return command.CommandStatus.task_finished;
 }
 
-fn mclSliderPushBackward(params: [][]const u8) !void {
+fn mclSliderPushBackward(params: [][]const u8) !command.CommandStatus {
     const line_name = params[0];
     const slider_id = try std.fmt.parseInt(u16, params[1], 0);
     if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
@@ -1704,9 +1733,10 @@ fn mclSliderPushBackward(params: [][]const u8) !void {
         .acceleration_percentage = line_accelerations[line_idx],
     };
     try sendCommand(station);
+    return command.CommandStatus.task_finished;
 }
 
-fn mclSliderPullForward(params: [][]const u8) !void {
+fn mclSliderPullForward(params: [][]const u8) !command.CommandStatus {
     const line_name = params[0];
     const axis = try std.fmt.parseInt(u16, params[1], 0);
     const slider_id = try std.fmt.parseInt(u16, params[2], 0);
@@ -1728,9 +1758,10 @@ fn mclSliderPullForward(params: [][]const u8) !void {
         .acceleration_percentage = line_accelerations[line_idx],
     };
     try sendCommand(station);
+    return command.CommandStatus.task_finished;
 }
 
-fn mclSliderPullBackward(params: [][]const u8) !void {
+fn mclSliderPullBackward(params: [][]const u8) !command.CommandStatus {
     const line_name = params[0];
     const axis = try std.fmt.parseInt(u16, params[1], 0);
     const slider_id = try std.fmt.parseInt(u16, params[2], 0);
@@ -1752,9 +1783,10 @@ fn mclSliderPullBackward(params: [][]const u8) !void {
         .acceleration_percentage = line_accelerations[line_idx],
     };
     try sendCommand(station);
+    return command.CommandStatus.task_finished;
 }
 
-fn mclSliderWaitPull(params: [][]const u8) !void {
+fn mclSliderWaitPull(params: [][]const u8) !command.CommandStatus {
     const line_name = params[0];
     const axis = try std.fmt.parseInt(i16, params[1], 0);
     const line_idx: usize = try matchLine(line_names, line_name);
@@ -1777,9 +1809,10 @@ fn mclSliderWaitPull(params: [][]const u8) !void {
             slider_state == .PullBackwardFault)
             return error.SliderPullError;
     }
+    return command.CommandStatus.task_finished;
 }
 
-fn mclSliderStopPull(params: [][]const u8) !void {
+fn mclSliderStopPull(params: [][]const u8) !command.CommandStatus {
     const line_name = params[0];
     const axis = try std.fmt.parseInt(i16, params[1], 0);
     const line_idx: usize = try matchLine(line_names, line_name);
@@ -1799,9 +1832,10 @@ fn mclSliderStopPull(params: [][]const u8) !void {
         try station.pollX();
         if (!station.x.pulling_slider.axis(local_axis)) break;
     }
+    return command.CommandStatus.task_finished;
 }
 
-fn mclWaitMoveSlider(params: [][]const u8) !void {
+fn mclWaitMoveSlider(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const slider_id = try std.fmt.parseInt(u16, params[1], 0);
     if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
@@ -1844,9 +1878,10 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
             }
         }
     }
+    return command.CommandStatus.task_finished;
 }
 
-fn mclRecoverSlider(params: [][]const u8) !void {
+fn mclRecoverSlider(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const axis: u16 = try std.fmt.parseUnsigned(u16, params[1], 0);
     const new_slider_id: u16 = try std.fmt.parseUnsigned(u16, params[2], 0);
@@ -1906,9 +1941,10 @@ fn mclRecoverSlider(params: [][]const u8) !void {
         .command_slider_number = new_slider_id,
     };
     try sendCommand(station);
+    return command.CommandStatus.task_finished;
 }
 
-fn mclTrafficStop(params: [][]const u8) !void {
+fn mclTrafficStop(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const axis = try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[1], 0);
 
@@ -1940,9 +1976,10 @@ fn mclTrafficStop(params: [][]const u8) !void {
         try command.checkCommandInterrupt();
         try station.pollX();
     }
+    return command.CommandStatus.task_finished;
 }
 
-fn mclTrafficAllow(params: [][]const u8) !void {
+fn mclTrafficAllow(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const axis = try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[1], 0);
 
@@ -1974,9 +2011,10 @@ fn mclTrafficAllow(params: [][]const u8) !void {
         try command.checkCommandInterrupt();
         try station.pollX();
     }
+    return command.CommandStatus.task_finished;
 }
 
-fn mclWaitRecoverSlider(params: [][]const u8) !void {
+fn mclWaitRecoverSlider(params: [][]const u8) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const axis: u16 = try std.fmt.parseUnsigned(u16, params[1], 0);
     const result_var: []const u8 = params[2];
@@ -2013,10 +2051,11 @@ fn mclWaitRecoverSlider(params: [][]const u8) !void {
             try std.fmt.bufPrint(&int_buf, "{d}", .{slider_id}),
         );
     }
+    return command.CommandStatus.task_finished;
 }
 
 /// Add logging configuration for registers logging in the specified line
-fn addLogRegisters(params: [][]const u8) !void {
+fn addLogRegisters(params: [][]const u8) !command.CommandStatus {
     const line_name = params[0];
     const line_idx = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
@@ -2069,28 +2108,30 @@ fn addLogRegisters(params: [][]const u8) !void {
     std.log.info("{s}", .{info_buffer[0 .. buf_len - 1]});
     log.status = true;
     log_lines[line_idx] = log;
+    return command.CommandStatus.task_finished;
 }
 
-fn removeLogRegisters(params: [][]const u8) !void {
+fn removeLogRegisters(params: [][]const u8) !command.CommandStatus {
     const line_name = params[0];
     const line_idx = try matchLine(line_names, line_name);
 
     if (log_lines[line_idx].status == false) {
         std.log.err("Line is not configured for logging yet", .{});
-        return;
+        return command.CommandStatus.task_finished;
     }
 
     log_lines[line_idx].status = false;
+    return command.CommandStatus.task_finished;
 }
 
-fn resetLogRegisters(_: [][]const u8) !void {
+fn resetLogRegisters(_: [][]const u8) !command.CommandStatus {
     for (0..line_names.len) |i| {
         log_lines[i].status = false;
     }
+    return command.CommandStatus.task_finished;
 }
 
-fn statusLogRegisters(_: [][]const u8) !void {
-    // const stdout = std.io.getStdOut().writer();
+fn statusLogRegisters(_: [][]const u8) !command.CommandStatus {
     var buffer: [8192]u8 = undefined;
     var buf_len: usize = 0;
     for (0..line_names.len) |line_idx| {
@@ -2146,9 +2187,10 @@ fn statusLogRegisters(_: [][]const u8) !void {
         )).len;
     }
     std.log.info("{s}", .{buffer[0..buf_len]});
+    return command.CommandStatus.task_finished;
 }
 
-fn pathLogRegisters(params: [][]const u8) !void {
+fn pathLogRegisters(params: [][]const u8) !command.CommandStatus {
     const path = params[0];
     var path_buffer: [512]u8 = undefined;
     const file_path = if (path.len > 0) path else p: {
@@ -2208,12 +2250,13 @@ fn pathLogRegisters(params: [][]const u8) !void {
         }
         try f.writer().writeByte('\n');
     }
+    return command.CommandStatus.task_finished;
 }
 
 /// Write the register values to the logging file specified by
 /// line_name parameter. If the line has not ben set for logging,
 /// it will return error.
-fn logRegisters(_: [][]const u8) !void {
+fn logRegisters(_: [][]const u8) !command.CommandStatus {
     if (log_file) |f| {
         for (line_names) |line| {
             const line_idx = try matchLine(line_names, line);
@@ -2248,8 +2291,9 @@ fn logRegisters(_: [][]const u8) !void {
         try f.writer().writeByte('\n');
     } else {
         std.log.err("Logging file not configured", .{});
-        return;
+        return command.CommandStatus.task_finished;
     }
+    return command.CommandStatus.task_finished;
 }
 
 /// Write register fields name into the logging file.
