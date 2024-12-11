@@ -10,9 +10,10 @@ pub fn CircularBuffer(comptime T: type) type {
         tail: usize,
 
         /// Initialize a new circular buffer
-        pub fn init() Self {
+        pub fn init(allocator: std.mem.Allocator, capacity: usize) Self {
+            const bytes = try allocator.alloc(T, capacity);
             return Self{
-                .buffer = undefined,
+                .buffer = bytes,
                 .head = 0,
                 .tail = 0,
             };

@@ -2,6 +2,7 @@ const builtin = @import("builtin");
 const std = @import("std");
 const network = @import("network");
 const command = @import("command.zig");
+const CircularBuffer = @import("custom_ds.zig").CircularBuffer;
 
 pub const std_options: std.Options = .{
     .logFn = command.logFn,
