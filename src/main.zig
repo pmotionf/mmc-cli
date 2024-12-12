@@ -50,23 +50,38 @@ pub fn main() !void {
 
     command_loop: while (true) {
         if (command.stop.load(.monotonic)) {
-            command.queueClear();
+            command.command_queue.clear();
+            command.running_commands.clear();
             command.stop.store(false, .monotonic);
         }
-        if (command.queueEmpty()) {
+        if (command.command_queue.isEmpty()) {
             var input_buffer: [1024]u8 = .{0} ** 1024;
             std.log.info("Please enter a command (HELP for info): ", .{});
 
             if (try nextLine(reader, &input_buffer)) |line| {
-                try command.enqueue(line);
+                try command.command_queue.write(line);
             } else continue :command_loop;
+            // Simulate dequeueing command_queue and add to running_commands
+            const command_str = command.command_queue.read().?;
+            const status = command.CommandStatus.task_assigned;
+            try command.running_commands.write(
+                .{
+                    .status = status,
+                    .command_string = command_str,
+                },
+            );
         }
-        command.execute() catch |e| {
+        var executing_command = command.running_commands.read().?;
+        executing_command.status = command.execute(executing_command) catch |e| {
             std.log.err("{s}", .{@errorName(e)});
             std.log.debug("{any}", .{@errorReturnTrace()});
-            command.queueClear();
+            command.command_queue.clear();
             continue :command_loop;
         };
+        // re-add the command to queue if task is not finished
+        if (executing_command.status != .task_finished) {
+            try command.running_commands.write(executing_command);
+        }
     }
 }
 

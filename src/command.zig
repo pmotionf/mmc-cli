@@ -10,8 +10,43 @@ const v = @import("version");
 // Command modules.
 const mcl = @import("command/mcl.zig");
 const return_demo2 = @import("command/return_demo2.zig");
+const CircularBuffer = @import("custom_ds.zig").CircularBuffer;
 
 const Config = @import("Config.zig");
+
+const RunningCommand = struct {
+    status: CommandStatus,
+    command_string: []const u8,
+};
+
+pub const RegisterStatus = struct {
+    config: Config,
+
+    // TODO: getRegisters return all registers based on the passed Config.
+    // fn getRegisters()
+};
+
+/// Collect the status of the running command.
+pub const CommandStatus = enum(u16) {
+    task_assigned,
+    task_finished,
+    reset_x_servo_active,
+    set_x_errors_cleared,
+    set_x_axis_slider_info_cleared,
+    set_x_transmission_stopped,
+    reset_x_transmission_stopped,
+    state_wr_slider,
+    reset_x_pulling_slider,
+    set_x_ready_for_command,
+    set_x_command_received,
+    reset_x_command_received,
+    _,
+};
+
+/// Store all command that is currently executing
+pub var running_commands: CircularBuffer(RunningCommand) = undefined;
+/// Store all command from client interface
+pub var command_queue: CircularBuffer([]const u8) = undefined;
 
 // Global registry of all commands, including from other command modules.
 pub var registry: std.StringArrayHashMap(Command) = undefined;
@@ -29,15 +64,8 @@ pub var variables: std.BufMap = undefined;
 // initialized will be deinitialized.
 var initialized_modules: std.EnumArray(Config.Module, bool) = undefined;
 
-var command_queue: std.ArrayList(CommandString) = undefined;
-
 var timer: ?std.time.Timer = null;
 var log_file: ?std.fs.File = null;
-
-const CommandString = struct {
-    buffer: [1024]u8,
-    len: usize,
-};
 
 pub const Command = struct {
     /// Name of a command, as shown to/parsed from user.
@@ -49,7 +77,7 @@ pub const Command = struct {
     short_description: []const u8,
     /// Long description of command.
     long_description: []const u8,
-    execute: *const fn ([][]const u8) anyerror!void,
+    execute: *const fn ([][]const u8, CommandStatus) anyerror!CommandStatus,
 
     pub const Parameter = struct {
         name: []const u8,
@@ -94,7 +122,9 @@ pub fn init() !void {
     initialized_modules = std.EnumArray(Config.Module, bool).initFill(false);
     registry = std.StringArrayHashMap(Command).init(allocator);
     variables = std.BufMap.init(allocator);
-    command_queue = std.ArrayList(CommandString).init(allocator);
+    // TODO: Decide the size, 1024 may or may not be enough
+    command_queue = try CircularBuffer([]const u8).init(allocator, 1024);
+    running_commands = try CircularBuffer(RunningCommand).init(allocator, 1024);
     stop.store(false, .monotonic);
     timer = try std.time.Timer.start();
 
@@ -257,45 +287,26 @@ pub fn deinit() void {
     defer stop.store(false, .monotonic);
     variables.deinit();
     command_queue.deinit();
+    running_commands.deinit();
     deinitModules();
     registry.deinit();
     arena.deinit();
-}
-
-pub fn queueEmpty() bool {
-    return command_queue.items.len == 0;
-}
-
-pub fn queueClear() void {
-    command_queue.clearRetainingCapacity();
 }
 
 /// Checks if the `stop` flag is set, and if so returns an error.
 pub fn checkCommandInterrupt() !void {
     if (stop.load(.monotonic)) {
         defer stop.store(false, .monotonic);
-        queueClear();
+        // NOTE: Which one should be cleared? command_queue or running_commands?
+        command_queue.clear();
+        running_commands.clear();
         return error.CommandStopped;
     }
 }
 
-pub fn enqueue(input: []const u8) !void {
-    var buffer = CommandString{
-        .buffer = undefined,
-        .len = undefined,
-    };
-    @memcpy(buffer.buffer[0..input.len], input);
-    buffer.len = input.len;
-    try command_queue.insert(0, buffer);
-}
-
-pub fn execute() !void {
-    const cb = command_queue.pop();
-    std.log.info("Running command: {s}\n", .{cb.buffer[0..cb.len]});
-    try parseAndRun(cb.buffer[0..cb.len]);
-}
-
-fn parseAndRun(input: []const u8) !void {
+pub fn execute(executing_command: RunningCommand) !CommandStatus {
+    const input = executing_command.command_string;
+    var status = executing_command.status;
     var token_iterator = std.mem.tokenizeSequence(u8, input, " ");
     var command: *Command = undefined;
     var command_buf: [32]u8 = undefined;
@@ -306,7 +317,7 @@ fn parseAndRun(input: []const u8) !void {
         ))) |c| {
             command = c;
         } else return error.InvalidCommand;
-    } else return;
+    } else return CommandStatus.task_finished;
 
     var params: [][]const u8 = try allocator.alloc(
         []const u8,
@@ -355,13 +366,14 @@ fn parseAndRun(input: []const u8) !void {
         }
     }
     if (token_iterator.peek() != null) return error.UnexpectedParameter;
-    try command.execute(params);
+    status = try command.execute(params, status);
+    return status;
 }
 
 var arena: std.heap.ArenaAllocator = undefined;
 var allocator: std.mem.Allocator = undefined;
 
-fn help(params: [][]const u8) !void {
+fn help(params: [][]const u8, _: CommandStatus) !CommandStatus {
     if (params[0].len > 0) {
         var command: *Command = undefined;
         var command_buf: [32]u8 = undefined;
@@ -420,68 +432,77 @@ fn help(params: [][]const u8) !void {
             });
         }
     }
+    return CommandStatus.task_finished;
 }
 
-fn version(_: [][]const u8) !void {
+fn version(_: [][]const u8, _: CommandStatus) !CommandStatus {
     // TODO: Figure out better way to get version from `build.zig.zon`.
     std.log.info("CLI Version: {s}\n", .{v.version});
+    return CommandStatus.task_finished;
 }
 
-fn set(params: [][]const u8) !void {
+fn set(params: [][]const u8, _: CommandStatus) !CommandStatus {
     try variables.put(params[0], params[1]);
+    return CommandStatus.task_finished;
 }
 
-fn get(params: [][]const u8) !void {
+fn get(params: [][]const u8, _: CommandStatus) !CommandStatus {
     if (variables.get(params[0])) |value| {
         std.log.info("Variable \"{s}\": {s}\n", .{
             params[0],
             value,
         });
+        return CommandStatus.task_finished;
     } else return error.UndefinedVariable;
 }
 
-fn printVariables(_: [][]const u8) !void {
+fn printVariables(_: [][]const u8, _: CommandStatus) !CommandStatus {
     var variables_it = variables.iterator();
     while (variables_it.next()) |entry| {
         try checkCommandInterrupt();
         std.log.info("\t{s}: {s}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
     }
+    return CommandStatus.task_finished;
 }
 
-fn timerStart(_: [][]const u8) !void {
+fn timerStart(_: [][]const u8, _: CommandStatus) !CommandStatus {
     if (timer) |*t| {
         t.reset();
+        return CommandStatus.task_finished;
     } else {
         return error.SystemTimerFailure;
     }
 }
 
-fn timerRead(_: [][]const u8) !void {
+fn timerRead(_: [][]const u8, _: CommandStatus) !CommandStatus {
     if (timer) |*t| {
         var timer_value: f64 = @floatFromInt(t.read());
         timer_value = timer_value / std.time.ns_per_s;
         // Only print to microsecond precision.
         std.log.info("Timer: {d:.6}\n", .{timer_value});
+        return CommandStatus.task_finished;
     } else {
         return error.SystemTimerFailure;
     }
 }
 
-fn file(params: [][]const u8) !void {
+fn file(params: [][]const u8, _: CommandStatus) !CommandStatus {
     var f = try std.fs.cwd().openFile(params[0], .{});
     var reader = f.reader();
-    const current_len: usize = command_queue.items.len;
-    var new_line: CommandString = .{ .buffer = undefined, .len = 0 };
+    var buffer: [1024]u8 = undefined;
     while (try reader.readUntilDelimiterOrEof(
-        &new_line.buffer,
+        &buffer,
         '\n',
     )) |_line| {
         try checkCommandInterrupt();
-        const line = std.mem.trimRight(u8, _line, "\r");
-        new_line.len = line.len;
-        std.log.info("Queueing command: {s}", .{line});
-        try command_queue.insert(current_len, new_line);
+        const line = std.mem.trimRight(
+            u8,
+            _line,
+            "\r",
+        );
+        try command_queue.write(line);
     }
+    return CommandStatus.task_finished;
 }
 
 fn deinitModules() void {
@@ -498,7 +519,7 @@ fn deinitModules() void {
     }
 }
 
-fn loadConfig(params: [][]const u8) !void {
+fn loadConfig(params: [][]const u8, _: CommandStatus) !CommandStatus {
     // De-initialize any previously initialized modules.
     deinitModules();
 
@@ -526,17 +547,19 @@ fn loadConfig(params: [][]const u8) !void {
     }
     config.deinit();
     m_arena.deinit();
+    return CommandStatus.task_finished;
 }
 
-fn wait(params: [][]const u8) !void {
+fn wait(params: [][]const u8, _: CommandStatus) !CommandStatus {
     const duration: u32 = try std.fmt.parseInt(u32, params[0], 0);
     var wait_timer = try std.time.Timer.start();
     while (wait_timer.read() < duration * std.time.ns_per_ms) {
         try checkCommandInterrupt();
     }
+    return CommandStatus.task_finished;
 }
 
-fn setLog(params: [][]const u8) !void {
+fn setLog(params: [][]const u8, _: CommandStatus) !CommandStatus {
     const mode_str = params[0];
     const path = params[1];
 
@@ -587,13 +610,16 @@ fn setLog(params: [][]const u8) !void {
     } else {
         return error.InvalidSaveOutputMode;
     }
+    return CommandStatus.task_finished;
 }
 
-fn clear(_: [][]const u8) !void {
+fn clear(_: [][]const u8, _: CommandStatus) !CommandStatus {
     const stdout = std.io.getStdOut().writer();
     try stdout.writeAll("\x1bc");
+    return CommandStatus.task_finished;
 }
 
-fn exit(_: [][]const u8) !void {
+fn exit(_: [][]const u8, _: CommandStatus) !CommandStatus {
     std.process.exit(1);
+    return CommandStatus.task_finished;
 }

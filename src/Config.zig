@@ -8,12 +8,10 @@ parsed: std.json.Parsed(Parse),
 
 pub const Module = enum {
     mcl,
-    return_demo2,
 };
 
 const ModuleConfig = union(Module) {
     mcl: MclConfig,
-    return_demo2: ReturnDemo2Config,
 };
 
 const Parse = struct {
