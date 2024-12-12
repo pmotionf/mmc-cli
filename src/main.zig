@@ -61,9 +61,18 @@ pub fn main() !void {
             if (try nextLine(reader, &input_buffer)) |line| {
                 try command.command_queue.write(line);
             } else continue :command_loop;
+            // Simulate dequeueing command_queue and add to running_commands
+            const command_str = command.command_queue.read().?;
+            const status = command.CommandStatus.task_assigned;
+            try command.running_commands.write(
+                .{
+                    .status = status,
+                    .command_string = command_str,
+                },
+            );
         }
         var executing_command = command.running_commands.read().?;
-        executing_command.status = command.execute(executing_command.command_string) catch |e| {
+        executing_command.status = command.execute(executing_command) catch |e| {
             std.log.err("{s}", .{@errorName(e)});
             std.log.debug("{any}", .{@errorReturnTrace()});
             command.command_queue.clear();

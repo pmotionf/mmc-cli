@@ -28,6 +28,7 @@ pub const RegisterStatus = struct {
 
 /// Collect the status of the running command.
 pub const CommandStatus = enum(u16) {
+    task_assigned,
     task_finished,
     reset_x_servo_active,
     set_x_errors_cleared,
@@ -42,10 +43,10 @@ pub const CommandStatus = enum(u16) {
     _,
 };
 
-/// Store all command from client interface
-pub var command_queue: CircularBuffer([]const u8) = undefined;
 /// Store all command that is currently executing
 pub var running_commands: CircularBuffer(RunningCommand) = undefined;
+/// Store all command from client interface
+pub var command_queue: CircularBuffer([]const u8) = undefined;
 
 // Global registry of all commands, including from other command modules.
 pub var registry: std.StringArrayHashMap(Command) = undefined;
@@ -76,7 +77,7 @@ pub const Command = struct {
     short_description: []const u8,
     /// Long description of command.
     long_description: []const u8,
-    execute: *const fn ([][]const u8) anyerror!CommandStatus,
+    execute: *const fn ([][]const u8, CommandStatus) anyerror!CommandStatus,
 
     pub const Parameter = struct {
         name: []const u8,
@@ -124,7 +125,6 @@ pub fn init() !void {
     // TODO: Decide the size, 1024 may or may not be enough
     command_queue = try CircularBuffer([]const u8).init(allocator, 1024);
     running_commands = try CircularBuffer(RunningCommand).init(allocator, 1024);
-    // command_queue = std.ArrayList(CommandString).init(allocator);
     stop.store(false, .monotonic);
     timer = try std.time.Timer.start();
 
@@ -304,7 +304,9 @@ pub fn checkCommandInterrupt() !void {
     }
 }
 
-pub fn execute(input: []const u8) !CommandStatus {
+pub fn execute(executing_command: RunningCommand) !CommandStatus {
+    const input = executing_command.command_string;
+    var status = executing_command.status;
     var token_iterator = std.mem.tokenizeSequence(u8, input, " ");
     var command: *Command = undefined;
     var command_buf: [32]u8 = undefined;
@@ -364,14 +366,14 @@ pub fn execute(input: []const u8) !CommandStatus {
         }
     }
     if (token_iterator.peek() != null) return error.UnexpectedParameter;
-    const status = try command.execute(params);
+    status = try command.execute(params, status);
     return status;
 }
 
 var arena: std.heap.ArenaAllocator = undefined;
 var allocator: std.mem.Allocator = undefined;
 
-fn help(params: [][]const u8) !CommandStatus {
+fn help(params: [][]const u8, _: CommandStatus) !CommandStatus {
     if (params[0].len > 0) {
         var command: *Command = undefined;
         var command_buf: [32]u8 = undefined;
@@ -433,18 +435,18 @@ fn help(params: [][]const u8) !CommandStatus {
     return CommandStatus.task_finished;
 }
 
-fn version(_: [][]const u8) !CommandStatus {
+fn version(_: [][]const u8, _: CommandStatus) !CommandStatus {
     // TODO: Figure out better way to get version from `build.zig.zon`.
     std.log.info("CLI Version: {s}\n", .{v.version});
     return CommandStatus.task_finished;
 }
 
-fn set(params: [][]const u8) !CommandStatus {
+fn set(params: [][]const u8, _: CommandStatus) !CommandStatus {
     try variables.put(params[0], params[1]);
     return CommandStatus.task_finished;
 }
 
-fn get(params: [][]const u8) !CommandStatus {
+fn get(params: [][]const u8, _: CommandStatus) !CommandStatus {
     if (variables.get(params[0])) |value| {
         std.log.info("Variable \"{s}\": {s}\n", .{
             params[0],
@@ -454,7 +456,7 @@ fn get(params: [][]const u8) !CommandStatus {
     } else return error.UndefinedVariable;
 }
 
-fn printVariables(_: [][]const u8) !CommandStatus {
+fn printVariables(_: [][]const u8, _: CommandStatus) !CommandStatus {
     var variables_it = variables.iterator();
     while (variables_it.next()) |entry| {
         try checkCommandInterrupt();
@@ -463,7 +465,7 @@ fn printVariables(_: [][]const u8) !CommandStatus {
     return CommandStatus.task_finished;
 }
 
-fn timerStart(_: [][]const u8) !CommandStatus {
+fn timerStart(_: [][]const u8, _: CommandStatus) !CommandStatus {
     if (timer) |*t| {
         t.reset();
         return CommandStatus.task_finished;
@@ -472,7 +474,7 @@ fn timerStart(_: [][]const u8) !CommandStatus {
     }
 }
 
-fn timerRead(_: [][]const u8) !CommandStatus {
+fn timerRead(_: [][]const u8, _: CommandStatus) !CommandStatus {
     if (timer) |*t| {
         var timer_value: f64 = @floatFromInt(t.read());
         timer_value = timer_value / std.time.ns_per_s;
@@ -484,7 +486,7 @@ fn timerRead(_: [][]const u8) !CommandStatus {
     }
 }
 
-fn file(params: [][]const u8) !CommandStatus {
+fn file(params: [][]const u8, _: CommandStatus) !CommandStatus {
     var f = try std.fs.cwd().openFile(params[0], .{});
     var reader = f.reader();
     var buffer: [1024]u8 = undefined;
@@ -517,7 +519,7 @@ fn deinitModules() void {
     }
 }
 
-fn loadConfig(params: [][]const u8) !CommandStatus {
+fn loadConfig(params: [][]const u8, _: CommandStatus) !CommandStatus {
     // De-initialize any previously initialized modules.
     deinitModules();
 
@@ -548,7 +550,7 @@ fn loadConfig(params: [][]const u8) !CommandStatus {
     return CommandStatus.task_finished;
 }
 
-fn wait(params: [][]const u8) !CommandStatus {
+fn wait(params: [][]const u8, _: CommandStatus) !CommandStatus {
     const duration: u32 = try std.fmt.parseInt(u32, params[0], 0);
     var wait_timer = try std.time.Timer.start();
     while (wait_timer.read() < duration * std.time.ns_per_ms) {
@@ -557,7 +559,7 @@ fn wait(params: [][]const u8) !CommandStatus {
     return CommandStatus.task_finished;
 }
 
-fn setLog(params: [][]const u8) !CommandStatus {
+fn setLog(params: [][]const u8, _: CommandStatus) !CommandStatus {
     const mode_str = params[0];
     const path = params[1];
 
@@ -611,13 +613,13 @@ fn setLog(params: [][]const u8) !CommandStatus {
     return CommandStatus.task_finished;
 }
 
-fn clear(_: [][]const u8) !CommandStatus {
+fn clear(_: [][]const u8, _: CommandStatus) !CommandStatus {
     const stdout = std.io.getStdOut().writer();
     try stdout.writeAll("\x1bc");
     return CommandStatus.task_finished;
 }
 
-fn exit(_: [][]const u8) !CommandStatus {
+fn exit(_: [][]const u8, _: CommandStatus) !CommandStatus {
     std.process.exit(1);
     return CommandStatus.task_finished;
 }
