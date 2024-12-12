@@ -32,14 +32,14 @@ pub const CommandStatus = enum(u16) {
     task_finished,
     reset_x_servo_active,
     set_x_errors_cleared,
-    set_x_axis_slider_info,
+    set_x_axis_slider_info_cleared,
     set_x_transmission_stopped,
     reset_x_transmission_stopped,
     state_wr_slider,
     reset_x_pulling_slider,
     set_x_ready_for_command,
     set_x_command_received,
-    reet_x_command_received,
+    reset_x_command_received,
     _,
 };
 

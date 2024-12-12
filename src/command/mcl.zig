@@ -897,7 +897,11 @@ fn mclAxisSlider(params: [][]const u8, _: command.CommandStatus) !command.Comman
     return command.CommandStatus.task_finished;
 }
 
-fn mclAxisReleaseServo(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
+fn mclAxisReleaseServo(
+    params: [][]const u8,
+    status: command.CommandStatus,
+) !command.CommandStatus {
+    // Common process
     const line_name: []const u8 = params[0];
     const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
 
@@ -911,20 +915,29 @@ fn mclAxisReleaseServo(params: [][]const u8, _: command.CommandStatus) !command.
     const local_axis_index: mcl.Axis.Index.Station = @intCast(axis_index % 3);
     const station = line.stations[axis_index / 3];
 
-    station.ww.target_axis_number = local_axis_index + 1;
-    try station.sendWw();
-    try station.setY(0x5);
-    // Reset on error as well as on success.
-    defer station.resetY(0x5) catch {};
-    while (true) {
+    if (status == .task_assigned) {
+        station.ww.target_axis_number = local_axis_index + 1;
+        try station.sendWw();
+        try station.setY(0x5);
+        return command.CommandStatus.reset_x_servo_active;
+    } else if (status == .reset_x_servo_active) {
         try command.checkCommandInterrupt();
-        try station.pollX();
-        if (!station.x.servo_active.axis(local_axis_index)) break;
+        try station.pollX(); // TODO: Remove after polling registers added
+        if (!station.x.servo_active.axis(local_axis_index)) {
+            try station.resetY(0x5);
+            return command.CommandStatus.task_finished;
+        }
+        return status;
     }
-    return command.CommandStatus.task_finished;
+    // The function should not go here
+    return error.UnexpectedBehavior;
 }
 
-fn mclClearErrors(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
+fn mclClearErrors(
+    params: [][]const u8,
+    status: command.CommandStatus,
+) !command.CommandStatus {
+    // Common process
     const line_name: []const u8 = params[0];
     const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
 
@@ -937,21 +950,29 @@ fn mclClearErrors(params: [][]const u8, _: command.CommandStatus) !command.Comma
     const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
     const local_axis_index: mcl.Axis.Index.Station = @intCast(axis_index % 3);
     const station = line.stations[axis_index / 3];
-
-    station.ww.target_axis_number = local_axis_index + 1;
-    try station.sendWw();
-    try station.setY(0xB);
-    // Reset on error as well as on success.
-    defer station.resetY(0xB) catch {};
-    while (true) {
+    if (status == .task_assigned) {
+        station.ww.target_axis_number = local_axis_index + 1;
+        try station.sendWw();
+        try station.setY(0xB);
+        return command.CommandStatus.set_x_errors_cleared;
+    } else if (status == .set_x_errors_cleared) {
         try command.checkCommandInterrupt();
-        try station.pollX();
-        if (station.x.errors_cleared) break;
+        try station.pollX(); // TODO: Remove after polling registers added
+        if (station.x.errors_cleared) {
+            try station.resetY(0xB);
+            return command.CommandStatus.task_finished;
+        }
+        return status;
     }
-    return command.CommandStatus.task_finished;
+    // The function should not go here
+    return error.UnexpectedBehavior;
 }
 
-fn mclClearSliderInfo(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
+fn mclClearSliderInfo(
+    params: [][]const u8,
+    status: command.CommandStatus,
+) !command.CommandStatus {
+    // Common process
     const line_name: []const u8 = params[0];
     const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
 
@@ -965,46 +986,69 @@ fn mclClearSliderInfo(params: [][]const u8, _: command.CommandStatus) !command.C
     const station = line.stations[axis_index / 3];
     const local_axis_index: mcl.Axis.Index.Station = @intCast(axis_index % 3);
 
-    station.ww.target_axis_number = local_axis_index + 1;
-    try station.sendWw();
-    try station.setY(0xC);
-    // Reset on error as well as on success.
-    defer station.resetY(0xC) catch {};
-
-    while (true) {
+    if (status == .task_assigned) {
+        station.ww.target_axis_number = local_axis_index + 1;
+        try station.sendWw();
+        try station.setY(0xC);
+        return command.CommandStatus.set_x_axis_slider_info_cleared;
+    } else if (status == .set_x_axis_slider_info_cleared) {
         try command.checkCommandInterrupt();
-        try station.pollX();
-        if (station.x.axis_slider_info_cleared) break;
+        try station.pollX(); // TODO: Remove after polling registers added
+        if (station.x.axis_slider_info_cleared) {
+            try station.resetY(0xC);
+            return command.CommandStatus.task_finished;
+        }
     }
-    return command.CommandStatus.task_finished;
+    // The function should not go here
+    return error.UnexpectedBehavior;
 }
 
-fn mclCalibrate(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
+fn mclCalibrate(
+    params: [][]const u8,
+    status: command.CommandStatus,
+) !command.CommandStatus {
+    // Common process
     const line_name: []const u8 = params[0];
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
 
     const station = line.stations[0];
-    try waitCommandReady(station);
-    station.ww.command_code = .Calibration;
-    station.ww.command_slider_number = 1;
-    try sendCommand(station);
-    return command.CommandStatus.task_finished;
+    if (status == .task_assigned or status == .set_x_ready_for_command) {
+        if (try waitCommandReady(station, status) == .task_finished) {
+            return command.CommandStatus.set_x_command_received;
+        }
+        return command.CommandStatus.set_x_ready_for_command;
+    } else if (status == .set_x_command_received or status == .reset_x_command_received) {
+        station.ww.command_code = .Calibration;
+        station.ww.command_slider_number = 1;
+        return try sendCommand(station, status);
+    }
+    // The function should not go here
+    return error.UnexpectedBehavior;
 }
 
-fn setLineZero(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
+fn setLineZero(params: [][]const u8, status: command.CommandStatus) !command.CommandStatus {
+    // Common process
     const line_name: []const u8 = params[0];
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
 
     const station = line.stations[0];
-    try waitCommandReady(station);
-    station.ww.command_code = .SetLineZero;
-    try sendCommand(station);
-    return command.CommandStatus.task_finished;
+    if (status == .task_assigned or status == .set_x_ready_for_command) {
+        if (try waitCommandReady(station, status) == .task_finished) {
+            return command.CommandStatus.set_x_command_received;
+        }
+        return command.CommandStatus.set_x_ready_for_command;
+    } else if (status == .set_x_command_received or status == .reset_x_command_received) {
+        station.ww.command_code = .SetLineZero;
+        return try sendCommand(station, status);
+    }
+    // The function should not go here
+    return error.UnexpectedBehavior;
 }
 
-fn mclIsolate(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
+fn mclIsolate(params: [][]const u8, status: command.CommandStatus) !command.CommandStatus {
+    // Common process
     const line_name: []const u8 = params[0];
     const axis_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
 
@@ -1045,40 +1089,46 @@ fn mclIsolate(params: [][]const u8, _: command.CommandStatus) !command.CommandSt
     const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
     const station = line.stations[axis_index / 3];
     const local_axis: mcl.Axis.Index.Station = @intCast(axis_index % 3);
-
-    try waitCommandReady(station);
-    if (link_axis) |a| {
-        if (a == .backward) {
-            try station.setY(0xD);
-            station.y.prev_axis_isolate_link = true;
-        } else {
-            try station.setY(0xE);
-            station.y.next_axis_isolate_link = true;
+    if (status == .task_assigned or status == .set_x_ready_for_command) {
+        if (try waitCommandReady(station, status) == .task_finished) {
+            return command.CommandStatus.set_x_command_received;
         }
-    }
-    defer {
+        return command.CommandStatus.set_x_ready_for_command;
+    } else if (status == .set_x_command_received or status == .reset_x_command_received) {
         if (link_axis) |a| {
             if (a == .backward) {
-                if (station.resetY(0xD)) {
-                    station.y.prev_axis_isolate_link = false;
-                } else |_| {}
+                try station.setY(0xD);
+                station.y.prev_axis_isolate_link = true;
             } else {
-                if (station.resetY(0xE)) {
-                    station.y.next_axis_isolate_link = false;
-                } else |_| {}
+                try station.setY(0xE);
+                station.y.next_axis_isolate_link = true;
             }
         }
+        defer {
+            if (link_axis) |a| {
+                if (a == .backward) {
+                    if (station.resetY(0xD)) {
+                        station.y.prev_axis_isolate_link = false;
+                    } else |_| {}
+                } else {
+                    if (station.resetY(0xE)) {
+                        station.y.next_axis_isolate_link = false;
+                    } else |_| {}
+                }
+            }
+        }
+        station.ww.* = .{
+            .command_code = if (dir == .forward)
+                .IsolateForward
+            else
+                .IsolateBackward,
+            .command_slider_number = slider_id,
+            .target_axis_number = local_axis + 1,
+        };
+        return try sendCommand(station, status);
     }
-    station.ww.* = .{
-        .command_code = if (dir == .forward)
-            .IsolateForward
-        else
-            .IsolateBackward,
-        .command_slider_number = slider_id,
-        .target_axis_number = local_axis + 1,
-    };
-    try sendCommand(station);
-    return command.CommandStatus.task_finished;
+    // The function should not go here
+    return error.UnexpectedBehavior;
 }
 
 fn mclSetSpeed(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
@@ -1255,7 +1305,8 @@ fn mclAssertHall(params: [][]const u8, _: command.CommandStatus) !command.Comman
     return command.CommandStatus.task_finished;
 }
 
-fn mclSliderPosMoveAxis(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
+fn mclSliderPosMoveAxis(params: [][]const u8, status: command.CommandStatus) !command.CommandStatus {
+    // Common process
     const line_name: []const u8 = params[0];
     const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
     const axis_id: u16 = try std.fmt.parseInt(u16, params[2], 0);
@@ -1282,40 +1333,50 @@ fn mclSliderPosMoveAxis(params: [][]const u8, _: command.CommandStatus) !command
         }
     }
 
-    try waitCommandReady(station);
-
-    if (_aux) |aux| {
-        // Direction of auxiliary axis from main axis.
-        var direction: Direction = undefined;
-        if (aux.index.line > main.index.line) {
-            direction = .forward;
-        } else {
-            direction = .backward;
+    if (status == .task_assigned or status == .set_x_ready_for_command) {
+        if (try waitCommandReady(station, status) == .task_finished) {
+            return command.CommandStatus.set_x_transmission_stopped;
         }
-        main.station.y.stop_driver_transmission.setTo(direction, true);
-        try main.station.sendY();
-        defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
-        }
-        while (!main.station.x.transmission_stopped.to(direction)) {
+        return command.CommandStatus.set_x_ready_for_command;
+    } else if (status == .set_x_transmission_stopped) {
+        if (_aux) |aux| {
+            // Direction of auxiliary axis from main axis.
+            var direction: Direction = undefined;
+            if (aux.index.line > main.index.line) {
+                direction = .forward;
+            } else {
+                direction = .backward;
+            }
+            main.station.y.stop_driver_transmission.setTo(direction, true);
+            try main.station.sendY();
+            defer {
+                main.station.y.stop_driver_transmission.setTo(direction, false);
+                main.station.sendY() catch {};
+            }
             try command.checkCommandInterrupt();
             try main.station.pollX();
+            if (main.station.x.transmission_stopped.to(direction)) {
+                return command.CommandStatus.set_x_command_received;
+            }
+            return status;
         }
+        return command.CommandStatus.set_x_command_received;
+    } else if (status == .set_x_command_received or status == .reset_x_command_received) {
+        station.ww.* = .{
+            .command_code = .MoveSliderToAxisByPosition,
+            .command_slider_number = slider_id,
+            .target_axis_number = axis_id,
+            .speed_percentage = line_speeds[line_idx],
+            .acceleration_percentage = line_accelerations[line_idx],
+        };
+        return try sendCommand(station, status);
     }
-
-    station.ww.* = .{
-        .command_code = .MoveSliderToAxisByPosition,
-        .command_slider_number = slider_id,
-        .target_axis_number = axis_id,
-        .speed_percentage = line_speeds[line_idx],
-        .acceleration_percentage = line_accelerations[line_idx],
-    };
-    try sendCommand(station);
-    return command.CommandStatus.task_finished;
+    // The function should not go here
+    return error.UnexpectedBehavior;
 }
 
-fn mclSliderPosMoveLocation(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
+fn mclSliderPosMoveLocation(params: [][]const u8, status: command.CommandStatus) !command.CommandStatus {
+    // Common process
     const line_name: []const u8 = params[0];
     const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
@@ -1348,34 +1409,43 @@ fn mclSliderPosMoveLocation(params: [][]const u8, _: command.CommandStatus) !com
             station = aux.station.*;
         }
     }
-
-    try waitCommandReady(station);
-
-    if (_aux) |_| {
-        main.station.y.stop_driver_transmission.setTo(direction, true);
-        try main.station.sendY();
-        defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
+    if (status == .task_assigned or status == .set_x_ready_for_command) {
+        if (try waitCommandReady(station, status) == .task_finished) {
+            return command.CommandStatus.set_x_transmission_stopped;
         }
-        while (!main.station.x.transmission_stopped.to(direction)) {
+        return command.CommandStatus.set_x_ready_for_command;
+    } else if (status == .set_x_transmission_stopped) {
+        if (_aux) |_| {
+            main.station.y.stop_driver_transmission.setTo(direction, true);
+            try main.station.sendY();
+            defer {
+                main.station.y.stop_driver_transmission.setTo(direction, false);
+                main.station.sendY() catch {};
+            }
             try command.checkCommandInterrupt();
             try main.station.pollX();
+            if (main.station.x.transmission_stopped.to(direction)) {
+                return command.CommandStatus.set_x_command_received;
+            }
+            return status;
         }
+        return command.CommandStatus.set_x_command_received;
+    } else if (status == .set_x_command_received or status == .reset_x_command_received) {
+        station.ww.* = .{
+            .command_code = .MoveSliderToLocationByPosition,
+            .command_slider_number = slider_id,
+            .location_distance = location,
+            .speed_percentage = line_speeds[line_idx],
+            .acceleration_percentage = line_accelerations[line_idx],
+        };
+        return try sendCommand(station, status);
     }
-
-    station.ww.* = .{
-        .command_code = .MoveSliderToLocationByPosition,
-        .command_slider_number = slider_id,
-        .location_distance = location,
-        .speed_percentage = line_speeds[line_idx],
-        .acceleration_percentage = line_accelerations[line_idx],
-    };
-    try sendCommand(station);
-    return command.CommandStatus.task_finished;
+    // The function should not go here
+    // return error.UnexpectedBehavior;
+    unreachable;
 }
 
-fn mclSliderPosMoveDistance(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
+fn mclSliderPosMoveDistance(params: [][]const u8, status: command.CommandStatus) !command.CommandStatus {
     const line_name = params[0];
     const slider_id = try std.fmt.parseInt(u16, params[1], 0);
     const distance = try std.fmt.parseFloat(f32, params[2]);
@@ -1415,34 +1485,42 @@ fn mclSliderPosMoveDistance(params: [][]const u8, _: command.CommandStatus) !com
             station = aux.station.*;
         }
     }
-
-    try waitCommandReady(station);
-
-    if (_aux) |_| {
-        main.station.y.stop_driver_transmission.setTo(direction, true);
-        try main.station.sendY();
-        defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
+    if (status == .task_assigned or status == .set_x_ready_for_command) {
+        if (try waitCommandReady(station, status) == .task_finished) {
+            return command.CommandStatus.set_x_transmission_stopped;
         }
-        while (!main.station.x.transmission_stopped.to(direction)) {
+        return command.CommandStatus.set_x_ready_for_command;
+    } else if (status == .set_x_transmission_stopped) {
+        if (_aux) |_| {
+            main.station.y.stop_driver_transmission.setTo(direction, true);
+            try main.station.sendY();
+            defer {
+                main.station.y.stop_driver_transmission.setTo(direction, false);
+                main.station.sendY() catch {};
+            }
             try command.checkCommandInterrupt();
             try main.station.pollX();
+            if (main.station.x.transmission_stopped.to(direction)) {
+                return command.CommandStatus.set_x_command_received;
+            }
+            return status;
         }
+        return command.CommandStatus.set_x_command_received;
+    } else if (status == .set_x_command_received or status == .reset_x_command_received) {
+        station.ww.* = .{
+            .command_code = .MoveSliderDistanceByPosition,
+            .command_slider_number = slider_id,
+            .location_distance = distance,
+            .speed_percentage = line_speeds[line_idx],
+            .acceleration_percentage = line_accelerations[line_idx],
+        };
+        return try sendCommand(station, status);
     }
-
-    station.ww.* = .{
-        .command_code = .MoveSliderDistanceByPosition,
-        .command_slider_number = slider_id,
-        .location_distance = distance,
-        .speed_percentage = line_speeds[line_idx],
-        .acceleration_percentage = line_accelerations[line_idx],
-    };
-    try sendCommand(station);
-    return command.CommandStatus.task_finished;
+    // The function should not go here
+    return error.UnexpectedBehavior;
 }
 
-fn mclSliderSpdMoveAxis(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
+fn mclSliderSpdMoveAxis(params: [][]const u8, status: command.CommandStatus) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
     const axis_id: u16 = try std.fmt.parseInt(u16, params[2], 0);
@@ -1469,40 +1547,49 @@ fn mclSliderSpdMoveAxis(params: [][]const u8, _: command.CommandStatus) !command
         }
     }
 
-    try waitCommandReady(station);
-
-    if (_aux) |aux| {
-        // Direction of auxiliary axis from main axis.
-        var direction: Direction = undefined;
-        if (aux.index.line > main.index.line) {
-            direction = .forward;
-        } else {
-            direction = .backward;
+    if (status == .task_assigned or status == .set_x_ready_for_command) {
+        if (try waitCommandReady(station, status) == .task_finished) {
+            return command.CommandStatus.set_x_transmission_stopped;
         }
-        main.station.y.stop_driver_transmission.setTo(direction, true);
-        try main.station.sendY();
-        defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
-        }
-        while (!main.station.x.transmission_stopped.to(direction)) {
+        return command.CommandStatus.set_x_ready_for_command;
+    } else if (status == .set_x_transmission_stopped) {
+        if (_aux) |aux| {
+            // Direction of auxiliary axis from main axis.
+            var direction: Direction = undefined;
+            if (aux.index.line > main.index.line) {
+                direction = .forward;
+            } else {
+                direction = .backward;
+            }
+            main.station.y.stop_driver_transmission.setTo(direction, true);
+            try main.station.sendY();
+            defer {
+                main.station.y.stop_driver_transmission.setTo(direction, false);
+                main.station.sendY() catch {};
+            }
             try command.checkCommandInterrupt();
             try main.station.pollX();
+            if (main.station.x.transmission_stopped.to(direction)) {
+                return command.CommandStatus.set_x_command_received;
+            }
+            return status;
         }
+        return command.CommandStatus.set_x_command_received;
+    } else if (status == .set_x_command_received or status == .reset_x_command_received) {
+        station.ww.* = .{
+            .command_code = .MoveSliderToAxisBySpeed,
+            .command_slider_number = slider_id,
+            .target_axis_number = axis_id,
+            .speed_percentage = line_speeds[line_idx],
+            .acceleration_percentage = line_accelerations[line_idx],
+        };
+        return try sendCommand(station, status);
     }
-
-    station.ww.* = .{
-        .command_code = .MoveSliderToAxisBySpeed,
-        .command_slider_number = slider_id,
-        .target_axis_number = axis_id,
-        .speed_percentage = line_speeds[line_idx],
-        .acceleration_percentage = line_accelerations[line_idx],
-    };
-    try sendCommand(station);
-    return command.CommandStatus.task_finished;
+    // The function should not go here
+    return error.UnexpectedBehavior;
 }
 
-fn mclSliderSpdMoveLocation(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
+fn mclSliderSpdMoveLocation(params: [][]const u8, status: command.CommandStatus) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
@@ -1536,33 +1623,42 @@ fn mclSliderSpdMoveLocation(params: [][]const u8, _: command.CommandStatus) !com
         }
     }
 
-    try waitCommandReady(station);
-
-    if (_aux) |_| {
-        main.station.y.stop_driver_transmission.setTo(direction, true);
-        try main.station.sendY();
-        defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
+    if (status == .task_assigned or status == .set_x_ready_for_command) {
+        if (try waitCommandReady(station, status) == .task_finished) {
+            return command.CommandStatus.set_x_transmission_stopped;
         }
-        while (!main.station.x.transmission_stopped.to(direction)) {
+        return command.CommandStatus.set_x_ready_for_command;
+    } else if (status == .set_x_transmission_stopped) {
+        if (_aux) |_| {
+            main.station.y.stop_driver_transmission.setTo(direction, true);
+            try main.station.sendY();
+            defer {
+                main.station.y.stop_driver_transmission.setTo(direction, false);
+                main.station.sendY() catch {};
+            }
             try command.checkCommandInterrupt();
             try main.station.pollX();
+            if (main.station.x.transmission_stopped.to(direction)) {
+                return command.CommandStatus.set_x_command_received;
+            }
+            return status;
         }
+        return command.CommandStatus.set_x_command_received;
+    } else if (status == .set_x_command_received or status == .reset_x_command_received) {
+        station.ww.* = .{
+            .command_code = .MoveSliderToLocationBySpeed,
+            .command_slider_number = slider_id,
+            .location_distance = location,
+            .speed_percentage = line_speeds[line_idx],
+            .acceleration_percentage = line_speeds[line_idx],
+        };
+        return try sendCommand(station, status);
     }
-
-    station.ww.* = .{
-        .command_code = .MoveSliderToLocationBySpeed,
-        .command_slider_number = slider_id,
-        .location_distance = location,
-        .speed_percentage = line_speeds[line_idx],
-        .acceleration_percentage = line_speeds[line_idx],
-    };
-    try sendCommand(station);
-    return command.CommandStatus.task_finished;
+    // The function should not go here
+    return error.UnexpectedBehavior;
 }
 
-fn mclSliderSpdMoveDistance(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
+fn mclSliderSpdMoveDistance(params: [][]const u8, status: command.CommandStatus) !command.CommandStatus {
     const line_name = params[0];
     const slider_id = try std.fmt.parseInt(u16, params[1], 0);
     const distance = try std.fmt.parseFloat(f32, params[2]);
@@ -1603,33 +1699,42 @@ fn mclSliderSpdMoveDistance(params: [][]const u8, _: command.CommandStatus) !com
         }
     }
 
-    try waitCommandReady(station);
-
-    if (_aux) |_| {
-        main.station.y.stop_driver_transmission.setTo(direction, true);
-        try main.station.sendY();
-        defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
+    if (status == .task_assigned or status == .set_x_ready_for_command) {
+        if (try waitCommandReady(station, status) == .task_finished) {
+            return command.CommandStatus.set_x_transmission_stopped;
         }
-        while (!main.station.x.transmission_stopped.to(direction)) {
+        return command.CommandStatus.set_x_ready_for_command;
+    } else if (status == .set_x_transmission_stopped) {
+        if (_aux) |_| {
+            main.station.y.stop_driver_transmission.setTo(direction, true);
+            try main.station.sendY();
+            defer {
+                main.station.y.stop_driver_transmission.setTo(direction, false);
+                main.station.sendY() catch {};
+            }
             try command.checkCommandInterrupt();
             try main.station.pollX();
+            if (main.station.x.transmission_stopped.to(direction)) {
+                return command.CommandStatus.set_x_command_received;
+            }
+            return status;
         }
+        return command.CommandStatus.set_x_command_received;
+    } else if (status == .set_x_command_received or status == .reset_x_command_received) {
+        station.ww.* = .{
+            .command_code = .MoveSliderDistanceBySpeed,
+            .command_slider_number = slider_id,
+            .location_distance = distance,
+            .speed_percentage = line_speeds[line_idx],
+            .acceleration_percentage = line_accelerations[line_idx],
+        };
+        return try sendCommand(station, status);
     }
-
-    station.ww.* = .{
-        .command_code = .MoveSliderDistanceBySpeed,
-        .command_slider_number = slider_id,
-        .location_distance = distance,
-        .speed_percentage = line_speeds[line_idx],
-        .acceleration_percentage = line_accelerations[line_idx],
-    };
-    try sendCommand(station);
-    return command.CommandStatus.task_finished;
+    // The function should not go here
+    return error.UnexpectedBehavior;
 }
 
-fn mclSliderPushForward(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
+fn mclSliderPushForward(params: [][]const u8, status: command.CommandStatus) !command.CommandStatus {
     const line_name = params[0];
     const slider_id = try std.fmt.parseInt(u16, params[1], 0);
     if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
@@ -1656,33 +1761,42 @@ fn mclSliderPushForward(params: [][]const u8, _: command.CommandStatus) !command
         }
     }
 
-    try waitCommandReady(station);
-
-    if (_aux) |_| {
-        main.station.y.stop_driver_transmission.setTo(direction, true);
-        try main.station.sendY();
-        defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
+    if (status == .task_assigned or status == .set_x_ready_for_command) {
+        if (try waitCommandReady(station, status) == .task_finished) {
+            return command.CommandStatus.set_x_transmission_stopped;
         }
-        while (!main.station.x.transmission_stopped.to(direction)) {
+        return command.CommandStatus.set_x_ready_for_command;
+    } else if (status == .set_x_transmission_stopped) {
+        if (_aux) |_| {
+            main.station.y.stop_driver_transmission.setTo(direction, true);
+            try main.station.sendY();
+            defer {
+                main.station.y.stop_driver_transmission.setTo(direction, false);
+                main.station.sendY() catch {};
+            }
             try command.checkCommandInterrupt();
             try main.station.pollX();
+            if (main.station.x.transmission_stopped.to(direction)) {
+                return command.CommandStatus.set_x_command_received;
+            }
+            return status;
         }
+        return command.CommandStatus.set_x_command_received;
+    } else if (status == .set_x_command_received or status == .reset_x_command_received) {
+        station.ww.* = .{
+            .command_code = .PushAxisSliderForward,
+            .command_slider_number = slider_id,
+            .target_axis_number = main.index.station + 1,
+            .speed_percentage = line_speeds[line_idx],
+            .acceleration_percentage = line_accelerations[line_idx],
+        };
+        return try sendCommand(station, status);
     }
-
-    station.ww.* = .{
-        .command_code = .PushAxisSliderForward,
-        .command_slider_number = slider_id,
-        .target_axis_number = main.index.station + 1,
-        .speed_percentage = line_speeds[line_idx],
-        .acceleration_percentage = line_accelerations[line_idx],
-    };
-    try sendCommand(station);
-    return command.CommandStatus.task_finished;
+    // The function should not go here
+    return error.UnexpectedBehavior;
 }
 
-fn mclSliderPushBackward(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
+fn mclSliderPushBackward(params: [][]const u8, status: command.CommandStatus) !command.CommandStatus {
     const line_name = params[0];
     const slider_id = try std.fmt.parseInt(u16, params[1], 0);
     if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
@@ -1710,33 +1824,42 @@ fn mclSliderPushBackward(params: [][]const u8, _: command.CommandStatus) !comman
         }
     }
 
-    try waitCommandReady(station);
-
-    if (_aux) |_| {
-        main.station.y.stop_driver_transmission.setTo(direction, true);
-        try main.station.sendY();
-        defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
+    if (status == .task_assigned or status == .set_x_ready_for_command) {
+        if (try waitCommandReady(station, status) == .task_finished) {
+            return command.CommandStatus.set_x_transmission_stopped;
         }
-        while (!main.station.x.transmission_stopped.to(direction)) {
+        return command.CommandStatus.set_x_ready_for_command;
+    } else if (status == .set_x_transmission_stopped) {
+        if (_aux) |_| {
+            main.station.y.stop_driver_transmission.setTo(direction, true);
+            try main.station.sendY();
+            defer {
+                main.station.y.stop_driver_transmission.setTo(direction, false);
+                main.station.sendY() catch {};
+            }
             try command.checkCommandInterrupt();
             try main.station.pollX();
+            if (main.station.x.transmission_stopped.to(direction)) {
+                return command.CommandStatus.set_x_command_received;
+            }
+            return status;
         }
+        return command.CommandStatus.set_x_command_received;
+    } else if (status == .set_x_command_received or status == .reset_x_command_received) {
+        station.ww.* = .{
+            .command_code = .PushAxisSliderBackward,
+            .command_slider_number = slider_id,
+            .target_axis_number = main.index.station + 1,
+            .speed_percentage = line_speeds[line_idx],
+            .acceleration_percentage = line_accelerations[line_idx],
+        };
+        return try sendCommand(station, status);
     }
-
-    station.ww.* = .{
-        .command_code = .PushAxisSliderBackward,
-        .command_slider_number = slider_id,
-        .target_axis_number = main.index.station + 1,
-        .speed_percentage = line_speeds[line_idx],
-        .acceleration_percentage = line_accelerations[line_idx],
-    };
-    try sendCommand(station);
-    return command.CommandStatus.task_finished;
+    // The function should not go here
+    return error.UnexpectedBehavior;
 }
 
-fn mclSliderPullForward(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
+fn mclSliderPullForward(params: [][]const u8, status: command.CommandStatus) !command.CommandStatus {
     const line_name = params[0];
     const axis = try std.fmt.parseInt(u16, params[1], 0);
     const slider_id = try std.fmt.parseInt(u16, params[2], 0);
@@ -1749,19 +1872,26 @@ fn mclSliderPullForward(params: [][]const u8, _: command.CommandStatus) !command
     const local_axis: mcl.Axis.Index.Station = @intCast(axis_index % 3);
     const station = line.stations[axis_index / 3];
 
-    try waitCommandReady(station);
-    station.ww.* = .{
-        .command_code = .PullAxisSliderForward,
-        .command_slider_number = slider_id,
-        .target_axis_number = local_axis + 1,
-        .speed_percentage = line_speeds[line_idx],
-        .acceleration_percentage = line_accelerations[line_idx],
-    };
-    try sendCommand(station);
-    return command.CommandStatus.task_finished;
+    if (status == .task_assigned or status == .set_x_ready_for_command) {
+        if (try waitCommandReady(station, status) == .task_finished) {
+            return command.CommandStatus.set_x_command_received;
+        }
+        return command.CommandStatus.set_x_ready_for_command;
+    } else if (status == .set_x_command_received or status == .reset_x_command_received) {
+        station.ww.* = .{
+            .command_code = .PullAxisSliderForward,
+            .command_slider_number = slider_id,
+            .target_axis_number = local_axis + 1,
+            .speed_percentage = line_speeds[line_idx],
+            .acceleration_percentage = line_accelerations[line_idx],
+        };
+        return try sendCommand(station, status);
+    }
+    // The function should not go here
+    return error.UnexpectedBehavior;
 }
 
-fn mclSliderPullBackward(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
+fn mclSliderPullBackward(params: [][]const u8, status: command.CommandStatus) !command.CommandStatus {
     const line_name = params[0];
     const axis = try std.fmt.parseInt(u16, params[1], 0);
     const slider_id = try std.fmt.parseInt(u16, params[2], 0);
@@ -1774,19 +1904,26 @@ fn mclSliderPullBackward(params: [][]const u8, _: command.CommandStatus) !comman
     const local_axis: mcl.Axis.Index.Station = @intCast(axis_index % 3);
     const station = line.stations[axis_index / 3];
 
-    try waitCommandReady(station);
-    station.ww.* = .{
-        .command_code = .PullAxisSliderBackward,
-        .command_slider_number = slider_id,
-        .target_axis_number = local_axis + 1,
-        .speed_percentage = line_speeds[line_idx],
-        .acceleration_percentage = line_accelerations[line_idx],
-    };
-    try sendCommand(station);
-    return command.CommandStatus.task_finished;
+    if (status == .task_assigned or status == .set_x_ready_for_command) {
+        if (try waitCommandReady(station, status) == .task_finished) {
+            return command.CommandStatus.set_x_command_received;
+        }
+        return command.CommandStatus.set_x_ready_for_command;
+    } else if (status == .set_x_command_received or status == .reset_x_command_received) {
+        station.ww.* = .{
+            .command_code = .PullAxisSliderBackward,
+            .command_slider_number = slider_id,
+            .target_axis_number = local_axis + 1,
+            .speed_percentage = line_speeds[line_idx],
+            .acceleration_percentage = line_accelerations[line_idx],
+        };
+        return try sendCommand(station, status);
+    }
+    // The function should not go here
+    return error.UnexpectedBehavior;
 }
 
-fn mclSliderWaitPull(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
+fn mclSliderWaitPull(params: [][]const u8, status: command.CommandStatus) !command.CommandStatus {
     const line_name = params[0];
     const axis = try std.fmt.parseInt(i16, params[1], 0);
     const line_idx: usize = try matchLine(line_names, line_name);
@@ -1798,21 +1935,24 @@ fn mclSliderWaitPull(params: [][]const u8, _: command.CommandStatus) !command.Co
     const local_axis: mcl.Axis.Index.Station = @intCast(axis_index % 3);
     const station = line.stations[axis_index / 3];
 
-    while (true) {
+    if (status == .task_assigned or status == .state_wr_slider) {
         try command.checkCommandInterrupt();
         try station.pollX();
         try station.pollWr();
         const slider_state = station.wr.slider.axis(local_axis).state;
         if (slider_state == .PullForwardCompleted or
-            slider_state == .PullBackwardCompleted) break;
+            slider_state == .PullBackwardCompleted)
+            return command.CommandStatus.task_finished;
         if (slider_state == .PullForwardFault or
             slider_state == .PullBackwardFault)
             return error.SliderPullError;
+        return command.CommandStatus.state_wr_slider;
     }
-    return command.CommandStatus.task_finished;
+    // The function should not go here
+    return error.UnexpectedBehavior;
 }
 
-fn mclSliderStopPull(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
+fn mclSliderStopPull(params: [][]const u8, status: command.CommandStatus) !command.CommandStatus {
     const line_name = params[0];
     const axis = try std.fmt.parseInt(i16, params[1], 0);
     const line_idx: usize = try matchLine(line_names, line_name);
@@ -1824,18 +1964,22 @@ fn mclSliderStopPull(params: [][]const u8, _: command.CommandStatus) !command.Co
     const local_axis: mcl.Axis.Index.Station = @intCast(axis_index % 3);
     const station = line.stations[axis_index / 3];
 
-    try station.setY(0x10 + @as(u6, local_axis));
-    defer station.resetY(0x10 + @as(u6, local_axis)) catch {};
-
-    while (true) {
+    if (status == .task_assigned) {
+        try station.setY(0x10 + @as(u6, local_axis));
+        return command.CommandStatus.reset_x_pulling_slider;
+    } else if (status == .reset_x_pulling_slider) {
+        try station.resetY(0x10 + @as(u6, local_axis));
         try command.checkCommandInterrupt();
         try station.pollX();
-        if (!station.x.pulling_slider.axis(local_axis)) break;
+        if (!station.x.pulling_slider.axis(local_axis)) {
+            return command.CommandStatus.task_finished;
+        }
     }
-    return command.CommandStatus.task_finished;
+    // The function should not go here
+    return error.UnexpectedBehavior;
 }
 
-fn mclWaitMoveSlider(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
+fn mclWaitMoveSlider(params: [][]const u8, status: command.CommandStatus) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const slider_id = try std.fmt.parseInt(u16, params[1], 0);
     if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
@@ -1843,21 +1987,21 @@ fn mclWaitMoveSlider(params: [][]const u8, _: command.CommandStatus) !command.Co
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
 
-    while (true) {
+    if (status == .task_assigned or status == .state_wr_slider) {
         try command.checkCommandInterrupt();
         try line.pollWr();
         const main, _ = if (line.search(slider_id)) |t| t
         // Do not error here as the poll receiving CC-Link information can
         // "move past" a backwards traveling slider during transmission, thus
         // rendering the slider briefly invisible in the whole loop.
-        else continue;
+        else return command.CommandStatus.state_wr_slider;
         const station = main.station.*;
         const wr = station.wr;
 
         if (wr.slider.axis(main.index.station).state == .PosMoveCompleted or
             wr.slider.axis(main.index.station).state == .SpdMoveCompleted)
         {
-            break;
+            return command.CommandStatus.task_finished;
         }
 
         if (main.id.line < line.axes.len) {
@@ -1874,14 +2018,15 @@ fn mclWaitMoveSlider(params: [][]const u8, _: command.CommandStatus) !command.Co
                 (slider_state == .PosMoveCompleted or
                 slider_state == .SpdMoveCompleted))
             {
-                break;
+                return command.CommandStatus.task_finished;
             }
         }
     }
-    return command.CommandStatus.task_finished;
+    // The function should not go here
+    return error.UnexpectedBehavior;
 }
 
-fn mclRecoverSlider(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
+fn mclRecoverSlider(params: [][]const u8, status: command.CommandStatus) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const axis: u16 = try std.fmt.parseUnsigned(u16, params[1], 0);
     const new_slider_id: u16 = try std.fmt.parseUnsigned(u16, params[2], 0);
@@ -1912,39 +2057,47 @@ fn mclRecoverSlider(params: [][]const u8, _: command.CommandStatus) !command.Com
     const local_axis_index: mcl.Axis.Index.Station = @intCast(axis_index % 3);
 
     const station = line.stations[axis_index / 3];
-    try waitCommandReady(station);
-    if (use_sensor) |side| {
-        if (side == .backward) {
-            try station.setY(0x13);
-            station.y.recovery_use_hall_sensor.back = true;
-        } else {
-            try station.setY(0x14);
-            station.y.recovery_use_hall_sensor.front = true;
+
+    if (status == .task_assigned or status == .set_x_ready_for_command) {
+        if (try waitCommandReady(station, status) == .task_finished) {
+            return command.CommandStatus.set_x_command_received;
         }
-    }
-    defer {
+        return command.CommandStatus.set_x_ready_for_command;
+    } else if (status == .set_x_command_received or status == .reset_x_command_received) {
         if (use_sensor) |side| {
             if (side == .backward) {
-                if (station.resetY(0x13)) {
-                    station.y.recovery_use_hall_sensor.back = false;
-                } else |_| {}
+                try station.setY(0x13);
+                station.y.recovery_use_hall_sensor.back = true;
             } else {
-                if (station.resetY(0x14)) {
-                    station.y.recovery_use_hall_sensor.front = false;
-                } else |_| {}
+                try station.setY(0x14);
+                station.y.recovery_use_hall_sensor.front = true;
             }
         }
+        defer {
+            if (use_sensor) |side| {
+                if (side == .backward) {
+                    if (station.resetY(0x13)) {
+                        station.y.recovery_use_hall_sensor.back = false;
+                    } else |_| {}
+                } else {
+                    if (station.resetY(0x14)) {
+                        station.y.recovery_use_hall_sensor.front = false;
+                    } else |_| {}
+                }
+            }
+        }
+        station.ww.* = .{
+            .command_code = .RecoverSliderAtAxis,
+            .target_axis_number = local_axis_index + 1,
+            .command_slider_number = new_slider_id,
+        };
+        return try sendCommand(station, status);
     }
-    station.ww.* = .{
-        .command_code = .RecoverSliderAtAxis,
-        .target_axis_number = local_axis_index + 1,
-        .command_slider_number = new_slider_id,
-    };
-    try sendCommand(station);
-    return command.CommandStatus.task_finished;
+    // The function should not go here
+    return error.UnexpectedBehavior;
 }
 
-fn mclTrafficStop(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
+fn mclTrafficStop(params: [][]const u8, status: command.CommandStatus) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const axis = try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[1], 0);
 
@@ -1968,18 +2121,24 @@ fn mclTrafficStop(params: [][]const u8, _: command.CommandStatus) !command.Comma
 
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
     const station = line.stations[axis_index / 3];
-    try station.poll();
+    if (status == .task_assigned) {
+        try station.poll();
 
-    station.y.stop_driver_transmission.setTo(direction, true);
-    try station.sendY();
-    while (!station.x.transmission_stopped.to(direction)) {
+        station.y.stop_driver_transmission.setTo(direction, true);
+        try station.sendY();
+        return command.CommandStatus.set_x_transmission_stopped;
+    } else if (status == .set_x_transmission_stopped) {
         try command.checkCommandInterrupt();
         try station.pollX();
+        if (station.x.transmission_stopped.to(direction)) {
+            return command.CommandStatus.task_finished;
+        }
     }
-    return command.CommandStatus.task_finished;
+    // The function should not go here
+    return error.UnexpectedBehavior;
 }
 
-fn mclTrafficAllow(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
+fn mclTrafficAllow(params: [][]const u8, status: command.CommandStatus) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const axis = try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[1], 0);
 
@@ -2003,18 +2162,25 @@ fn mclTrafficAllow(params: [][]const u8, _: command.CommandStatus) !command.Comm
 
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
     const station = line.stations[axis_index / 3];
-    try station.poll();
 
-    station.y.stop_driver_transmission.setTo(direction, false);
-    try station.sendY();
-    while (station.x.transmission_stopped.to(direction)) {
+    if (status == .task_assigned) {
+        try station.poll();
+
+        station.y.stop_driver_transmission.setTo(direction, false);
+        try station.sendY();
+        return command.CommandStatus.reset_x_transmission_stopped;
+    } else if (status == .reset_x_transmission_stopped) {
         try command.checkCommandInterrupt();
         try station.pollX();
+        if (!station.x.transmission_stopped.to(direction)) {
+            return command.CommandStatus.task_finished;
+        }
     }
-    return command.CommandStatus.task_finished;
+    // The function should not go here
+    return error.UnexpectedBehavior;
 }
 
-fn mclWaitRecoverSlider(params: [][]const u8, _: command.CommandStatus) !command.CommandStatus {
+fn mclWaitRecoverSlider(params: [][]const u8, status: command.CommandStatus) !command.CommandStatus {
     const line_name: []const u8 = params[0];
     const axis: u16 = try std.fmt.parseUnsigned(u16, params[1], 0);
     const result_var: []const u8 = params[2];
@@ -2030,7 +2196,7 @@ fn mclWaitRecoverSlider(params: [][]const u8, _: command.CommandStatus) !command
     const station = line.stations[axis_index / 3];
 
     var slider_id: u16 = undefined;
-    while (true) {
+    if (status == .task_assigned or status == .state_wr_slider) {
         try command.checkCommandInterrupt();
         try station.pollWr();
 
@@ -2039,19 +2205,20 @@ fn mclWaitRecoverSlider(params: [][]const u8, _: command.CommandStatus) !command
             local_axis_index,
         ).state == .PosMoveCompleted) {
             slider_id = slider_number;
-            break;
+            std.log.info("Slider {d} recovered.\n", .{slider_id});
+            if (result_var.len > 0) {
+                var int_buf: [8]u8 = undefined;
+                try command.variables.put(
+                    result_var,
+                    try std.fmt.bufPrint(&int_buf, "{d}", .{slider_id}),
+                );
+            }
+            return command.CommandStatus.task_finished;
         }
+        return command.CommandStatus.state_wr_slider;
     }
-
-    std.log.info("Slider {d} recovered.\n", .{slider_id});
-    if (result_var.len > 0) {
-        var int_buf: [8]u8 = undefined;
-        try command.variables.put(
-            result_var,
-            try std.fmt.bufPrint(&int_buf, "{d}", .{slider_id}),
-        );
-    }
-    return command.CommandStatus.task_finished;
+    // The function should not go here
+    return error.UnexpectedBehavior;
 }
 
 /// Add logging configuration for registers logging in the specified line
@@ -2372,52 +2539,61 @@ fn matchLine(names: [][]const u8, name: []const u8) !usize {
     }
 }
 
-fn waitCommandReady(station: Station) !void {
+fn waitCommandReady(
+    station: Station,
+    status: command.CommandStatus,
+) !command.CommandStatus {
+    // TODO: Remove debug
     std.log.debug("Waiting for command ready state...", .{});
-    while (true) {
-        try command.checkCommandInterrupt();
-        try station.pollX();
-        if (station.x.ready_for_command) break;
+    try command.checkCommandInterrupt();
+    try station.pollX(); // TODO: Remove after polling registers added
+    if (station.x.ready_for_command) {
+        return command.CommandStatus.task_finished;
     }
+    return status;
 }
 
-fn sendCommand(station: Station) !void {
-    std.log.debug("Sending command...", .{});
-    try station.sendWw();
-    try station.setY(0x2);
-    errdefer station.resetY(0x2) catch {};
-    while (true) {
+fn sendCommand(
+    station: Station,
+    status: command.CommandStatus,
+) !command.CommandStatus {
+    if (status == .set_x_command_received) {
+        std.log.debug("Sending command...", .{});
+        try station.sendWw();
+        try station.setY(0x2);
+        errdefer station.resetY(0x2) catch {};
         try command.checkCommandInterrupt();
         try station.pollX();
         if (station.x.command_received) {
-            break;
+            try station.resetY(0x2);
+            return command.CommandStatus.reset_x_command_received;
         }
-    }
-    try station.resetY(0x2);
-
-    try station.pollWr();
-    const command_response = station.wr.command_response;
-
-    std.log.debug("Resetting command received flag...", .{});
-    try station.setY(0x3);
-    errdefer station.resetY(0x3) catch {};
-    while (true) {
+    } else if (status == .reset_x_command_received) {
+        try station.pollWr();
+        const command_response = station.wr.command_response;
+        std.log.debug("Resetting command received flag...", .{});
+        try station.setY(0x3);
+        errdefer station.resetY(0x3) catch {};
         try command.checkCommandInterrupt();
         try station.pollX();
         if (!station.x.command_received) {
             try station.resetY(0x3);
-            break;
+            return command.CommandStatus.task_finished;
         }
+        if (command_response != .NoError) {
+            return switch (command_response) {
+                .InvalidCommand => error.InvalidCommand,
+                .SliderNotFound => error.SliderNotFound,
+                .HomingFailed => error.HomingFailed,
+                .InvalidParameter => error.InvalidParameter,
+                .InvalidSystemState => error.InvalidSystemState,
+                .SliderAlreadyExists => error.SliderAlreadyExists,
+                .InvalidAxis => error.InvalidAxis,
+                else => status,
+            };
+        }
+        return status;
     }
-
-    return switch (command_response) {
-        .NoError => {},
-        .InvalidCommand => error.InvalidCommand,
-        .SliderNotFound => error.SliderNotFound,
-        .HomingFailed => error.HomingFailed,
-        .InvalidParameter => error.InvalidParameter,
-        .InvalidSystemState => error.InvalidSystemState,
-        .SliderAlreadyExists => error.SliderAlreadyExists,
-        .InvalidAxis => error.InvalidAxis,
-    };
+    // The function should not go here
+    return error.UnexpectedBehavior;
 }
