@@ -1,12 +1,9 @@
-module.exports = async ({ github, context, core }) => {
-  const { SHA } = process.env;
-  const fs = require("fs").promises;
-  const org = "pmotionf";
-  const repo = "mmc-cli";
+const fs = require("fs").promises;
 
+module.exports = async ({ core }) => {
   // Parse `build.zig.zon` for version
-  var version;
-  var name;
+  let version;
+  let name;
   const raw = await fs.readFile("./build.zig.zon");
   const lines = raw.toString().split("\n");
   lines.forEach((line) => {
@@ -29,17 +26,6 @@ module.exports = async ({ github, context, core }) => {
     }
   });
 
-  core.exportVariable("name", name);
-
-  // Check if already released
-  const releases = await github.rest.git.listMatchingRefs({
-    owner: org,
-    repo: repo,
-    ref: "tags/" + version,
-  });
-  if (releases.data.length > 0) {
-    return "";
-  }
-
-  return version;
+  core.exportVariable("NAME", name);
+  core.exportVariable("VERSION", version);
 };

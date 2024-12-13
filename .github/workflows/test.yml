@@ -21,6 +21,8 @@ jobs:
         run: echo "::add-mask::$NAME_MASK"
 
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Run zig fmt
         if: matrix.os == 'self-hosted'
