@@ -739,6 +739,13 @@ pub fn init(c: Config) !void {
         .execute = &logRegisters,
     });
     errdefer _ = command.registry.orderedRemove("LOG_REGISTERS");
+    std.log.info("The length of registry: {}", .{command.registry.keys().len});
+    std.log.info("The order of registry:", .{});
+    const keys = command.registry.keys();
+    const values = command.registry.values();
+    for (0..keys.len) |idx| {
+        std.log.info("{s}, #of params: {}", .{ keys[idx], values[idx].parameters.len });
+    }
 }
 
 pub fn deinit() void {

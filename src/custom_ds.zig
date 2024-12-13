@@ -8,14 +8,22 @@ pub fn CircularBuffer(comptime T: type) type {
         buffer: []T,
         head: usize,
         tail: usize,
+        allocator: std.mem.Allocator,
 
         /// Initialize a new circular buffer
-        pub fn init() Self {
+        pub fn init(allocator: std.mem.Allocator, capacity: usize) !Self {
+            const bytes = try allocator.alloc(T, capacity);
             return Self{
-                .buffer = undefined,
+                .buffer = bytes,
                 .head = 0,
                 .tail = 0,
+                .allocator = allocator,
             };
+        }
+
+        /// Release all allocated memory
+        pub fn deinit(self: Self) void {
+            self.allocator.free(self.buffer);
         }
 
         /// Write an item to the back of the buffer
@@ -51,7 +59,9 @@ pub fn CircularBuffer(comptime T: type) type {
             return ((self.tail + 1) % self.buffer.len == self.head);
         }
 
-        /// Clear the buffer
+        /// Set head and tail to zero, simulating empty circular buffer.
+        ///
+        /// This function does not deallocate the memory.
         pub fn clear(self: *Self) void {
             self.head = 0;
             self.tail = 0;

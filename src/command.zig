@@ -250,6 +250,13 @@ pub fn init() !void {
         ,
         .execute = &exit,
     });
+    std.log.info("The length of registry: {}", .{registry.keys().len});
+    std.log.info("The order of registry:", .{});
+    const keys = registry.keys();
+    const values = registry.values();
+    for (0..keys.len) |idx| {
+        std.log.info("{s}, #of params: {}", .{ keys[idx], values[idx].parameters.len });
+    }
 }
 
 pub fn deinit() void {
