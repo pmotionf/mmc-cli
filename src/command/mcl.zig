@@ -31,6 +31,24 @@ const Registers = struct {
     ww: mcl.registers.Ww,
 };
 
+pub const WaitRegister = struct {
+    register: RegisterType,
+    type: WaitingType,
+    /// Used to define the state that the register waiting for "state" type
+    status: ?[][]const u8, // TODO: find another way to pass the status
+
+    const RegisterType = union {
+        x: mcl.registers.X,
+        wr: mcl.registers.Wr,
+    };
+
+    const WaitingType = enum {
+        set,
+        reset,
+        state,
+    };
+};
+
 var log_lines: []LogLine = undefined;
 
 pub const Config = struct {
@@ -2383,4 +2401,22 @@ fn sendCommand(station: Station) !void {
         .SliderAlreadyExists => error.SliderAlreadyExists,
         .InvalidAxis => error.InvalidAxis,
     };
+}
+
+pub fn waitingCommand(register: WaitRegister) !?WaitRegister {
+    try command.checkCommandInterrupt();
+    if (register.type == .set) {
+        if (register.register) return null else return register;
+    } else if (register.type == .reset) {
+        if (!register.register) return null else return register;
+    } else {
+        // parse status
+        const register_state = @field(register.register, "state");
+        for (register.status.?) |status| {
+            if (std.mem.eql(u8, status, @tagName(register_state))) {
+                return null;
+            }
+        }
+        return register;
+    }
 }
