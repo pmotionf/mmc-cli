@@ -50,23 +50,36 @@ pub fn main() !void {
 
     command_loop: while (true) {
         if (command.stop.load(.monotonic)) {
-            command.queueClear();
+            command.command_queue.clear();
             command.stop.store(false, .monotonic);
         }
-        if (command.queueEmpty()) {
+        if (command.command_queue.isEmpty()) {
             var input_buffer: [1024]u8 = .{0} ** 1024;
+            // Simulating enqueue command
             std.log.info("Please enter a command (HELP for info): ", .{});
 
             if (try nextLine(reader, &input_buffer)) |line| {
-                try command.enqueue(line);
+                const item: command.CommandQueue = command._enqueue(line);
+                try command.command_queue.write(item);
             } else continue :command_loop;
         }
-        command.execute() catch |e| {
-            std.log.err("{s}", .{@errorName(e)});
-            std.log.debug("{any}", .{@errorReturnTrace()});
-            command.queueClear();
-            continue :command_loop;
-        };
+        if (command.command_queue.read()) |c| {
+            c.parseCommand() catch |e| {
+                std.log.err("{s}", .{@errorName(e)});
+                std.log.debug("{any}", .{@errorReturnTrace()});
+                command.command_queue.clear();
+            };
+            // If pointer to the next callback is not null, readd to queue.
+            if (c.command_entry.execute) |_| {
+                command.command_queue.write(c);
+            }
+        }
+        // command.execute() catch |e| {
+        //     std.log.err("{s}", .{@errorName(e)});
+        //     std.log.debug("{any}", .{@errorReturnTrace()});
+        //     command.queueClear();
+        //     continue :command_loop;
+        // };
     }
 }
 
