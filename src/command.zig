@@ -76,6 +76,17 @@ pub const CommandQueue = struct {
     parsed_command: CommandData,
     command_entry: *Command,
 
+    fn fieldAccess(param: anytype, idx: u8) @typeInfo(@TypeOf(param)).@"struct".fields[0].type {
+        const param_type = @TypeOf(param);
+        const param_fields = @typeInfo(param_type).@"struct".fields;
+        inline for (0..param_fields.len) |param_idx| {
+            if (param_idx == idx) {
+                return @field(param, param_fields[param_idx].name);
+            }
+        }
+        unreachable;
+    }
+
     // TODO: Accept read data. Modify command_queue
     pub fn init(self: CommandQueue) void {
         const key = registry.keys()[self.parsed_command.command_index];
@@ -94,11 +105,13 @@ pub const CommandQueue = struct {
         for (0..params_len) |i| {
             const shift: u3 = @intCast(i);
             if ((param_type >> shift & 0b1) == 1) {
-                const float_val =@field(lhs: anytype, comptime field_name: []const u8)
-                params[i] = ParamType{ .float = float_param[float_idx] };
+                const float_val: f32 = fieldAccess(float_param, float_idx);
+
+                params[i] = ParamType{ .float = float_val };
                 float_idx += 1;
             } else {
-                params[i] = ParamType{ .float = int_param[int_idx] };
+                const int_val: u8 = fieldAccess(int_param, int_idx);
+                params[i] = ParamType{ .int = int_val };
                 int_idx += 1;
             }
         }
@@ -122,22 +135,21 @@ pub const CommandQueue = struct {
     pub const CommandData = packed struct(u128) {
         /// Index to registry hash map
         command_index: u8,
-        /// Number of parameters
-        param_num: u8,
         /// Parameter types, checked with number of parameters.
         /// The first param is indicated by the last bit, and the final param is
         /// the first bit.
         param_type: u8,
-        int_param: packed struct(u40) {
-            int_param1: u8,
-            int_param2: u8,
-            int_param3: u8,
-            int_param4: u8,
-            int_param5: u8,
+        int_param: packed struct(u48) {
+            param1: u8,
+            param2: u8,
+            param3: u8,
+            param4: u8,
+            param5: u8,
+            param6: u8,
         }, // 40 bits
         float_param: packed struct(u64) {
-            float_param1: f32,
-            float_param2: f32,
+            param1: f32,
+            param2: f32,
         }, //64 bits
     };
 };
