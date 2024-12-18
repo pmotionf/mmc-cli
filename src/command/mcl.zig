@@ -1162,8 +1162,31 @@ fn mclSliderAxis(params: [][]const u8) !void {
 
 fn mclHallStatus(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
+    var axis_id: u16 = 0;
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
+    if (params[1].len > 0) {
+        axis_id = try std.fmt.parseInt(u16, params[1], 0);
+        if (axis_id < 1 or axis_id > line.axes.len) {
+            return error.InvalidAxis;
+        }
+    }
+
+    if (axis_id > 0) {
+        const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
+        const station_index: mcl.Station.Index = @intCast(axis_index / 3);
+        const station = line.stations[station_index];
+        const local_axis: mcl.Axis.Index.Station = @intCast(axis_index % 3);
+        try station.pollX();
+        const alarms = station.x.hall_alarm.axis(local_axis);
+        if (alarms.back) {
+            std.log.info("Axis {} Hall Sensor: BACK - ON", .{axis_id});
+        }
+        if (alarms.front) {
+            std.log.info("Axis {} Hall Sensor: FRONT - ON", .{axis_id});
+        }
+        return;
+    }
 
     try line.pollX();
 
