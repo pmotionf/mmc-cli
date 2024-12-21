@@ -2341,7 +2341,7 @@ fn registerValueToString(f: std.fs.File.Writer, parent_field: anytype) !void {
     }
 }
 
-fn matchLine(names: [][]const u8, name: []const u8) !usize {
+fn matchLine(names: [][]u8, name: []const u8) !usize {
     for (names, 0..) |n, i| {
         if (std.mem.eql(u8, n, name)) return i;
     } else {
