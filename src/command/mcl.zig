@@ -56,9 +56,7 @@ pub fn init(c: Config) !void {
     line_accelerations = try allocator.alloc(u7, c.lines.len);
     log_lines = try allocator.alloc(LogLine, c.lines.len);
     for (0..c.lines.len) |i| {
-        for (&log_lines[i].stations) |*station| {
-            station.* = false;
-        }
+        log_lines[i].stations = .{false} ** 256;
         log_lines[i].status = false;
         line_names[i] = try allocator.alloc(u8, c.line_names[i].len);
         @memcpy(line_names[i], c.line_names[i]);
@@ -666,10 +664,11 @@ pub fn init(c: Config) !void {
         \\station depending on the provided axes. Both "registers" and "axes"
         \\shall be provided as comma-separated values: 
         \\
-        \\"ADD_LOG_REGISTER line_name 1,4,7 x,y" 
+        \\"ADD_LOG_REGISTERS line_name 1,4,7 x,y" 
         \\
-        \\The logging configuration can be evaluated by "STATUS_LOG_REGISTERS" 
-        \\command.
+        \\Both "registers" and "axes" accept "all" as the parameter to log every
+        \\register and axes. The line configured for logging registers can be 
+        \\evaluated by "STATUS_LOG_REGISTERS" command.
         ,
         .execute = &addLogRegisters,
     });
@@ -2042,12 +2041,19 @@ fn addLogRegisters(params: [][]const u8) !void {
     const line_idx = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
 
-    var log: LogLine = undefined;
+    var log: LogLine = std.mem.zeroInit(LogLine, .{});
 
     // Validate "axes" parameter
     var axis_input_iterator = std.mem.tokenizeSequence(u8, params[1], ",");
     while (axis_input_iterator.next()) |token| {
+        if (std.ascii.eqlIgnoreCase("all", token)) {
+            for (0..line.stations.len) |i| {
+                log.stations[i] = true;
+            }
+            break;
+        }
         const axis_id = try std.fmt.parseInt(mcl.Axis.Id.Line, token, 0);
+
         if (axis_id < 1 or axis_id > line.axes.len) {
             return error.InvalidAxis;
         }
@@ -2059,6 +2065,12 @@ fn addLogRegisters(params: [][]const u8) !void {
     // Validate "registers" parameter
     var reg_input_iterator = std.mem.tokenizeSequence(u8, params[2], ",");
     outer: while (reg_input_iterator.next()) |token| {
+        if (std.ascii.eqlIgnoreCase("all", token)) {
+            inline for (@typeInfo(LogLine.RegisterType).@"enum".fields) |field| {
+                log.registers.set(@enumFromInt(field.value), true);
+            }
+            break;
+        }
         inline for (@typeInfo(LogLine.RegisterType).@"enum".fields) |field| {
             if (std.ascii.eqlIgnoreCase(field.name, token)) {
                 log.registers.set(@enumFromInt(field.value), true);
@@ -2212,8 +2224,8 @@ fn pathLogRegisters(params: [][]const u8) !void {
                                 f.writer(),
                                 try std.fmt.bufPrint(
                                     &_buffer,
-                                    "{s}_station{d}",
-                                    .{ line_name, station_idx + 1 },
+                                    "{s}_station{d}_{s}",
+                                    .{ line_name, station_idx + 1, reg_enum.name },
                                 ),
                                 "",
                                 @FieldType(
