@@ -9,6 +9,7 @@ var line_names: [][]u8 = undefined;
 var line_speeds: []u7 = undefined;
 var line_accelerations: []u7 = undefined;
 var log_file: ?std.fs.File = null;
+var log_time_start: i64 = 0;
 
 const Direction = mcl.Direction;
 const Station = mcl.Station;
@@ -2120,6 +2121,7 @@ fn resetLogRegisters(_: [][]const u8) !void {
     for (0..line_names.len) |i| {
         log_lines[i].status = false;
     }
+    log_file = null;
 }
 
 fn statusLogRegisters(_: [][]const u8) !void {
@@ -2208,7 +2210,9 @@ fn pathLogRegisters(params: [][]const u8) !void {
     };
     std.log.info("The registers will be logged to {s}", .{file_path});
     log_file = try std.fs.cwd().createFile(file_path, .{});
+
     if (log_file) |f| {
+        try std.fmt.format(f, "timestamp,", .{});
         for (line_names) |line_name| {
             const line_idx = try matchLine(line_names, line_name);
             if (log_lines[line_idx].status == false) continue;
@@ -2247,7 +2251,15 @@ fn pathLogRegisters(params: [][]const u8) !void {
 /// line_name parameter. If the line has not ben set for logging,
 /// it will return error.
 fn logRegisters(_: [][]const u8) !void {
+    log_time_start = if (log_time_start == 0) std.time.microTimestamp() else log_time_start;
     if (log_file) |f| {
+        const timestamp = @as(f64, @floatFromInt(std.time.microTimestamp() - log_time_start)) / 1_000_000;
+
+        try std.fmt.format(
+            f.writer(),
+            "{},",
+            .{timestamp},
+        );
         for (line_names) |line| {
             const line_idx = try matchLine(line_names, line);
             if (log_lines[line_idx].status == false) continue;

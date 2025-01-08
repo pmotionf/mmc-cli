@@ -529,7 +529,7 @@ fn loadConfig(params: [][]const u8) !void {
 }
 
 fn wait(params: [][]const u8) !void {
-    const duration: u32 = try std.fmt.parseInt(u32, params[0], 0);
+    const duration: u64 = try std.fmt.parseInt(u64, params[0], 0);
     var wait_timer = try std.time.Timer.start();
     while (wait_timer.read() < duration * std.time.ns_per_ms) {
         try checkCommandInterrupt();
