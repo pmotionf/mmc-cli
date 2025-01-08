@@ -666,8 +666,9 @@ pub fn init(c: Config) !void {
         \\
         \\"ADD_LOG_REGISTERS line_name 1,4,7 x,y" 
         \\
-        \\The logging configuration can be evaluated by "STATUS_LOG_REGISTERS" 
-        \\command.
+        \\Both "registers" and "axes" accept "all" as the parameter to log every
+        \\register and axes. The line configured for logging registers can be 
+        \\evaluated by "STATUS_LOG_REGISTERS" command.
         ,
         .execute = &addLogRegisters,
     });
@@ -2045,6 +2046,12 @@ fn addLogRegisters(params: [][]const u8) !void {
     // Validate "axes" parameter
     var axis_input_iterator = std.mem.tokenizeSequence(u8, params[1], ",");
     while (axis_input_iterator.next()) |token| {
+        if (std.ascii.eqlIgnoreCase("all", token)) {
+            for (0..line.stations.len) |i| {
+                log.stations[i] = true;
+            }
+            break;
+        }
         const axis_id = try std.fmt.parseInt(mcl.Axis.Id.Line, token, 0);
 
         if (axis_id < 1 or axis_id > line.axes.len) {
@@ -2058,6 +2065,12 @@ fn addLogRegisters(params: [][]const u8) !void {
     // Validate "registers" parameter
     var reg_input_iterator = std.mem.tokenizeSequence(u8, params[2], ",");
     outer: while (reg_input_iterator.next()) |token| {
+        if (std.ascii.eqlIgnoreCase("all", token)) {
+            inline for (@typeInfo(LogLine.RegisterType).@"enum".fields) |field| {
+                log.registers.set(@enumFromInt(field.value), true);
+            }
+            break;
+        }
         inline for (@typeInfo(LogLine.RegisterType).@"enum".fields) |field| {
             if (std.ascii.eqlIgnoreCase(field.name, token)) {
                 log.registers.set(@enumFromInt(field.value), true);
