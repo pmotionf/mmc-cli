@@ -9,6 +9,7 @@ var line_names: [][]u8 = undefined;
 var line_speeds: []u7 = undefined;
 var line_accelerations: []u7 = undefined;
 var log_file: ?std.fs.File = null;
+var log_time_start: i64 = 0;
 
 const Direction = mcl.Direction;
 const Station = mcl.Station;
@@ -2079,7 +2080,6 @@ fn addLogRegisters(params: [][]const u8) !void {
         }
         return error.InvalidRegister;
     }
-
     var info_buffer: [64]u8 = undefined;
     const prefix = "Ready to log registers: ";
     @memcpy(info_buffer[0..prefix.len], prefix);
@@ -2120,22 +2120,27 @@ fn resetLogRegisters(_: [][]const u8) !void {
     for (0..line_names.len) |i| {
         log_lines[i].status = false;
     }
+    log_file = null;
 }
 
 fn statusLogRegisters(_: [][]const u8) !void {
-    // const stdout = std.io.getStdOut().writer();
     var buffer: [8192]u8 = undefined;
     var buf_len: usize = 0;
+    // flag to indicate printing ","
+    var first = true;
     for (0..line_names.len) |line_idx| {
+        // Section to print line name
         if (log_lines[line_idx].status == false) continue;
         buf_len += (try std.fmt.bufPrint(
             buffer[buf_len..],
             "{s}:",
             .{line_names[line_idx]},
         )).len;
+        // Section to print station index
+        first = true;
         for (0..log_lines[line_idx].stations.len) |station_idx| {
             if (log_lines[line_idx].stations[station_idx] == false) continue;
-            if (station_idx != 0) {
+            if (!first) {
                 buf_len += (try std.fmt.bufPrint(
                     buffer[buf_len..],
                     "{s}",
@@ -2149,17 +2154,19 @@ fn statusLogRegisters(_: [][]const u8) !void {
                 .lower,
                 .{},
             );
+            first = false;
         }
         buf_len += (try std.fmt.bufPrint(
             buffer[buf_len..],
             "{s}",
             .{":"},
         )).len;
-
+        // Section to print register
+        first = true;
         var reg_iterator = log_lines[line_idx].registers.iterator();
         while (reg_iterator.next()) |reg_entry| {
             if (reg_entry.value.* == false) continue;
-            if (reg_iterator.index - 1 != 0) {
+            if (!first) {
                 buf_len += (try std.fmt.bufPrint(
                     buffer[buf_len..],
                     "{s}",
@@ -2177,6 +2184,7 @@ fn statusLogRegisters(_: [][]const u8) !void {
             "{s}",
             .{"\n"},
         )).len;
+        first = false;
     }
     std.log.info("{s}", .{buffer[0..buf_len]});
 }
@@ -2208,7 +2216,9 @@ fn pathLogRegisters(params: [][]const u8) !void {
     };
     std.log.info("The registers will be logged to {s}", .{file_path});
     log_file = try std.fs.cwd().createFile(file_path, .{});
+
     if (log_file) |f| {
+        try std.fmt.format(f, "timestamp,", .{});
         for (line_names) |line_name| {
             const line_idx = try matchLine(line_names, line_name);
             if (log_lines[line_idx].status == false) continue;
@@ -2218,7 +2228,9 @@ fn pathLogRegisters(params: [][]const u8) !void {
                 while (reg_iterator.next()) |reg_entry| {
                     const reg_type = @TypeOf(reg_entry.key);
                     inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
-                        if (@intFromEnum(reg_entry.key) == reg_enum.value) {
+                        if (@intFromEnum(reg_entry.key) == reg_enum.value and
+                            reg_entry.value.* == true)
+                        {
                             var _buffer: [64]u8 = undefined;
                             try registerFieldToString(
                                 f.writer(),
@@ -2247,7 +2259,15 @@ fn pathLogRegisters(params: [][]const u8) !void {
 /// line_name parameter. If the line has not ben set for logging,
 /// it will return error.
 fn logRegisters(_: [][]const u8) !void {
+    log_time_start = if (log_time_start == 0) std.time.microTimestamp() else log_time_start;
     if (log_file) |f| {
+        const timestamp = @as(f64, @floatFromInt(std.time.microTimestamp() - log_time_start)) / 1_000_000;
+
+        try std.fmt.format(
+            f.writer(),
+            "{},",
+            .{timestamp},
+        );
         for (line_names) |line| {
             const line_idx = try matchLine(line_names, line);
             if (log_lines[line_idx].status == false) continue;
@@ -2257,7 +2277,9 @@ fn logRegisters(_: [][]const u8) !void {
                 while (reg_iterator.next()) |reg_entry| {
                     const reg_type = @TypeOf(reg_entry.key);
                     inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
-                        if (@intFromEnum(reg_entry.key) == reg_enum.value) {
+                        if (@intFromEnum(reg_entry.key) == reg_enum.value and
+                            reg_entry.value.* == true)
+                        {
                             switch (reg_entry.key) {
                                 .x => try mcl.lines[line_idx].stations[station_idx].pollX(),
                                 .y => try mcl.lines[line_idx].stations[station_idx].pollY(),
