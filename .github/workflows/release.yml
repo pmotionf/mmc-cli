@@ -21,8 +21,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Log masks
+      - name: Log masks on Linux
+        if: matrix.os == 'Linux'
         run: echo "::add-mask::$NAME_MASK"
+
+      - name: Log masks on Windows
+        if: matrix.os == 'Windows'
+        run: echo "::add-mask::$env:NAME_MASK"
 
       - uses: actions/checkout@v4
         with:
