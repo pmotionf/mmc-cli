@@ -2262,12 +2262,13 @@ fn logRegisters(_: [][]const u8) !void {
     log_time_start = if (log_time_start == 0) std.time.microTimestamp() else log_time_start;
     if (log_file) |f| {
         const timestamp = @as(f64, @floatFromInt(std.time.microTimestamp() - log_time_start)) / 1_000_000;
-
-        try std.fmt.format(
-            f.writer(),
-            "{},",
-            .{timestamp},
-        );
+        // buffer before writing registers values to the file
+        var log_buffer: [65536]u8 = undefined;
+        var buf_length: usize = 0;
+        var print_buffer: [1024]u8 = undefined;
+        const timestamp_fmt = try std.fmt.bufPrint(&print_buffer, "{},", .{timestamp});
+        @memcpy(log_buffer[buf_length .. buf_length + timestamp_fmt.len], timestamp_fmt);
+        buf_length += timestamp_fmt.len;
         for (line_names) |line| {
             const line_idx = try matchLine(line_names, line);
             if (log_lines[line_idx].status == false) continue;
@@ -2287,7 +2288,8 @@ fn logRegisters(_: [][]const u8) !void {
                                 .ww => try mcl.lines[line_idx].stations[station_idx].pollWw(),
                             }
                             try registerValueToString(
-                                f.writer(),
+                                &log_buffer,
+                                &buf_length,
                                 @field(
                                     mcl.lines[line_idx].stations[station_idx],
                                     reg_enum.name,
@@ -2300,6 +2302,7 @@ fn logRegisters(_: [][]const u8) !void {
             }
             if (log_lines[line_idx].status) {}
         }
+        try f.writer().writeAll(log_buffer[0..buf_length]);
         try f.writer().writeByte('\n');
     } else {
         std.log.err("Logging file not configured", .{});
@@ -2351,13 +2354,14 @@ fn registerFieldToString(
 }
 
 // Write register values into the logging file
-fn registerValueToString(f: std.fs.File.Writer, parent_field: anytype) !void {
+fn registerValueToString(b: *[65536]u8, b_len: *usize, parent_field: anytype) !void {
     const parent_type = @TypeOf(parent_field.*);
     inline for (@typeInfo(parent_type).@"struct".fields) |child_field| {
         if (child_field.name[0] == '_') continue;
         if (comptime @typeInfo(child_field.type) == .@"struct") {
             try registerValueToString(
-                f,
+                b,
+                b_len,
                 &@field(parent_field.*, child_field.name),
             );
         } else {
@@ -2365,12 +2369,24 @@ fn registerValueToString(f: std.fs.File.Writer, parent_field: anytype) !void {
             if (comptime @typeInfo(@TypeOf(child_value)) == .@"enum") {
                 const enum_integer = @intFromEnum(child_value);
                 const enum_name = @tagName(child_value);
-                try std.fmt.format(
-                    f,
+                var print_buffer: [1024]u8 = undefined;
+                const register_fmt = try std.fmt.bufPrint(
+                    &print_buffer,
                     "{s} ({d}),",
                     .{ enum_name, enum_integer },
                 );
-            } else try std.fmt.format(f, "{},", .{child_value});
+                @memcpy(b.*[b_len.* .. b_len.* + register_fmt.len], register_fmt);
+                b_len.* += register_fmt.len;
+            } else {
+                var print_buffer: [1024]u8 = undefined;
+                const register_fmt = try std.fmt.bufPrint(
+                    &print_buffer,
+                    "{},",
+                    .{child_value},
+                );
+                @memcpy(b.*[b_len.* .. b_len.* + register_fmt.len], register_fmt);
+                b_len.* += register_fmt.len;
+            }
         }
     }
 }
