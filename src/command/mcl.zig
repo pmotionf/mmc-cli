@@ -303,6 +303,15 @@ pub fn init(c: Config) !void {
         .execute = &mclClearErrors,
     });
     errdefer _ = command.registry.orderedRemove("CLEAR_ERRORS");
+    try command.registry.put("RESET_MCL", .{
+        .name = "RESET_MCL",
+        .short_description = "Reset all MCL registers.",
+        .long_description =
+        \\Reset all MCL registers.
+        ,
+        .execute = &mclReset,
+    });
+    errdefer _ = command.registry.orderedRemove("RESET_MCL");
     try command.registry.put("CLEAR_SLIDER_INFO", .{
         .name = "CLEAR_SLIDER_INFO",
         .parameters = &[_]command.Command.Parameter{
@@ -702,7 +711,7 @@ pub fn init(c: Config) !void {
         .short_description = "Print the logging configurations entry.",
         .long_description =
         \\Print the logging configuration for each line (if any). The status is 
-        \\given by "line_name:stations:registers" with stations and registers 
+        \\given by "line_name:station_id:registers" with stations and registers 
         \\are a comma-separated string. 
         ,
         .execute = &statusLogRegisters,
@@ -916,6 +925,32 @@ fn mclAxisReleaseServo(params: [][]const u8) !void {
 }
 
 fn mclClearErrors(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+    if (axis_id < 1 or axis_id > line.axes.len) {
+        return error.InvalidAxis;
+    }
+
+    const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
+    const local_axis_index: mcl.Axis.Index.Station = @intCast(axis_index % 3);
+    const station = line.stations[axis_index / 3];
+
+    station.ww.target_axis_number = local_axis_index + 1;
+    try station.sendWw();
+    try station.setY(0xB);
+    // Reset on error as well as on success.
+    defer station.resetY(0xB) catch {};
+    while (true) {
+        try command.checkCommandInterrupt();
+        try station.pollX();
+        if (station.x.errors_cleared) break;
+    }
+}
+
+fn mclReset(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
 
@@ -2121,6 +2156,7 @@ fn resetLogRegisters(_: [][]const u8) !void {
         log_lines[i].status = false;
     }
     log_file = null;
+    log_time_start = 0;
 }
 
 fn statusLogRegisters(_: [][]const u8) !void {
@@ -2149,7 +2185,7 @@ fn statusLogRegisters(_: [][]const u8) !void {
             }
             buf_len += std.fmt.formatIntBuf(
                 buffer[buf_len..],
-                station_idx,
+                station_idx + 1,
                 10,
                 .lower,
                 .{},
@@ -2178,13 +2214,13 @@ fn statusLogRegisters(_: [][]const u8) !void {
                 "{s}",
                 .{@tagName(reg_entry.key)},
             )).len;
+            first = false;
         }
         buf_len += (try std.fmt.bufPrint(
             buffer[buf_len..],
             "{s}",
             .{"\n"},
         )).len;
-        first = false;
     }
     std.log.info("{s}", .{buffer[0..buf_len]});
 }
