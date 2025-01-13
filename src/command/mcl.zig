@@ -303,6 +303,15 @@ pub fn init(c: Config) !void {
         .execute = &mclClearErrors,
     });
     errdefer _ = command.registry.orderedRemove("CLEAR_ERRORS");
+    try command.registry.put("RESET_MCL", .{
+        .name = "RESET_MCL",
+        .short_description = "Reset all MCL registers.",
+        .long_description =
+        \\Reset all write registers (Y and Ww registers).
+        ,
+        .execute = &mclReset,
+    });
+    errdefer _ = command.registry.orderedRemove("RESET_MCL");
     try command.registry.put("CLEAR_SLIDER_INFO", .{
         .name = "CLEAR_SLIDER_INFO",
         .parameters = &[_]command.Command.Parameter{
@@ -702,7 +711,7 @@ pub fn init(c: Config) !void {
         .short_description = "Print the logging configurations entry.",
         .long_description =
         \\Print the logging configuration for each line (if any). The status is 
-        \\given by "line_name:stations:registers" with stations and registers 
+        \\given by "line_name:station_id:registers" with stations and registers 
         \\are a comma-separated string. 
         ,
         .execute = &statusLogRegisters,
@@ -938,6 +947,14 @@ fn mclClearErrors(params: [][]const u8) !void {
         try command.checkCommandInterrupt();
         try station.pollX();
         if (station.x.errors_cleared) break;
+    }
+}
+
+fn mclReset(_: [][]const u8) !void {
+    for (mcl.lines) |line| {
+        @memset(line.ww, std.mem.zeroes(mcl.registers.Ww));
+        @memset(line.y, std.mem.zeroes(mcl.registers.Y));
+        try line.send();
     }
 }
 
@@ -2121,6 +2138,7 @@ fn resetLogRegisters(_: [][]const u8) !void {
         log_lines[i].status = false;
     }
     log_file = null;
+    log_time_start = 0;
 }
 
 fn statusLogRegisters(_: [][]const u8) !void {
@@ -2149,7 +2167,7 @@ fn statusLogRegisters(_: [][]const u8) !void {
             }
             buf_len += std.fmt.formatIntBuf(
                 buffer[buf_len..],
-                station_idx,
+                station_idx + 1,
                 10,
                 .lower,
                 .{},
@@ -2178,13 +2196,13 @@ fn statusLogRegisters(_: [][]const u8) !void {
                 "{s}",
                 .{@tagName(reg_entry.key)},
             )).len;
+            first = false;
         }
         buf_len += (try std.fmt.bufPrint(
             buffer[buf_len..],
             "{s}",
             .{"\n"},
         )).len;
-        first = false;
     }
     std.log.info("{s}", .{buffer[0..buf_len]});
 }
@@ -2262,12 +2280,7 @@ fn logRegisters(_: [][]const u8) !void {
     log_time_start = if (log_time_start == 0) std.time.microTimestamp() else log_time_start;
     if (log_file) |f| {
         const timestamp = @as(f64, @floatFromInt(std.time.microTimestamp() - log_time_start)) / 1_000_000;
-
-        try std.fmt.format(
-            f.writer(),
-            "{},",
-            .{timestamp},
-        );
+        try f.writer().print("{}", .{timestamp});
         for (line_names) |line| {
             const line_idx = try matchLine(line_names, line);
             if (log_lines[line_idx].status == false) continue;
@@ -2365,12 +2378,11 @@ fn registerValueToString(f: std.fs.File.Writer, parent_field: anytype) !void {
             if (comptime @typeInfo(@TypeOf(child_value)) == .@"enum") {
                 const enum_integer = @intFromEnum(child_value);
                 const enum_name = @tagName(child_value);
-                try std.fmt.format(
-                    f,
+                try f.print(
                     "{s} ({d}),",
                     .{ enum_name, enum_integer },
                 );
-            } else try std.fmt.format(f, "{},", .{child_value});
+            } else try f.print("{},", .{child_value});
         }
     }
 }
