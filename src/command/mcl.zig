@@ -307,7 +307,7 @@ pub fn init(c: Config) !void {
         .name = "RESET_MCL",
         .short_description = "Reset all MCL registers.",
         .long_description =
-        \\Reset all MCL registers.
+        \\Reset all write registers (Y and Ww registers).
         ,
         .execute = &mclReset,
     });
@@ -950,29 +950,11 @@ fn mclClearErrors(params: [][]const u8) !void {
     }
 }
 
-fn mclReset(params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
-
-    const line_idx: usize = try matchLine(line_names, line_name);
-    const line: mcl.Line = mcl.lines[line_idx];
-    if (axis_id < 1 or axis_id > line.axes.len) {
-        return error.InvalidAxis;
-    }
-
-    const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
-    const local_axis_index: mcl.Axis.Index.Station = @intCast(axis_index % 3);
-    const station = line.stations[axis_index / 3];
-
-    station.ww.target_axis_number = local_axis_index + 1;
-    try station.sendWw();
-    try station.setY(0xB);
-    // Reset on error as well as on success.
-    defer station.resetY(0xB) catch {};
-    while (true) {
-        try command.checkCommandInterrupt();
-        try station.pollX();
-        if (station.x.errors_cleared) break;
+fn mclReset(_: [][]const u8) !void {
+    for (mcl.lines) |line| {
+        @memset(line.ww, std.mem.zeroes(mcl.registers.Ww));
+        @memset(line.y, std.mem.zeroes(mcl.registers.Y));
+        try line.send();
     }
 }
 
@@ -2298,12 +2280,7 @@ fn logRegisters(_: [][]const u8) !void {
     log_time_start = if (log_time_start == 0) std.time.microTimestamp() else log_time_start;
     if (log_file) |f| {
         const timestamp = @as(f64, @floatFromInt(std.time.microTimestamp() - log_time_start)) / 1_000_000;
-
-        try std.fmt.format(
-            f.writer(),
-            "{},",
-            .{timestamp},
-        );
+        try f.writer().print("{}", .{timestamp});
         for (line_names) |line| {
             const line_idx = try matchLine(line_names, line);
             if (log_lines[line_idx].status == false) continue;
@@ -2401,12 +2378,11 @@ fn registerValueToString(f: std.fs.File.Writer, parent_field: anytype) !void {
             if (comptime @typeInfo(@TypeOf(child_value)) == .@"enum") {
                 const enum_integer = @intFromEnum(child_value);
                 const enum_name = @tagName(child_value);
-                try std.fmt.format(
-                    f,
+                try f.print(
                     "{s} ({d}),",
                     .{ enum_name, enum_integer },
                 );
-            } else try std.fmt.format(f, "{},", .{child_value});
+            } else try f.print("{},", .{child_value});
         }
     }
 }
