@@ -2280,7 +2280,7 @@ fn logRegisters(_: [][]const u8) !void {
     log_time_start = if (log_time_start == 0) std.time.microTimestamp() else log_time_start;
     if (log_file) |f| {
         const timestamp = @as(f64, @floatFromInt(std.time.microTimestamp() - log_time_start)) / 1_000_000;
-        try f.writer().print("{}", .{timestamp});
+        try f.writer().print("{},", .{timestamp});
         for (line_names) |line| {
             const line_idx = try matchLine(line_names, line);
             if (log_lines[line_idx].status == false) continue;
