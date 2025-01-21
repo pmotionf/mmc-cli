@@ -1310,13 +1310,22 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
         }
         main.station.y.stop_driver_transmission.setTo(direction, true);
         try main.station.sendY();
-        defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
-        }
         while (!main.station.x.transmission_stopped.to(direction)) {
             try command.checkCommandInterrupt();
             try main.station.pollX();
+        }
+    }
+    defer {
+        if (_aux) |aux| {
+            // Direction of auxiliary axis from main axis.
+            var direction: Direction = undefined;
+            if (aux.index.line > main.index.line) {
+                direction = .forward;
+            } else {
+                direction = .backward;
+            }
+            main.station.y.stop_driver_transmission.setTo(direction, false);
+            main.station.sendY() catch {};
         }
     }
 
@@ -1369,13 +1378,15 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
     if (_aux) |_| {
         main.station.y.stop_driver_transmission.setTo(direction, true);
         try main.station.sendY();
-        defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
-        }
         while (!main.station.x.transmission_stopped.to(direction)) {
             try command.checkCommandInterrupt();
             try main.station.pollX();
+        }
+    }
+    defer {
+        if (_aux) |_| {
+            main.station.y.stop_driver_transmission.setTo(direction, false);
+            main.station.sendY() catch {};
         }
     }
 
@@ -1435,13 +1446,15 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
     if (_aux) |_| {
         main.station.y.stop_driver_transmission.setTo(direction, true);
         try main.station.sendY();
-        defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
-        }
         while (!main.station.x.transmission_stopped.to(direction)) {
             try command.checkCommandInterrupt();
             try main.station.pollX();
+        }
+    }
+    defer {
+        if (_aux) |_| {
+            main.station.y.stop_driver_transmission.setTo(direction, false);
+            main.station.sendY() catch {};
         }
     }
 
@@ -1494,13 +1507,22 @@ fn mclSliderSpdMoveAxis(params: [][]const u8) !void {
         }
         main.station.y.stop_driver_transmission.setTo(direction, true);
         try main.station.sendY();
-        defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
-        }
         while (!main.station.x.transmission_stopped.to(direction)) {
             try command.checkCommandInterrupt();
             try main.station.pollX();
+        }
+    }
+    defer {
+        if (_aux) |aux| {
+            // Direction of auxiliary axis from main axis.
+            var direction: Direction = undefined;
+            if (aux.index.line > main.index.line) {
+                direction = .forward;
+            } else {
+                direction = .backward;
+            }
+            main.station.y.stop_driver_transmission.setTo(direction, false);
+            main.station.sendY() catch {};
         }
     }
 
@@ -1553,13 +1575,15 @@ fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
     if (_aux) |_| {
         main.station.y.stop_driver_transmission.setTo(direction, true);
         try main.station.sendY();
-        defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
-        }
         while (!main.station.x.transmission_stopped.to(direction)) {
             try command.checkCommandInterrupt();
             try main.station.pollX();
+        }
+    }
+    defer {
+        if (_aux) |_| {
+            main.station.y.stop_driver_transmission.setTo(direction, false);
+            main.station.sendY() catch {};
         }
     }
 
@@ -1619,13 +1643,15 @@ fn mclSliderSpdMoveDistance(params: [][]const u8) !void {
     if (_aux) |_| {
         main.station.y.stop_driver_transmission.setTo(direction, true);
         try main.station.sendY();
-        defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
-        }
         while (!main.station.x.transmission_stopped.to(direction)) {
             try command.checkCommandInterrupt();
             try main.station.pollX();
+        }
+    }
+    defer {
+        if (_aux) |_| {
+            main.station.y.stop_driver_transmission.setTo(direction, false);
+            main.station.sendY() catch {};
         }
     }
 
@@ -1671,13 +1697,15 @@ fn mclSliderPushForward(params: [][]const u8) !void {
     if (_aux) |_| {
         main.station.y.stop_driver_transmission.setTo(direction, true);
         try main.station.sendY();
-        defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
-        }
         while (!main.station.x.transmission_stopped.to(direction)) {
             try command.checkCommandInterrupt();
             try main.station.pollX();
+        }
+    }
+    defer {
+        if (_aux) |_| {
+            main.station.y.stop_driver_transmission.setTo(direction, false);
+            main.station.sendY() catch {};
         }
     }
 
@@ -1724,13 +1752,15 @@ fn mclSliderPushBackward(params: [][]const u8) !void {
     if (_aux) |_| {
         main.station.y.stop_driver_transmission.setTo(direction, true);
         try main.station.sendY();
-        defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
-        }
         while (!main.station.x.transmission_stopped.to(direction)) {
             try command.checkCommandInterrupt();
             try main.station.pollX();
+        }
+    }
+    defer {
+        if (_aux) |_| {
+            main.station.y.stop_driver_transmission.setTo(direction, false);
+            main.station.sendY() catch {};
         }
     }
 
