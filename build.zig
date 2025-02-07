@@ -30,6 +30,12 @@ pub fn build(b: *std.Build) !void {
     });
     const network_dep = b.dependency("network", .{});
     const chrono = b.dependency("chrono", .{});
+    const mmc_config = b.dependency("mmc_config", .{
+        .target = target,
+        .optimize = optimize,
+        .mdfunc = mdfunc_lib_path,
+        .mdfunc_mock = mdfunc_mock_build,
+    });
 
     const exe = b.addExecutable(.{
         .name = "mmc-cli",
@@ -41,6 +47,10 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.addImport("network", network_dep.module("network"));
     exe.root_module.addImport("mcl", mcl.module("mcl"));
     exe.root_module.addImport("chrono", chrono.module("chrono"));
+    exe.root_module.addImport(
+        "mmc_config",
+        mmc_config.module("mmc-config"),
+    );
 
     b.installArtifact(exe);
 
@@ -61,6 +71,13 @@ pub fn build(b: *std.Build) !void {
         .mdfunc_mock = true,
     });
 
+    const mmc_config_mock = b.dependency("mmc_config", .{
+        .target = target,
+        .optimize = optimize,
+        .mdfunc = mdfunc_lib_path,
+        .mdfunc_mock = true,
+    });
+
     const check_exe = b.addExecutable(.{
         .name = "mmc-cli",
         .root_source_file = b.path("src/main.zig"),
@@ -71,6 +88,10 @@ pub fn build(b: *std.Build) !void {
     check_exe.root_module.addImport("network", network_dep.module("network"));
     check_exe.root_module.addImport("mcl", mcl_mock.module("mcl"));
     check_exe.root_module.addImport("chrono", chrono.module("chrono"));
+    check_exe.root_module.addImport(
+        "mmc_config",
+        mmc_config_mock.module("mmc-config"),
+    );
 
     const check = b.step("check", "Check if `mmc-cli` compiles");
     check.dependOn(&check_exe.step);
@@ -86,6 +107,10 @@ pub fn build(b: *std.Build) !void {
     unit_tests.root_module.addImport("network", network_dep.module("network"));
     unit_tests.root_module.addImport("mcl", mcl_mock.module("mcl"));
     unit_tests.root_module.addImport("chrono", chrono.module("chrono"));
+    unit_tests.root_module.addImport(
+        "mmc_config",
+        mmc_config_mock.module("mmc-config"),
+    );
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run unit tests");
