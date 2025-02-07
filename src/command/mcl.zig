@@ -952,6 +952,20 @@ fn mclClearErrors(params: [][]const u8) !void {
 
 fn mclReset(_: [][]const u8) !void {
     for (mcl.lines) |line| {
+        for (line.stations) |station| {
+            station.y.reset_command_received = true;
+            try station.sendY();
+            while (true) {
+                try command.checkCommandInterrupt();
+                try station.pollX();
+                if (!station.x.command_received) {
+                    break;
+                }
+            }
+        }
+    }
+
+    for (mcl.lines) |line| {
         @memset(line.ww, std.mem.zeroes(mcl.registers.Ww));
         @memset(line.y, std.mem.zeroes(mcl.registers.Y));
         try line.send();
