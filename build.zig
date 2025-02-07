@@ -30,6 +30,7 @@ pub fn build(b: *std.Build) !void {
     });
     const network_dep = b.dependency("network", .{});
     const chrono = b.dependency("chrono", .{});
+    const mmc = b.dependency("mmc", .{});
 
     const exe = b.addExecutable(.{
         .name = "mmc-cli",
@@ -41,6 +42,7 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.addImport("network", network_dep.module("network"));
     exe.root_module.addImport("mcl", mcl.module("mcl"));
     exe.root_module.addImport("chrono", chrono.module("chrono"));
+    exe.root_module.addImport("mmc", mmc.module("mmc-config"));
 
     b.installArtifact(exe);
 
@@ -71,6 +73,7 @@ pub fn build(b: *std.Build) !void {
     check_exe.root_module.addImport("network", network_dep.module("network"));
     check_exe.root_module.addImport("mcl", mcl_mock.module("mcl"));
     check_exe.root_module.addImport("chrono", chrono.module("chrono"));
+    check_exe.root_module.addImport("mmc", mmc.module("mmc-config"));
 
     const check = b.step("check", "Check if `mmc-cli` compiles");
     check.dependOn(&check_exe.step);
@@ -86,6 +89,7 @@ pub fn build(b: *std.Build) !void {
     unit_tests.root_module.addImport("network", network_dep.module("network"));
     unit_tests.root_module.addImport("mcl", mcl_mock.module("mcl"));
     unit_tests.root_module.addImport("chrono", chrono.module("chrono"));
+    unit_tests.root_module.addImport("mmc", mmc.module("mmc-config"));
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run unit tests");

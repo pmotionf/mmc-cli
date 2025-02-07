@@ -16,6 +16,10 @@
             .url = "https://github.com/pmotionf/chrono/archive/620de75.tar.gz",
             .hash = "chrono-0.1.0-uVd76GvCAwAvWrHupKdlB_UrmfZHRuVP-P4Xi_G8hz3R",
         },
+        .mmc = .{
+            .url = "https://github.com/pmotionf/mmc-config/archive/56bea79.tar.gz",
+            .hash = "1220084f92c361c30b3af1b139755927957e8b29f3978de351e2fc866d856cf9ce34",
+        },
     },
     .paths = .{""},
 }
