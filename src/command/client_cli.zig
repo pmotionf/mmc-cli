@@ -779,9 +779,9 @@ fn mclSetSpeed(params: [][]const u8) !void {
     const line_idx: usize = try matchLine(line_names, line_name);
 
     const kind: @typeInfo(
-        mmc.config.Command,
+        mmc.Param,
     ).@"union".tag_type.? = .set_speed;
-    const param: mmc.config.Command.ParamType(kind) = .{
+    const param: mmc.Param.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
         .speed = slider_speed,
     };
@@ -800,9 +800,9 @@ fn mclSetAcceleration(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const kind: @typeInfo(
-        mmc.config.Command,
+        mmc.Param,
     ).@"union".tag_type.? = .set_acceleration;
-    const param: mmc.config.Command.ParamType(kind) = .{
+    const param: mmc.Param.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
         .acceleration = slider_acceleration,
     };
@@ -818,9 +818,9 @@ fn mclGetSpeed(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const kind: @typeInfo(
-        mmc.config.Command,
+        mmc.Param,
     ).@"union".tag_type.? = .get_speed;
-    const param: mmc.config.Command.ParamType(kind) = .{
+    const param: mmc.Param.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
     };
     if (server) |s| try sendMessage(
@@ -835,9 +835,9 @@ fn mclGetAcceleration(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const kind: @typeInfo(
-        mmc.config.Command,
+        mmc.Param,
     ).@"union".tag_type.? = .get_acceleration;
-    const param: mmc.config.Command.ParamType(kind) = .{
+    const param: mmc.Param.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
     };
     if (server) |s| try sendMessage(
@@ -871,7 +871,7 @@ fn mclIsolate(params: [][]const u8) !void {
         try std.fmt.parseInt(u16, params[3], 0)
     else
         0;
-    const link_axis: mmc.config.Direction = link: {
+    const link_axis: mmc.Direction = link: {
         if (params[4].len > 0) {
             if (std.ascii.eqlIgnoreCase("next", params[4]) or
                 std.ascii.eqlIgnoreCase("right", params[4]))
@@ -887,9 +887,9 @@ fn mclIsolate(params: [][]const u8) !void {
 
     const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
     const kind: @typeInfo(
-        mmc.config.Command,
+        mmc.Param,
     ).@"union".tag_type.? = .isolate;
-    const param: mmc.config.Command.ParamType(kind) = .{
+    const param: mmc.Param.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
         .axis_idx = axis_index,
         .direction = dir,
@@ -916,9 +916,9 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
     }
     const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
     const kind: @typeInfo(
-        mmc.config.Command,
+        mmc.Param,
     ).@"union".tag_type.? = .move_carrier_axis;
-    const param: mmc.config.Command.ParamType(kind) = .{
+    const param: mmc.Param.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
         .carrier_id = slider_id,
         .axis_idx = axis_index,
@@ -938,9 +938,9 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const kind: @typeInfo(
-        mmc.config.Command,
+        mmc.Param,
     ).@"union".tag_type.? = .move_carrier_location;
-    const param: mmc.config.Command.ParamType(kind) = .{
+    const param: mmc.Param.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
         .carrier_id = slider_id,
         .location = location,
@@ -964,9 +964,9 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
     const line_idx: usize = try matchLine(line_names, line_name);
 
     const kind: @typeInfo(
-        mmc.config.Command,
+        mmc.Param,
     ).@"union".tag_type.? = .move_carrier_distance;
-    const param: mmc.config.Command.ParamType(kind) = .{
+    const param: mmc.Param.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
         .carrier_id = slider_id,
         .distance = distance,
@@ -991,9 +991,9 @@ fn mclSliderSpdMoveAxis(params: [][]const u8) !void {
 
     const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
     const kind: @typeInfo(
-        mmc.config.Command,
+        mmc.Param,
     ).@"union".tag_type.? = .spd_move_carrier_axis;
-    const param: mmc.config.Command.ParamType(kind) = .{
+    const param: mmc.Param.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
         .carrier_id = slider_id,
         .axis_idx = axis_index,
@@ -1013,9 +1013,9 @@ fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const kind: @typeInfo(
-        mmc.config.Command,
+        mmc.Param,
     ).@"union".tag_type.? = .spd_move_carrier_location;
-    const param: mmc.config.Command.ParamType(kind) = .{
+    const param: mmc.Param.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
         .carrier_id = slider_id,
         .location = location,
@@ -1038,9 +1038,9 @@ fn mclSliderSpdMoveDistance(params: [][]const u8) !void {
     }
     if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
     const kind: @typeInfo(
-        mmc.config.Command,
+        mmc.Param,
     ).@"union".tag_type.? = .spd_move_carrier_distance;
-    const param: mmc.config.Command.ParamType(kind) = .{
+    const param: mmc.Param.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
         .carrier_id = slider_id,
         .distance = distance,
@@ -1062,9 +1062,9 @@ fn matchLine(names: [][]u8, name: []const u8) !usize {
 
 fn sendMessage(
     comptime kind: @typeInfo(
-        mmc.config.Command,
+        mmc.Param,
     ).@"union".tag_type.?,
-    param: mmc.config.Command.ParamType(kind),
+    param: mmc.Param.ParamType(kind),
     to_server: network.Socket,
 ) !void {
     const msg: mmc.message.messageType(kind) =
