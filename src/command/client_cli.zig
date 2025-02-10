@@ -12,13 +12,13 @@ var line_accelerations: []u7 = undefined;
 const Direction = mcl.Direction;
 const Station = mcl.Station;
 
-var IP_address: []const u8 = undefined;
+var IP_address: []u8 = undefined;
 var port: u16 = undefined;
 
 var server: ?network.Socket = null;
 
 pub const Config = struct {
-    IP_address: []const u8,
+    IP_address: []u8,
     port: u16,
 };
 
@@ -28,8 +28,13 @@ pub fn init(c: Config) !void {
     allocator = arena.allocator();
 
     try network.init();
+    IP_address = try allocator.alloc(u8, c.IP_address.len);
+    @memcpy(IP_address, c.IP_address);
     port = c.port;
-    IP_address = c.IP_address;
+    std.log.debug("{s}, {}", .{
+        IP_address,
+        port,
+    });
 
     // try command.registry.put("MCL_VERSION", .{
     //     .name = "MCL_VERSION",
@@ -729,6 +734,12 @@ pub fn deinit() void {
 }
 
 pub fn mmcConnect(_: [][]const u8) !void {
+    std.log.debug("Trying to connect to {s}", .{
+        IP_address,
+    });
+    std.log.debug("Trying to connect to port {}", .{
+        port,
+    });
     server = try network.connectToHost(
         allocator,
         IP_address,
@@ -740,6 +751,37 @@ pub fn mmcConnect(_: [][]const u8) !void {
             "Connected to {}",
             .{try s.getRemoteEndPoint()},
         );
+        std.log.info("Receiving line information...", .{});
+        var buffer: [1024]u8 = undefined;
+        _ = try s.receive(&buffer);
+        std.log.debug("{s}", .{buffer});
+        var tokenizer = std.mem.tokenizeSequence(
+            u8,
+            &buffer,
+            ",",
+        );
+        const line_numbers = try std.fmt.parseInt(
+            usize,
+            tokenizer.next().?,
+            0,
+        );
+        line_names = try allocator.alloc([]u8, line_numbers);
+        for (0..line_numbers) |i| {
+            const line_name = tokenizer.next().?;
+            line_names[i] = try allocator.alloc(u8, line_name.len);
+            @memcpy(line_names[i], line_name);
+            std.log.debug("{s}", .{line_names[i]});
+        }
+        std.log.info(
+            "Received the line configuration for the following line:",
+            .{},
+        );
+        const stdout = std.io.getStdOut().writer();
+        for (line_names) |line_name| {
+            try stdout.writeByte('\t');
+            try stdout.writeAll(line_name);
+            try stdout.writeByte('\n');
+        }
     } else {
         std.log.err("Failed to connect to server", .{});
     }
