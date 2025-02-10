@@ -12,40 +12,24 @@ var line_accelerations: []u7 = undefined;
 const Direction = mcl.Direction;
 const Station = mcl.Station;
 
+var IP_address: []const u8 = undefined;
+var port: u16 = undefined;
+
 var server: ?network.Socket = null;
 
 pub const Config = struct {
-    line_names: [][]const u8,
-    lines: []mcl.Config.Line,
+    IP_address: []const u8,
+    port: u16,
 };
 
 pub fn init(c: Config) !void {
-    if (c.lines.len != c.line_names.len) {
-        return error.ConfigLineNumberOfLineNamesDoesNotMatch;
-    }
-
-    try mcl.Config.validate(.{ .lines = c.lines });
-
     arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     errdefer arena.deinit();
     allocator = arena.allocator();
 
-    try mcl.init(allocator, .{ .lines = c.lines });
-
-    line_names = try allocator.alloc([]u8, c.line_names.len);
-    line_speeds = try allocator.alloc(u7, c.lines.len);
-    line_accelerations = try allocator.alloc(u7, c.lines.len);
-    // log_lines = try allocator.alloc(LogLine, c.lines.len);
-    for (0..c.lines.len) |i| {
-        // log_lines[i].stations = .{false} ** 256;
-        // log_lines[i].status = false;
-        line_names[i] = try allocator.alloc(u8, c.line_names[i].len);
-        @memcpy(line_names[i], c.line_names[i]);
-        line_speeds[i] = 40;
-        line_accelerations[i] = 40;
-    }
-
     try network.init();
+    port = c.port;
+    IP_address = c.IP_address;
 
     // try command.registry.put("MCL_VERSION", .{
     //     .name = "MCL_VERSION",
@@ -59,14 +43,10 @@ pub fn init(c: Config) !void {
     // errdefer _ = command.registry.orderedRemove("MCL_VERSION");
     try command.registry.put("CONNECT", .{
         .name = "CONNECT",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "IP address" },
-            .{ .name = "port" },
-        },
         .short_description = "Connect program to the server.",
         .long_description =
-        \\Attempt to connect the client application with the server by providing
-        \\the server IP address and port.
+        \\Attempt to connect the client application to the server. The IP address
+        \\and the port should be provided in the configuration file.
         ,
         .execute = &mmcConnect,
     });
@@ -748,13 +728,7 @@ pub fn deinit() void {
     // log_file = null;
 }
 
-pub fn mmcConnect(params: [][]const u8) !void {
-    const IP_address = params[0];
-    const port = try std.fmt.parseInt(
-        u16,
-        params[1],
-        0,
-    );
+pub fn mmcConnect(_: [][]const u8) !void {
     server = try network.connectToHost(
         allocator,
         IP_address,
