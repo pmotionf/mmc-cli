@@ -9,8 +9,8 @@ var allocator: std.mem.Allocator = undefined;
 var line_names: [][]u8 = undefined;
 var line_speeds: []u7 = undefined;
 var line_accelerations: []u7 = undefined;
-const Direction = mcl.Direction;
-const Station = mcl.Station;
+const Direction = mmc.Direction;
+const Station = mmc.Station;
 
 var IP_address: []u8 = undefined;
 var port: u16 = undefined;
@@ -861,10 +861,11 @@ fn clientSetSpeed(params: [][]const u8) !void {
 
     const kind: @typeInfo(
         mmc.Param,
-    ).@"union".tag_type.? = .set_speed;
-    const param: mmc.Param.ParamType(kind) = .{
+    ).@"union".tag_type.? = .set_config;
+    const param: mmc.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
         .speed = carrier_speed,
+        .acceleration = 0,
     };
     if (server) |s| try sendMessage(
         kind,
@@ -882,10 +883,11 @@ fn clientSetAcceleration(params: [][]const u8) !void {
     const line_idx: usize = try matchLine(line_names, line_name);
     const kind: @typeInfo(
         mmc.Param,
-    ).@"union".tag_type.? = .set_acceleration;
-    const param: mmc.Param.ParamType(kind) = .{
+    ).@"union".tag_type.? = .set_config;
+    const param: mmc.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
         .acceleration = carrier_acceleration,
+        .speed = 0,
     };
     if (server) |s| try sendMessage(
         kind,
@@ -901,7 +903,7 @@ fn clientGetSpeed(params: [][]const u8) !void {
     const kind: @typeInfo(
         mmc.Param,
     ).@"union".tag_type.? = .get_speed;
-    const param: mmc.Param.ParamType(kind) = .{
+    const param: mmc.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
     };
     if (server) |s| try sendMessage(
@@ -918,7 +920,7 @@ fn clientGetAcceleration(params: [][]const u8) !void {
     const kind: @typeInfo(
         mmc.Param,
     ).@"union".tag_type.? = .get_acceleration;
-    const param: mmc.Param.ParamType(kind) = .{
+    const param: mmc.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
     };
     if (server) |s| try sendMessage(
@@ -966,11 +968,11 @@ fn clientIsolate(params: [][]const u8) !void {
         } else break :link .no_direction;
     };
 
-    const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
+    const axis_index: mmc.Axis.Index.LocalLine = @intCast(axis_id - 1);
     const kind: @typeInfo(
         mmc.Param,
     ).@"union".tag_type.? = .isolate;
-    const param: mmc.Param.ParamType(kind) = .{
+    const param: mmc.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
         .axis_idx = axis_index,
         .direction = dir,
@@ -995,11 +997,11 @@ fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
     if (axis_id == 0 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
-    const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
+    const axis_index: mmc.Axis.Index.LocalLine = @intCast(axis_id - 1);
     const kind: @typeInfo(
         mmc.Param,
     ).@"union".tag_type.? = .move_carrier_axis;
-    const param: mmc.Param.ParamType(kind) = .{
+    const param: mmc.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
         .carrier_id = carrier_id,
         .axis_idx = axis_index,
@@ -1021,7 +1023,7 @@ fn clientCarrierPosMoveLocation(params: [][]const u8) !void {
     const kind: @typeInfo(
         mmc.Param,
     ).@"union".tag_type.? = .move_carrier_location;
-    const param: mmc.Param.ParamType(kind) = .{
+    const param: mmc.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
         .carrier_id = carrier_id,
         .location = location,
@@ -1047,7 +1049,7 @@ fn clientCarrierPosMoveDistance(params: [][]const u8) !void {
     const kind: @typeInfo(
         mmc.Param,
     ).@"union".tag_type.? = .move_carrier_distance;
-    const param: mmc.Param.ParamType(kind) = .{
+    const param: mmc.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
         .carrier_id = carrier_id,
         .distance = distance,
@@ -1070,11 +1072,11 @@ fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
     }
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
-    const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
+    const axis_index: mmc.Axis.Index.LocalLine = @intCast(axis_id - 1);
     const kind: @typeInfo(
         mmc.Param,
     ).@"union".tag_type.? = .spd_move_carrier_axis;
-    const param: mmc.Param.ParamType(kind) = .{
+    const param: mmc.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
         .carrier_id = carrier_id,
         .axis_idx = axis_index,
@@ -1096,7 +1098,7 @@ fn clientCarrierSpdMoveLocation(params: [][]const u8) !void {
     const kind: @typeInfo(
         mmc.Param,
     ).@"union".tag_type.? = .spd_move_carrier_location;
-    const param: mmc.Param.ParamType(kind) = .{
+    const param: mmc.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
         .carrier_id = carrier_id,
         .location = location,
@@ -1121,7 +1123,7 @@ fn clientCarrierSpdMoveDistance(params: [][]const u8) !void {
     const kind: @typeInfo(
         mmc.Param,
     ).@"union".tag_type.? = .spd_move_carrier_distance;
-    const param: mmc.Param.ParamType(kind) = .{
+    const param: mmc.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
         .carrier_id = carrier_id,
         .distance = distance,
@@ -1145,7 +1147,7 @@ fn sendMessage(
     comptime kind: @typeInfo(
         mmc.Param,
     ).@"union".tag_type.?,
-    param: mmc.Param.ParamType(kind),
+    param: mmc.ParamType(kind),
     to_server: network.Socket,
 ) !void {
     const msg: mmc.message.messageType(kind) =
