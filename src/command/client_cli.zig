@@ -766,11 +766,76 @@ pub fn mmcConnect(_: [][]const u8) !void {
             0,
         );
         line_names = try allocator.alloc([]u8, line_numbers);
+        var lines = try allocator.alloc(
+            mcl.Config.Line,
+            line_numbers,
+        );
+        defer allocator.free(lines);
+        errdefer allocator.free(lines);
+        for (0..line_numbers) |li| {
+            if (tokenizer.next()) |token| {
+                var line_description = std.mem.tokenizeSequence(
+                    u8,
+                    token,
+                    ":",
+                );
+                const line_name =
+                    line_description.next() orelse return error.LineNameNotReceived;
+                line_names[li] = try allocator.alloc(u8, line_name.len);
+                @memcpy(line_names[li], line_name);
+                lines[li].axes = try std.fmt.parseInt(
+                    mcl.Axis.Id.Line,
+                    line_description.next() orelse return error.AxisNumberNotReceived,
+                    0,
+                );
+                const range_len = try std.fmt.parseInt(
+                    usize,
+                    line_description.next() orelse return error.RangeNumberNotReceived,
+                    0,
+                );
+                lines[li].ranges = try allocator.alloc(
+                    mcl.Config.Line.Range,
+                    range_len,
+                );
+                for (0..range_len) |ri| {
+                    lines[li].ranges[ri].channel = std.meta.stringToEnum(
+                        mcl.cc_link.Channel,
+                        line_description.next() orelse return error.ChannelInfoNotReceived,
+                    ) orelse return error.ChannelUnknown;
+                    lines[li].ranges[ri].start = try std.fmt.parseInt(
+                        mcl.cc_link.Id,
+                        line_description.next() orelse return error.StartInfoDataNotReceived,
+                        0,
+                    );
+                    lines[li].ranges[ri].end = try std.fmt.parseInt(
+                        mcl.cc_link.Id,
+                        line_description.next() orelse return error.EndInfoNotReceived,
+                        0,
+                    );
+                }
+                if (line_description.peek() != null) {
+                    std.log.err(
+                        "Remaining unexpected line description: {s}",
+                        .{line_description.rest()},
+                    );
+                    return error.UnexpectedDataReceived;
+                }
+            }
+        }
+        try mcl.Config.validate(.{ .lines = lines });
+        try mcl.init(allocator, .{ .lines = lines });
         for (0..line_numbers) |i| {
-            const line_name = tokenizer.next().?;
-            line_names[i] = try allocator.alloc(u8, line_name.len);
-            @memcpy(line_names[i], line_name);
-            std.log.debug("{s}", .{line_names[i]});
+            std.log.debug(
+                "line: {s}, #axis: {}, range info: {s}:{}:{}",
+                .{
+                    line_names[i],
+                    lines[i].axes,
+                    @tagName(lines[i].ranges[0].channel),
+                    lines[i].ranges[0].start,
+                    lines[i].ranges[0].end,
+                },
+            );
+            defer allocator.free(lines[i].ranges);
         }
         std.log.info(
             "Received the line configuration for the following line:",
