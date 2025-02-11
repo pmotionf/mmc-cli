@@ -72,9 +72,9 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "speed percentage" },
         },
-        .short_description = "Set the speed of slider movement for a line.",
+        .short_description = "Set the speed of carrier movement for a line.",
         .long_description =
-        \\Set the speed of slider movement for a line. The line is referenced
+        \\Set the speed of carrier movement for a line. The line is referenced
         \\by its name. The speed must be a whole integer number between 1 and
         \\100, inclusive.
         ,
@@ -87,9 +87,9 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "acceleration percentage" },
         },
-        .short_description = "Set the acceleration of slider movement.",
+        .short_description = "Set the acceleration of carrier movement.",
         .long_description =
-        \\Set the acceleration of slider movement for a line. The line is
+        \\Set the acceleration of carrier movement for a line. The line is
         \\referenced by its name. The acceleration must be a whole integer
         \\number between 1 and 100, inclusive.
         ,
@@ -101,9 +101,9 @@ pub fn init(c: Config) !void {
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
         },
-        .short_description = "Get the speed of slider movement for a line.",
+        .short_description = "Get the speed of carrier movement for a line.",
         .long_description =
-        \\Get the speed of slider movement for a line. The line is referenced
+        \\Get the speed of carrier movement for a line. The line is referenced
         \\by its name. The speed is a whole integer number between 1 and 100,
         \\inclusive.
         ,
@@ -115,9 +115,9 @@ pub fn init(c: Config) !void {
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
         },
-        .short_description = "Get the acceleration of slider movement.",
+        .short_description = "Get the acceleration of carrier movement.",
         .long_description =
-        \\Get the acceleration of slider movement for a line. The line is
+        \\Get the acceleration of carrier movement for a line. The line is
         \\referenced by its name. The acceleration is a whole integer number
         \\between 1 and 100, inclusive.
         ,
@@ -180,53 +180,53 @@ pub fn init(c: Config) !void {
     //     .execute = &mclStationWw,
     // });
     // errdefer _ = command.registry.orderedRemove("PRINT_WW");
-    // try command.registry.put("AXIS_SLIDER", .{
-    //     .name = "AXIS_SLIDER",
+    // try command.registry.put("AXIS_CARRIER", .{
+    //     .name = "AXIS_CARRIER",
     //     .parameters = &[_]command.Command.Parameter{
     //         .{ .name = "line name" },
     //         .{ .name = "axis" },
     //         .{ .name = "result variable", .optional = true, .resolve = false },
     //     },
-    //     .short_description = "Display slider on given axis, if exists.",
+    //     .short_description = "Display carrier on given axis, if exists.",
     //     .long_description =
-    //     \\If a slider is recognized on the provided axis, print its slider ID.
-    //     \\If a result variable name was provided, also store the slider ID in
+    //     \\If a carrier is recognized on the provided axis, print its carrier ID.
+    //     \\If a result variable name was provided, also store the carrier ID in
     //     \\the variable.
     //     ,
-    //     .execute = &mclAxisSlider,
+    //     .execute = &mclAxisCarrier,
     // });
-    // errdefer _ = command.registry.orderedRemove("AXIS_SLIDER");
-    // try command.registry.put("SLIDER_LOCATION", .{
-    //     .name = "SLIDER_LOCATION",
+    // errdefer _ = command.registry.orderedRemove("AXIS_CARRIER");
+    // try command.registry.put("CARRIER_LOCATION", .{
+    //     .name = "CARRIER_LOCATION",
     //     .parameters = &[_]command.Command.Parameter{
     //         .{ .name = "line name" },
-    //         .{ .name = "slider" },
+    //         .{ .name = "carrier" },
     //         .{ .name = "result variable", .resolve = false, .optional = true },
     //     },
-    //     .short_description = "Display a slider's location.",
+    //     .short_description = "Display a carrier's location.",
     //     .long_description =
-    //     \\Print a given slider's location if it is currently recognized in the
+    //     \\Print a given carrier's location if it is currently recognized in the
     //     \\provided line. If a result variable name is provided, then store the
-    //     \\slider's location in the variable.
+    //     \\carrier's location in the variable.
     //     ,
-    //     .execute = &mclSliderLocation,
+    //     .execute = &mclCarrierLocation,
     // });
-    // errdefer _ = command.registry.orderedRemove("SLIDER_LOCATION");
-    // try command.registry.put("SLIDER_AXIS", .{
-    //     .name = "SLIDER_AXIS",
+    // errdefer _ = command.registry.orderedRemove("CARRIER_LOCATION");
+    // try command.registry.put("CARRIER_AXIS", .{
+    //     .name = "CARRIER_AXIS",
     //     .parameters = &[_]command.Command.Parameter{
     //         .{ .name = "line name" },
-    //         .{ .name = "slider" },
+    //         .{ .name = "carrier" },
     //     },
-    //     .short_description = "Display a slider's axis/axes.",
+    //     .short_description = "Display a carrier's axis/axes.",
     //     .long_description =
-    //     \\Print a given slider's axis if it is currently recognized in the
-    //     \\provided line. If the slider is currently recognized across two axes,
+    //     \\Print a given carrier's axis if it is currently recognized in the
+    //     \\provided line. If the carrier is currently recognized across two axes,
     //     \\then both axes will be printed.
     //     ,
-    //     .execute = &mclSliderAxis,
+    //     .execute = &mclCarrierAxis,
     // });
-    // errdefer _ = command.registry.orderedRemove("SLIDER_AXIS");
+    // errdefer _ = command.registry.orderedRemove("CARRIER_AXIS");
     // try command.registry.put("HALL_STATUS", .{
     //     .name = "HALL_STATUS",
     //     .parameters = &[_]command.Command.Parameter{
@@ -282,19 +282,19 @@ pub fn init(c: Config) !void {
     //     .execute = &mclReset,
     // });
     // errdefer _ = command.registry.orderedRemove("RESET_MCL");
-    // try command.registry.put("CLEAR_SLIDER_INFO", .{
-    //     .name = "CLEAR_SLIDER_INFO",
+    // try command.registry.put("CLEAR_CARRIER_INFO", .{
+    //     .name = "CLEAR_CARRIER_INFO",
     //     .parameters = &[_]command.Command.Parameter{
     //         .{ .name = "line name" },
     //         .{ .name = "axis" },
     //     },
-    //     .short_description = "Clear slider information at specified axis.",
+    //     .short_description = "Clear carrier information at specified axis.",
     //     .long_description =
-    //     \\Clear slider information at specified axis.
+    //     \\Clear carrier information at specified axis.
     //     ,
-    //     .execute = &mclClearSliderInfo,
+    //     .execute = &mclClearCarrierInfo,
     // });
-    // errdefer _ = command.registry.orderedRemove("CLEAR_SLIDER_INFO");
+    // errdefer _ = command.registry.orderedRemove("CLEAR_CARRIER_INFO");
     // try command.registry.put("RELEASE_AXIS_SERVO", .{
     //     .name = "RELEASE_AXIS_SERVO",
     //     .parameters = &[_]command.Command.Parameter{
@@ -303,8 +303,8 @@ pub fn init(c: Config) !void {
     //     },
     //     .short_description = "Release the servo of a given axis.",
     //     .long_description =
-    //     \\Release the servo of a given axis, allowing for free slider movement.
-    //     \\This command should be run before sliders move within or exit from
+    //     \\Release the servo of a given axis, allowing for free carrier movement.
+    //     \\This command should be run before carriers move within or exit from
     //     \\the system due to external influence.
     //     ,
     //     .execute = &mclAxisReleaseServo,
@@ -349,7 +349,7 @@ pub fn init(c: Config) !void {
     //     },
     //     .short_description = "Calibrate a system line.",
     //     .long_description =
-    //     \\Calibrate a system line. An uninitialized slider must be positioned
+    //     \\Calibrate a system line. An uninitialized carrier must be positioned
     //     \\at the start of the line such that the first axis has both hall
     //     \\alarms active.
     //     ,
@@ -363,8 +363,8 @@ pub fn init(c: Config) !void {
     //     },
     //     .short_description = "Set line zero position.",
     //     .long_description =
-    //     \\Set a system line's zero position based on a current slider's
-    //     \\position. Aforementioned slider must be located at first axis of
+    //     \\Set a system line's zero position based on a current carrier's
+    //     \\position. Aforementioned carrier must be located at first axis of
     //     \\system line.
     //     ,
     //     .execute = &setLineZero,
@@ -376,14 +376,14 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "axis" },
             .{ .name = "direction" },
-            .{ .name = "slider id", .optional = true },
+            .{ .name = "carrier id", .optional = true },
             .{ .name = "link axis", .resolve = false, .optional = true },
         },
-        .short_description = "Isolate an uninitialized slider backwards.",
+        .short_description = "Isolate an uninitialized carrier backwards.",
         .long_description =
-        \\Slowly move an uninitialized slider to separate it from other nearby
-        \\sliders. A direction of "backward" or "forward" must be provided. A
-        \\slider ID can be optionally specified to give the isolated slider an
+        \\Slowly move an uninitialized carrier to separate it from other nearby
+        \\carriers. A direction of "backward" or "forward" must be provided. A
+        \\carrier ID can be optionally specified to give the isolated carrier an
         \\ID other than the default temporary ID 255, and the next or previous
         \\can also be linked for isolation movement. Linked axis parameter
         \\values must be one of "prev", "next", "left", or "right".
@@ -391,244 +391,244 @@ pub fn init(c: Config) !void {
         .execute = &mclIsolate,
     });
     errdefer _ = command.registry.orderedRemove("ISOLATE");
-    // try command.registry.put("RECOVER_SLIDER", .{
-    //     .name = "RECOVER_SLIDER",
+    // try command.registry.put("RECOVER_CARRIER", .{
+    //     .name = "RECOVER_CARRIER",
     //     .parameters = &[_]command.Command.Parameter{
     //         .{ .name = "line name" },
     //         .{ .name = "axis" },
-    //         .{ .name = "new slider ID" },
+    //         .{ .name = "new carrier ID" },
     //         .{ .name = "use sensor", .resolve = false, .optional = true },
     //     },
-    //     .short_description = "Recover an unrecognized slider on a given axis.",
+    //     .short_description = "Recover an unrecognized carrier on a given axis.",
     //     .long_description =
-    //     \\Recover an unrecognized slider on a given axis. The provided slider
+    //     \\Recover an unrecognized carrier on a given axis. The provided carrier
     //     \\ID must be a positive integer from 1 to 254 inclusive, and must be
-    //     \\unique to other recognized slider IDs. If a sensor is optionally
+    //     \\unique to other recognized carrier IDs. If a sensor is optionally
     //     \\specified for use (valid sensor values include: front, back, left,
     //     \\right), recovery will use the specified hall sensor.
     //     ,
-    //     .execute = &mclRecoverSlider,
+    //     .execute = &mclRecoverCarrier,
     // });
-    // errdefer _ = command.registry.orderedRemove("RECOVER_SLIDER");
-    // try command.registry.put("WAIT_RECOVER_SLIDER", .{
-    //     .name = "WAIT_RECOVER_SLIDER",
+    // errdefer _ = command.registry.orderedRemove("RECOVER_CARRIER");
+    // try command.registry.put("WAIT_RECOVER_CARRIER", .{
+    //     .name = "WAIT_RECOVER_CARRIER",
     //     .parameters = &[_]command.Command.Parameter{
     //         .{ .name = "line name" },
     //         .{ .name = "axis" },
     //         .{ .name = "result variable", .resolve = false, .optional = true },
     //     },
-    //     .short_description = "Wait until recovery of slider is complete.",
+    //     .short_description = "Wait until recovery of carrier is complete.",
     //     .long_description =
-    //     \\Wait until slider recovery is complete and a slider is recognized.
+    //     \\Wait until carrier recovery is complete and a carrier is recognized.
     //     \\If an optional result variable name is provided, then store the
-    //     \\recognized slider ID in the variable.
+    //     \\recognized carrier ID in the variable.
     //     ,
-    //     .execute = &mclWaitRecoverSlider,
+    //     .execute = &mclWaitRecoverCarrier,
     // });
-    // errdefer _ = command.registry.orderedRemove("WAIT_RECOVER_SLIDER");
-    try command.registry.put("MOVE_SLIDER_AXIS", .{
-        .name = "MOVE_SLIDER_AXIS",
+    // errdefer _ = command.registry.orderedRemove("WAIT_RECOVER_CARRIER");
+    try command.registry.put("MOVE_CARRIER_AXIS", .{
+        .name = "MOVE_CARRIER_AXIS",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "slider" },
+            .{ .name = "carrier" },
             .{ .name = "destination axis" },
         },
-        .short_description = "Move slider to target axis center.",
+        .short_description = "Move carrier to target axis center.",
         .long_description =
-        \\Move given slider to the center of target axis. The slider ID must be
+        \\Move given carrier to the center of target axis. The carrier ID must be
         \\currently recognized within the motion system.
         ,
-        .execute = &mclSliderPosMoveAxis,
+        .execute = &mclCarrierPosMoveAxis,
     });
-    errdefer _ = command.registry.orderedRemove("MOVE_SLIDER_AXIS");
-    try command.registry.put("MOVE_SLIDER_LOCATION", .{
-        .name = "MOVE_SLIDER_LOCATION",
+    errdefer _ = command.registry.orderedRemove("MOVE_CARRIER_AXIS");
+    try command.registry.put("MOVE_CARRIER_LOCATION", .{
+        .name = "MOVE_CARRIER_LOCATION",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "slider" },
+            .{ .name = "carrier" },
             .{ .name = "destination location" },
         },
-        .short_description = "Move slider to target location.",
+        .short_description = "Move carrier to target location.",
         .long_description =
-        \\Move given slider to target location. The slider ID must be currently
+        \\Move given carrier to target location. The carrier ID must be currently
         \\recognized within the motion system, and the target location must be
         \\provided in millimeters as a whole or decimal number.
         ,
-        .execute = &mclSliderPosMoveLocation,
+        .execute = &mclCarrierPosMoveLocation,
     });
-    errdefer _ = command.registry.orderedRemove("MOVE_SLIDER_LOCATION");
-    try command.registry.put("MOVE_SLIDER_DISTANCE", .{
-        .name = "MOVE_SLIDER_DISTANCE",
+    errdefer _ = command.registry.orderedRemove("MOVE_CARRIER_LOCATION");
+    try command.registry.put("MOVE_CARRIER_DISTANCE", .{
+        .name = "MOVE_CARRIER_DISTANCE",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "slider" },
+            .{ .name = "carrier" },
             .{ .name = "distance" },
         },
-        .short_description = "Move slider by a distance.",
+        .short_description = "Move carrier by a distance.",
         .long_description =
-        \\Move given slider by a provided distance. The slider ID must be
+        \\Move given carrier by a provided distance. The carrier ID must be
         \\currently recognized within the motion system, and the distance must
         \\be provided in millimeters as a whole or decimal number. The distance
         \\may be negative for backward movement.
         ,
-        .execute = &mclSliderPosMoveDistance,
+        .execute = &mclCarrierPosMoveDistance,
     });
-    errdefer _ = command.registry.orderedRemove("MOVE_SLIDER_DISTANCE");
-    try command.registry.put("SPD_MOVE_SLIDER_AXIS", .{
-        .name = "SPD_MOVE_SLIDER_AXIS",
+    errdefer _ = command.registry.orderedRemove("MOVE_CARRIER_DISTANCE");
+    try command.registry.put("SPD_MOVE_CARRIER_AXIS", .{
+        .name = "SPD_MOVE_CARRIER_AXIS",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "slider" },
+            .{ .name = "carrier" },
             .{ .name = "destination axis" },
         },
-        .short_description = "Move slider to target axis center.",
+        .short_description = "Move carrier to target axis center.",
         .long_description =
-        \\Move given slider to the center of target axis. The slider ID must be
+        \\Move given carrier to the center of target axis. The carrier ID must be
         \\currently recognized within the motion system. This command moves the
-        \\slider with speed profile feedback.
+        \\carrier with speed profile feedback.
         ,
-        .execute = &mclSliderSpdMoveAxis,
+        .execute = &mclCarrierSpdMoveAxis,
     });
-    errdefer _ = command.registry.orderedRemove("SPD_MOVE_SLIDER_AXIS");
-    try command.registry.put("SPD_MOVE_SLIDER_LOCATION", .{
-        .name = "SPD_MOVE_SLIDER_LOCATION",
+    errdefer _ = command.registry.orderedRemove("SPD_MOVE_CARRIER_AXIS");
+    try command.registry.put("SPD_MOVE_CARRIER_LOCATION", .{
+        .name = "SPD_MOVE_CARRIER_LOCATION",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "slider" },
+            .{ .name = "carrier" },
             .{ .name = "destination location" },
         },
-        .short_description = "Move slider to target location.",
+        .short_description = "Move carrier to target location.",
         .long_description =
-        \\Move given slider to target location. The slider ID must be currently
+        \\Move given carrier to target location. The carrier ID must be currently
         \\recognized within the motion system, and the target location must be
         \\provided in millimeters as a whole or decimal number. This command
-        \\moves the slider with speed profile feedback.
+        \\moves the carrier with speed profile feedback.
         ,
-        .execute = &mclSliderSpdMoveLocation,
+        .execute = &mclCarrierSpdMoveLocation,
     });
-    errdefer _ = command.registry.orderedRemove("SPD_MOVE_SLIDER_LOCATION");
-    try command.registry.put("SPD_MOVE_SLIDER_DISTANCE", .{
-        .name = "SPD_MOVE_SLIDER_DISTANCE",
+    errdefer _ = command.registry.orderedRemove("SPD_MOVE_CARRIER_LOCATION");
+    try command.registry.put("SPD_MOVE_CARRIER_DISTANCE", .{
+        .name = "SPD_MOVE_CARRIER_DISTANCE",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "slider" },
+            .{ .name = "carrier" },
             .{ .name = "distance" },
         },
-        .short_description = "Move slider by a distance.",
+        .short_description = "Move carrier by a distance.",
         .long_description =
-        \\Move given slider by a provided distance. The slider ID must be
+        \\Move given carrier by a provided distance. The carrier ID must be
         \\currently recognized within the motion system, and the distance must
         \\be provided in millimeters as a whole or decimal number. The distance
-        \\may be negative for backward movement. This command moves the slider
+        \\may be negative for backward movement. This command moves the carrier
         \\with speed profile feedback.
         ,
-        .execute = &mclSliderSpdMoveDistance,
+        .execute = &mclCarrierSpdMoveDistance,
     });
-    errdefer _ = command.registry.orderedRemove("SPD_MOVE_SLIDER_DISTANCE");
-    // try command.registry.put("WAIT_MOVE_SLIDER", .{
-    //     .name = "WAIT_MOVE_SLIDER",
+    errdefer _ = command.registry.orderedRemove("SPD_MOVE_CARRIER_DISTANCE");
+    // try command.registry.put("WAIT_MOVE_CARRIER", .{
+    //     .name = "WAIT_MOVE_CARRIER",
     //     .parameters = &[_]command.Command.Parameter{
     //         .{ .name = "line name" },
-    //         .{ .name = "slider" },
+    //         .{ .name = "carrier" },
     //     },
-    //     .short_description = "Wait for slider movement to complete.",
+    //     .short_description = "Wait for carrier movement to complete.",
     //     .long_description =
     //     \\Pause the execution of any further commands until movement for the
-    //     \\given slider is indicated as complete.
+    //     \\given carrier is indicated as complete.
     //     ,
-    //     .execute = &mclWaitMoveSlider,
+    //     .execute = &mclWaitMoveCarrier,
     // });
-    // errdefer _ = command.registry.orderedRemove("WAIT_MOVE_SLIDER");
-    // try command.registry.put("PUSH_SLIDER_FORWARD", .{
-    //     .name = "PUSH_SLIDER_FORWARD",
+    // errdefer _ = command.registry.orderedRemove("WAIT_MOVE_CARRIER");
+    // try command.registry.put("PUSH_CARRIER_FORWARD", .{
+    //     .name = "PUSH_CARRIER_FORWARD",
     //     .parameters = &[_]command.Command.Parameter{
     //         .{ .name = "line name" },
-    //         .{ .name = "slider" },
+    //         .{ .name = "carrier" },
     //     },
-    //     .short_description = "Push slider forward by slider length.",
+    //     .short_description = "Push carrier forward by carrier length.",
     //     .long_description =
-    //     \\Push slider forward with speed feedback-controlled movement. This
-    //     \\movement targets a distance of the slider length, and thus if it is
+    //     \\Push carrier forward with speed feedback-controlled movement. This
+    //     \\movement targets a distance of the carrier length, and thus if it is
     //     \\used to cross a line boundary, the receiving axis at the destination
-    //     \\line must first be pulling the slider.
+    //     \\line must first be pulling the carrier.
     //     ,
-    //     .execute = &mclSliderPushForward,
+    //     .execute = &mclCarrierPushForward,
     // });
-    // errdefer _ = command.registry.orderedRemove("PUSH_SLIDER_FORWARD");
-    // try command.registry.put("PUSH_SLIDER_BACKWARD", .{
-    //     .name = "PUSH_SLIDER_BACKWARD",
+    // errdefer _ = command.registry.orderedRemove("PUSH_CARRIER_FORWARD");
+    // try command.registry.put("PUSH_CARRIER_BACKWARD", .{
+    //     .name = "PUSH_CARRIER_BACKWARD",
     //     .parameters = &[_]command.Command.Parameter{
     //         .{ .name = "line name" },
-    //         .{ .name = "slider" },
+    //         .{ .name = "carrier" },
     //     },
-    //     .short_description = "Push slider backward by slider length.",
+    //     .short_description = "Push carrier backward by carrier length.",
     //     .long_description =
-    //     \\Push slider backward with speed feedback-controlled movement. This
-    //     \\movement targets a distance of the slider length, and thus if it is
+    //     \\Push carrier backward with speed feedback-controlled movement. This
+    //     \\movement targets a distance of the carrier length, and thus if it is
     //     \\used to cross a line boundary, the receiving axis at the destination
-    //     \\line must first be pulling the slider.
+    //     \\line must first be pulling the carrier.
     //     ,
-    //     .execute = &mclSliderPushBackward,
+    //     .execute = &mclCarrierPushBackward,
     // });
-    // errdefer _ = command.registry.orderedRemove("PUSH_SLIDER_BACKWARD");
-    // try command.registry.put("PULL_SLIDER_FORWARD", .{
-    //     .name = "PULL_SLIDER_FORWARD",
+    // errdefer _ = command.registry.orderedRemove("PUSH_CARRIER_BACKWARD");
+    // try command.registry.put("PULL_CARRIER_FORWARD", .{
+    //     .name = "PULL_CARRIER_FORWARD",
     //     .parameters = &[_]command.Command.Parameter{
     //         .{ .name = "line name" },
     //         .{ .name = "axis" },
-    //         .{ .name = "slider" },
+    //         .{ .name = "carrier" },
     //     },
-    //     .short_description = "Pull incoming slider forward at axis.",
+    //     .short_description = "Pull incoming carrier forward at axis.",
     //     .long_description =
-    //     \\Pull incoming slider forward at axis. This command must be stopped
-    //     \\manually after it is completed with the "STOP_PULL_SLIDER" command.
-    //     \\The pulled slider's ID must also be provided.
+    //     \\Pull incoming carrier forward at axis. This command must be stopped
+    //     \\manually after it is completed with the "STOP_PULL_CARRIER" command.
+    //     \\The pulled carrier's ID must also be provided.
     //     ,
-    //     .execute = &mclSliderPullForward,
+    //     .execute = &mclCarrierPullForward,
     // });
-    // errdefer _ = command.registry.orderedRemove("PULL_SLIDER_FORWARD");
-    // try command.registry.put("PULL_SLIDER_BACKWARD", .{
-    //     .name = "PULL_SLIDER_BACKWARD",
+    // errdefer _ = command.registry.orderedRemove("PULL_CARRIER_FORWARD");
+    // try command.registry.put("PULL_CARRIER_BACKWARD", .{
+    //     .name = "PULL_CARRIER_BACKWARD",
     //     .parameters = &[_]command.Command.Parameter{
     //         .{ .name = "line name" },
     //         .{ .name = "axis" },
-    //         .{ .name = "slider" },
+    //         .{ .name = "carrier" },
     //     },
-    //     .short_description = "Pull incoming slider backward at axis.",
+    //     .short_description = "Pull incoming carrier backward at axis.",
     //     .long_description =
-    //     \\Pull incoming slider backward at axis. This command must be stopped
-    //     \\manually after it is completed with the "STOP_PULL_SLIDER" command.
-    //     \\The pulled slider's ID must also be provided.
+    //     \\Pull incoming carrier backward at axis. This command must be stopped
+    //     \\manually after it is completed with the "STOP_PULL_CARRIER" command.
+    //     \\The pulled carrier's ID must also be provided.
     //     ,
-    //     .execute = &mclSliderPullBackward,
+    //     .execute = &mclCarrierPullBackward,
     // });
-    // errdefer _ = command.registry.orderedRemove("PULL_SLIDER_BACKWARD");
-    // try command.registry.put("WAIT_PULL_SLIDER", .{
-    //     .name = "WAIT_PULL_SLIDER",
+    // errdefer _ = command.registry.orderedRemove("PULL_CARRIER_BACKWARD");
+    // try command.registry.put("WAIT_PULL_CARRIER", .{
+    //     .name = "WAIT_PULL_CARRIER",
     //     .parameters = &[_]command.Command.Parameter{
     //         .{ .name = "line name" },
     //         .{ .name = "axis" },
     //     },
-    //     .short_description = "Wait for slider pull to complete.",
+    //     .short_description = "Wait for carrier pull to complete.",
     //     .long_description =
-    //     \\Pause the execution of any further commands until active slider pull
+    //     \\Pause the execution of any further commands until active carrier pull
     //     \\at the provided axis is indicated as complete.
     //     ,
-    //     .execute = &mclSliderWaitPull,
+    //     .execute = &mclCarrierWaitPull,
     // });
-    // try command.registry.put("STOP_PULL_SLIDER", .{
-    //     .name = "STOP_PULL_SLIDER",
+    // try command.registry.put("STOP_PULL_CARRIER", .{
+    //     .name = "STOP_PULL_CARRIER",
     //     .parameters = &[_]command.Command.Parameter{
     //         .{ .name = "line name" },
     //         .{ .name = "axis" },
     //     },
-    //     .short_description = "Stop active slider pull at axis.",
+    //     .short_description = "Stop active carrier pull at axis.",
     //     .long_description =
-    //     \\Stop active slider pull at axis.
+    //     \\Stop active carrier pull at axis.
     //     ,
-    //     .execute = &mclSliderStopPull,
+    //     .execute = &mclCarrierStopPull,
     // });
-    // errdefer _ = command.registry.orderedRemove("STOP_PULL_SLIDER");
+    // errdefer _ = command.registry.orderedRemove("STOP_PULL_CARRIER");
     // try command.registry.put("ADD_LOG_REGISTERS", .{
     //     .name = "ADD_LOG_REGISTERS",
     //     .parameters = &[_]command.Command.Parameter{
@@ -854,8 +854,8 @@ pub fn mmcConnect(_: [][]const u8) !void {
 
 fn mclSetSpeed(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const slider_speed = try std.fmt.parseUnsigned(u8, params[1], 0);
-    if (slider_speed < 1 or slider_speed > 100) return error.InvalidSpeed;
+    const carrier_speed = try std.fmt.parseUnsigned(u8, params[1], 0);
+    if (carrier_speed < 1 or carrier_speed > 100) return error.InvalidSpeed;
 
     const line_idx: usize = try matchLine(line_names, line_name);
 
@@ -864,7 +864,7 @@ fn mclSetSpeed(params: [][]const u8) !void {
     ).@"union".tag_type.? = .set_speed;
     const param: mmc.Param.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
-        .speed = slider_speed,
+        .speed = carrier_speed,
     };
     if (server) |s| try sendMessage(
         kind,
@@ -875,8 +875,8 @@ fn mclSetSpeed(params: [][]const u8) !void {
 
 fn mclSetAcceleration(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const slider_acceleration = try std.fmt.parseUnsigned(u8, params[1], 0);
-    if (slider_acceleration < 1 or slider_acceleration > 100)
+    const carrier_acceleration = try std.fmt.parseUnsigned(u8, params[1], 0);
+    if (carrier_acceleration < 1 or carrier_acceleration > 100)
         return error.InvalidAcceleration;
 
     const line_idx: usize = try matchLine(line_names, line_name);
@@ -885,7 +885,7 @@ fn mclSetAcceleration(params: [][]const u8) !void {
     ).@"union".tag_type.? = .set_acceleration;
     const param: mmc.Param.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
-        .acceleration = slider_acceleration,
+        .acceleration = carrier_acceleration,
     };
     if (server) |s| try sendMessage(
         kind,
@@ -948,7 +948,7 @@ fn mclIsolate(params: [][]const u8) !void {
         }
     };
 
-    const slider_id: u16 = if (params[3].len > 0)
+    const carrier_id: u16 = if (params[3].len > 0)
         try std.fmt.parseInt(u16, params[3], 0)
     else
         0;
@@ -974,7 +974,7 @@ fn mclIsolate(params: [][]const u8) !void {
         .line_idx = @intCast(line_idx),
         .axis_idx = axis_index,
         .direction = dir,
-        .carrier_id = slider_id,
+        .carrier_id = carrier_id,
         .link_axis = link_axis,
     };
     if (server) |s| try sendMessage(
@@ -984,11 +984,11 @@ fn mclIsolate(params: [][]const u8) !void {
     ) else return error.ServerNotConnected;
 }
 
-fn mclSliderPosMoveAxis(params: [][]const u8) !void {
+fn mclCarrierPosMoveAxis(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
+    const carrier_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
     const axis_id: u16 = try std.fmt.parseInt(u16, params[2], 0);
-    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
+    if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
@@ -1001,7 +1001,7 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
     ).@"union".tag_type.? = .move_carrier_axis;
     const param: mmc.Param.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
-        .carrier_id = slider_id,
+        .carrier_id = carrier_id,
         .axis_idx = axis_index,
     };
     if (server) |s| try sendMessage(
@@ -1011,11 +1011,11 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
     ) else return error.ServerNotConnected;
 }
 
-fn mclSliderPosMoveLocation(params: [][]const u8) !void {
+fn mclCarrierPosMoveLocation(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
+    const carrier_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
-    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
+    if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const kind: @typeInfo(
@@ -1023,7 +1023,7 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
     ).@"union".tag_type.? = .move_carrier_location;
     const param: mmc.Param.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
-        .carrier_id = slider_id,
+        .carrier_id = carrier_id,
         .location = location,
     };
     if (server) |s| try sendMessage(
@@ -1033,15 +1033,15 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
     ) else return error.ServerNotConnected;
 }
 
-fn mclSliderPosMoveDistance(params: [][]const u8) !void {
+fn mclCarrierPosMoveDistance(params: [][]const u8) !void {
     const line_name = params[0];
-    const slider_id = try std.fmt.parseInt(u16, params[1], 0);
+    const carrier_id = try std.fmt.parseInt(u16, params[1], 0);
     const distance = try std.fmt.parseFloat(f32, params[2]);
     if (distance == 0) {
         std.log.err("Zero distance detected", .{});
         return;
     }
-    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
+    if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     const line_idx: usize = try matchLine(line_names, line_name);
 
     const kind: @typeInfo(
@@ -1049,7 +1049,7 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
     ).@"union".tag_type.? = .move_carrier_distance;
     const param: mmc.Param.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
-        .carrier_id = slider_id,
+        .carrier_id = carrier_id,
         .distance = distance,
     };
     if (server) |s| try sendMessage(
@@ -1059,16 +1059,16 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
     ) else return error.ServerNotConnected;
 }
 
-fn mclSliderSpdMoveAxis(params: [][]const u8) !void {
+fn mclCarrierSpdMoveAxis(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
+    const carrier_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
     const axis_id: u16 = try std.fmt.parseInt(u16, params[2], 0);
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
     if (axis_id == 0 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
-    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
+    if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
     const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
     const kind: @typeInfo(
@@ -1076,7 +1076,7 @@ fn mclSliderSpdMoveAxis(params: [][]const u8) !void {
     ).@"union".tag_type.? = .spd_move_carrier_axis;
     const param: mmc.Param.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
-        .carrier_id = slider_id,
+        .carrier_id = carrier_id,
         .axis_idx = axis_index,
     };
     if (server) |s| try sendMessage(
@@ -1086,11 +1086,11 @@ fn mclSliderSpdMoveAxis(params: [][]const u8) !void {
     ) else return error.ServerNotConnected;
 }
 
-fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
+fn mclCarrierSpdMoveLocation(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
+    const carrier_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
-    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
+    if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const kind: @typeInfo(
@@ -1098,7 +1098,7 @@ fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
     ).@"union".tag_type.? = .spd_move_carrier_location;
     const param: mmc.Param.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
-        .carrier_id = slider_id,
+        .carrier_id = carrier_id,
         .location = location,
     };
     if (server) |s| try sendMessage(
@@ -1108,22 +1108,22 @@ fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
     ) else return error.ServerNotConnected;
 }
 
-fn mclSliderSpdMoveDistance(params: [][]const u8) !void {
+fn mclCarrierSpdMoveDistance(params: [][]const u8) !void {
     const line_name = params[0];
-    const slider_id = try std.fmt.parseInt(u16, params[1], 0);
+    const carrier_id = try std.fmt.parseInt(u16, params[1], 0);
     const distance = try std.fmt.parseFloat(f32, params[2]);
     const line_idx: usize = try matchLine(line_names, line_name);
     if (distance == 0) {
         std.log.err("Zero distance detected", .{});
         return;
     }
-    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
+    if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     const kind: @typeInfo(
         mmc.Param,
     ).@"union".tag_type.? = .spd_move_carrier_distance;
     const param: mmc.Param.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
-        .carrier_id = slider_id,
+        .carrier_id = carrier_id,
         .distance = distance,
     };
     if (server) |s| try sendMessage(
