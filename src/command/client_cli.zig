@@ -53,7 +53,7 @@ pub fn init(c: Config) !void {
         \\Attempt to connect the client application to the server. The IP address
         \\and the port should be provided in the configuration file.
         ,
-        .execute = &mmcConnect,
+        .execute = &clientConnect,
     });
     errdefer _ = command.registry.orderedRemove("CONNECT");
     // try command.registry.put("DISCONNECT", .{
@@ -78,7 +78,7 @@ pub fn init(c: Config) !void {
         \\by its name. The speed must be a whole integer number between 1 and
         \\100, inclusive.
         ,
-        .execute = &mclSetSpeed,
+        .execute = &clientSetSpeed,
     });
     errdefer _ = command.registry.orderedRemove("SET_SPEED");
     try command.registry.put("SET_ACCELERATION", .{
@@ -93,7 +93,7 @@ pub fn init(c: Config) !void {
         \\referenced by its name. The acceleration must be a whole integer
         \\number between 1 and 100, inclusive.
         ,
-        .execute = &mclSetAcceleration,
+        .execute = &clientSetAcceleration,
     });
     errdefer _ = command.registry.orderedRemove("SET_ACCELERATION");
     try command.registry.put("GET_SPEED", .{
@@ -107,7 +107,7 @@ pub fn init(c: Config) !void {
         \\by its name. The speed is a whole integer number between 1 and 100,
         \\inclusive.
         ,
-        .execute = &mclGetSpeed,
+        .execute = &clientGetSpeed,
     });
     errdefer _ = command.registry.orderedRemove("GET_SPEED");
     try command.registry.put("GET_ACCELERATION", .{
@@ -121,7 +121,7 @@ pub fn init(c: Config) !void {
         \\referenced by its name. The acceleration is a whole integer number
         \\between 1 and 100, inclusive.
         ,
-        .execute = &mclGetAcceleration,
+        .execute = &clientGetAcceleration,
     });
     errdefer _ = command.registry.orderedRemove("GET_ACCELERATION");
     // try command.registry.put("PRINT_X", .{
@@ -388,7 +388,7 @@ pub fn init(c: Config) !void {
         \\can also be linked for isolation movement. Linked axis parameter
         \\values must be one of "prev", "next", "left", or "right".
         ,
-        .execute = &mclIsolate,
+        .execute = &clientIsolate,
     });
     errdefer _ = command.registry.orderedRemove("ISOLATE");
     // try command.registry.put("RECOVER_CARRIER", .{
@@ -438,7 +438,7 @@ pub fn init(c: Config) !void {
         \\Move given carrier to the center of target axis. The carrier ID must be
         \\currently recognized within the motion system.
         ,
-        .execute = &mclCarrierPosMoveAxis,
+        .execute = &clientCarrierPosMoveAxis,
     });
     errdefer _ = command.registry.orderedRemove("MOVE_CARRIER_AXIS");
     try command.registry.put("MOVE_CARRIER_LOCATION", .{
@@ -454,7 +454,7 @@ pub fn init(c: Config) !void {
         \\recognized within the motion system, and the target location must be
         \\provided in millimeters as a whole or decimal number.
         ,
-        .execute = &mclCarrierPosMoveLocation,
+        .execute = &clientCarrierPosMoveLocation,
     });
     errdefer _ = command.registry.orderedRemove("MOVE_CARRIER_LOCATION");
     try command.registry.put("MOVE_CARRIER_DISTANCE", .{
@@ -471,7 +471,7 @@ pub fn init(c: Config) !void {
         \\be provided in millimeters as a whole or decimal number. The distance
         \\may be negative for backward movement.
         ,
-        .execute = &mclCarrierPosMoveDistance,
+        .execute = &clientCarrierPosMoveDistance,
     });
     errdefer _ = command.registry.orderedRemove("MOVE_CARRIER_DISTANCE");
     try command.registry.put("SPD_MOVE_CARRIER_AXIS", .{
@@ -487,7 +487,7 @@ pub fn init(c: Config) !void {
         \\currently recognized within the motion system. This command moves the
         \\carrier with speed profile feedback.
         ,
-        .execute = &mclCarrierSpdMoveAxis,
+        .execute = &clientCarrierSpdMoveAxis,
     });
     errdefer _ = command.registry.orderedRemove("SPD_MOVE_CARRIER_AXIS");
     try command.registry.put("SPD_MOVE_CARRIER_LOCATION", .{
@@ -504,7 +504,7 @@ pub fn init(c: Config) !void {
         \\provided in millimeters as a whole or decimal number. This command
         \\moves the carrier with speed profile feedback.
         ,
-        .execute = &mclCarrierSpdMoveLocation,
+        .execute = &clientCarrierSpdMoveLocation,
     });
     errdefer _ = command.registry.orderedRemove("SPD_MOVE_CARRIER_LOCATION");
     try command.registry.put("SPD_MOVE_CARRIER_DISTANCE", .{
@@ -522,7 +522,7 @@ pub fn init(c: Config) !void {
         \\may be negative for backward movement. This command moves the carrier
         \\with speed profile feedback.
         ,
-        .execute = &mclCarrierSpdMoveDistance,
+        .execute = &clientCarrierSpdMoveDistance,
     });
     errdefer _ = command.registry.orderedRemove("SPD_MOVE_CARRIER_DISTANCE");
     // try command.registry.put("WAIT_MOVE_CARRIER", .{
@@ -733,7 +733,7 @@ pub fn deinit() void {
     // log_file = null;
 }
 
-pub fn mmcConnect(_: [][]const u8) !void {
+pub fn clientConnect(_: [][]const u8) !void {
     std.log.debug("Trying to connect to {s}", .{
         IP_address,
     });
@@ -852,7 +852,7 @@ pub fn mmcConnect(_: [][]const u8) !void {
     }
 }
 
-fn mclSetSpeed(params: [][]const u8) !void {
+fn clientSetSpeed(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_speed = try std.fmt.parseUnsigned(u8, params[1], 0);
     if (carrier_speed < 1 or carrier_speed > 100) return error.InvalidSpeed;
@@ -873,7 +873,7 @@ fn mclSetSpeed(params: [][]const u8) !void {
     ) else return error.ServerNotConnected;
 }
 
-fn mclSetAcceleration(params: [][]const u8) !void {
+fn clientSetAcceleration(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_acceleration = try std.fmt.parseUnsigned(u8, params[1], 0);
     if (carrier_acceleration < 1 or carrier_acceleration > 100)
@@ -894,7 +894,7 @@ fn mclSetAcceleration(params: [][]const u8) !void {
     ) else return error.ServerNotConnected;
 }
 
-fn mclGetSpeed(params: [][]const u8) !void {
+fn clientGetSpeed(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
 
     const line_idx: usize = try matchLine(line_names, line_name);
@@ -911,7 +911,7 @@ fn mclGetSpeed(params: [][]const u8) !void {
     ) else return error.ServerNotConnected;
 }
 
-fn mclGetAcceleration(params: [][]const u8) !void {
+fn clientGetAcceleration(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
 
     const line_idx: usize = try matchLine(line_names, line_name);
@@ -928,7 +928,7 @@ fn mclGetAcceleration(params: [][]const u8) !void {
     ) else return error.ServerNotConnected;
 }
 
-fn mclIsolate(params: [][]const u8) !void {
+fn clientIsolate(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
 
@@ -984,7 +984,7 @@ fn mclIsolate(params: [][]const u8) !void {
     ) else return error.ServerNotConnected;
 }
 
-fn mclCarrierPosMoveAxis(params: [][]const u8) !void {
+fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
     const axis_id: u16 = try std.fmt.parseInt(u16, params[2], 0);
@@ -1011,7 +1011,7 @@ fn mclCarrierPosMoveAxis(params: [][]const u8) !void {
     ) else return error.ServerNotConnected;
 }
 
-fn mclCarrierPosMoveLocation(params: [][]const u8) !void {
+fn clientCarrierPosMoveLocation(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
@@ -1033,7 +1033,7 @@ fn mclCarrierPosMoveLocation(params: [][]const u8) !void {
     ) else return error.ServerNotConnected;
 }
 
-fn mclCarrierPosMoveDistance(params: [][]const u8) !void {
+fn clientCarrierPosMoveDistance(params: [][]const u8) !void {
     const line_name = params[0];
     const carrier_id = try std.fmt.parseInt(u16, params[1], 0);
     const distance = try std.fmt.parseFloat(f32, params[2]);
@@ -1059,7 +1059,7 @@ fn mclCarrierPosMoveDistance(params: [][]const u8) !void {
     ) else return error.ServerNotConnected;
 }
 
-fn mclCarrierSpdMoveAxis(params: [][]const u8) !void {
+fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
     const axis_id: u16 = try std.fmt.parseInt(u16, params[2], 0);
@@ -1086,7 +1086,7 @@ fn mclCarrierSpdMoveAxis(params: [][]const u8) !void {
     ) else return error.ServerNotConnected;
 }
 
-fn mclCarrierSpdMoveLocation(params: [][]const u8) !void {
+fn clientCarrierSpdMoveLocation(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
@@ -1108,7 +1108,7 @@ fn mclCarrierSpdMoveLocation(params: [][]const u8) !void {
     ) else return error.ServerNotConnected;
 }
 
-fn mclCarrierSpdMoveDistance(params: [][]const u8) !void {
+fn clientCarrierSpdMoveDistance(params: [][]const u8) !void {
     const line_name = params[0];
     const carrier_id = try std.fmt.parseInt(u16, params[1], 0);
     const distance = try std.fmt.parseFloat(f32, params[2]);
