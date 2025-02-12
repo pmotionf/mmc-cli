@@ -290,7 +290,7 @@ pub fn enqueue(input: []const u8) !void {
 }
 
 pub fn execute() !void {
-    const cb = command_queue.pop();
+    const cb = command_queue.pop().?;
     std.log.info("Running command: {s}\n", .{cb.buffer[0..cb.len]});
     try parseAndRun(cb.buffer[0..cb.len]);
 }
