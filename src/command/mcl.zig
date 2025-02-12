@@ -1240,13 +1240,13 @@ fn mclHallStatus(params: [][]const u8) !void {
 
 fn mclAssertHall(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis = try std.fmt.parseInt(mcl.Axis.Id.Line, params[2], 0);
+    const axis = try std.fmt.parseInt(mcl.Axis.Id.Line, params[1], 0);
     const side: mcl.Direction =
-        if (std.ascii.eqlIgnoreCase("back", params[3]) or
-        std.ascii.eqlIgnoreCase("left", params[3]))
+        if (std.ascii.eqlIgnoreCase("back", params[2]) or
+        std.ascii.eqlIgnoreCase("left", params[2]))
         .backward
-    else if (std.ascii.eqlIgnoreCase("front", params[3]) or
-        std.ascii.eqlIgnoreCase("right", params[3]))
+    else if (std.ascii.eqlIgnoreCase("front", params[2]) or
+        std.ascii.eqlIgnoreCase("right", params[2]))
         .forward
     else
         return error.InvalidHallAlarmSide;
@@ -1257,10 +1257,10 @@ fn mclAssertHall(params: [][]const u8) !void {
     }
 
     var alarm_on: bool = true;
-    if (params[4].len > 0) {
-        if (std.ascii.eqlIgnoreCase("off", params[4])) {
+    if (params[3].len > 0) {
+        if (std.ascii.eqlIgnoreCase("off", params[3])) {
             alarm_on = false;
-        } else if (std.ascii.eqlIgnoreCase("on", params[4])) {
+        } else if (std.ascii.eqlIgnoreCase("on", params[3])) {
             alarm_on = true;
         } else return error.InvalidHallAlarmState;
     }
