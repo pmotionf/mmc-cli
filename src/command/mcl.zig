@@ -340,38 +340,6 @@ pub fn init(c: Config) !void {
         .execute = &mclAxisReleaseServo,
     });
     errdefer _ = command.registry.orderedRemove("RELEASE_AXIS_SERVO");
-    try command.registry.put("STOP_TRAFFIC", .{
-        .name = "STOP_TRAFFIC",
-        .parameters = &.{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-            .{ .name = "direction" },
-        },
-        .short_description = "Prevent traffic communication to controller.",
-        .long_description =
-        \\Forcibly stop all traffic transmission from the specified axis's
-        \\controller to its neighboring controller. The neighboring controller
-        \\is determined by the provided direction.
-        ,
-        .execute = &mclTrafficStop,
-    });
-    errdefer _ = command.registry.orderedRemove("STOP_TRAFFIC");
-    try command.registry.put("ALLOW_TRAFFIC", .{
-        .name = "ALLOW_TRAFFIC",
-        .parameters = &.{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-            .{ .name = "direction" },
-        },
-        .short_description = "Resume traffic communication to controller.",
-        .long_description =
-        \\Permit all traffic transmission from the specified axis's controller
-        \\to its neighboring controller. The neighboring controller is
-        \\determined by the provided direction.
-        ,
-        .execute = &mclTrafficAllow,
-    });
-    errdefer _ = command.registry.orderedRemove("ALLOW_TRAFFIC");
     try command.registry.put("CALIBRATE", .{
         .name = "CALIBRATE",
         .parameters = &[_]command.Command.Parameter{
@@ -919,8 +887,8 @@ fn mclAxisReleaseServo(params: [][]const u8) !void {
     defer station.resetY(0x5) catch {};
     while (true) {
         try command.checkCommandInterrupt();
-        try station.pollX();
-        if (!station.x.servo_active.axis(local_axis_index)) break;
+        try station.pollWr();
+        if (station.wr.carrier.axis(local_axis_index).state == .None) break;
     }
 }
 
@@ -1314,35 +1282,6 @@ fn mclCarrierPosMoveAxis(params: [][]const u8) !void {
 
     try waitCommandReady(station);
 
-    if (_aux) |aux| {
-        // Direction of auxiliary axis from main axis.
-        var direction: Direction = undefined;
-        if (aux.index.line > main.index.line) {
-            direction = .forward;
-        } else {
-            direction = .backward;
-        }
-        main.station.y.stop_driver_transmission.setTo(direction, true);
-        try main.station.sendY();
-        while (!main.station.x.transmission_stopped.to(direction)) {
-            try command.checkCommandInterrupt();
-            try main.station.pollX();
-        }
-    }
-    defer {
-        if (_aux) |aux| {
-            // Direction of auxiliary axis from main axis.
-            var direction: Direction = undefined;
-            if (aux.index.line > main.index.line) {
-                direction = .forward;
-            } else {
-                direction = .backward;
-            }
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
-        }
-    }
-
     station.ww.* = .{
         .command = .PositionMoveCarrierAxis,
         .carrier_id = carrier_id,
@@ -1388,21 +1327,6 @@ fn mclCarrierPosMoveLocation(params: [][]const u8) !void {
     }
 
     try waitCommandReady(station);
-
-    if (_aux) |_| {
-        main.station.y.stop_driver_transmission.setTo(direction, true);
-        try main.station.sendY();
-        while (!main.station.x.transmission_stopped.to(direction)) {
-            try command.checkCommandInterrupt();
-            try main.station.pollX();
-        }
-    }
-    defer {
-        if (_aux) |_| {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
-        }
-    }
 
     station.ww.* = .{
         .command = .PositionMoveCarrierLocation,
@@ -1457,21 +1381,6 @@ fn mclCarrierPosMoveDistance(params: [][]const u8) !void {
 
     try waitCommandReady(station);
 
-    if (_aux) |_| {
-        main.station.y.stop_driver_transmission.setTo(direction, true);
-        try main.station.sendY();
-        while (!main.station.x.transmission_stopped.to(direction)) {
-            try command.checkCommandInterrupt();
-            try main.station.pollX();
-        }
-    }
-    defer {
-        if (_aux) |_| {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
-        }
-    }
-
     station.ww.* = .{
         .command = .PositionMoveCarrierDistance,
         .carrier_id = carrier_id,
@@ -1510,35 +1419,6 @@ fn mclCarrierSpdMoveAxis(params: [][]const u8) !void {
     }
 
     try waitCommandReady(station);
-
-    if (_aux) |aux| {
-        // Direction of auxiliary axis from main axis.
-        var direction: Direction = undefined;
-        if (aux.index.line > main.index.line) {
-            direction = .forward;
-        } else {
-            direction = .backward;
-        }
-        main.station.y.stop_driver_transmission.setTo(direction, true);
-        try main.station.sendY();
-        while (!main.station.x.transmission_stopped.to(direction)) {
-            try command.checkCommandInterrupt();
-            try main.station.pollX();
-        }
-    }
-    defer {
-        if (_aux) |aux| {
-            // Direction of auxiliary axis from main axis.
-            var direction: Direction = undefined;
-            if (aux.index.line > main.index.line) {
-                direction = .forward;
-            } else {
-                direction = .backward;
-            }
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
-        }
-    }
 
     station.ww.* = .{
         .command = .SpeedMoveCarrierAxis,
@@ -1585,21 +1465,6 @@ fn mclCarrierSpdMoveLocation(params: [][]const u8) !void {
     }
 
     try waitCommandReady(station);
-
-    if (_aux) |_| {
-        main.station.y.stop_driver_transmission.setTo(direction, true);
-        try main.station.sendY();
-        while (!main.station.x.transmission_stopped.to(direction)) {
-            try command.checkCommandInterrupt();
-            try main.station.pollX();
-        }
-    }
-    defer {
-        if (_aux) |_| {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
-        }
-    }
 
     station.ww.* = .{
         .command = .SpeedMoveCarrierLocation,
@@ -1654,21 +1519,6 @@ fn mclCarrierSpdMoveDistance(params: [][]const u8) !void {
 
     try waitCommandReady(station);
 
-    if (_aux) |_| {
-        main.station.y.stop_driver_transmission.setTo(direction, true);
-        try main.station.sendY();
-        while (!main.station.x.transmission_stopped.to(direction)) {
-            try command.checkCommandInterrupt();
-            try main.station.pollX();
-        }
-    }
-    defer {
-        if (_aux) |_| {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
-        }
-    }
-
     station.ww.* = .{
         .command = .SpeedMoveCarrierDistance,
         .carrier_id = carrier_id,
@@ -1707,21 +1557,6 @@ fn mclCarrierPushForward(params: [][]const u8) !void {
     }
 
     try waitCommandReady(station);
-
-    if (_aux) |_| {
-        main.station.y.stop_driver_transmission.setTo(direction, true);
-        try main.station.sendY();
-        while (!main.station.x.transmission_stopped.to(direction)) {
-            try command.checkCommandInterrupt();
-            try main.station.pollX();
-        }
-    }
-    defer {
-        if (_aux) |_| {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
-        }
-    }
 
     station.ww.* = .{
         .command = .PushAxisCarrierForward,
@@ -1762,21 +1597,6 @@ fn mclCarrierPushBackward(params: [][]const u8) !void {
     }
 
     try waitCommandReady(station);
-
-    if (_aux) |_| {
-        main.station.y.stop_driver_transmission.setTo(direction, true);
-        try main.station.sendY();
-        while (!main.station.x.transmission_stopped.to(direction)) {
-            try command.checkCommandInterrupt();
-            try main.station.pollX();
-        }
-    }
-    defer {
-        if (_aux) |_| {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY() catch {};
-        }
-    }
 
     station.ww.* = .{
         .command = .PushAxisCarrierBackward,
@@ -1985,74 +1805,6 @@ fn mclRecoverCarrier(params: [][]const u8) !void {
         .carrier_id = new_carrier_id,
     };
     try sendCommand(station);
-}
-
-fn mclTrafficStop(params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const axis = try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[1], 0);
-
-    const line_idx: usize = try matchLine(line_names, line_name);
-    const line = mcl.lines[line_idx];
-    if (axis == 0 or axis > line.axes.len) {
-        return error.InvalidAxis;
-    }
-
-    const direction: Direction = dir: {
-        if (std.ascii.eqlIgnoreCase("next", params[2]) or
-            std.ascii.eqlIgnoreCase("right", params[2]))
-        {
-            break :dir .forward;
-        } else if (std.ascii.eqlIgnoreCase("prev", params[2]) or
-            std.ascii.eqlIgnoreCase("left", params[2]))
-        {
-            break :dir .backward;
-        } else return error.InvalidDirection;
-    };
-
-    const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
-    const station = line.stations[axis_index / 3];
-    try station.poll();
-
-    station.y.stop_driver_transmission.setTo(direction, true);
-    try station.sendY();
-    while (!station.x.transmission_stopped.to(direction)) {
-        try command.checkCommandInterrupt();
-        try station.pollX();
-    }
-}
-
-fn mclTrafficAllow(params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const axis = try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[1], 0);
-
-    const line_idx: usize = try matchLine(line_names, line_name);
-    const line = mcl.lines[line_idx];
-    if (axis == 0 or axis > line.axes.len) {
-        return error.InvalidAxis;
-    }
-
-    const direction: Direction = dir: {
-        if (std.ascii.eqlIgnoreCase("next", params[2]) or
-            std.ascii.eqlIgnoreCase("right", params[2]))
-        {
-            break :dir .forward;
-        } else if (std.ascii.eqlIgnoreCase("prev", params[2]) or
-            std.ascii.eqlIgnoreCase("left", params[2]))
-        {
-            break :dir .backward;
-        } else return error.InvalidDirection;
-    };
-
-    const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
-    const station = line.stations[axis_index / 3];
-    try station.poll();
-
-    station.y.stop_driver_transmission.setTo(direction, false);
-    try station.sendY();
-    while (station.x.transmission_stopped.to(direction)) {
-        try command.checkCommandInterrupt();
-        try station.pollX();
-    }
 }
 
 fn mclWaitRecoverCarrier(params: [][]const u8) !void {
