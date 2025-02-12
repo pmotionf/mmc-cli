@@ -124,109 +124,103 @@ pub fn init(c: Config) !void {
         .execute = &clientGetAcceleration,
     });
     errdefer _ = command.registry.orderedRemove("GET_ACCELERATION");
-    // try command.registry.put("PRINT_X", .{
-    //     .name = "PRINT_X",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "line name" },
-    //         .{ .name = "axis" },
-    //     },
-    //     .short_description = "Poll and print the X register of a station.",
-    //     .long_description =
-    //     \\Poll and print the X register of a station. The station X register to
-    //     \\be printed is determined by the provided axis.
-    //     ,
-    //     .execute = &mclStationX,
-    // });
-    // errdefer _ = command.registry.orderedRemove("PRINT_X");
-    // try command.registry.put("PRINT_Y", .{
-    //     .name = "PRINT_Y",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "line name" },
-    //         .{ .name = "axis" },
-    //     },
-    //     .short_description = "Poll and print the Y register of a station.",
-    //     .long_description =
-    //     \\Poll and print the Y register of a station. The station Y register to
-    //     \\be printed is determined by the provided axis.
-    //     ,
-    //     .execute = &mclStationY,
-    // });
-    // errdefer _ = command.registry.orderedRemove("PRINT_Y");
-    // try command.registry.put("PRINT_WR", .{
-    //     .name = "PRINT_WR",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "line name" },
-    //         .{ .name = "axis" },
-    //     },
-    //     .short_description = "Poll and print the Wr register of a station.",
-    //     .long_description =
-    //     \\Poll and print the Wr register of a station. The station Wr register
-    //     \\to be printed is determined by the provided axis.
-    //     ,
-    //     .execute = &mclStationWr,
-    // });
-    // errdefer _ = command.registry.orderedRemove("PRINT_WR");
-    // try command.registry.put("PRINT_WW", .{
-    //     .name = "PRINT_WW",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "line name" },
-    //         .{ .name = "axis" },
-    //     },
-    //     .short_description = "Poll and print the Ww register of a station.",
-    //     .long_description =
-    //     \\Poll and print the Ww register of a station. The station Ww register
-    //     \\to be printed is determined by the provided axis.
-    //     ,
-    //     .execute = &mclStationWw,
-    // });
-    // errdefer _ = command.registry.orderedRemove("PRINT_WW");
-    // try command.registry.put("AXIS_CARRIER", .{
-    //     .name = "AXIS_CARRIER",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "line name" },
-    //         .{ .name = "axis" },
-    //         .{ .name = "result variable", .optional = true, .resolve = false },
-    //     },
-    //     .short_description = "Display carrier on given axis, if exists.",
-    //     .long_description =
-    //     \\If a carrier is recognized on the provided axis, print its carrier ID.
-    //     \\If a result variable name was provided, also store the carrier ID in
-    //     \\the variable.
-    //     ,
-    //     .execute = &mclAxisCarrier,
-    // });
-    // errdefer _ = command.registry.orderedRemove("AXIS_CARRIER");
-    // try command.registry.put("CARRIER_LOCATION", .{
-    //     .name = "CARRIER_LOCATION",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "line name" },
-    //         .{ .name = "carrier" },
-    //         .{ .name = "result variable", .resolve = false, .optional = true },
-    //     },
-    //     .short_description = "Display a carrier's location.",
-    //     .long_description =
-    //     \\Print a given carrier's location if it is currently recognized in the
-    //     \\provided line. If a result variable name is provided, then store the
-    //     \\carrier's location in the variable.
-    //     ,
-    //     .execute = &mclCarrierLocation,
-    // });
-    // errdefer _ = command.registry.orderedRemove("CARRIER_LOCATION");
-    // try command.registry.put("CARRIER_AXIS", .{
-    //     .name = "CARRIER_AXIS",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "line name" },
-    //         .{ .name = "carrier" },
-    //     },
-    //     .short_description = "Display a carrier's axis/axes.",
-    //     .long_description =
-    //     \\Print a given carrier's axis if it is currently recognized in the
-    //     \\provided line. If the carrier is currently recognized across two axes,
-    //     \\then both axes will be printed.
-    //     ,
-    //     .execute = &mclCarrierAxis,
-    // });
-    // errdefer _ = command.registry.orderedRemove("CARRIER_AXIS");
+    try command.registry.put("PRINT_X", .{
+        .name = "PRINT_X",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+        },
+        .short_description = "Poll and print the X register of a station.",
+        .long_description =
+        \\Poll and print the X register of a station. The station X register to
+        \\be printed is determined by the provided axis.
+        ,
+        .execute = &clientStationX,
+    });
+    errdefer _ = command.registry.orderedRemove("PRINT_X");
+    try command.registry.put("PRINT_Y", .{
+        .name = "PRINT_Y",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+        },
+        .short_description = "Poll and print the Y register of a station.",
+        .long_description =
+        \\Poll and print the Y register of a station. The station Y register to
+        \\be printed is determined by the provided axis.
+        ,
+        .execute = &clientStationY,
+    });
+    errdefer _ = command.registry.orderedRemove("PRINT_Y");
+    try command.registry.put("PRINT_WR", .{
+        .name = "PRINT_WR",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+        },
+        .short_description = "Poll and print the Wr register of a station.",
+        .long_description =
+        \\Poll and print the Wr register of a station. The station Wr register
+        \\to be printed is determined by the provided axis.
+        ,
+        .execute = &clientStationWr,
+    });
+    errdefer _ = command.registry.orderedRemove("PRINT_WR");
+    try command.registry.put("PRINT_WW", .{
+        .name = "PRINT_WW",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+        },
+        .short_description = "Poll and print the Ww register of a station.",
+        .long_description =
+        \\Poll and print the Ww register of a station. The station Ww register
+        \\to be printed is determined by the provided axis.
+        ,
+        .execute = &clientStationWw,
+    });
+    errdefer _ = command.registry.orderedRemove("PRINT_WW");
+    try command.registry.put("AXIS_CARRIER", .{
+        .name = "AXIS_CARRIER",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+        },
+        .short_description = "Display carrier on given axis, if exists.",
+        .long_description =
+        \\If a carrier is recognized on the provided axis, print its carrier ID.
+        ,
+        .execute = &clientAxisCarrier,
+    });
+    errdefer _ = command.registry.orderedRemove("AXIS_CARRIER");
+    try command.registry.put("CARRIER_LOCATION", .{
+        .name = "CARRIER_LOCATION",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "carrier" },
+        },
+        .short_description = "Display a carrier's location.",
+        .long_description =
+        \\Print a given carrier's location if it is currently recognized in the
+        \\provided line.
+        ,
+        .execute = &clientCarrierLocation,
+    });
+    errdefer _ = command.registry.orderedRemove("CARRIER_LOCATION");
+    try command.registry.put("CARRIER_AXIS", .{
+        .name = "CARRIER_AXIS",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "carrier" },
+        },
+        .short_description = "Display a carrier's axis/axes.",
+        .long_description =
+        \\Print a given carrier's axis if it is currently recognized in the
+        \\provided line.
+        ,
+        .execute = &clientCarrierAxis,
+    });
+    errdefer _ = command.registry.orderedRemove("CARRIER_AXIS");
     // try command.registry.put("HALL_STATUS", .{
     //     .name = "HALL_STATUS",
     //     .parameters = &[_]command.Command.Parameter{
@@ -906,11 +900,16 @@ fn clientGetSpeed(params: [][]const u8) !void {
     const param: mmc.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
     };
-    if (server) |s| try sendMessage(
-        kind,
-        param,
-        s,
-    ) else return error.ServerNotConnected;
+    if (server) |s| {
+        var buffer: [1]u8 = undefined;
+        try sendMessage(kind, param, s);
+        _ = try s.receive(&buffer);
+        const speed = buffer[0];
+        std.log.info(
+            "Line {s} speed: {d}%",
+            .{ line_name, speed },
+        );
+    } else return error.ServerNotConnected;
 }
 
 fn clientGetAcceleration(params: [][]const u8) !void {
@@ -923,11 +922,262 @@ fn clientGetAcceleration(params: [][]const u8) !void {
     const param: mmc.ParamType(kind) = .{
         .line_idx = @intCast(line_idx),
     };
-    if (server) |s| try sendMessage(
-        kind,
-        param,
-        s,
-    ) else return error.ServerNotConnected;
+    if (server) |s| {
+        var buffer: [1]u8 = undefined;
+        try sendMessage(kind, param, s);
+        _ = try s.receive(&buffer);
+        const acceleration = buffer[0];
+        std.log.info(
+            "Line {s} acceleration: {d}%",
+            .{ line_name, acceleration },
+        );
+    } else return error.ServerNotConnected;
+}
+
+fn clientStationX(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const axis_id = try std.fmt.parseInt(i16, params[1], 0);
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+
+    if (axis_id < 1 or axis_id > line.axes.len) {
+        return error.InvalidAxis;
+    }
+
+    const axis_idx: mcl.Axis.Index.Line = @intCast(axis_id - 1);
+    const kind: @typeInfo(
+        mmc.Param,
+    ).@"union".tag_type.? = .get_x;
+    const param: mmc.ParamType(kind) = .{
+        .line_idx = @intCast(line_idx),
+        .axis_idx = @intCast(axis_idx),
+    };
+    if (server) |s| {
+        var buffer: [@sizeOf(mcl.registers.X)]u8 = undefined;
+        try sendMessage(kind, param, s);
+        const msg_size = try s.receive(&buffer);
+        std.log.debug("msg_size: {}", .{msg_size});
+        std.log.debug("data: {any}", .{buffer[0..msg_size]});
+        std.log.debug("x size: {}", .{@sizeOf(mcl.registers.X)});
+        const x = std.mem.bytesToValue(
+            mcl.registers.X,
+            buffer[0..msg_size],
+        );
+        std.log.info("{}", .{x});
+    } else return error.ServerNotConnected;
+}
+
+fn clientStationY(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const axis_id = try std.fmt.parseInt(i16, params[1], 0);
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+
+    if (axis_id < 1 or axis_id > line.axes.len) {
+        return error.InvalidAxis;
+    }
+
+    const axis_idx: mcl.Axis.Index.Line = @intCast(axis_id - 1);
+    const kind: @typeInfo(
+        mmc.Param,
+    ).@"union".tag_type.? = .get_y;
+    const param: mmc.ParamType(kind) = .{
+        .line_idx = @intCast(line_idx),
+        .axis_idx = @intCast(axis_idx),
+    };
+    if (server) |s| {
+        var buffer: [@sizeOf(mcl.registers.Y)]u8 = undefined;
+        try sendMessage(kind, param, s);
+        const msg_size = try s.receive(&buffer);
+        const y = std.mem.bytesToValue(
+            mcl.registers.Y,
+            buffer[0..msg_size],
+        );
+        std.log.info("{}", .{y});
+    } else return error.ServerNotConnected;
+}
+
+fn clientStationWr(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const axis_id = try std.fmt.parseInt(i16, params[1], 0);
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+
+    if (axis_id < 1 or axis_id > line.axes.len) {
+        return error.InvalidAxis;
+    }
+
+    const axis_idx: mcl.Axis.Index.Line = @intCast(axis_id - 1);
+    const kind: @typeInfo(
+        mmc.Param,
+    ).@"union".tag_type.? = .get_wr;
+    const param: mmc.ParamType(kind) = .{
+        .line_idx = @intCast(line_idx),
+        .axis_idx = @intCast(axis_idx),
+    };
+    if (server) |s| {
+        var buffer: [@sizeOf(mcl.registers.Wr)]u8 = undefined;
+        try sendMessage(kind, param, s);
+        const msg_size = try s.receive(&buffer);
+        std.log.debug("data: {s}", .{buffer[0..msg_size]});
+        const wr = std.mem.bytesToValue(
+            mcl.registers.Wr,
+            buffer[0..msg_size],
+        );
+        std.log.info("{}", .{wr});
+    } else return error.ServerNotConnected;
+}
+
+fn clientStationWw(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const axis_id = try std.fmt.parseInt(i16, params[1], 0);
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+
+    if (axis_id < 1 or axis_id > line.axes.len) {
+        return error.InvalidAxis;
+    }
+
+    const axis_idx: mcl.Axis.Index.Line = @intCast(axis_id - 1);
+    const kind: @typeInfo(
+        mmc.Param,
+    ).@"union".tag_type.? = .get_ww;
+    const param: mmc.ParamType(kind) = .{
+        .line_idx = @intCast(line_idx),
+        .axis_idx = @intCast(axis_idx),
+    };
+    if (server) |s| {
+        var buffer: [@sizeOf(mcl.registers.Ww)]u8 = undefined;
+        try sendMessage(kind, param, s);
+        const msg_size = try s.receive(&buffer);
+        std.log.debug("data: {s}", .{buffer[0..msg_size]});
+        const ww = std.mem.bytesToValue(
+            mcl.registers.Ww,
+            buffer[0..msg_size],
+        );
+        std.log.info("{}", .{ww});
+    } else return error.ServerNotConnected;
+}
+
+fn clientAxisCarrier(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const axis_id = try std.fmt.parseInt(i16, params[1], 0);
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+
+    if (axis_id < 1 or axis_id > line.axes.len) {
+        return error.InvalidAxis;
+    }
+
+    const axis_idx: mcl.Axis.Index.Line = @intCast(axis_id - 1);
+    const kind: @typeInfo(
+        mmc.Param,
+    ).@"union".tag_type.? = .axis_carrier;
+    const param: mmc.ParamType(kind) = .{
+        .line_idx = @intCast(line_idx),
+        .axis_idx = @intCast(axis_idx),
+    };
+    if (server) |s| {
+        var buffer: [@sizeOf(u16)]u8 = undefined;
+        try sendMessage(kind, param, s);
+        const msg_size = try s.receive(&buffer);
+        std.log.debug("data: {s}", .{buffer[0..msg_size]});
+        const carrier_id = std.mem.bytesToValue(
+            u16,
+            buffer[0..msg_size],
+        );
+        if (carrier_id != 0) {
+            std.log.info(
+                "Carrier {d} on axis {d}.\n",
+                .{ carrier_id, axis_id },
+            );
+        } else {
+            std.log.info(
+                "No carrier recognized on axis {d}.\n",
+                .{axis_id},
+            );
+        }
+    } else return error.ServerNotConnected;
+}
+
+fn clientCarrierLocation(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const carrier_id = try std.fmt.parseInt(u16, params[1], 0);
+    if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const kind: @typeInfo(
+        mmc.Param,
+    ).@"union".tag_type.? = .carrier_location;
+    const param: mmc.ParamType(kind) = .{
+        .line_idx = @intCast(line_idx),
+        .carrier_id = carrier_id,
+    };
+    if (server) |s| {
+        var buffer: [@sizeOf(i32)]u8 = undefined;
+        try sendMessage(kind, param, s);
+        const msg_size = try s.receive(&buffer);
+        std.log.debug("data: {s}", .{buffer[0..msg_size]});
+        const location_int = std.mem.bytesToValue(
+            i32,
+            buffer[0..msg_size],
+        );
+        const location: f32 = @bitCast(location_int);
+        if (location == -std.math.inf(f32)) {
+            std.log.err("Carrier not found", .{});
+        } else {
+            std.log.info(
+                "Carrier {d} location: {d} mm",
+                .{ carrier_id, location },
+            );
+        }
+    } else return error.ServerNotConnected;
+}
+
+fn clientCarrierAxis(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const carrier_id = try std.fmt.parseInt(u16, params[1], 0);
+    if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const kind: @typeInfo(
+        mmc.Param,
+    ).@"union".tag_type.? = .carrier_axis;
+    const param: mmc.ParamType(kind) = .{
+        .line_idx = @intCast(line_idx),
+        .carrier_id = carrier_id,
+    };
+    if (server) |s| {
+        var buffer: [1024]u8 = undefined;
+        try sendMessage(kind, param, s);
+        const msg_size = try s.receive(&buffer);
+        std.log.debug("data: {s}", .{buffer[0..msg_size]});
+        var tokenizer = std.mem.tokenizeSequence(
+            u8,
+            buffer[0 .. msg_size - 1],
+            ",",
+        );
+        const total_axis = try std.fmt.parseInt(
+            usize,
+            tokenizer.next().?,
+            0,
+        );
+        for (0..total_axis) |_| {
+            std.log.info(
+                "Carrier {d} axis: {}",
+                .{ carrier_id, try std.fmt.parseInt(
+                    mcl.Axis.Id.Line,
+                    tokenizer.next().?,
+                    0,
+                ) },
+            );
+        }
+    } else return error.ServerNotConnected;
 }
 
 fn clientIsolate(params: [][]const u8) !void {
