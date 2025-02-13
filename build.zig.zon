@@ -4,8 +4,8 @@
     .minimum_zig_version = "0.14.0-dev.1392+37df6ba86",
     .dependencies = .{
         .network = .{
-            .url = "https://github.com/mochalins/zig-network/archive/359fec9.tar.gz",
-            .hash = "12206c7cbba4130ac158f7759c81ae4186c3e9f914bc79b0544492d85405ba01aaa4",
+            .url = "https://github.com/ikskuh/zig-network/archive/8db1aa2.tar.gz",
+            .hash = "12203ae90636504172540e6e0feb2881affd82768af6f0a379cb84a3f70b53705fe5",
         },
         .mcl = .{
             .url = "https://github.com/pmotionf/mcl/archive/121b08d.tar.gz",
@@ -14,6 +14,10 @@
         .chrono = .{
             .url = "https://github.com/pmotionf/chrono/archive/87e43a8.tar.gz",
             .hash = "1220fb5b921b8c857ad5bcb9010c29d3b0d8e7d0ee34102761405c34c8bf71766067",
+        },
+        .mmc = .{
+            .url = "https://github.com/pmotionf/mmc-config/archive/6126168.tar.gz",
+            .hash = "122060b91709be2a9b01bbe5787f01b1c2ed10d19b0884cba8613aa5523be7669773",
         },
     },
     .paths = .{""},
