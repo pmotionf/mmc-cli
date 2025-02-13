@@ -16,8 +16,8 @@
             .hash = "1220fb5b921b8c857ad5bcb9010c29d3b0d8e7d0ee34102761405c34c8bf71766067",
         },
         .mmc = .{
-            .url = "https://github.com/pmotionf/mmc-config/archive/0f03d57.tar.gz",
-            .hash = "1220027eb651a1d4ccf5c08c6dc0b6f91d005508aff4cdde3254919ad95fb1d8da4e",
+            .url = "https://github.com/pmotionf/mmc-config/archive/6126168.tar.gz",
+            .hash = "122060b91709be2a9b01bbe5787f01b1c2ed10d19b0884cba8613aa5523be7669773",
         },
     },
     .paths = .{""},

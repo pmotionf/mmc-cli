@@ -254,19 +254,15 @@ pub fn init(c: Config) !void {
     //     .execute = &mclAssertHall,
     // });
     // errdefer _ = command.registry.orderedRemove("ASSERT_HALL");
-    // try command.registry.put("CLEAR_ERRORS", .{
-    //     .name = "CLEAR_ERRORS",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "line name" },
-    //         .{ .name = "axis" },
-    //     },
-    //     .short_description = "Clear driver errors of specified axis.",
-    //     .long_description =
-    //     \\Clear driver errors of specified axis.
-    //     ,
-    //     .execute = &mclClearErrors,
-    // });
-    // errdefer _ = command.registry.orderedRemove("CLEAR_ERRORS");
+    try command.registry.put("CLEAR_ERRORS", .{
+        .name = "CLEAR_ERRORS",
+        .short_description = "Clear driver errors of all axis.",
+        .long_description =
+        \\Clear driver errors of all axis.
+        ,
+        .execute = &clientClearErrors,
+    });
+    errdefer _ = command.registry.orderedRemove("CLEAR_ERRORS");
     // try command.registry.put("RESET_MCL", .{
     //     .name = "RESET_MCL",
     //     .short_description = "Reset all MCL registers.",
@@ -276,19 +272,15 @@ pub fn init(c: Config) !void {
     //     .execute = &mclReset,
     // });
     // errdefer _ = command.registry.orderedRemove("RESET_MCL");
-    // try command.registry.put("CLEAR_CARRIER_INFO", .{
-    //     .name = "CLEAR_CARRIER_INFO",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "line name" },
-    //         .{ .name = "axis" },
-    //     },
-    //     .short_description = "Clear carrier information at specified axis.",
-    //     .long_description =
-    //     \\Clear carrier information at specified axis.
-    //     ,
-    //     .execute = &mclClearCarrierInfo,
-    // });
-    // errdefer _ = command.registry.orderedRemove("CLEAR_CARRIER_INFO");
+    try command.registry.put("CLEAR_CARRIER_INFO", .{
+        .name = "CLEAR_CARRIER_INFO",
+        .short_description = "Clear carrier information at all axis.",
+        .long_description =
+        \\Clear carrier information at all axis.
+        ,
+        .execute = &clientClearCarrierInfo,
+    });
+    errdefer _ = command.registry.orderedRemove("CLEAR_CARRIER_INFO");
     // try command.registry.put("RELEASE_AXIS_SERVO", .{
     //     .name = "RELEASE_AXIS_SERVO",
     //     .parameters = &[_]command.Command.Parameter{
@@ -1105,6 +1097,26 @@ fn clientAxisCarrier(params: [][]const u8) !void {
     } else return error.ServerNotConnected;
 }
 
+fn clientClearErrors(_: [][]const u8) !void {
+    const kind: @typeInfo(
+        mmc.Param,
+    ).@"union".tag_type.? = .clear_errors;
+    const param = {};
+    if (server) |s| {
+        try sendMessage(kind, param, s);
+    } else return error.ServerNotConnected;
+}
+
+fn clientClearCarrierInfo(_: [][]const u8) !void {
+    const kind: @typeInfo(
+        mmc.Param,
+    ).@"union".tag_type.? = .clear_carrier_info;
+    const param = {};
+    if (server) |s| {
+        try sendMessage(kind, param, s);
+    } else return error.ServerNotConnected;
+}
+
 fn clientCarrierLocation(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u16, params[1], 0);
@@ -1176,6 +1188,88 @@ fn clientCarrierAxis(params: [][]const u8) !void {
                     0,
                 ) },
             );
+        }
+    } else return error.ServerNotConnected;
+}
+
+fn clientHallStatus(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    var axis_id: u16 = 0;
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+    const axis_hall_status = enum(u2) {
+        off,
+        front_on,
+        back_on,
+        front_back_on,
+    };
+    if (params[1].len > 0) {
+        axis_id = try std.fmt.parseInt(u16, params[1], 0);
+        if (axis_id < 1 or axis_id > line.axes.len) {
+            return error.InvalidAxis;
+        }
+    }
+    const kind: @typeInfo(
+        mmc.Param,
+    ).@"union".tag_type.? = .get_hall_status;
+    const param: mmc.ParamType(kind) = .{
+        .line_idx = @intCast(line_idx),
+        .axis_id = axis_id,
+    };
+    if (server) |s| {
+        var buffer: [1024]u8 = undefined;
+        try sendMessage(kind, param, s);
+        const msg_size = try s.receive(&buffer);
+        std.log.debug("data: {s}", .{buffer[0..msg_size]});
+        var tokenizer = std.mem.tokenizeSequence(
+            u8,
+            buffer[0 .. msg_size - 1],
+            ",",
+        );
+        while (tokenizer.next()) |token| {
+            var hall_tokenizer = std.mem.tokenizeSequence(
+                u8,
+                token,
+                ":",
+            );
+            const axis_id_msg = try std.fmt.parseInt(
+                mcl.Axis.Id,
+                hall_tokenizer.next().?,
+                0,
+            );
+            const hall_status: axis_hall_status = @enumFromInt(
+                try std.fmt.parseInt(
+                    u2,
+                    hall_tokenizer.next().?,
+                    0,
+                ),
+            );
+            switch (hall_status) {
+                .back_on,
+                => {
+                    std.log.info(
+                        "Axis {} Hall Sensor: BACK - ON",
+                        .{axis_id_msg},
+                    );
+                },
+                .front_on => {
+                    std.log.info(
+                        "Axis {} Hall Sensor: FRONT - ON",
+                        .{axis_id_msg},
+                    );
+                },
+                .front_back_on => {
+                    std.log.info(
+                        "Axis {} Hall Sensor: FRONT - ON",
+                        .{axis_id_msg},
+                    );
+                    std.log.info(
+                        "Axis {} Hall Sensor: BACK - ON",
+                        .{axis_id_msg},
+                    );
+                },
+                .off => {},
+            }
         }
     } else return error.ServerNotConnected;
 }
