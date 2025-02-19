@@ -66,64 +66,64 @@ pub fn init(c: Config) !void {
     //     .execute = &mclDisconnect,
     // });
     // errdefer _ = command.registry.orderedRemove("DISCONNECT");
-    try command.registry.put("SET_SPEED", .{
-        .name = "SET_SPEED",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "speed percentage" },
-        },
-        .short_description = "Set the speed of carrier movement for a line.",
-        .long_description =
-        \\Set the speed of carrier movement for a line. The line is referenced
-        \\by its name. The speed must be a whole integer number between 1 and
-        \\100, inclusive.
-        ,
-        .execute = &clientSetSpeed,
-    });
-    errdefer _ = command.registry.orderedRemove("SET_SPEED");
-    try command.registry.put("SET_ACCELERATION", .{
-        .name = "SET_ACCELERATION",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "acceleration percentage" },
-        },
-        .short_description = "Set the acceleration of carrier movement.",
-        .long_description =
-        \\Set the acceleration of carrier movement for a line. The line is
-        \\referenced by its name. The acceleration must be a whole integer
-        \\number between 1 and 100, inclusive.
-        ,
-        .execute = &clientSetAcceleration,
-    });
-    errdefer _ = command.registry.orderedRemove("SET_ACCELERATION");
-    try command.registry.put("GET_SPEED", .{
-        .name = "GET_SPEED",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-        },
-        .short_description = "Get the speed of carrier movement for a line.",
-        .long_description =
-        \\Get the speed of carrier movement for a line. The line is referenced
-        \\by its name. The speed is a whole integer number between 1 and 100,
-        \\inclusive.
-        ,
-        .execute = &clientGetSpeed,
-    });
-    errdefer _ = command.registry.orderedRemove("GET_SPEED");
-    try command.registry.put("GET_ACCELERATION", .{
-        .name = "GET_ACCELERATION",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-        },
-        .short_description = "Get the acceleration of carrier movement.",
-        .long_description =
-        \\Get the acceleration of carrier movement for a line. The line is
-        \\referenced by its name. The acceleration is a whole integer number
-        \\between 1 and 100, inclusive.
-        ,
-        .execute = &clientGetAcceleration,
-    });
-    errdefer _ = command.registry.orderedRemove("GET_ACCELERATION");
+    // try command.registry.put("SET_SPEED", .{
+    //     .name = "SET_SPEED",
+    //     .parameters = &[_]command.Command.Parameter{
+    //         .{ .name = "line name" },
+    //         .{ .name = "speed percentage" },
+    //     },
+    //     .short_description = "Set the speed of carrier movement for a line.",
+    //     .long_description =
+    //     \\Set the speed of carrier movement for a line. The line is referenced
+    //     \\by its name. The speed must be a whole integer number between 1 and
+    //     \\100, inclusive.
+    //     ,
+    //     .execute = &clientSetSpeed,
+    // });
+    // errdefer _ = command.registry.orderedRemove("SET_SPEED");
+    // try command.registry.put("SET_ACCELERATION", .{
+    //     .name = "SET_ACCELERATION",
+    //     .parameters = &[_]command.Command.Parameter{
+    //         .{ .name = "line name" },
+    //         .{ .name = "acceleration percentage" },
+    //     },
+    //     .short_description = "Set the acceleration of carrier movement.",
+    //     .long_description =
+    //     \\Set the acceleration of carrier movement for a line. The line is
+    //     \\referenced by its name. The acceleration must be a whole integer
+    //     \\number between 1 and 100, inclusive.
+    //     ,
+    //     .execute = &clientSetAcceleration,
+    // });
+    // errdefer _ = command.registry.orderedRemove("SET_ACCELERATION");
+    // try command.registry.put("GET_SPEED", .{
+    //     .name = "GET_SPEED",
+    //     .parameters = &[_]command.Command.Parameter{
+    //         .{ .name = "line name" },
+    //     },
+    //     .short_description = "Get the speed of carrier movement for a line.",
+    //     .long_description =
+    //     \\Get the speed of carrier movement for a line. The line is referenced
+    //     \\by its name. The speed is a whole integer number between 1 and 100,
+    //     \\inclusive.
+    //     ,
+    //     .execute = &clientGetSpeed,
+    // });
+    // errdefer _ = command.registry.orderedRemove("GET_SPEED");
+    // try command.registry.put("GET_ACCELERATION", .{
+    //     .name = "GET_ACCELERATION",
+    //     .parameters = &[_]command.Command.Parameter{
+    //         .{ .name = "line name" },
+    //     },
+    //     .short_description = "Get the acceleration of carrier movement.",
+    //     .long_description =
+    //     \\Get the acceleration of carrier movement for a line. The line is
+    //     \\referenced by its name. The acceleration is a whole integer number
+    //     \\between 1 and 100, inclusive.
+    //     ,
+    //     .execute = &clientGetAcceleration,
+    // });
+    // errdefer _ = command.registry.orderedRemove("GET_ACCELERATION");
     try command.registry.put("PRINT_X", .{
         .name = "PRINT_X",
         .parameters = &[_]command.Command.Parameter{
@@ -180,80 +180,80 @@ pub fn init(c: Config) !void {
         .execute = &clientStationWw,
     });
     errdefer _ = command.registry.orderedRemove("PRINT_WW");
-    try command.registry.put("AXIS_CARRIER", .{
-        .name = "AXIS_CARRIER",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-        },
-        .short_description = "Display carrier on given axis, if exists.",
-        .long_description =
-        \\If a carrier is recognized on the provided axis, print its carrier ID.
-        ,
-        .execute = &clientAxisCarrier,
-    });
-    errdefer _ = command.registry.orderedRemove("AXIS_CARRIER");
-    try command.registry.put("CARRIER_LOCATION", .{
-        .name = "CARRIER_LOCATION",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "carrier" },
-        },
-        .short_description = "Display a carrier's location.",
-        .long_description =
-        \\Print a given carrier's location if it is currently recognized in the
-        \\provided line.
-        ,
-        .execute = &clientCarrierLocation,
-    });
-    errdefer _ = command.registry.orderedRemove("CARRIER_LOCATION");
-    try command.registry.put("CARRIER_AXIS", .{
-        .name = "CARRIER_AXIS",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "carrier" },
-        },
-        .short_description = "Display a carrier's axis/axes.",
-        .long_description =
-        \\Print a given carrier's axis if it is currently recognized in the
-        \\provided line.
-        ,
-        .execute = &clientCarrierAxis,
-    });
-    errdefer _ = command.registry.orderedRemove("CARRIER_AXIS");
-    try command.registry.put("HALL_STATUS", .{
-        .name = "HALL_STATUS",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis", .optional = true },
-        },
-        .short_description = "Display currently active hall sensors.",
-        .long_description =
-        \\List all active hall sensors. If an axis is provided, only hall
-        \\sensors in that axis will be listed. Otherwise, all active hall
-        \\sensors in the line will be listed.
-        ,
-        .execute = &clientHallStatus,
-    });
-    errdefer _ = command.registry.orderedRemove("HALL_STATUS");
-    try command.registry.put("ASSERT_HALL", .{
-        .name = "ASSERT_HALL",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-            .{ .name = "side" },
-            .{ .name = "on/off", .optional = true },
-        },
-        .short_description = "Check that a hall alarm is the expected state.",
-        .long_description =
-        \\Throw an error if a hall alarm is not in the specified state. Must
-        \\identify the hall alarm with line name, axis, and a side ("back" or
-        \\"front"). Can optionally specify the expected hall alarm state as
-        \\"off" or "on"; if not specified, will default to "on".
-        ,
-        .execute = &clientAssertHall,
-    });
-    errdefer _ = command.registry.orderedRemove("ASSERT_HALL");
+    // try command.registry.put("AXIS_CARRIER", .{
+    //     .name = "AXIS_CARRIER",
+    //     .parameters = &[_]command.Command.Parameter{
+    //         .{ .name = "line name" },
+    //         .{ .name = "axis" },
+    //     },
+    //     .short_description = "Display carrier on given axis, if exists.",
+    //     .long_description =
+    //     \\If a carrier is recognized on the provided axis, print its carrier ID.
+    //     ,
+    //     .execute = &clientAxisCarrier,
+    // });
+    // errdefer _ = command.registry.orderedRemove("AXIS_CARRIER");
+    // try command.registry.put("CARRIER_LOCATION", .{
+    //     .name = "CARRIER_LOCATION",
+    //     .parameters = &[_]command.Command.Parameter{
+    //         .{ .name = "line name" },
+    //         .{ .name = "carrier" },
+    //     },
+    //     .short_description = "Display a carrier's location.",
+    //     .long_description =
+    //     \\Print a given carrier's location if it is currently recognized in the
+    //     \\provided line.
+    //     ,
+    //     .execute = &clientCarrierLocation,
+    // });
+    // errdefer _ = command.registry.orderedRemove("CARRIER_LOCATION");
+    // try command.registry.put("CARRIER_AXIS", .{
+    //     .name = "CARRIER_AXIS",
+    //     .parameters = &[_]command.Command.Parameter{
+    //         .{ .name = "line name" },
+    //         .{ .name = "carrier" },
+    //     },
+    //     .short_description = "Display a carrier's axis/axes.",
+    //     .long_description =
+    //     \\Print a given carrier's axis if it is currently recognized in the
+    //     \\provided line.
+    //     ,
+    //     .execute = &clientCarrierAxis,
+    // });
+    // errdefer _ = command.registry.orderedRemove("CARRIER_AXIS");
+    // try command.registry.put("HALL_STATUS", .{
+    //     .name = "HALL_STATUS",
+    //     .parameters = &[_]command.Command.Parameter{
+    //         .{ .name = "line name" },
+    //         .{ .name = "axis", .optional = true },
+    //     },
+    //     .short_description = "Display currently active hall sensors.",
+    //     .long_description =
+    //     \\List all active hall sensors. If an axis is provided, only hall
+    //     \\sensors in that axis will be listed. Otherwise, all active hall
+    //     \\sensors in the line will be listed.
+    //     ,
+    //     .execute = &clientHallStatus,
+    // });
+    // errdefer _ = command.registry.orderedRemove("HALL_STATUS");
+    // try command.registry.put("ASSERT_HALL", .{
+    //     .name = "ASSERT_HALL",
+    //     .parameters = &[_]command.Command.Parameter{
+    //         .{ .name = "line name" },
+    //         .{ .name = "axis" },
+    //         .{ .name = "side" },
+    //         .{ .name = "on/off", .optional = true },
+    //     },
+    //     .short_description = "Check that a hall alarm is the expected state.",
+    //     .long_description =
+    //     \\Throw an error if a hall alarm is not in the specified state. Must
+    //     \\identify the hall alarm with line name, axis, and a side ("back" or
+    //     \\"front"). Can optionally specify the expected hall alarm state as
+    //     \\"off" or "on"; if not specified, will default to "on".
+    //     ,
+    //     .execute = &clientAssertHall,
+    // });
+    // errdefer _ = command.registry.orderedRemove("ASSERT_HALL");
     try command.registry.put("CLEAR_ERRORS", .{
         .name = "CLEAR_ERRORS",
         .short_description = "Clear driver errors of all axis.",
@@ -1371,7 +1371,7 @@ fn clientIsolate(params: [][]const u8) !void {
         } else break :link .no_direction;
     };
 
-    const axis_index: mmc.Axis.Index.LocalLine = @intCast(axis_id - 1);
+    const axis_index: mmc.Axis.Index.Line = @intCast(axis_id - 1);
     const kind: @typeInfo(
         mmc.Param,
     ).@"union".tag_type.? = .isolate;
@@ -1400,7 +1400,7 @@ fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
     if (axis_id == 0 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
-    const axis_index: mmc.Axis.Index.LocalLine = @intCast(axis_id - 1);
+    const axis_index: mmc.Axis.Index.Line = @intCast(axis_id - 1);
     const kind: @typeInfo(
         mmc.Param,
     ).@"union".tag_type.? = .move_carrier_axis;
@@ -1475,7 +1475,7 @@ fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
     }
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
-    const axis_index: mmc.Axis.Index.LocalLine = @intCast(axis_id - 1);
+    const axis_index: mmc.Axis.Index.Line = @intCast(axis_id - 1);
     const kind: @typeInfo(
         mmc.Param,
     ).@"union".tag_type.? = .spd_move_carrier_axis;
@@ -1660,7 +1660,7 @@ fn sendMessage(
     param: mmc.ParamType(kind),
     to_server: network.Socket,
 ) !void {
-    const msg: mmc.message.messageType(kind) =
+    const msg: mmc.Message(kind) =
         .{
         .kind = @intFromEnum(kind),
         ._unused_kind = 0,
