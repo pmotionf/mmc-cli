@@ -130,9 +130,9 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "axis" },
         },
-        .short_description = "Poll and print the X register of a station.",
+        .short_description = "Print the X register of a station.",
         .long_description =
-        \\Poll and print the X register of a station. The station X register to
+        \\Print the X register of a station. The station X register to
         \\be printed is determined by the provided axis.
         ,
         .execute = &clientStationX,
@@ -144,9 +144,9 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "axis" },
         },
-        .short_description = "Poll and print the Y register of a station.",
+        .short_description = "Print the Y register of a station.",
         .long_description =
-        \\Poll and print the Y register of a station. The station Y register to
+        \\Print the Y register of a station. The station Y register to
         \\be printed is determined by the provided axis.
         ,
         .execute = &clientStationY,
@@ -158,9 +158,9 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "axis" },
         },
-        .short_description = "Poll and print the Wr register of a station.",
+        .short_description = "Print the Wr register of a station.",
         .long_description =
-        \\Poll and print the Wr register of a station. The station Wr register
+        \\Print the Wr register of a station. The station Wr register
         \\to be printed is determined by the provided axis.
         ,
         .execute = &clientStationWr,
@@ -172,9 +172,9 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "axis" },
         },
-        .short_description = "Poll and print the Ww register of a station.",
+        .short_description = "Print the Ww register of a station.",
         .long_description =
-        \\Poll and print the Ww register of a station. The station Ww register
+        \\Print the Ww register of a station. The station Ww register
         \\to be printed is determined by the provided axis.
         ,
         .execute = &clientStationWw,
