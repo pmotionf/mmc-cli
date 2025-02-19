@@ -956,14 +956,14 @@ fn mclClearCarrierInfo(params: [][]const u8) !void {
 
     station.ww.target_axis_number = local_axis_index + 1;
     try station.sendWw();
-    try station.setY(0xC);
+    try station.setY(0x3);
     // Reset on error as well as on success.
-    defer station.resetY(0xC) catch {};
+    defer station.resetY(0x3) catch {};
 
     while (true) {
         try command.checkCommandInterrupt();
         try station.pollX();
-        if (station.x.axis_carrier_info_cleared) break;
+        if (station.x.axis_cleared_carrier) break;
     }
 }
 
@@ -2193,15 +2193,15 @@ fn waitCommandReady(station: Station) !void {
     while (true) {
         try command.checkCommandInterrupt();
         try station.pollX();
-        if (station.x.ready_for_command) break;
+        if (station.x.command_ready) break;
     }
 }
 
 fn sendCommand(station: Station) !void {
     std.log.debug("Sending command...", .{});
     try station.sendWw();
-    try station.setY(0x2);
-    errdefer station.resetY(0x2) catch {};
+    try station.setY(0x1);
+    errdefer station.resetY(0x1) catch {};
     while (true) {
         try command.checkCommandInterrupt();
         try station.pollX();
@@ -2209,19 +2209,19 @@ fn sendCommand(station: Station) !void {
             break;
         }
     }
-    try station.resetY(0x2);
+    try station.resetY(0x1);
 
     try station.pollWr();
     const command_response = station.wr.command_response;
 
     std.log.debug("Resetting command received flag...", .{});
-    try station.setY(0x3);
-    errdefer station.resetY(0x3) catch {};
+    try station.setY(0x2);
+    errdefer station.resetY(0x2) catch {};
     while (true) {
         try command.checkCommandInterrupt();
         try station.pollX();
         if (!station.x.command_received) {
-            try station.resetY(0x3);
+            try station.resetY(0x2);
             break;
         }
     }
