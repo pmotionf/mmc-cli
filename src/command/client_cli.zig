@@ -36,17 +36,6 @@ pub fn init(c: Config) !void {
         IP_address,
         port,
     });
-
-    // try command.registry.put("MCL_VERSION", .{
-    //     .name = "MCL_VERSION",
-    //     .short_description = "Display the version of MCL.",
-    //     .long_description =
-    //     \\Print the currently linked version of the PMF Motion Control Library
-    //     \\in Semantic Version format.
-    //     ,
-    //     .execute = &mclVersion,
-    // });
-    // errdefer _ = command.registry.orderedRemove("MCL_VERSION");
     try command.registry.put("CONNECT", .{
         .name = "CONNECT",
         .short_description = "Connect program to the server.",
@@ -222,39 +211,39 @@ pub fn init(c: Config) !void {
         .execute = &clientCarrierAxis,
     });
     errdefer _ = command.registry.orderedRemove("CARRIER_AXIS");
-    // try command.registry.put("HALL_STATUS", .{
-    //     .name = "HALL_STATUS",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "line name" },
-    //         .{ .name = "axis", .optional = true },
-    //     },
-    //     .short_description = "Display currently active hall sensors.",
-    //     .long_description =
-    //     \\List all active hall sensors. If an axis is provided, only hall
-    //     \\sensors in that axis will be listed. Otherwise, all active hall
-    //     \\sensors in the line will be listed.
-    //     ,
-    //     .execute = &clientHallStatus,
-    // });
-    // errdefer _ = command.registry.orderedRemove("HALL_STATUS");
-    // try command.registry.put("ASSERT_HALL", .{
-    //     .name = "ASSERT_HALL",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "line name" },
-    //         .{ .name = "axis" },
-    //         .{ .name = "side" },
-    //         .{ .name = "on/off", .optional = true },
-    //     },
-    //     .short_description = "Check that a hall alarm is the expected state.",
-    //     .long_description =
-    //     \\Throw an error if a hall alarm is not in the specified state. Must
-    //     \\identify the hall alarm with line name, axis, and a side ("back" or
-    //     \\"front"). Can optionally specify the expected hall alarm state as
-    //     \\"off" or "on"; if not specified, will default to "on".
-    //     ,
-    //     .execute = &clientAssertHall,
-    // });
-    // errdefer _ = command.registry.orderedRemove("ASSERT_HALL");
+    try command.registry.put("HALL_STATUS", .{
+        .name = "HALL_STATUS",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis", .optional = true },
+        },
+        .short_description = "Display currently active hall sensors.",
+        .long_description =
+        \\List all active hall sensors. If an axis is provided, only hall
+        \\sensors in that axis will be listed. Otherwise, all active hall
+        \\sensors in the line will be listed.
+        ,
+        .execute = &clientHallStatus,
+    });
+    errdefer _ = command.registry.orderedRemove("HALL_STATUS");
+    try command.registry.put("ASSERT_HALL", .{
+        .name = "ASSERT_HALL",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+            .{ .name = "side" },
+            .{ .name = "on/off", .optional = true },
+        },
+        .short_description = "Check that a hall alarm is the expected state.",
+        .long_description =
+        \\Throw an error if a hall alarm is not in the specified state. Must
+        \\identify the hall alarm with line name, axis, and a side ("back" or
+        \\"front"). Can optionally specify the expected hall alarm state as
+        \\"off" or "on"; if not specified, will default to "on".
+        ,
+        .execute = &clientAssertHall,
+    });
+    errdefer _ = command.registry.orderedRemove("ASSERT_HALL");
     try command.registry.put("CLEAR_ERRORS", .{
         .name = "CLEAR_ERRORS",
         .short_description = "Clear driver errors of all axis.",
@@ -1230,12 +1219,6 @@ fn clientHallStatus(params: [][]const u8) !void {
     var axis_id: mcl.Axis.Id.Line = 0;
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
-    const axis_hall_status = enum(u2) {
-        off,
-        front_on,
-        back_on,
-        front_back_on,
-    };
     if (params[1].len > 0) {
         axis_id = try std.fmt.parseInt(
             mcl.Axis.Id.Line,
@@ -1248,68 +1231,64 @@ fn clientHallStatus(params: [][]const u8) !void {
     }
     const kind: @typeInfo(
         mmc.Param,
-    ).@"union".tag_type.? = .get_hall_status;
+    ).@"union".tag_type.? = .get_status;
     const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .axis_id = axis_id,
+        .kind = .Hall,
     };
     if (server) |s| {
-        var buffer: [1024]u8 = undefined;
+        var buffer: [1_000_000]u8 = undefined;
         try sendMessage(kind, param, s);
         const msg_size = try s.receive(&buffer);
-        std.log.debug("data: {s}", .{buffer[0..msg_size]});
-        var tokenizer = std.mem.tokenizeSequence(
-            u8,
-            buffer[0 .. msg_size - 1],
-            ",",
+        var msg_bit_size: usize = 0;
+        const num_of_active_axis = std.mem.readPackedInt(
+            mmc.Axis.Id.Line,
+            buffer[0..msg_size],
+            0,
+            .little,
         );
-        while (tokenizer.next()) |token| {
-            var hall_tokenizer = std.mem.tokenizeSequence(
-                u8,
-                token,
-                ":",
+        msg_bit_size += @bitSizeOf(mmc.Axis.Id.Line);
+        const IntType =
+            @typeInfo(SystemState.Hall).@"struct".backing_integer.?;
+        var detected_active_axis: usize = 0;
+        while (detected_active_axis < num_of_active_axis) {
+            const hall_sensor_int = std.mem.readPackedInt(
+                IntType,
+                &buffer,
+                msg_bit_size,
+                .little,
             );
-            const axis_id_msg = try std.fmt.parseInt(
-                mcl.Axis.Id.Line,
-                hall_tokenizer.next().?,
-                0,
+            detected_active_axis += 1;
+            msg_bit_size += @bitSizeOf(IntType);
+            const hall_sensor: SystemState.Hall = @bitCast(hall_sensor_int);
+            std.log.debug(
+                "line_id: {}\n axis_id: {}\n front hall sensor: {}\n back hall sensor: {}",
+                .{
+                    hall_sensor.line_id,
+                    hall_sensor.axis_id,
+                    hall_sensor.hall_states.front,
+                    hall_sensor.hall_states.back,
+                },
             );
-            if (axis_id_msg == 0) {
-                std.log.info("No hall sensor is active", .{});
-                break;
-            }
-            const hall_status: axis_hall_status = @enumFromInt(
-                try std.fmt.parseInt(
-                    u2,
-                    hall_tokenizer.next().?,
-                    0,
-                ),
-            );
-            switch (hall_status) {
-                .back_on,
-                => {
+            if (axis_id == 0) {
+                std.log.info(
+                    "Axis {} Hall Sensor:\n\t FRONT - {s}\n\t BACK - {s}",
+                    .{
+                        hall_sensor.axis_id,
+                        if (hall_sensor.hall_states.front) "ON" else "OFF",
+                        if (hall_sensor.hall_states.back) "ON" else "OFF",
+                    },
+                );
+            } else {
+                if (hall_sensor.axis_id == axis_id) {
                     std.log.info(
-                        "Axis {} Hall Sensor: BACK - ON",
-                        .{axis_id_msg},
+                        "Axis {} Hall Sensor:\n\t FRONT - {s}\n\t BACK - {s}",
+                        .{
+                            hall_sensor.axis_id,
+                            if (hall_sensor.hall_states.front) "ON" else "OFF",
+                            if (hall_sensor.hall_states.back) "ON" else "OFF",
+                        },
                     );
-                },
-                .front_on => {
-                    std.log.info(
-                        "Axis {} Hall Sensor: FRONT - ON",
-                        .{axis_id_msg},
-                    );
-                },
-                .front_back_on => {
-                    std.log.info(
-                        "Axis {} Hall Sensor: FRONT - ON",
-                        .{axis_id_msg},
-                    );
-                    std.log.info(
-                        "Axis {} Hall Sensor: BACK - ON",
-                        .{axis_id_msg},
-                    );
-                },
-                .off => {},
+                }
             }
         }
     } else return error.ServerNotConnected;
@@ -1336,7 +1315,6 @@ fn clientAssertHall(params: [][]const u8) !void {
     if (axis_id == 0 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
-    const axis_idx: mcl.Axis.Index.Line = @intCast(axis_id - 1);
 
     var alarm_on: bool = true;
     if (params[3].len > 0) {
@@ -1348,34 +1326,60 @@ fn clientAssertHall(params: [][]const u8) !void {
     }
     const kind: @typeInfo(
         mmc.Param,
-    ).@"union".tag_type.? = .assert_hall;
+    ).@"union".tag_type.? = .get_status;
     const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .axis_idx = axis_idx,
-        .side = std.meta.stringToEnum(mmc.Direction, @tagName(side)).?,
+        .kind = .Hall,
     };
     if (server) |s| {
-        var buffer: [1024]u8 = undefined;
+        var buffer: [1_000_000]u8 = undefined;
         try sendMessage(kind, param, s);
         const msg_size = try s.receive(&buffer);
-        std.log.debug("data: {s}", .{buffer[0..msg_size]});
-        const alarm_msg: bool = @bitCast(std.mem.readPackedInt(
-            u1,
-            &buffer,
+        var msg_bit_size: usize = 0;
+        const num_of_active_axis = std.mem.readPackedInt(
+            mmc.Axis.Id.Line,
+            buffer[0..msg_size],
             0,
             .little,
-        ));
-        switch (side) {
-            .backward => {
-                if (alarm_msg != alarm_on) {
-                    return error.UnexpectedHallAlarm;
+        );
+        msg_bit_size += @bitSizeOf(mmc.Axis.Id.Line);
+        const IntType =
+            @typeInfo(SystemState.Hall).@"struct".backing_integer.?;
+        var detected_active_axis: usize = 0;
+        while (detected_active_axis < num_of_active_axis) {
+            const hall_sensor_int = std.mem.readPackedInt(
+                IntType,
+                &buffer,
+                msg_bit_size,
+                .little,
+            );
+            detected_active_axis += 1;
+            msg_bit_size += @bitSizeOf(IntType);
+            const hall_sensor: SystemState.Hall = @bitCast(hall_sensor_int);
+            std.log.debug(
+                "line_id: {}\n axis_id: {}\n front hall sensor: {}\n back hall sensor: {}",
+                .{
+                    hall_sensor.line_id,
+                    hall_sensor.axis_id,
+                    hall_sensor.hall_states.front,
+                    hall_sensor.hall_states.back,
+                },
+            );
+            if (hall_sensor.axis_id == axis_id and
+                hall_sensor.line_id == line_idx + 1)
+            {
+                switch (side) {
+                    .backward => {
+                        if (hall_sensor.hall_states.back != alarm_on) {
+                            return error.UnexpectedHallAlarm;
+                        }
+                    },
+                    .forward => {
+                        if (hall_sensor.hall_states.front != alarm_on) {
+                            return error.UnexpectedHallAlarm;
+                        }
+                    },
                 }
-            },
-            .forward => {
-                if (alarm_msg != alarm_on) {
-                    return error.UnexpectedHallAlarm;
-                }
-            },
+            }
         }
     } else return error.ServerNotConnected;
 }
