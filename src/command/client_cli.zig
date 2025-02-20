@@ -11,6 +11,7 @@ var line_speeds: []u7 = undefined;
 var line_accelerations: []u7 = undefined;
 const Direction = mmc.Direction;
 const Station = mmc.Station;
+const SystemState = mmc.SystemState;
 
 var IP_address: []u8 = undefined;
 var port: u16 = undefined;
@@ -180,18 +181,18 @@ pub fn init(c: Config) !void {
         .execute = &clientStationWw,
     });
     errdefer _ = command.registry.orderedRemove("PRINT_WW");
-    // try command.registry.put("AXIS_CARRIER", .{
-    //     .name = "AXIS_CARRIER",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "line name" },
-    //         .{ .name = "axis" },
-    //     },
-    //     .short_description = "Display carrier on given axis, if exists.",
-    //     .long_description =
-    //     \\If a carrier is recognized on the provided axis, print its carrier ID.
-    //     ,
-    //     .execute = &clientAxisCarrier,
-    // });
+    try command.registry.put("AXIS_CARRIER", .{
+        .name = "AXIS_CARRIER",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+        },
+        .short_description = "Display carrier on given axis, if exists.",
+        .long_description =
+        \\If a carrier is recognized on the provided axis, print its carrier ID.
+        ,
+        .execute = &clientAxisCarrier,
+    });
     // errdefer _ = command.registry.orderedRemove("AXIS_CARRIER");
     // try command.registry.put("CARRIER_LOCATION", .{
     //     .name = "CARRIER_LOCATION",
@@ -991,34 +992,62 @@ fn clientAxisCarrier(params: [][]const u8) !void {
         return error.InvalidAxis;
     }
 
-    const axis_idx: mcl.Axis.Index.Line = @intCast(axis_id - 1);
     const kind: @typeInfo(
         mmc.Param,
-    ).@"union".tag_type.? = .axis_carrier;
+    ).@"union".tag_type.? = .get_status;
     const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .axis_idx = axis_idx,
+        .kind = .Carrier,
     };
     if (server) |s| {
-        var buffer: [@sizeOf(u16)]u8 = undefined;
+        var buffer: [1_000_000]u8 = undefined;
         try sendMessage(kind, param, s);
         const msg_size = try s.receive(&buffer);
-        std.log.debug("data: {s}", .{buffer[0..msg_size]});
-        const carrier_id = std.mem.bytesToValue(
-            u16,
+        var msg_bit_size: usize = 0;
+        const num_of_carriers = std.mem.readPackedInt(
+            u10,
             buffer[0..msg_size],
+            0,
+            .little,
         );
-        if (carrier_id != 0) {
-            std.log.info(
-                "Carrier {d} on axis {d}.\n",
-                .{ carrier_id, axis_id },
+        msg_bit_size += @bitSizeOf(u10);
+        const IntType =
+            @typeInfo(SystemState.Carrier).@"struct".backing_integer.?;
+        var detected_carriers: usize = 0;
+        while (detected_carriers < num_of_carriers) {
+            const carrier_int = std.mem.readPackedInt(
+                IntType,
+                &buffer,
+                msg_bit_size,
+                .little,
             );
-        } else {
-            std.log.info(
-                "No carrier recognized on axis {d}.\n",
-                .{axis_id},
+            detected_carriers += 1;
+            msg_bit_size += @bitSizeOf(IntType);
+            const carrier: SystemState.Carrier = @bitCast(carrier_int);
+            std.log.debug(
+                "carrier_id: {}\n first_axis: {}\n second_axis: {}\n location: {}",
+                .{
+                    carrier.carrier_id,
+                    carrier.axis_ids.first,
+                    carrier.axis_ids.second,
+                    carrier.location,
+                },
             );
+            if (carrier.line_id == line_idx + 1 and
+                carrier.carrier_id != 0 and
+                (carrier.axis_ids.first == axis_id or
+                carrier.axis_ids.second == axis_id))
+            {
+                std.log.info(
+                    "Carrier {d} on axis {d}.\n",
+                    .{ carrier.carrier_id, axis_id },
+                );
+                return;
+            }
         }
+        std.log.info(
+            "No carrier recognized on axis {d}.\n",
+            .{axis_id},
+        );
     } else return error.ServerNotConnected;
 }
 

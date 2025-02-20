@@ -17,8 +17,8 @@
             .hash = "chrono-0.1.0-uVd76GvCAwAvWrHupKdlB_UrmfZHRuVP-P4Xi_G8hz3R",
         },
         .mmc = .{
-            .url = "https://github.com/pmotionf/mmc-config/archive/8954586.tar.gz",
-            .hash = "1220f3721134da001ba047e3c0eb94b3ab00e73a9cec9f1afa96aa42cede5728935b",
+            .url = "https://github.com/pmotionf/mmc-config/archive/6c487da.tar.gz",
+            .hash = "12203e29cde84a631ffbca39c65efc8d0d851427b67969239fdebef3785129ecc4e8",
         },
     },
     .paths = .{""},
