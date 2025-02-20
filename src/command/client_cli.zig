@@ -193,35 +193,35 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientAxisCarrier,
     });
-    // errdefer _ = command.registry.orderedRemove("AXIS_CARRIER");
-    // try command.registry.put("CARRIER_LOCATION", .{
-    //     .name = "CARRIER_LOCATION",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "line name" },
-    //         .{ .name = "carrier" },
-    //     },
-    //     .short_description = "Display a carrier's location.",
-    //     .long_description =
-    //     \\Print a given carrier's location if it is currently recognized in the
-    //     \\provided line.
-    //     ,
-    //     .execute = &clientCarrierLocation,
-    // });
-    // errdefer _ = command.registry.orderedRemove("CARRIER_LOCATION");
-    // try command.registry.put("CARRIER_AXIS", .{
-    //     .name = "CARRIER_AXIS",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "line name" },
-    //         .{ .name = "carrier" },
-    //     },
-    //     .short_description = "Display a carrier's axis/axes.",
-    //     .long_description =
-    //     \\Print a given carrier's axis if it is currently recognized in the
-    //     \\provided line.
-    //     ,
-    //     .execute = &clientCarrierAxis,
-    // });
-    // errdefer _ = command.registry.orderedRemove("CARRIER_AXIS");
+    errdefer _ = command.registry.orderedRemove("AXIS_CARRIER");
+    try command.registry.put("CARRIER_LOCATION", .{
+        .name = "CARRIER_LOCATION",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "carrier" },
+        },
+        .short_description = "Display a carrier's location.",
+        .long_description =
+        \\Print a given carrier's location if it is currently recognized in the
+        \\provided line.
+        ,
+        .execute = &clientCarrierLocation,
+    });
+    errdefer _ = command.registry.orderedRemove("CARRIER_LOCATION");
+    try command.registry.put("CARRIER_AXIS", .{
+        .name = "CARRIER_AXIS",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "carrier" },
+        },
+        .short_description = "Display a carrier's axis/axes.",
+        .long_description =
+        \\Print a given carrier's axis if it is currently recognized in the
+        \\provided line.
+        ,
+        .execute = &clientCarrierAxis,
+    });
+    errdefer _ = command.registry.orderedRemove("CARRIER_AXIS");
     // try command.registry.put("HALL_STATUS", .{
     //     .name = "HALL_STATUS",
     //     .parameters = &[_]command.Command.Parameter{
@@ -1102,29 +1102,58 @@ fn clientCarrierLocation(params: [][]const u8) !void {
     const line_idx: usize = try matchLine(line_names, line_name);
     const kind: @typeInfo(
         mmc.Param,
-    ).@"union".tag_type.? = .carrier_location;
+    ).@"union".tag_type.? = .get_status;
     const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .carrier_id = carrier_id,
+        .kind = .Carrier,
     };
     if (server) |s| {
-        var buffer: [@sizeOf(i32)]u8 = undefined;
+        var buffer: [1_000_000]u8 = undefined;
         try sendMessage(kind, param, s);
         const msg_size = try s.receive(&buffer);
-        std.log.debug("data: {s}", .{buffer[0..msg_size]});
-        const location_int = std.mem.bytesToValue(
-            i32,
+        var msg_bit_size: usize = 0;
+        const num_of_carriers = std.mem.readPackedInt(
+            u10,
             buffer[0..msg_size],
+            0,
+            .little,
         );
-        const location: f32 = @bitCast(location_int);
-        if (location == -std.math.inf(f32)) {
-            std.log.err("Carrier not found", .{});
-        } else {
-            std.log.info(
-                "Carrier {d} location: {d} mm",
-                .{ carrier_id, location },
+        msg_bit_size += @bitSizeOf(u10);
+        const IntType =
+            @typeInfo(SystemState.Carrier).@"struct".backing_integer.?;
+        var detected_carriers: usize = 0;
+        while (detected_carriers < num_of_carriers) {
+            const carrier_int = std.mem.readPackedInt(
+                IntType,
+                &buffer,
+                msg_bit_size,
+                .little,
             );
+            detected_carriers += 1;
+            msg_bit_size += @bitSizeOf(IntType);
+            const carrier: SystemState.Carrier = @bitCast(carrier_int);
+            std.log.debug(
+                "carrier_id: {}\n first_axis: {}\n second_axis: {}\n location: {}",
+                .{
+                    carrier.carrier_id,
+                    carrier.axis_ids.first,
+                    carrier.axis_ids.second,
+                    carrier.location,
+                },
+            );
+            if (carrier.line_id == line_idx + 1 and
+                carrier.carrier_id == carrier_id)
+            {
+                std.log.info(
+                    "Carrier {d} location: {d} mm",
+                    .{ carrier.carrier_id, carrier.location },
+                );
+                return;
+            }
         }
+        std.log.err(
+            "Carrier not found",
+            .{},
+        );
     } else return error.ServerNotConnected;
 }
 
@@ -1136,36 +1165,63 @@ fn clientCarrierAxis(params: [][]const u8) !void {
     const line_idx: usize = try matchLine(line_names, line_name);
     const kind: @typeInfo(
         mmc.Param,
-    ).@"union".tag_type.? = .carrier_axis;
+    ).@"union".tag_type.? = .get_status;
     const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .carrier_id = carrier_id,
+        .kind = .Carrier,
     };
     if (server) |s| {
-        var buffer: [1024]u8 = undefined;
+        var buffer: [1_000_000]u8 = undefined;
         try sendMessage(kind, param, s);
         const msg_size = try s.receive(&buffer);
-        std.log.debug("data: {s}", .{buffer[0..msg_size]});
-        var tokenizer = std.mem.tokenizeSequence(
-            u8,
-            buffer[0 .. msg_size - 1],
-            ",",
-        );
-        const total_axis = try std.fmt.parseInt(
-            usize,
-            tokenizer.next().?,
+        var msg_bit_size: usize = 0;
+        const num_of_carriers = std.mem.readPackedInt(
+            u10,
+            buffer[0..msg_size],
             0,
+            .little,
         );
-        for (0..total_axis) |_| {
-            std.log.info(
-                "Carrier {d} axis: {}",
-                .{ carrier_id, try std.fmt.parseInt(
-                    mcl.Axis.Id.Line,
-                    tokenizer.next().?,
-                    0,
-                ) },
+        msg_bit_size += @bitSizeOf(u10);
+        const IntType =
+            @typeInfo(SystemState.Carrier).@"struct".backing_integer.?;
+        var detected_carriers: usize = 0;
+        while (detected_carriers < num_of_carriers) {
+            const carrier_int = std.mem.readPackedInt(
+                IntType,
+                &buffer,
+                msg_bit_size,
+                .little,
             );
+            detected_carriers += 1;
+            msg_bit_size += @bitSizeOf(IntType);
+            const carrier: SystemState.Carrier = @bitCast(carrier_int);
+            std.log.debug(
+                "carrier_id: {}\n first_axis: {}\n second_axis: {}\n location: {}",
+                .{
+                    carrier.carrier_id,
+                    carrier.axis_ids.first,
+                    carrier.axis_ids.second,
+                    carrier.location,
+                },
+            );
+            if (carrier.line_id == line_idx + 1 and
+                carrier.carrier_id == carrier_id)
+            {
+                std.log.info(
+                    "Carrier {d} axis: {}",
+                    .{ carrier.carrier_id, carrier.axis_ids.first },
+                );
+                if (carrier.axis_ids.second == 0) return;
+                std.log.info(
+                    "Carrier {d} axis: {}",
+                    .{ carrier.carrier_id, carrier.axis_ids.second },
+                );
+                return;
+            }
         }
+        std.log.err(
+            "Carrier not found",
+            .{},
+        );
     } else return error.ServerNotConnected;
 }
 
