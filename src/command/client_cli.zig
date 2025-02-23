@@ -725,7 +725,11 @@ pub fn clientConnect(_: [][]const u8) !void {
         }
         try mcl.Config.validate(.{ .lines = lines });
         try mcl.init(allocator, .{ .lines = lines });
+        line_speeds = try allocator.alloc(u7, line_numbers);
+        line_accelerations = try allocator.alloc(u7, line_numbers);
         for (0..line_numbers) |i| {
+            line_speeds[i] = 40;
+            line_accelerations[i] = 40;
             std.log.debug(
                 "line: {s}, #axis: {}, range info: {s}:{}:{}",
                 .{
@@ -1397,28 +1401,24 @@ fn clientMclReset(_: [][]const u8) !void {
 fn clientCalibrate(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx: usize = try matchLine(line_names, line_name);
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .calibrate;
-    const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-    };
+
+    var param = std.mem.zeroes(mmc.ParamType(.set_command));
+    param.command_code = .Calibration;
+    param.line_idx = @truncate(line_idx);
     if (server) |s| {
-        try sendMessage(kind, param, s);
+        try sendMessage(.set_command, param, s);
     } else return error.ServerNotConnected;
 }
 
 fn clientSetLineZero(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx: usize = try matchLine(line_names, line_name);
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .set_line_zero;
-    const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-    };
+    var param = std.mem.zeroes(mmc.ParamType(.set_command));
+    param.command_code = .SetLineZero;
+    param.line_idx = @truncate(line_idx);
+
     if (server) |s| {
-        try sendMessage(kind, param, s);
+        try sendMessage(.set_command, param, s);
     } else return error.ServerNotConnected;
 }
 
@@ -1442,8 +1442,8 @@ fn clientIsolate(params: [][]const u8) !void {
         }
     };
 
-    const carrier_id: u16 = if (params[3].len > 0)
-        try std.fmt.parseInt(u16, params[3], 0)
+    const carrier_id: u10 = if (params[3].len > 0)
+        try std.fmt.parseInt(u10, params[3], 0)
     else
         0;
     const link_axis: mmc.Direction = link: {
@@ -1461,18 +1461,18 @@ fn clientIsolate(params: [][]const u8) !void {
     };
 
     const axis_index: mmc.Axis.Index.Line = @intCast(axis_id - 1);
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .isolate;
-    const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .axis_idx = axis_index,
-        .direction = dir,
-        .carrier_id = carrier_id,
-        .link_axis = link_axis,
-    };
+
+    var param = std.mem.zeroes(mmc.ParamType(.set_command));
+    param.command_code = if (dir == .forward)
+        .IsolateForward
+    else
+        .IsolateBackward;
+    param.line_idx = @truncate(line_idx);
+    param.axis_idx = axis_index;
+    param.carrier_id = carrier_id;
+    param.link_axis = link_axis;
     if (server) |s| try sendMessage(
-        kind,
+        .set_command,
         param,
         s,
     ) else return error.ServerNotConnected;
@@ -1480,7 +1480,7 @@ fn clientIsolate(params: [][]const u8) !void {
 
 fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const carrier_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
+    const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
     const axis_id: u16 = try std.fmt.parseInt(u16, params[2], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
@@ -1490,16 +1490,16 @@ fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
         return error.InvalidAxis;
     }
     const axis_index: mmc.Axis.Index.Line = @intCast(axis_id - 1);
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .move_carrier_axis;
-    const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .carrier_id = carrier_id,
-        .axis_idx = axis_index,
-    };
+
+    var param = std.mem.zeroes(mmc.ParamType(.set_command));
+    param.command_code = .PositionMoveCarrierAxis;
+    param.line_idx = @truncate(line_idx);
+    param.axis_idx = axis_index;
+    param.carrier_id = carrier_id;
+    param.speed_percentage = line_speeds[line_idx];
+    param.acceleration_percentage = line_accelerations[line_idx];
     if (server) |s| try sendMessage(
-        kind,
+        .set_command,
         param,
         s,
     ) else return error.ServerNotConnected;
@@ -1507,21 +1507,21 @@ fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
 
 fn clientCarrierPosMoveLocation(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const carrier_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
+    const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
     const line_idx: usize = try matchLine(line_names, line_name);
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .move_carrier_location;
-    const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .carrier_id = carrier_id,
-        .location = location,
-    };
+
+    var param = std.mem.zeroes(mmc.ParamType(.set_command));
+    param.command_code = .PositionMoveCarrierLocation;
+    param.line_idx = @truncate(line_idx);
+    param.location_distance = location;
+    param.carrier_id = carrier_id;
+    param.speed_percentage = line_speeds[line_idx];
+    param.acceleration_percentage = line_accelerations[line_idx];
     if (server) |s| try sendMessage(
-        kind,
+        .set_command,
         param,
         s,
     ) else return error.ServerNotConnected;
@@ -1529,7 +1529,7 @@ fn clientCarrierPosMoveLocation(params: [][]const u8) !void {
 
 fn clientCarrierPosMoveDistance(params: [][]const u8) !void {
     const line_name = params[0];
-    const carrier_id = try std.fmt.parseInt(u16, params[1], 0);
+    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     const distance = try std.fmt.parseFloat(f32, params[2]);
     if (distance == 0) {
         std.log.err("Zero distance detected", .{});
@@ -1538,16 +1538,15 @@ fn clientCarrierPosMoveDistance(params: [][]const u8) !void {
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     const line_idx: usize = try matchLine(line_names, line_name);
 
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .move_carrier_distance;
-    const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .carrier_id = carrier_id,
-        .distance = distance,
-    };
+    var param = std.mem.zeroes(mmc.ParamType(.set_command));
+    param.command_code = .PositionMoveCarrierDistance;
+    param.line_idx = @truncate(line_idx);
+    param.location_distance = distance;
+    param.carrier_id = carrier_id;
+    param.speed_percentage = line_speeds[line_idx];
+    param.acceleration_percentage = line_accelerations[line_idx];
     if (server) |s| try sendMessage(
-        kind,
+        .set_command,
         param,
         s,
     ) else return error.ServerNotConnected;
@@ -1555,7 +1554,7 @@ fn clientCarrierPosMoveDistance(params: [][]const u8) !void {
 
 fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const carrier_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
+    const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
     const axis_id: u16 = try std.fmt.parseInt(u16, params[2], 0);
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
@@ -1565,16 +1564,16 @@ fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
     const axis_index: mmc.Axis.Index.Line = @intCast(axis_id - 1);
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .spd_move_carrier_axis;
-    const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .carrier_id = carrier_id,
-        .axis_idx = axis_index,
-    };
+
+    var param = std.mem.zeroes(mmc.ParamType(.set_command));
+    param.command_code = .SpeedMoveCarrierAxis;
+    param.line_idx = @truncate(line_idx);
+    param.axis_idx = axis_index;
+    param.carrier_id = carrier_id;
+    param.speed_percentage = line_speeds[line_idx];
+    param.acceleration_percentage = line_accelerations[line_idx];
     if (server) |s| try sendMessage(
-        kind,
+        .set_command,
         param,
         s,
     ) else return error.ServerNotConnected;
@@ -1582,21 +1581,21 @@ fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
 
 fn clientCarrierSpdMoveLocation(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const carrier_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
+    const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
     const line_idx: usize = try matchLine(line_names, line_name);
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .spd_move_carrier_location;
-    const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .carrier_id = carrier_id,
-        .location = location,
-    };
+
+    var param = std.mem.zeroes(mmc.ParamType(.set_command));
+    param.command_code = .SpeedMoveCarrierLocation;
+    param.line_idx = @truncate(line_idx);
+    param.location_distance = location;
+    param.carrier_id = carrier_id;
+    param.speed_percentage = line_speeds[line_idx];
+    param.acceleration_percentage = line_accelerations[line_idx];
     if (server) |s| try sendMessage(
-        kind,
+        .set_command,
         param,
         s,
     ) else return error.ServerNotConnected;
@@ -1604,7 +1603,7 @@ fn clientCarrierSpdMoveLocation(params: [][]const u8) !void {
 
 fn clientCarrierSpdMoveDistance(params: [][]const u8) !void {
     const line_name = params[0];
-    const carrier_id = try std.fmt.parseInt(u16, params[1], 0);
+    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     const distance = try std.fmt.parseFloat(f32, params[2]);
     const line_idx: usize = try matchLine(line_names, line_name);
     if (distance == 0) {
@@ -1612,16 +1611,16 @@ fn clientCarrierSpdMoveDistance(params: [][]const u8) !void {
         return;
     }
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .spd_move_carrier_distance;
-    const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .carrier_id = carrier_id,
-        .distance = distance,
-    };
+
+    var param = std.mem.zeroes(mmc.ParamType(.set_command));
+    param.command_code = .SpeedMoveCarrierDistance;
+    param.line_idx = @truncate(line_idx);
+    param.location_distance = distance;
+    param.carrier_id = carrier_id;
+    param.speed_percentage = line_speeds[line_idx];
+    param.acceleration_percentage = line_accelerations[line_idx];
     if (server) |s| try sendMessage(
-        kind,
+        .set_command,
         param,
         s,
     ) else return error.ServerNotConnected;
@@ -1629,18 +1628,18 @@ fn clientCarrierSpdMoveDistance(params: [][]const u8) !void {
 
 fn clientCarrierPushForward(params: [][]const u8) !void {
     const line_name = params[0];
-    const carrier_id = try std.fmt.parseInt(u16, params[1], 0);
+    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     const line_idx: usize = try matchLine(line_names, line_name);
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .push_carrier_forward;
-    const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .carrier_id = carrier_id,
-    };
+
+    var param = std.mem.zeroes(mmc.ParamType(.set_command));
+    param.command_code = .PushAxisCarrierForward;
+    param.line_idx = @truncate(line_idx);
+    param.carrier_id = carrier_id;
+    param.speed_percentage = line_speeds[line_idx];
+    param.acceleration_percentage = line_accelerations[line_idx];
     if (server) |s| try sendMessage(
-        kind,
+        .set_command,
         param,
         s,
     ) else return error.ServerNotConnected;
@@ -1648,18 +1647,18 @@ fn clientCarrierPushForward(params: [][]const u8) !void {
 
 fn clientCarrierPushBackward(params: [][]const u8) !void {
     const line_name = params[0];
-    const carrier_id = try std.fmt.parseInt(u16, params[1], 0);
+    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     const line_idx: usize = try matchLine(line_names, line_name);
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .push_carrier_backward;
-    const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .carrier_id = carrier_id,
-    };
+
+    var param = std.mem.zeroes(mmc.ParamType(.set_command));
+    param.command_code = .PushAxisCarrierBackward;
+    param.line_idx = @truncate(line_idx);
+    param.carrier_id = carrier_id;
+    param.speed_percentage = line_speeds[line_idx];
+    param.acceleration_percentage = line_accelerations[line_idx];
     if (server) |s| try sendMessage(
-        kind,
+        .set_command,
         param,
         s,
     ) else return error.ServerNotConnected;
@@ -1668,22 +1667,22 @@ fn clientCarrierPushBackward(params: [][]const u8) !void {
 fn clientCarrierPullForward(params: [][]const u8) !void {
     const line_name = params[0];
     const axis = try std.fmt.parseInt(u16, params[1], 0);
-    const carrier_id = try std.fmt.parseInt(u16, params[2], 0);
+    const carrier_id = try std.fmt.parseInt(u10, params[2], 0);
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .pull_carrier_forward;
-    const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .axis_idx = axis_index,
-        .carrier_id = carrier_id,
-    };
+
+    var param = std.mem.zeroes(mmc.ParamType(.set_command));
+    param.command_code = .PullAxisCarrierForward;
+    param.line_idx = @truncate(line_idx);
+    param.carrier_id = carrier_id;
+    param.axis_idx = axis_index;
+    param.speed_percentage = line_speeds[line_idx];
+    param.acceleration_percentage = line_accelerations[line_idx];
     if (server) |s| try sendMessage(
-        kind,
+        .set_command,
         param,
         s,
     ) else return error.ServerNotConnected;
@@ -1692,22 +1691,22 @@ fn clientCarrierPullForward(params: [][]const u8) !void {
 fn clientCarrierPullBackward(params: [][]const u8) !void {
     const line_name = params[0];
     const axis = try std.fmt.parseInt(u16, params[1], 0);
-    const carrier_id = try std.fmt.parseInt(u16, params[2], 0);
+    const carrier_id = try std.fmt.parseInt(u10, params[2], 0);
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .pull_carrier_backward;
-    const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .axis_idx = axis_index,
-        .carrier_id = carrier_id,
-    };
+
+    var param = std.mem.zeroes(mmc.ParamType(.set_command));
+    param.command_code = .PullAxisCarrierBackward;
+    param.line_idx = @truncate(line_idx);
+    param.carrier_id = carrier_id;
+    param.axis_idx = axis_index;
+    param.speed_percentage = line_speeds[line_idx];
+    param.acceleration_percentage = line_accelerations[line_idx];
     if (server) |s| try sendMessage(
-        kind,
+        .set_command,
         param,
         s,
     ) else return error.ServerNotConnected;
@@ -1759,6 +1758,7 @@ fn sendMessage(
     std.log.debug("kind: {}", .{kind});
     std.log.debug("param: {}", .{param});
     try to_server.writer().writeStruct(msg);
+    std.log.debug("message size: {}", .{@sizeOf(@TypeOf(msg))});
     std.log.debug(
         "kind_size: {}, rest_kind: {}, param size: {}, rest: {}",
         .{
