@@ -56,64 +56,64 @@ pub fn init(c: Config) !void {
     //     .execute = &mclDisconnect,
     // });
     // errdefer _ = command.registry.orderedRemove("DISCONNECT");
-    // try command.registry.put("SET_SPEED", .{
-    //     .name = "SET_SPEED",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "line name" },
-    //         .{ .name = "speed percentage" },
-    //     },
-    //     .short_description = "Set the speed of carrier movement for a line.",
-    //     .long_description =
-    //     \\Set the speed of carrier movement for a line. The line is referenced
-    //     \\by its name. The speed must be a whole integer number between 1 and
-    //     \\100, inclusive.
-    //     ,
-    //     .execute = &clientSetSpeed,
-    // });
-    // errdefer _ = command.registry.orderedRemove("SET_SPEED");
-    // try command.registry.put("SET_ACCELERATION", .{
-    //     .name = "SET_ACCELERATION",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "line name" },
-    //         .{ .name = "acceleration percentage" },
-    //     },
-    //     .short_description = "Set the acceleration of carrier movement.",
-    //     .long_description =
-    //     \\Set the acceleration of carrier movement for a line. The line is
-    //     \\referenced by its name. The acceleration must be a whole integer
-    //     \\number between 1 and 100, inclusive.
-    //     ,
-    //     .execute = &clientSetAcceleration,
-    // });
-    // errdefer _ = command.registry.orderedRemove("SET_ACCELERATION");
-    // try command.registry.put("GET_SPEED", .{
-    //     .name = "GET_SPEED",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "line name" },
-    //     },
-    //     .short_description = "Get the speed of carrier movement for a line.",
-    //     .long_description =
-    //     \\Get the speed of carrier movement for a line. The line is referenced
-    //     \\by its name. The speed is a whole integer number between 1 and 100,
-    //     \\inclusive.
-    //     ,
-    //     .execute = &clientGetSpeed,
-    // });
-    // errdefer _ = command.registry.orderedRemove("GET_SPEED");
-    // try command.registry.put("GET_ACCELERATION", .{
-    //     .name = "GET_ACCELERATION",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "line name" },
-    //     },
-    //     .short_description = "Get the acceleration of carrier movement.",
-    //     .long_description =
-    //     \\Get the acceleration of carrier movement for a line. The line is
-    //     \\referenced by its name. The acceleration is a whole integer number
-    //     \\between 1 and 100, inclusive.
-    //     ,
-    //     .execute = &clientGetAcceleration,
-    // });
-    // errdefer _ = command.registry.orderedRemove("GET_ACCELERATION");
+    try command.registry.put("SET_SPEED", .{
+        .name = "SET_SPEED",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "speed percentage" },
+        },
+        .short_description = "Set the speed of carrier movement for a line.",
+        .long_description =
+        \\Set the speed of carrier movement for a line. The line is referenced
+        \\by its name. The speed must be a whole integer number between 1 and
+        \\100, inclusive.
+        ,
+        .execute = &clientSetSpeed,
+    });
+    errdefer _ = command.registry.orderedRemove("SET_SPEED");
+    try command.registry.put("SET_ACCELERATION", .{
+        .name = "SET_ACCELERATION",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "acceleration percentage" },
+        },
+        .short_description = "Set the acceleration of carrier movement.",
+        .long_description =
+        \\Set the acceleration of carrier movement for a line. The line is
+        \\referenced by its name. The acceleration must be a whole integer
+        \\number between 1 and 100, inclusive.
+        ,
+        .execute = &clientSetAcceleration,
+    });
+    errdefer _ = command.registry.orderedRemove("SET_ACCELERATION");
+    try command.registry.put("GET_SPEED", .{
+        .name = "GET_SPEED",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+        },
+        .short_description = "Get the speed of carrier movement for a line.",
+        .long_description =
+        \\Get the speed of carrier movement for a line. The line is referenced
+        \\by its name. The speed is a whole integer number between 1 and 100,
+        \\inclusive.
+        ,
+        .execute = &clientGetSpeed,
+    });
+    errdefer _ = command.registry.orderedRemove("GET_SPEED");
+    try command.registry.put("GET_ACCELERATION", .{
+        .name = "GET_ACCELERATION",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+        },
+        .short_description = "Get the acceleration of carrier movement.",
+        .long_description =
+        \\Get the acceleration of carrier movement for a line. The line is
+        \\referenced by its name. The acceleration is a whole integer number
+        \\between 1 and 100, inclusive.
+        ,
+        .execute = &clientGetAcceleration,
+    });
+    errdefer _ = command.registry.orderedRemove("GET_ACCELERATION");
     try command.registry.put("PRINT_X", .{
         .name = "PRINT_X",
         .parameters = &[_]command.Command.Parameter{
@@ -763,20 +763,7 @@ fn clientSetSpeed(params: [][]const u8) !void {
     if (carrier_speed < 1 or carrier_speed > 100) return error.InvalidSpeed;
 
     const line_idx: usize = try matchLine(line_names, line_name);
-
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .set_config;
-    const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .speed = carrier_speed,
-        .acceleration = 0,
-    };
-    if (server) |s| try sendMessage(
-        kind,
-        param,
-        s,
-    ) else return error.ServerNotConnected;
+    line_speeds[line_idx] = @intCast(carrier_speed);
 }
 
 fn clientSetAcceleration(params: [][]const u8) !void {
@@ -786,63 +773,27 @@ fn clientSetAcceleration(params: [][]const u8) !void {
         return error.InvalidAcceleration;
 
     const line_idx: usize = try matchLine(line_names, line_name);
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .set_config;
-    const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .acceleration = carrier_acceleration,
-        .speed = 0,
-    };
-    if (server) |s| try sendMessage(
-        kind,
-        param,
-        s,
-    ) else return error.ServerNotConnected;
+    line_accelerations[line_idx] = @intCast(carrier_acceleration);
 }
 
 fn clientGetSpeed(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
 
     const line_idx: usize = try matchLine(line_names, line_name);
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .get_speed;
-    const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-    };
-    if (server) |s| {
-        var buffer: [1]u8 = undefined;
-        try sendMessage(kind, param, s);
-        _ = try s.receive(&buffer);
-        const speed = buffer[0];
-        std.log.info(
-            "Line {s} speed: {d}%",
-            .{ line_name, speed },
-        );
-    } else return error.ServerNotConnected;
+    std.log.info(
+        "Line {s} speed: {d}%",
+        .{ line_name, line_speeds[line_idx] },
+    );
 }
 
 fn clientGetAcceleration(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
 
     const line_idx: usize = try matchLine(line_names, line_name);
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .get_acceleration;
-    const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-    };
-    if (server) |s| {
-        var buffer: [1]u8 = undefined;
-        try sendMessage(kind, param, s);
-        _ = try s.receive(&buffer);
-        const acceleration = buffer[0];
-        std.log.info(
-            "Line {s} acceleration: {d}%",
-            .{ line_name, acceleration },
-        );
-    } else return error.ServerNotConnected;
+    std.log.info(
+        "Line {s} acceleration: {d}%",
+        .{ line_name, line_accelerations[line_idx] },
+    );
 }
 
 fn clientStationX(params: [][]const u8) !void {
