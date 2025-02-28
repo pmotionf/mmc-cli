@@ -30,7 +30,7 @@ pub fn build(b: *std.Build) !void {
     });
     const network_dep = b.dependency("network", .{});
     const chrono = b.dependency("chrono", .{});
-    const mmc = b.dependency("mmc", .{});
+    const mmc = b.dependency("mmc_config", .{});
 
     const exe = b.addExecutable(.{
         .name = "mmc-cli",
