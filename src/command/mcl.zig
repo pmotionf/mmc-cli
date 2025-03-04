@@ -6,8 +6,8 @@ const chrono = @import("chrono");
 var arena: std.heap.ArenaAllocator = undefined;
 var allocator: std.mem.Allocator = undefined;
 var line_names: [][]u8 = undefined;
-var line_speeds: []u7 = undefined;
-var line_accelerations: []u7 = undefined;
+var line_speeds: []u5 = undefined;
+var line_accelerations: []u8 = undefined;
 var log_file: ?std.fs.File = null;
 var log_time_start: i64 = 0;
 
@@ -53,16 +53,16 @@ pub fn init(c: Config) !void {
     try mcl.init(allocator, .{ .lines = c.lines });
 
     line_names = try allocator.alloc([]u8, c.line_names.len);
-    line_speeds = try allocator.alloc(u7, c.lines.len);
-    line_accelerations = try allocator.alloc(u7, c.lines.len);
+    line_speeds = try allocator.alloc(u5, c.lines.len);
+    line_accelerations = try allocator.alloc(u8, c.lines.len);
     log_lines = try allocator.alloc(LogLine, c.lines.len);
     for (0..c.lines.len) |i| {
         log_lines[i].stations = .{false} ** 256;
         log_lines[i].status = false;
         line_names[i] = try allocator.alloc(u8, c.line_names[i].len);
         @memcpy(line_names[i], c.line_names[i]);
-        line_speeds[i] = 40;
-        line_accelerations[i] = 40;
+        line_speeds[i] = 12;
+        line_accelerations[i] = 78;
     }
 
     try command.registry.put("MCL_VERSION", .{
@@ -100,13 +100,13 @@ pub fn init(c: Config) !void {
         .name = "SET_SPEED",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "speed percentage" },
+            .{ .name = "speed" },
         },
         .short_description = "Set the speed of carrier movement for a line.",
         .long_description =
         \\Set the speed of carrier movement for a line. The line is referenced
-        \\by its name. The speed must be a whole integer number between 1 and
-        \\100, inclusive.
+        \\by its name. The speed must be greater than 0 and less than or equal
+        \\to 3.0 meters-per-second.
         ,
         .execute = &mclSetSpeed,
     });
@@ -115,13 +115,13 @@ pub fn init(c: Config) !void {
         .name = "SET_ACCELERATION",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "acceleration percentage" },
+            .{ .name = "acceleration" },
         },
         .short_description = "Set the acceleration of carrier movement.",
         .long_description =
         \\Set the acceleration of carrier movement for a line. The line is
-        \\referenced by its name. The acceleration must be a whole integer
-        \\number between 1 and 100, inclusive.
+        \\referenced by its name. The acceleration must be greater than 0 and
+        \\less than or equal to 19.6 meters-per-second-squared.
         ,
         .execute = &mclSetAcceleration,
     });
@@ -134,8 +134,7 @@ pub fn init(c: Config) !void {
         .short_description = "Get the speed of carrier movement for a line.",
         .long_description =
         \\Get the speed of carrier movement for a line. The line is referenced
-        \\by its name. The speed is a whole integer number between 1 and 100,
-        \\inclusive.
+        \\by its name. Speed is in meters-per-second.
         ,
         .execute = &mclGetSpeed,
     });
@@ -148,8 +147,7 @@ pub fn init(c: Config) !void {
         .short_description = "Get the acceleration of carrier movement.",
         .long_description =
         \\Get the acceleration of carrier movement for a line. The line is
-        \\referenced by its name. The acceleration is a whole integer number
-        \\between 1 and 100, inclusive.
+        \\referenced by its name. Acceleration is in meters-per-second-squared.
         ,
         .execute = &mclGetAcceleration,
     });
@@ -1068,28 +1066,39 @@ fn mclIsolate(params: [][]const u8) !void {
 
 fn mclSetSpeed(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const carrier_speed = try std.fmt.parseUnsigned(u8, params[1], 0);
-    if (carrier_speed < 1 or carrier_speed > 100) return error.InvalidSpeed;
+    const carrier_speed = try std.fmt.parseFloat(f32, params[1]);
+    if (carrier_speed <= 0.0 or carrier_speed > 3.0) return error.InvalidSpeed;
 
     const line_idx: usize = try matchLine(line_names, line_name);
-    line_speeds[line_idx] = @intCast(carrier_speed);
+    line_speeds[line_idx] = @intFromFloat(carrier_speed * 10.0);
+
+    std.log.info("Set speed to {d}m/s.", .{
+        @as(f32, @floatFromInt(line_speeds[line_idx])) / 10.0,
+    });
 }
 
 fn mclSetAcceleration(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const carrier_acceleration = try std.fmt.parseUnsigned(u8, params[1], 0);
-    if (carrier_acceleration < 1 or carrier_acceleration > 100)
+    const carrier_acceleration = try std.fmt.parseFloat(f32, params[1]);
+    if (carrier_acceleration <= 0.0 or carrier_acceleration > 19.6)
         return error.InvalidAcceleration;
 
     const line_idx: usize = try matchLine(line_names, line_name);
-    line_accelerations[line_idx] = @intCast(carrier_acceleration);
+    line_accelerations[line_idx] = @intFromFloat(carrier_acceleration * 10.0);
+
+    std.log.info("Set acceleration to {d}m/s^2.", .{
+        @as(f32, @floatFromInt(line_accelerations[line_idx])) / 10.0,
+    });
 }
 
 fn mclGetSpeed(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
 
     const line_idx: usize = try matchLine(line_names, line_name);
-    std.log.info("Line {s} speed: {d}%", .{ line_name, line_speeds[line_idx] });
+    std.log.info("Line {s} speed: {d}m/s", .{
+        line_name,
+        @as(f32, @floatFromInt(line_speeds[line_idx])) / 10.0,
+    });
 }
 
 fn mclGetAcceleration(params: [][]const u8) !void {
@@ -1097,8 +1106,11 @@ fn mclGetAcceleration(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
     std.log.info(
-        "Line {s} acceleration: {d}%",
-        .{ line_name, line_accelerations[line_idx] },
+        "Line {s} acceleration: {d}m/s",
+        .{
+            line_name,
+            @as(f32, @floatFromInt(line_accelerations[line_idx])) / 10.0,
+        },
     );
 }
 
@@ -1289,7 +1301,7 @@ fn mclCarrierPosMoveAxis(params: [][]const u8) !void {
             .target = .{ .u32 = axis_id },
             .speed = line_speeds[line_idx],
             .acceleration = line_accelerations[line_idx],
-            .cas = true,
+            .enable_cas = true,
         },
     };
     try sendCommand(station);
@@ -1338,7 +1350,7 @@ fn mclCarrierPosMoveLocation(params: [][]const u8) !void {
             .target = .{ .f32 = location },
             .speed = line_speeds[line_idx],
             .acceleration = line_accelerations[line_idx],
-            .cas = true,
+            .enable_cas = true,
         },
     };
     try sendCommand(station);
@@ -1394,7 +1406,7 @@ fn mclCarrierPosMoveDistance(params: [][]const u8) !void {
             .target = .{ .f32 = distance },
             .speed = line_speeds[line_idx],
             .acceleration = line_accelerations[line_idx],
-            .cas = true,
+            .enable_cas = true,
         },
     };
     try sendCommand(station);
@@ -1436,7 +1448,7 @@ fn mclCarrierSpdMoveAxis(params: [][]const u8) !void {
             .target = .{ .u32 = axis_id },
             .speed = line_speeds[line_idx],
             .acceleration = line_accelerations[line_idx],
-            .cas = true,
+            .enable_cas = true,
         },
     };
     try sendCommand(station);
@@ -1485,7 +1497,7 @@ fn mclCarrierSpdMoveLocation(params: [][]const u8) !void {
             .target = .{ .f32 = location },
             .speed = line_speeds[line_idx],
             .acceleration = line_speeds[line_idx],
-            .cas = true,
+            .enable_cas = true,
         },
     };
     try sendCommand(station);
@@ -1541,7 +1553,7 @@ fn mclCarrierSpdMoveDistance(params: [][]const u8) !void {
             .target = .{ .f32 = distance },
             .speed = line_speeds[line_idx],
             .acceleration = line_accelerations[line_idx],
-            .cas = true,
+            .enable_cas = true,
         },
     };
     try sendCommand(station);
@@ -1583,7 +1595,7 @@ fn mclCarrierPushForward(params: [][]const u8) !void {
             .id = carrier_id,
             .speed = line_speeds[line_idx],
             .acceleration = line_accelerations[line_idx],
-            .cas = false,
+            .enable_cas = false,
         },
     };
     try sendCommand(station);
@@ -1626,7 +1638,7 @@ fn mclCarrierPushBackward(params: [][]const u8) !void {
             .id = carrier_id,
             .speed = line_speeds[line_idx],
             .acceleration = line_accelerations[line_idx],
-            .cas = false,
+            .enable_cas = false,
         },
     };
     try sendCommand(station);
@@ -1653,7 +1665,7 @@ fn mclCarrierPullForward(params: [][]const u8) !void {
             .id = carrier_id,
             .speed = line_speeds[line_idx],
             .acceleration = line_accelerations[line_idx],
-            .cas = false,
+            .enable_cas = false,
         },
     };
     try sendCommand(station);
@@ -1680,7 +1692,7 @@ fn mclCarrierPullBackward(params: [][]const u8) !void {
             .id = carrier_id,
             .speed = line_speeds[line_idx],
             .acceleration = line_accelerations[line_idx],
-            .cas = false,
+            .enable_cas = false,
         },
     };
     try sendCommand(station);

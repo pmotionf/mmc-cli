@@ -5,12 +5,12 @@
     .minimum_zig_version = "0.14.0-dev.1392+37df6ba86",
     .dependencies = .{
         .network = .{
-            .url = "https://github.com/mochalins/network/archive/9fe0e38.tar.gz",
-            .hash = "network-0.1.0-wh14CGD3AADyYb8AnlfherlYL7CNYb5wbbvegITi2SAl",
+            .url = "https://github.com/mochalins/network/archive/dd8f929.tar.gz",
+            .hash = "network-0.1.0-wh14CEr9AACUyPafTRpVsJYRP13gpw5a7a6wvN8dYtAD",
         },
         .mcl = .{
-            .url = "https://github.com/pmotionf/mcl/archive/a278c6c.tar.gz",
-            .hash = "mcl-0.4.6-bTecRju7AADxfCznALrNBHlfJC8TeX_oKKkSYC1q_80r",
+            .url = "https://github.com/pmotionf/mcl/archive/5b83268.tar.gz",
+            .hash = "mcl-0.4.6-bTecRnO4AADIBfMZJStDDL_Lv21UlyvqVW7HyftOyWqm",
         },
         .chrono = .{
             .url = "https://github.com/pmotionf/chrono/archive/620de75.tar.gz",
