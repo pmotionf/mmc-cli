@@ -1,6 +1,6 @@
 .{
     .name = .mmc_cli,
-    .version = "0.4.0",
+    .version = "0.4.1",
     .fingerprint = 0x392c74984291bf14,
     .minimum_zig_version = "0.14.0-dev.1392+37df6ba86",
     .dependencies = .{
@@ -9,8 +9,8 @@
             .hash = "network-0.1.0-wh14CEr9AACUyPafTRpVsJYRP13gpw5a7a6wvN8dYtAD",
         },
         .mcl = .{
-            .url = "https://github.com/pmotionf/mcl/archive/5b83268.tar.gz",
-            .hash = "mcl-0.4.6-bTecRnO4AADIBfMZJStDDL_Lv21UlyvqVW7HyftOyWqm",
+            .url = "https://github.com/pmotionf/mcl/archive/1aeb2e8.tar.gz",
+            .hash = "mcl-0.5.0-bTecRnO4AABUmdj7YjW8ttGim2sUWH_LDmMNxu-mTB__",
         },
         .chrono = .{
             .url = "https://github.com/pmotionf/chrono/archive/620de75.tar.gz",
