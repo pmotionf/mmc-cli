@@ -639,6 +639,34 @@ pub fn init(c: Config) !void {
         .execute = &mclSliderStopPull,
     });
     errdefer _ = command.registry.orderedRemove("STOP_PULL_SLIDER");
+    try command.registry.put("SLIDER_CHAIN_LINK", .{
+        .name = "SLIDER_CHAIN_LINK",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "first axis" },
+            .{ .name = "second axis" },
+        },
+        .short_description = "Link sliders on two axes in a chain.",
+        .long_description =
+        \\Link sliders on two axes in a chain.
+        ,
+        .execute = &mclSliderChainLink,
+    });
+    errdefer _ = command.registry.orderedRemove("SLIDER_CHAIN_LINK");
+    try command.registry.put("SLIDER_CHAIN_UNLINK", .{
+        .name = "SLIDER_CHAIN_UNLINK",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "first axis" },
+            .{ .name = "second axis" },
+        },
+        .short_description = "Unlink sliders on two axes from a chain.",
+        .long_description =
+        \\Unlink sliders on two axes from a chain.
+        ,
+        .execute = &mclSliderChainUnlink,
+    });
+    errdefer _ = command.registry.orderedRemove("SLIDER_CHAIN_UNLINK");
 }
 
 pub fn deinit() void {
@@ -1953,6 +1981,132 @@ fn mclWaitRecoverSlider(params: [][]const u8) !void {
             try std.fmt.bufPrint(&int_buf, "{d}", .{slider_id}),
         );
     }
+}
+
+fn mclSliderChainLink(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const first_axis: mcl.Axis.Id.Line =
+        try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[1], 0);
+    const second_axis: mcl.Axis.Id.Line =
+        try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[2], 0);
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line = mcl.lines[line_idx];
+
+    if (first_axis == 0 or first_axis > line.axes.len) {
+        return error.InvalidAxis;
+    }
+    if (second_axis == 0 or second_axis > line.axes.len) {
+        return error.InvalidAxis;
+    }
+
+    if (@abs(first_axis - second_axis) != 1) {
+        return error.InvalidAxisPair;
+    }
+
+    const axis = line.axes[first_axis - 1];
+    const station = line.axes[first_axis - 1].station;
+    if (second_axis > first_axis) {
+        station.y.link_chain.setAxis(
+            axis.index.station,
+            .{ .forward = true },
+        );
+    } else {
+        station.y.link_chain.setAxis(
+            axis.index.station,
+            .{ .backward = true },
+        );
+    }
+    try station.sendY();
+    while (true) {
+        try command.checkCommandInterrupt();
+        try station.pollX();
+
+        if (second_axis > first_axis and
+            station.x.chain_enabled.axis(axis.index.station).forward)
+        {
+            break;
+        } else if (second_axis < first_axis and
+            station.x.chain_enabled.axis(axis.index.station).backward)
+        {
+            break;
+        }
+    }
+    if (second_axis > first_axis) {
+        station.y.link_chain.setAxis(
+            axis.index.station,
+            .{ .forward = false },
+        );
+    } else {
+        station.y.link_chain.setAxis(
+            axis.index.station,
+            .{ .backward = false },
+        );
+    }
+    try station.sendY();
+}
+
+fn mclSliderChainUnlink(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const first_axis: mcl.Axis.Id.Line =
+        try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[1], 0);
+    const second_axis: mcl.Axis.Id.Line =
+        try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[2], 0);
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line = mcl.lines[line_idx];
+
+    if (first_axis == 0 or first_axis > line.axes.len) {
+        return error.InvalidAxis;
+    }
+    if (second_axis == 0 or second_axis > line.axes.len) {
+        return error.InvalidAxis;
+    }
+
+    if (@abs(first_axis - second_axis) != 1) {
+        return error.InvalidAxisPair;
+    }
+
+    const axis = line.axes[first_axis - 1];
+    const station = line.axes[first_axis - 1].station;
+    if (second_axis > first_axis) {
+        station.y.unlink_chain.setAxis(
+            axis.index.station,
+            .{ .forward = true },
+        );
+    } else {
+        station.y.unlink_chain.setAxis(
+            axis.index.station,
+            .{ .backward = true },
+        );
+    }
+    try station.sendY();
+    while (true) {
+        try command.checkCommandInterrupt();
+        try station.pollX();
+
+        if (second_axis > first_axis and
+            !station.x.chain_enabled.axis(axis.index.station).forward)
+        {
+            break;
+        } else if (second_axis < first_axis and
+            !station.x.chain_enabled.axis(axis.index.station).backward)
+        {
+            break;
+        }
+    }
+    if (second_axis > first_axis) {
+        station.y.unlink_chain.setAxis(
+            axis.index.station,
+            .{ .forward = false },
+        );
+    } else {
+        station.y.unlink_chain.setAxis(
+            axis.index.station,
+            .{ .backward = false },
+        );
+    }
+    try station.sendY();
 }
 
 fn matchLine(names: []const []const u8, name: []const u8) !usize {
