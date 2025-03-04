@@ -1120,12 +1120,12 @@ fn mclAssertHall(params: [][]const u8) !void {
     const side: mcl.Direction =
         if (std.ascii.eqlIgnoreCase("back", params[3]) or
         std.ascii.eqlIgnoreCase("left", params[3]))
-        .backward
-    else if (std.ascii.eqlIgnoreCase("front", params[3]) or
+            .backward
+        else if (std.ascii.eqlIgnoreCase("front", params[3]) or
         std.ascii.eqlIgnoreCase("right", params[3]))
-        .forward
-    else
-        return error.InvalidHallAlarmSide;
+            .forward
+        else
+            return error.InvalidHallAlarmSide;
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
     if (axis == 0 or axis > line.axes.len) {
@@ -1753,10 +1753,10 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
         try command.checkCommandInterrupt();
         try line.pollWr();
         const main, _ = if (line.search(slider_id)) |t| t
-        // Do not error here as the poll receiving CC-Link information can
-        // "move past" a backwards traveling slider during transmission, thus
-        // rendering the slider briefly invisible in the whole loop.
-        else continue;
+            // Do not error here as the poll receiving CC-Link information can
+            // "move past" a backwards traveling slider during transmission, thus
+            // rendering the slider briefly invisible in the whole loop.
+            else continue;
         const station = main.station.*;
         const wr = station.wr;
 
@@ -1778,7 +1778,7 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
                 next_station.wr.slider_state.axis(next_axis_index);
             if (slider_number == slider_id and
                 (slider_state == .PosMoveCompleted or
-                slider_state == .SpdMoveCompleted))
+                    slider_state == .SpdMoveCompleted))
             {
                 break;
             }
@@ -1955,7 +1955,7 @@ fn mclWaitRecoverSlider(params: [][]const u8) !void {
     }
 }
 
-fn matchLine(names: [][]const u8, name: []const u8) !usize {
+fn matchLine(names: []const []const u8, name: []const u8) !usize {
     for (names, 0..) |n, i| {
         if (std.mem.eql(u8, n, name)) return i;
     } else {

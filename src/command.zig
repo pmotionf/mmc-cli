@@ -288,7 +288,7 @@ pub fn enqueue(input: []const u8) !void {
 }
 
 pub fn execute() !void {
-    const cb = command_queue.pop();
+    const cb = command_queue.pop().?;
     std.log.info("Running command: {s}\n", .{cb.buffer[0..cb.len]});
     try parseAndRun(cb.buffer[0..cb.len]);
 }
@@ -484,7 +484,7 @@ fn file(params: [][]const u8) !void {
 
 fn deinitModules() void {
     var mod_it = initialized_modules.iterator();
-    const fields = @typeInfo(Config.Module).Enum.fields;
+    const fields = @typeInfo(Config.Module).@"enum".fields;
     while (mod_it.next()) |e| {
         if (e.value.*) {
             switch (@intFromEnum(e.key)) {
@@ -508,7 +508,7 @@ fn loadConfig(params: [][]const u8) !void {
     var config = try Config.parse(m_allocator, config_file);
 
     // Initialize only the modules specified in config file.
-    const fields = @typeInfo(Config.Module).Enum.fields;
+    const fields = @typeInfo(Config.Module).@"enum".fields;
     for (config.modules()) |module| {
         switch (@intFromEnum(module)) {
             inline 0...fields.len - 1 => |i| {

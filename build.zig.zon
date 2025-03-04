@@ -1,6 +1,7 @@
 .{
-    .name = "mmc-cli",
+    .name = .mmc_cli,
     .version = "0.2.4",
+    .fingerprint = 0x392c749893371ea5,
     .minimum_zig_version = "0.14.0-dev.15+d4bc64038",
     .dependencies = .{
         .network = .{
@@ -8,12 +9,12 @@
             .hash = "12206c7cbba4130ac158f7759c81ae4186c3e9f914bc79b0544492d85405ba01aaa4",
         },
         .mcl = .{
-            .url = "https://github.com/pmotionf/mcl/archive/3c43667.tar.gz",
-            .hash = "12208563c16ceff11cb5f6dc1ca2a3b33d32a6ea65c2bbddc9f3cafd7ff68ffc6e6c",
+            .url = "https://github.com/pmotionf/mcl/archive/77bea29.tar.gz",
+            .hash = "mcl-0.3.1-r3NKp7UHAQCKuXWdW0wWz0EUhaOFUXYwbnt-z_vazhGv",
         },
         .chrono = .{
-            .url = "https://github.com/pmotionf/chrono/archive/68247b6.tar.gz",
-            .hash = "1220f02c4c893f04fc271b2e9e540e45cdb9595e5931148795c5577fe196746462f7",
+            .url = "https://github.com/pmotionf/chrono/archive/620de75.tar.gz",
+            .hash = "chrono-0.1.0-uVd76GvCAwAvWrHupKdlB_UrmfZHRuVP-P4Xi_G8hz3R",
         },
     },
     .paths = .{""},
