@@ -2074,6 +2074,8 @@ fn mclSliderChainLink(params: [][]const u8) !void {
     const axis_two = line.axes[second_axis - 1];
     const station = line.axes[first_axis - 1].station;
     const station_two = axis_two.station;
+    try station.pollWr();
+    try station_two.pollWr();
 
     if (station.wr.slider_number.axis(axis.index.station) == 0) {
         return error.NoSliderOnAxis;
@@ -2150,6 +2152,8 @@ fn mclSliderChainUnlink(params: [][]const u8) !void {
     const axis_two = line.axes[second_axis - 1];
     const station = line.axes[first_axis - 1].station;
     const station_two = axis_two.station;
+    try station.pollWr();
+    try station_two.pollWr();
 
     if (station.wr.slider_number.axis(axis.index.station) == 0) {
         return error.NoSliderOnAxis;
@@ -2215,6 +2219,7 @@ fn mclSetLeftChainOn(params: [][]const u8) !void {
 
     const axis = line.axes[axis_id - 1];
     const station = axis.station;
+    try station.pollWr();
 
     if (station.wr.slider_number.axis(axis.index.station) == 0) {
         return error.NoSliderOnAxis;
@@ -2257,6 +2262,7 @@ fn mclSetRightChainOn(params: [][]const u8) !void {
 
     const axis = line.axes[axis_id - 1];
     const station = axis.station;
+    try station.pollWr();
 
     if (station.wr.slider_number.axis(axis.index.station) == 0) {
         return error.NoSliderOnAxis;
@@ -2299,6 +2305,7 @@ fn mclSetLeftChainOff(params: [][]const u8) !void {
 
     const axis = line.axes[axis_id - 1];
     const station = axis.station;
+    try station.pollWr();
 
     if (station.wr.slider_number.axis(axis.index.station) == 0) {
         return error.NoSliderOnAxis;
@@ -2341,6 +2348,7 @@ fn mclSetRightChainOff(params: [][]const u8) !void {
 
     const axis = line.axes[axis_id - 1];
     const station = axis.station;
+    try station.pollWr();
 
     if (station.wr.slider_number.axis(axis.index.station) == 0) {
         return error.NoSliderOnAxis;
