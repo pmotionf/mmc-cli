@@ -667,6 +667,72 @@ pub fn init(c: Config) !void {
         .execute = &mclSliderChainUnlink,
     });
     errdefer _ = command.registry.orderedRemove("SLIDER_CHAIN_UNLINK");
+    try command.registry.put("SET_LEFT_CHAIN_ON", .{
+        .name = "SET_LEFT_CHAIN_ON",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+        },
+        .short_description = "Link sliders on axis and backwards axis.",
+        .long_description =
+        \\Link sliders on axis and backwards axis.
+        ,
+        .execute = &mclSetLeftChainOn,
+    });
+    errdefer _ = command.registry.orderedRemove("SET_LEFT_CHAIN_ON");
+    try command.registry.put("SET_RIGHT_CHAIN_ON", .{
+        .name = "SET_RIGHT_CHAIN_ON",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+        },
+        .short_description = "Link sliders on axis and forwards axis.",
+        .long_description =
+        \\Link sliders on axis and forwards axis.
+        ,
+        .execute = &mclSetRightChainOn,
+    });
+    errdefer _ = command.registry.orderedRemove("SET_RIGHT_CHAIN_ON");
+    try command.registry.put("SET_LEFT_CHAIN_OFF", .{
+        .name = "SET_LEFT_CHAIN_OFF",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+        },
+        .short_description = "Unlink sliders on axis and backwards axis.",
+        .long_description =
+        \\Unlink sliders on axis and backwards axis.
+        ,
+        .execute = &mclSetLeftChainOff,
+    });
+    errdefer _ = command.registry.orderedRemove("SET_LEFT_CHAIN_OFF");
+    try command.registry.put("SET_RIGHT_CHAIN_OFF", .{
+        .name = "SET_RIGHT_CHAIN_OFF",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+        },
+        .short_description = "Unlink sliders on axis and forwards axis.",
+        .long_description =
+        \\Unlink sliders on axis and forwards axis.
+        ,
+        .execute = &mclSetRightChainOff,
+    });
+    errdefer _ = command.registry.orderedRemove("SET_RIGHT_CHAIN_OFF");
+    try command.registry.put("MOVE_SLIDER_CHAIN", .{
+        .name = "MOVE_SLIDER_CHAIN",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "head slider ID" },
+            .{ .name = "destination axis" },
+        },
+        .short_description = "Move chain linked sliders to axis.",
+        .long_description =
+        \\Move chain linked sliders to axis.
+        ,
+        .execute = &mclMoveSliderChain,
+    });
+    errdefer _ = command.registry.orderedRemove("MOVE_SLIDER_CHAIN");
 }
 
 pub fn deinit() void {
@@ -2005,7 +2071,17 @@ fn mclSliderChainLink(params: [][]const u8) !void {
     }
 
     const axis = line.axes[first_axis - 1];
+    const axis_two = line.axes[second_axis - 1];
     const station = line.axes[first_axis - 1].station;
+    const station_two = axis_two.station;
+
+    if (station.wr.slider_number.axis(axis.index.station) == 0) {
+        return error.NoSliderOnAxis;
+    }
+    if (station_two.wr.slider_number.axis(axis_two.index.station) == 0) {
+        return error.NoSliderOnAxis;
+    }
+
     if (second_axis > first_axis) {
         station.y.link_chain.setAxis(
             axis.index.station,
@@ -2018,6 +2094,21 @@ fn mclSliderChainLink(params: [][]const u8) !void {
         );
     }
     try station.sendY();
+    defer {
+        if (second_axis > first_axis) {
+            station.y.link_chain.setAxis(
+                axis.index.station,
+                .{ .forward = false },
+            );
+        } else {
+            station.y.link_chain.setAxis(
+                axis.index.station,
+                .{ .backward = false },
+            );
+        }
+        station.sendY() catch {};
+    }
+
     while (true) {
         try command.checkCommandInterrupt();
         try station.pollX();
@@ -2032,18 +2123,6 @@ fn mclSliderChainLink(params: [][]const u8) !void {
             break;
         }
     }
-    if (second_axis > first_axis) {
-        station.y.link_chain.setAxis(
-            axis.index.station,
-            .{ .forward = false },
-        );
-    } else {
-        station.y.link_chain.setAxis(
-            axis.index.station,
-            .{ .backward = false },
-        );
-    }
-    try station.sendY();
 }
 
 fn mclSliderChainUnlink(params: [][]const u8) !void {
@@ -2068,7 +2147,17 @@ fn mclSliderChainUnlink(params: [][]const u8) !void {
     }
 
     const axis = line.axes[first_axis - 1];
+    const axis_two = line.axes[second_axis - 1];
     const station = line.axes[first_axis - 1].station;
+    const station_two = axis_two.station;
+
+    if (station.wr.slider_number.axis(axis.index.station) == 0) {
+        return error.NoSliderOnAxis;
+    }
+    if (station_two.wr.slider_number.axis(axis_two.index.station) == 0) {
+        return error.NoSliderOnAxis;
+    }
+
     if (second_axis > first_axis) {
         station.y.unlink_chain.setAxis(
             axis.index.station,
@@ -2081,6 +2170,21 @@ fn mclSliderChainUnlink(params: [][]const u8) !void {
         );
     }
     try station.sendY();
+    defer {
+        if (second_axis > first_axis) {
+            station.y.unlink_chain.setAxis(
+                axis.index.station,
+                .{ .forward = false },
+            );
+        } else {
+            station.y.unlink_chain.setAxis(
+                axis.index.station,
+                .{ .backward = false },
+            );
+        }
+        station.sendY() catch {};
+    }
+
     while (true) {
         try command.checkCommandInterrupt();
         try station.pollX();
@@ -2095,18 +2199,232 @@ fn mclSliderChainUnlink(params: [][]const u8) !void {
             break;
         }
     }
-    if (second_axis > first_axis) {
-        station.y.unlink_chain.setAxis(
+}
+
+fn mclSetLeftChainOn(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const axis_id: mcl.Axis.Id.Line =
+        try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[1], 0);
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line = mcl.lines[line_idx];
+
+    if (axis_id == 0 or axis_id > line.axes.len) {
+        return error.InvalidAxis;
+    }
+
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station;
+
+    if (station.wr.slider_number.axis(axis.index.station) == 0) {
+        return error.NoSliderOnAxis;
+    }
+
+    station.y.link_chain.setAxis(
+        axis.index.station,
+        .{ .backward = true },
+    );
+    try station.sendY();
+    defer {
+        station.y.link_chain.setAxis(
+            axis.index.station,
+            .{ .backward = false },
+        );
+        station.sendY() catch {};
+    }
+
+    while (true) {
+        try command.checkCommandInterrupt();
+        try station.pollX();
+
+        if (station.x.chain_enabled.axis(axis.index.station).backward) {
+            break;
+        }
+    }
+}
+
+fn mclSetRightChainOn(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const axis_id: mcl.Axis.Id.Line =
+        try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[1], 0);
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line = mcl.lines[line_idx];
+
+    if (axis_id == 0 or axis_id > line.axes.len) {
+        return error.InvalidAxis;
+    }
+
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station;
+
+    if (station.wr.slider_number.axis(axis.index.station) == 0) {
+        return error.NoSliderOnAxis;
+    }
+
+    station.y.link_chain.setAxis(
+        axis.index.station,
+        .{ .forward = true },
+    );
+    try station.sendY();
+    defer {
+        station.y.link_chain.setAxis(
             axis.index.station,
             .{ .forward = false },
         );
-    } else {
+        station.sendY() catch {};
+    }
+
+    while (true) {
+        try command.checkCommandInterrupt();
+        try station.pollX();
+
+        if (station.x.chain_enabled.axis(axis.index.station).forward) {
+            break;
+        }
+    }
+}
+
+fn mclSetLeftChainOff(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const axis_id: mcl.Axis.Id.Line =
+        try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[1], 0);
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line = mcl.lines[line_idx];
+
+    if (axis_id == 0 or axis_id > line.axes.len) {
+        return error.InvalidAxis;
+    }
+
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station;
+
+    if (station.wr.slider_number.axis(axis.index.station) == 0) {
+        return error.NoSliderOnAxis;
+    }
+
+    station.y.unlink_chain.setAxis(
+        axis.index.station,
+        .{ .backward = true },
+    );
+    try station.sendY();
+    defer {
         station.y.unlink_chain.setAxis(
             axis.index.station,
             .{ .backward = false },
         );
+        station.sendY() catch {};
     }
+
+    while (true) {
+        try command.checkCommandInterrupt();
+        try station.pollX();
+
+        if (!station.x.chain_enabled.axis(axis.index.station).backward) {
+            break;
+        }
+    }
+}
+
+fn mclSetRightChainOff(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const axis_id: mcl.Axis.Id.Line =
+        try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[1], 0);
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line = mcl.lines[line_idx];
+
+    if (axis_id == 0 or axis_id > line.axes.len) {
+        return error.InvalidAxis;
+    }
+
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station;
+
+    if (station.wr.slider_number.axis(axis.index.station) == 0) {
+        return error.NoSliderOnAxis;
+    }
+
+    station.y.unlink_chain.setAxis(
+        axis.index.station,
+        .{ .forward = true },
+    );
     try station.sendY();
+    defer {
+        station.y.unlink_chain.setAxis(
+            axis.index.station,
+            .{ .forward = false },
+        );
+        station.sendY() catch {};
+    }
+
+    while (true) {
+        try command.checkCommandInterrupt();
+        try station.pollX();
+
+        if (!station.x.chain_enabled.axis(axis.index.station).forward) {
+            break;
+        }
+    }
+}
+
+fn mclMoveSliderChain(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
+    const axis_id: u16 = try std.fmt.parseInt(u16, params[2], 0);
+    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line: mcl.Line = mcl.lines[line_idx];
+    if (axis_id == 0 or axis_id > line.axes.len) {
+        return error.InvalidAxis;
+    }
+
+    try line.pollWr();
+    const main, const _aux =
+        if (line.search(slider_id)) |t| t else return error.SliderNotFound;
+    var station: mcl.Station = main.station.*;
+
+    // Set command station in direction of movement command.
+    if (_aux) |aux| {
+        if ((main.index.line < aux.index.line and axis_id >= aux.id.line) or
+            (aux.index.line < main.index.line and axis_id <= aux.id.line))
+        {
+            station = aux.station.*;
+        }
+    }
+
+    try waitCommandReady(station);
+
+    if (_aux) |aux| {
+        // Direction of auxiliary axis from main axis.
+        var direction: Direction = undefined;
+        if (aux.index.line > main.index.line) {
+            direction = .forward;
+        } else {
+            direction = .backward;
+        }
+        main.station.y.stop_driver_transmission.setTo(direction, true);
+        try main.station.sendY();
+        defer {
+            main.station.y.stop_driver_transmission.setTo(direction, false);
+            main.station.sendY() catch {};
+        }
+        while (!main.station.x.transmission_stopped.to(direction)) {
+            try command.checkCommandInterrupt();
+            try main.station.pollX();
+        }
+    }
+
+    station.ww.* = .{
+        .command_code = .MoveSliderChain,
+        .command_slider_number = slider_id,
+        .target_axis_number = axis_id,
+        .speed_percentage = line_speeds[line_idx],
+        .acceleration_percentage = line_accelerations[line_idx],
+    };
+    try sendCommand(station);
 }
 
 fn matchLine(names: []const []const u8, name: []const u8) !usize {

@@ -9,8 +9,8 @@
             .hash = "12206c7cbba4130ac158f7759c81ae4186c3e9f914bc79b0544492d85405ba01aaa4",
         },
         .mcl = .{
-            .url = "https://github.com/pmotionf/mcl/archive/77bea29.tar.gz",
-            .hash = "mcl-0.3.1-r3NKp7UHAQCKuXWdW0wWz0EUhaOFUXYwbnt-z_vazhGv",
+            .url = "https://github.com/pmotionf/mcl/archive/a2b8024.tar.gz",
+            .hash = "mcl-0.3.1-r3NKp9MHAQDIkzHvDa0nwB-fRyz4u1lj9ENg6GMOWl5Y",
         },
         .chrono = .{
             .url = "https://github.com/pmotionf/chrono/archive/620de75.tar.gz",
