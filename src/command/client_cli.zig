@@ -1,14 +1,14 @@
 const std = @import("std");
 const command = @import("../command.zig");
 const mcl = @import("mcl");
-const mmc = @import("mmc");
+const mmc = @import("mmc_config");
 const network = @import("network");
 
 var arena: std.heap.ArenaAllocator = undefined;
 var allocator: std.mem.Allocator = undefined;
 var line_names: [][]u8 = undefined;
-var line_speeds: []u7 = undefined;
-var line_accelerations: []u7 = undefined;
+var line_speeds: []u5 = undefined;
+var line_accelerations: []u8 = undefined;
 const Direction = mmc.Direction;
 const Station = mmc.Station;
 const SystemState = mmc.SystemState;
@@ -60,13 +60,13 @@ pub fn init(c: Config) !void {
         .name = "SET_SPEED",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "speed percentage" },
+            .{ .name = "speed" },
         },
         .short_description = "Set the speed of carrier movement for a line.",
         .long_description =
         \\Set the speed of carrier movement for a line. The line is referenced
-        \\by its name. The speed must be a whole integer number between 1 and
-        \\100, inclusive.
+        \\by its name. The speed must be greater than 0 and less than or equal
+        \\to 3.0 meters-per-second.
         ,
         .execute = &clientSetSpeed,
     });
@@ -75,13 +75,13 @@ pub fn init(c: Config) !void {
         .name = "SET_ACCELERATION",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "acceleration percentage" },
+            .{ .name = "acceleration" },
         },
         .short_description = "Set the acceleration of carrier movement.",
         .long_description =
         \\Set the acceleration of carrier movement for a line. The line is
-        \\referenced by its name. The acceleration must be a whole integer
-        \\number between 1 and 100, inclusive.
+        \\referenced by its name. The acceleration must be greater than 0 and
+        \\less than or equal to 19.6 meters-per-second-squared.
         ,
         .execute = &clientSetAcceleration,
     });
@@ -94,8 +94,7 @@ pub fn init(c: Config) !void {
         .short_description = "Get the speed of carrier movement for a line.",
         .long_description =
         \\Get the speed of carrier movement for a line. The line is referenced
-        \\by its name. The speed is a whole integer number between 1 and 100,
-        \\inclusive.
+        \\by its name. Speed is in meters-per-second.
         ,
         .execute = &clientGetSpeed,
     });
@@ -108,8 +107,7 @@ pub fn init(c: Config) !void {
         .short_description = "Get the acceleration of carrier movement.",
         .long_description =
         \\Get the acceleration of carrier movement for a line. The line is
-        \\referenced by its name. The acceleration is a whole integer number
-        \\between 1 and 100, inclusive.
+        \\referenced by its name. Acceleration is in meters-per-second-squared.
         ,
         .execute = &clientGetAcceleration,
     });
@@ -725,11 +723,11 @@ pub fn clientConnect(_: [][]const u8) !void {
         }
         try mcl.Config.validate(.{ .lines = lines });
         try mcl.init(allocator, .{ .lines = lines });
-        line_speeds = try allocator.alloc(u7, line_numbers);
-        line_accelerations = try allocator.alloc(u7, line_numbers);
+        line_speeds = try allocator.alloc(u5, line_numbers);
+        line_accelerations = try allocator.alloc(u8, line_numbers);
         for (0..line_numbers) |i| {
-            line_speeds[i] = 40;
-            line_accelerations[i] = 40;
+            line_speeds[i] = 12;
+            line_accelerations[i] = 78;
             std.log.debug(
                 "line: {s}, #axis: {}, range info: {s}:{}:{}",
                 .{
@@ -759,31 +757,39 @@ pub fn clientConnect(_: [][]const u8) !void {
 
 fn clientSetSpeed(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const carrier_speed = try std.fmt.parseUnsigned(u8, params[1], 0);
-    if (carrier_speed < 1 or carrier_speed > 100) return error.InvalidSpeed;
+    const carrier_speed = try std.fmt.parseFloat(f32, params[1]);
+    if (carrier_speed <= 0.0 or carrier_speed > 3.0) return error.InvalidSpeed;
 
     const line_idx: usize = try matchLine(line_names, line_name);
-    line_speeds[line_idx] = @intCast(carrier_speed);
+    line_speeds[line_idx] = @intFromFloat(carrier_speed * 10.0);
+
+    std.log.info("Set speed to {d}m/s.", .{
+        @as(f32, @floatFromInt(line_speeds[line_idx])) / 10.0,
+    });
 }
 
 fn clientSetAcceleration(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const carrier_acceleration = try std.fmt.parseUnsigned(u8, params[1], 0);
-    if (carrier_acceleration < 1 or carrier_acceleration > 100)
+    const carrier_acceleration = try std.fmt.parseFloat(f32, params[1]);
+    if (carrier_acceleration <= 0.0 or carrier_acceleration > 19.6)
         return error.InvalidAcceleration;
 
     const line_idx: usize = try matchLine(line_names, line_name);
-    line_accelerations[line_idx] = @intCast(carrier_acceleration);
+    line_accelerations[line_idx] = @intFromFloat(carrier_acceleration * 10.0);
+
+    std.log.info("Set acceleration to {d}m/s^2.", .{
+        @as(f32, @floatFromInt(line_accelerations[line_idx])) / 10.0,
+    });
 }
 
 fn clientGetSpeed(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
 
     const line_idx: usize = try matchLine(line_names, line_name);
-    std.log.info(
-        "Line {s} speed: {d}%",
-        .{ line_name, line_speeds[line_idx] },
-    );
+    std.log.info("Line {s} speed: {d}m/s", .{
+        line_name,
+        @as(f32, @floatFromInt(line_speeds[line_idx])) / 10.0,
+    });
 }
 
 fn clientGetAcceleration(params: [][]const u8) !void {
@@ -791,8 +797,11 @@ fn clientGetAcceleration(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
     std.log.info(
-        "Line {s} acceleration: {d}%",
-        .{ line_name, line_accelerations[line_idx] },
+        "Line {s} acceleration: {d}m/s",
+        .{
+            line_name,
+            @as(f32, @floatFromInt(line_accelerations[line_idx])) / 10.0,
+        },
     );
 }
 
@@ -979,7 +988,7 @@ fn clientAxisCarrier(params: [][]const u8) !void {
             if (carrier.line_id == line_idx + 1 and
                 carrier.carrier_id != 0 and
                 (carrier.axis_ids.first == axis_id or
-                carrier.axis_ids.second == axis_id))
+                    carrier.axis_ids.second == axis_id))
             {
                 std.log.info(
                     "Carrier {d} on axis {d}.\n",
@@ -1196,12 +1205,12 @@ fn clientHallStatus(params: [][]const u8) !void {
         const msg_size = try s.receive(&buffer);
         var msg_bit_size: usize = 0;
         const num_of_active_axis = std.mem.readPackedInt(
-            mmc.Axis.Id.Line,
+            mcl.Axis.Id.Line,
             buffer[0..msg_size],
             0,
             .little,
         );
-        msg_bit_size += @bitSizeOf(mmc.Axis.Id.Line);
+        msg_bit_size += @bitSizeOf(mcl.Axis.Id.Line);
         const IntType =
             @typeInfo(SystemState.Hall).@"struct".backing_integer.?;
         var detected_active_axis: usize = 0;
@@ -1259,12 +1268,12 @@ fn clientAssertHall(params: [][]const u8) !void {
     const side: mcl.Direction =
         if (std.ascii.eqlIgnoreCase("back", params[2]) or
         std.ascii.eqlIgnoreCase("left", params[2]))
-        .backward
-    else if (std.ascii.eqlIgnoreCase("front", params[2]) or
+            .backward
+        else if (std.ascii.eqlIgnoreCase("front", params[2]) or
         std.ascii.eqlIgnoreCase("right", params[2]))
-        .forward
-    else
-        return error.InvalidHallAlarmSide;
+            .forward
+        else
+            return error.InvalidHallAlarmSide;
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
     if (axis_id == 0 or axis_id > line.axes.len) {
@@ -1291,12 +1300,12 @@ fn clientAssertHall(params: [][]const u8) !void {
         const msg_size = try s.receive(&buffer);
         var msg_bit_size: usize = 0;
         const num_of_active_axis = std.mem.readPackedInt(
-            mmc.Axis.Id.Line,
+            mcl.Axis.Id.Line,
             buffer[0..msg_size],
             0,
             .little,
         );
-        msg_bit_size += @bitSizeOf(mmc.Axis.Id.Line);
+        msg_bit_size += @bitSizeOf(mcl.Axis.Id.Line);
         const IntType =
             @typeInfo(SystemState.Hall).@"struct".backing_integer.?;
         var detected_active_axis: usize = 0;
@@ -1411,7 +1420,7 @@ fn clientIsolate(params: [][]const u8) !void {
         } else break :link .no_direction;
     };
 
-    const axis_index: mmc.Axis.Index.Line = @intCast(axis_id - 1);
+    const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
 
     var param = std.mem.zeroes(mmc.ParamType(.set_command));
     param.command_code = if (dir == .forward)
@@ -1440,15 +1449,15 @@ fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
     if (axis_id == 0 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
-    const axis_index: mmc.Axis.Index.Line = @intCast(axis_id - 1);
+    const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
 
     var param = std.mem.zeroes(mmc.ParamType(.set_command));
     param.command_code = .PositionMoveCarrierAxis;
     param.line_idx = @truncate(line_idx);
     param.axis_idx = axis_index;
     param.carrier_id = carrier_id;
-    param.speed_percentage = line_speeds[line_idx];
-    param.acceleration_percentage = line_accelerations[line_idx];
+    param.speed = line_speeds[line_idx];
+    param.acceleration = line_accelerations[line_idx];
     if (server) |s| try sendMessage(
         .set_command,
         param,
@@ -1469,8 +1478,8 @@ fn clientCarrierPosMoveLocation(params: [][]const u8) !void {
     param.line_idx = @truncate(line_idx);
     param.location_distance = location;
     param.carrier_id = carrier_id;
-    param.speed_percentage = line_speeds[line_idx];
-    param.acceleration_percentage = line_accelerations[line_idx];
+    param.speed = line_speeds[line_idx];
+    param.acceleration = line_accelerations[line_idx];
     if (server) |s| try sendMessage(
         .set_command,
         param,
@@ -1494,8 +1503,8 @@ fn clientCarrierPosMoveDistance(params: [][]const u8) !void {
     param.line_idx = @truncate(line_idx);
     param.location_distance = distance;
     param.carrier_id = carrier_id;
-    param.speed_percentage = line_speeds[line_idx];
-    param.acceleration_percentage = line_accelerations[line_idx];
+    param.speed = line_speeds[line_idx];
+    param.acceleration = line_accelerations[line_idx];
     if (server) |s| try sendMessage(
         .set_command,
         param,
@@ -1514,15 +1523,15 @@ fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
     }
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
-    const axis_index: mmc.Axis.Index.Line = @intCast(axis_id - 1);
+    const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
 
     var param = std.mem.zeroes(mmc.ParamType(.set_command));
     param.command_code = .SpeedMoveCarrierAxis;
     param.line_idx = @truncate(line_idx);
     param.axis_idx = axis_index;
     param.carrier_id = carrier_id;
-    param.speed_percentage = line_speeds[line_idx];
-    param.acceleration_percentage = line_accelerations[line_idx];
+    param.speed = line_speeds[line_idx];
+    param.acceleration = line_accelerations[line_idx];
     if (server) |s| try sendMessage(
         .set_command,
         param,
@@ -1543,8 +1552,8 @@ fn clientCarrierSpdMoveLocation(params: [][]const u8) !void {
     param.line_idx = @truncate(line_idx);
     param.location_distance = location;
     param.carrier_id = carrier_id;
-    param.speed_percentage = line_speeds[line_idx];
-    param.acceleration_percentage = line_accelerations[line_idx];
+    param.speed = line_speeds[line_idx];
+    param.acceleration = line_accelerations[line_idx];
     if (server) |s| try sendMessage(
         .set_command,
         param,
@@ -1568,8 +1577,8 @@ fn clientCarrierSpdMoveDistance(params: [][]const u8) !void {
     param.line_idx = @truncate(line_idx);
     param.location_distance = distance;
     param.carrier_id = carrier_id;
-    param.speed_percentage = line_speeds[line_idx];
-    param.acceleration_percentage = line_accelerations[line_idx];
+    param.speed = line_speeds[line_idx];
+    param.acceleration = line_accelerations[line_idx];
     if (server) |s| try sendMessage(
         .set_command,
         param,
@@ -1587,8 +1596,8 @@ fn clientCarrierPushForward(params: [][]const u8) !void {
     param.command_code = .PushAxisCarrierForward;
     param.line_idx = @truncate(line_idx);
     param.carrier_id = carrier_id;
-    param.speed_percentage = line_speeds[line_idx];
-    param.acceleration_percentage = line_accelerations[line_idx];
+    param.speed = line_speeds[line_idx];
+    param.acceleration = line_accelerations[line_idx];
     if (server) |s| try sendMessage(
         .set_command,
         param,
@@ -1606,8 +1615,8 @@ fn clientCarrierPushBackward(params: [][]const u8) !void {
     param.command_code = .PushAxisCarrierBackward;
     param.line_idx = @truncate(line_idx);
     param.carrier_id = carrier_id;
-    param.speed_percentage = line_speeds[line_idx];
-    param.acceleration_percentage = line_accelerations[line_idx];
+    param.speed = line_speeds[line_idx];
+    param.acceleration = line_accelerations[line_idx];
     if (server) |s| try sendMessage(
         .set_command,
         param,
@@ -1630,8 +1639,8 @@ fn clientCarrierPullForward(params: [][]const u8) !void {
     param.line_idx = @truncate(line_idx);
     param.carrier_id = carrier_id;
     param.axis_idx = axis_index;
-    param.speed_percentage = line_speeds[line_idx];
-    param.acceleration_percentage = line_accelerations[line_idx];
+    param.speed = line_speeds[line_idx];
+    param.acceleration = line_accelerations[line_idx];
     if (server) |s| try sendMessage(
         .set_command,
         param,
@@ -1654,8 +1663,8 @@ fn clientCarrierPullBackward(params: [][]const u8) !void {
     param.line_idx = @truncate(line_idx);
     param.carrier_id = carrier_id;
     param.axis_idx = axis_index;
-    param.speed_percentage = line_speeds[line_idx];
-    param.acceleration_percentage = line_accelerations[line_idx];
+    param.speed = line_speeds[line_idx];
+    param.acceleration = line_accelerations[line_idx];
     if (server) |s| try sendMessage(
         .set_command,
         param,
@@ -1701,11 +1710,11 @@ fn sendMessage(
 ) !void {
     const msg: mmc.Message(kind) =
         .{
-        .kind = @intFromEnum(kind),
-        ._unused_kind = 0,
-        .param = param,
-        ._rest_param = 0,
-    };
+            .kind = @intFromEnum(kind),
+            ._unused_kind = 0,
+            .param = param,
+            ._rest_param = 0,
+        };
     std.log.debug("kind: {}", .{kind});
     std.log.debug("param: {}", .{param});
     try to_server.writer().writeStruct(msg);
