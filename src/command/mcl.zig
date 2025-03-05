@@ -1855,7 +1855,9 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
         const wr = station.wr;
 
         if (wr.slider_state.axis(main.index.station) == .PosMoveCompleted or
-            wr.slider_state.axis(main.index.station) == .SpdMoveCompleted)
+            wr.slider_state.axis(main.index.station) == .SpdMoveCompleted or
+            wr.slider_state.axis(main.index.station) == .ChainCompleted or
+            wr.slider_state.axis(main.index.station) == .ChainSlaveCompleted)
         {
             break;
         }
@@ -1872,7 +1874,9 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
                 next_station.wr.slider_state.axis(next_axis_index);
             if (slider_number == slider_id and
                 (slider_state == .PosMoveCompleted or
-                    slider_state == .SpdMoveCompleted))
+                    slider_state == .SpdMoveCompleted or
+                    slider_state == .ChainCompleted or
+                    slider_state == .ChainSlaveCompleted))
             {
                 break;
             }
