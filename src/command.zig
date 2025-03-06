@@ -10,7 +10,8 @@ const v = @import("version");
 // Command modules.
 const mcl = @import("command/mcl.zig");
 const return_demo2 = @import("command/return_demo2.zig");
-
+const client_cli = @import("command/client_cli.zig");
+const client_auto_initialize = @import("command/client_auto_initialize.zig");
 const Config = @import("Config.zig");
 
 // Global registry of all commands, including from other command modules.
