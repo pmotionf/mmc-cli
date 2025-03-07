@@ -46,16 +46,15 @@ pub fn init(c: Config) !void {
         .execute = &clientConnect,
     });
     errdefer _ = command.registry.orderedRemove("CONNECT");
-    // try command.registry.put("DISCONNECT", .{
-    //     .name = "DISCONNECT",
-    //     .short_description = "Disconnect MCL from motion system.",
-    //     .long_description =
-    //     \\End MCL's connection with the motion system. This command should be
-    //     \\run after other MCL commands are completed.
-    //     ,
-    //     .execute = &mclDisconnect,
-    // });
-    // errdefer _ = command.registry.orderedRemove("DISCONNECT");
+    try command.registry.put("DISCONNECT", .{
+        .name = "DISCONNECT",
+        .short_description = "Disconnect MCL from motion system.",
+        .long_description =
+        \\End connection with the mmc server.
+        ,
+        .execute = &clientDisconnect,
+    });
+    errdefer _ = command.registry.orderedRemove("DISCONNECT");
     try command.registry.put("SET_SPEED", .{
         .name = "SET_SPEED",
         .parameters = &[_]command.Command.Parameter{
@@ -714,7 +713,7 @@ pub fn clientConnect(_: [][]const u8) !void {
                     );
                 }
                 if (line_description.peek() != null) {
-                    std.log.err(
+                    std.log.debug(
                         "Remaining unexpected line description: {s}",
                         .{line_description.rest()},
                     );
@@ -753,6 +752,21 @@ pub fn clientConnect(_: [][]const u8) !void {
         }
     } else {
         std.log.err("Failed to connect to server", .{});
+    }
+}
+
+pub fn clientDisconnect(_: [][]const u8) !void {
+    if (server) |s| {
+        s.close();
+        for (line_names) |name| {
+            allocator.free(name);
+        }
+        allocator.free(line_names);
+        allocator.free(line_accelerations);
+        allocator.free(line_speeds);
+        std.log.info("Disconnected from server", .{});
+    } else {
+        std.log.err("Connection not established", .{});
     }
 }
 
