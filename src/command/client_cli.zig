@@ -41,10 +41,16 @@ pub fn init(c: Config) !void {
     });
     try command.registry.put("CONNECT", .{
         .name = "CONNECT",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "port", .optional = true },
+            .{ .name = "IP address", .optional = true },
+        },
         .short_description = "Connect program to the server.",
         .long_description =
         \\Attempt to connect the client application to the server. The IP address
-        \\and the port should be provided in the configuration file.
+        \\and the port should be provided in the configuration file. The port
+        \\and IP address can be overwritten by providing the new port and IP 
+        \\address to this command.
         ,
         .execute = &clientConnect,
     });
@@ -247,9 +253,14 @@ pub fn init(c: Config) !void {
     errdefer _ = command.registry.orderedRemove("ASSERT_HALL");
     try command.registry.put("CLEAR_ERRORS", .{
         .name = "CLEAR_ERRORS",
-        .short_description = "Clear driver errors of all axis.",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name", .optional = true },
+            .{ .name = "axis", .optional = true },
+        },
+        .short_description = "Clear driver errors.",
         .long_description =
-        \\Clear driver errors of all axis.
+        \\Clear driver errors of specified axis. If no axis is provided, clear
+        \\driver errors of all axis.
         ,
         .execute = &clientClearErrors,
     });
@@ -265,9 +276,14 @@ pub fn init(c: Config) !void {
     errdefer _ = command.registry.orderedRemove("RESET_MCL");
     try command.registry.put("CLEAR_CARRIER_INFO", .{
         .name = "CLEAR_CARRIER_INFO",
-        .short_description = "Clear carrier information at all axis.",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name", .optional = true },
+            .{ .name = "axis", .optional = true },
+        },
+        .short_description = "Clear carrier information.",
         .long_description =
-        \\Clear carrier information at all axis.
+        \\Clear carrier information at specified axis. If no axis is provided, 
+        \\clear carrier information at all axis
         ,
         .execute = &clientClearCarrierInfo,
     });
@@ -668,13 +684,17 @@ pub fn waitErrorMessage() !void {
     }
 }
 
-pub fn clientConnect(_: [][]const u8) !void {
-    std.log.debug("Trying to connect to {s}", .{
-        IP_address,
-    });
-    std.log.debug("Trying to connect to port {}", .{
-        port,
-    });
+pub fn clientConnect(params: [][]const u8) !void {
+    std.log.debug("{}", .{params.len});
+    if (params[0].len != 0 and params[1].len == 0) return error.MissingParameter;
+    if (params[1].len > 0) {
+        port = try std.fmt.parseInt(u16, params[0], 0);
+        IP_address = @constCast(params[1]);
+    }
+    std.log.info(
+        "Trying to connect to {s}:{}",
+        .{ IP_address, port },
+    );
     server = try network.connectToHost(
         allocator,
         IP_address,
@@ -1133,12 +1153,13 @@ fn clientAutoInitialize(_: [][]const u8) !void {
     std.log.debug("{any}", .{hall_sensors});
     for (hall_sensors, 0..) |alarm_state, idx| {
         std.log.debug(
-            "start_idx: {}, disabled: {}, enabled: {}, clusters: {}",
+            "start_idx: {}, disabled: {}, enabled: {}, clusters: {}, idx: {}",
             .{
                 start_index,
                 disabled_sensor_count,
                 enabled_sensor_count,
                 clusters.items(),
+                idx,
             },
         );
         if (chain == .Disabled) {
@@ -1182,7 +1203,7 @@ fn clientAutoInitialize(_: [][]const u8) !void {
                     if (forward_cluster and backward_cluster and enabled_sensor_count <= 2) {
                         end_index = idx - 3;
                         std.log.debug(
-                            "writing for multidirection cluster",
+                            "writing for backward cluster",
                             .{},
                         );
                         try clusters.writeItem(.{
@@ -1291,14 +1312,53 @@ fn clientAutoInitialize(_: [][]const u8) !void {
                     "writing for the end of system cluster",
                     .{},
                 );
-                try clusters.writeItem(.{
-                    .start = start_index,
-                    .end = end_index,
-                    .direction = .forward,
-                    .current_hall_index = start_index,
-                    .initialized_carriers = 0,
-                    .carrier_ids = .{0} ** 1024,
-                });
+                var backward_cluster = true;
+                std.log.debug("checking backward cluster...", .{});
+                for (start_index..start_index + 3) |i| {
+                    std.log.debug("hall {}: {}", .{ i, hall_sensors[i] });
+                    if (hall_sensors[i]) backward_cluster = false;
+                }
+                std.log.debug("backward: {}", .{backward_cluster});
+                var forward_cluster = true;
+                std.log.debug("checking forward cluster...", .{});
+                for (end_index - 1..end_index + 1) |i| {
+                    std.log.debug("hall {}: {}", .{ i, hall_sensors[i] });
+                    if (hall_sensors[i]) forward_cluster = false;
+                }
+                std.log.debug(
+                    "backward: {}, forward: {}",
+                    .{ backward_cluster, forward_cluster },
+                );
+                if (forward_cluster) {
+                    while (hall_sensors[start_index] == false) {
+                        start_index += 1;
+                    }
+                    try clusters.writeItem(.{
+                        .start = start_index,
+                        .end = end_index,
+                        .direction = .forward,
+                        .current_hall_index = end_index,
+                        .initialized_carriers = 0,
+                        .carrier_ids = .{0} ** 1024,
+                    });
+                } else if (backward_cluster) {
+                    while (hall_sensors[end_index] == false) {
+                        end_index -= 1;
+                    }
+                    try clusters.writeItem(.{
+                        .start = start_index,
+                        .end = end_index,
+                        .direction = .backward,
+                        .current_hall_index = start_index,
+                        .initialized_carriers = 0,
+                        .carrier_ids = .{0} ** 1024,
+                    });
+                } else {
+                    std.log.err(
+                        \\Cannot initialize last clusters automatically. Please
+                        \\proceed with ISOLATE command.
+                    , .{});
+                }
             }
         } else {
             if (alarm_state == false) {
@@ -1537,21 +1597,61 @@ fn clientAxisReleaseServo(params: [][]const u8) !void {
     } else return error.ServerNotConnected;
 }
 
-fn clientClearErrors(_: [][]const u8) !void {
+fn clientClearErrors(params: [][]const u8) !void {
+    if (params[0].len != 0 and params[1].len == 0) return error.MissingParameter;
+    var line_idx: mcl.Line.Index = 0;
+    var axis_idx: mcl.Axis.Index.Line = 0;
+    if (params[1].len > 0) {
+        const line_name: []const u8 = params[0];
+        line_idx = @intCast(try matchLine(line_names, line_name));
+        const line = mcl.lines[line_idx];
+        const axis_id = try std.fmt.parseInt(
+            mcl.Axis.Id.Line,
+            params[1],
+            0,
+        );
+        if (axis_id < 1 or axis_id > line.axes.len) {
+            return error.InvalidAxis;
+        }
+        axis_idx = axis_id - 1;
+    }
     const kind: @typeInfo(
         mmc.Param,
     ).@"union".tag_type.? = .clear_errors;
-    const param = {};
+    const param: mmc.ParamType(kind) = .{
+        .line_idx = line_idx,
+        .axis_idx = axis_idx,
+    };
     if (server) |s| {
         try sendMessage(kind, param, s);
     } else return error.ServerNotConnected;
 }
 
-fn clientClearCarrierInfo(_: [][]const u8) !void {
+fn clientClearCarrierInfo(params: [][]const u8) !void {
+    if (params[0].len != 0 and params[1].len == 0) return error.MissingParameter;
+    var line_idx: mcl.Line.Index = 0;
+    var axis_idx: mcl.Axis.Index.Line = 0;
+    if (params[1].len > 0) {
+        const line_name: []const u8 = params[0];
+        line_idx = @intCast(try matchLine(line_names, line_name));
+        const line = mcl.lines[line_idx];
+        const axis_id = try std.fmt.parseInt(
+            mcl.Axis.Id.Line,
+            params[1],
+            0,
+        );
+        if (axis_id < 1 or axis_id > line.axes.len) {
+            return error.InvalidAxis;
+        }
+        axis_idx = axis_id - 1;
+    }
     const kind: @typeInfo(
         mmc.Param,
     ).@"union".tag_type.? = .clear_carrier_info;
-    const param = {};
+    const param: mmc.ParamType(kind) = .{
+        .line_idx = line_idx,
+        .axis_idx = axis_idx,
+    };
     if (server) |s| {
         try sendMessage(kind, param, s);
     } else return error.ServerNotConnected;
