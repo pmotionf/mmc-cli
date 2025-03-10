@@ -41,10 +41,16 @@ pub fn init(c: Config) !void {
     });
     try command.registry.put("CONNECT", .{
         .name = "CONNECT",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "port", .optional = true },
+            .{ .name = "IP address", .optional = true },
+        },
         .short_description = "Connect program to the server.",
         .long_description =
         \\Attempt to connect the client application to the server. The IP address
-        \\and the port should be provided in the configuration file.
+        \\and the port should be provided in the configuration file. The port
+        \\and IP address can be overwritten by providing the new port and IP 
+        \\address to this command.
         ,
         .execute = &clientConnect,
     });
@@ -668,13 +674,16 @@ pub fn waitErrorMessage() !void {
     }
 }
 
-pub fn clientConnect(_: [][]const u8) !void {
-    std.log.debug("Trying to connect to {s}", .{
-        IP_address,
-    });
-    std.log.debug("Trying to connect to port {}", .{
-        port,
-    });
+pub fn clientConnect(params: [][]const u8) !void {
+    if (params.len == 1) return error.MissingParameter;
+    if (params.len > 0) {
+        port = try std.fmt.parseInt(u16, params[0], 0);
+        IP_address = @constCast(params[1]);
+    }
+    std.log.info(
+        "Trying to connect to {s}:{}",
+        .{ IP_address, port },
+    );
     server = try network.connectToHost(
         allocator,
         IP_address,
