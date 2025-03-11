@@ -362,6 +362,20 @@ pub fn init(c: Config) !void {
         .execute = &clientIsolate,
     });
     errdefer _ = command.registry.orderedRemove("ISOLATE");
+    try command.registry.put("WAIT_MOVE_CARRIER", .{
+        .name = "WAIT_MOVE_CARRIER",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "carrier" },
+        },
+        .short_description = "Wait for carrier movement to complete.",
+        .long_description =
+        \\Pause the execution of any further commands until movement for the
+        \\given carrier is indicated as complete.
+        ,
+        .execute = &clientWaitMoveCarrier,
+    });
+    errdefer _ = command.registry.orderedRemove("WAIT_MOVE_CARRIER");
     // try command.registry.put("RECOVER_CARRIER", .{
     //     .name = "RECOVER_CARRIER",
     //     .parameters = &[_]command.Command.Parameter{
@@ -2046,6 +2060,64 @@ fn clientIsolate(params: [][]const u8) !void {
         param,
         s,
     ) else return error.ServerNotConnected;
+}
+
+fn clientWaitMoveCarrier(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const carrier_id = try std.fmt.parseInt(u16, params[1], 0);
+    var cc_link_received = false;
+    if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+
+    while (true) {
+        try command.checkCommandInterrupt();
+        const kind: @typeInfo(
+            mmc.Param,
+        ).@"union".tag_type.? = .get_status;
+        const param: mmc.ParamType(kind) = .{
+            .kind = .Carrier,
+        };
+        if (server) |s| {
+            var buffer: [1_000_000]u8 = undefined;
+            try sendMessage(kind, param, s);
+            const msg_size = try s.receive(&buffer);
+            var msg_bit_size: usize = 0;
+            const num_of_carriers = std.mem.readPackedInt(
+                u10,
+                buffer[0..msg_size],
+                0,
+                .little,
+            );
+            msg_bit_size += @bitSizeOf(u10);
+            const IntType =
+                @typeInfo(SystemState.Carrier).@"struct".backing_integer.?;
+            var detected_carriers: usize = 0;
+            while (detected_carriers < num_of_carriers) {
+                const carrier_int = std.mem.readPackedInt(
+                    IntType,
+                    &buffer,
+                    msg_bit_size,
+                    .little,
+                );
+                detected_carriers += 1;
+                msg_bit_size += @bitSizeOf(IntType);
+                const carrier: SystemState.Carrier = @bitCast(carrier_int);
+                if (!cc_link_received and
+                    (carrier.state == .PosMoveProgressing or
+                        carrier.state == .SpdMoveProgressing))
+                {
+                    cc_link_received = true;
+                }
+                if (carrier.carrier_id == carrier_id and
+                    carrier.line_id == line_idx + 1 and cc_link_received)
+                {
+                    if (carrier.state == .PosMoveCompleted or
+                        carrier.state == .SpdMoveCompleted) return;
+                }
+            }
+        } else return error.ServerNotConnected;
+    }
 }
 
 fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
