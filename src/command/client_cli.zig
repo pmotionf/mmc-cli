@@ -7,6 +7,8 @@ const CircularBuffer =
     @import("../circular_buffer.zig").CircularBuffer;
 const builtin = @import("builtin");
 
+const MMCErrorEnum = @import("mmc_config").MMCErrorEnum;
+
 var arena: std.heap.ArenaAllocator = undefined;
 var allocator: std.mem.Allocator = undefined;
 var line_names: [][]u8 = undefined;
@@ -19,12 +21,16 @@ const SystemState = mmc.SystemState;
 var IP_address: []u8 = undefined;
 var port: u16 = undefined;
 
-var server: ?network.Socket = null;
+pub var main_socket: ?network.Socket = null;
+pub var status_socket: ?network.Socket = null;
 
 pub const Config = struct {
     IP_address: []u8,
     port: u16,
 };
+
+var system_state: SystemState = std.mem.zeroes(SystemState);
+var status_lock: std.Thread.RwLock = .{};
 
 pub fn init(c: Config) !void {
     arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -362,6 +368,20 @@ pub fn init(c: Config) !void {
         .execute = &clientIsolate,
     });
     errdefer _ = command.registry.orderedRemove("ISOLATE");
+    try command.registry.put("WAIT_MOVE_CARRIER", .{
+        .name = "WAIT_MOVE_CARRIER",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "carrier" },
+        },
+        .short_description = "Wait for carrier movement to complete.",
+        .long_description =
+        \\Pause the execution of any further commands until movement for the
+        \\given carrier is indicated as complete.
+        ,
+        .execute = &clientWaitMoveCarrier,
+    });
+    errdefer _ = command.registry.orderedRemove("WAIT_MOVE_CARRIER");
     // try command.registry.put("RECOVER_CARRIER", .{
     //     .name = "RECOVER_CARRIER",
     //     .parameters = &[_]command.Command.Parameter{
@@ -651,41 +671,175 @@ pub fn init(c: Config) !void {
 pub fn deinit() void {
     arena.deinit();
     line_names = undefined;
-    if (server) |s| {
+    if (main_socket) |s| {
         s.close();
+        main_socket = null;
     }
     network.deinit();
 }
 
-pub fn waitErrorMessage() !void {
-    var buffer: [128]u8 = undefined;
-    const stdout = std.io.getStdOut().writer();
-    while (server) |s| {
-        const fd: std.posix.pollfd = .{
-            .fd = s.internal,
-            .events = switch (builtin.os.tag) {
-                .linux => std.os.linux.POLL.RDNORM,
-                .windows => std.os.windows.ws2_32.POLL.RDNORM,
-                else => unreachable,
-            },
-            .revents = 0,
+/// Parse carrier message from `GET_STATUS` and update to `system_state.carriers`.
+fn parseCarrierStatus(buffer: []const u8) void {
+    // The first 4 bits are the message type, the following 13 bits are the
+    // message length. Actual message start after these bits
+    var msg_offset: usize = @bitSizeOf(u4) + @bitSizeOf(u13);
+    const num_of_carriers = std.mem.readPackedInt(
+        u10,
+        buffer,
+        msg_offset,
+        .little,
+    );
+    msg_offset += @bitSizeOf(u10);
+    const IntType =
+        @typeInfo(SystemState.Carrier).@"struct".backing_integer.?;
+    var detected_carriers: usize = 0;
+    system_state.num_of_carriers = 0;
+    while (detected_carriers < num_of_carriers) {
+        const carrier_int = std.mem.readPackedInt(
+            IntType,
+            buffer,
+            msg_offset,
+            .little,
+        );
+        detected_carriers += 1;
+        msg_offset += @bitSizeOf(IntType);
+        const carrier: SystemState.Carrier = @bitCast(carrier_int);
+        system_state.carriers[system_state.num_of_carriers] = carrier;
+        system_state.num_of_carriers += 1;
+    }
+}
+
+/// Parse hall sensor message from `GET_STATUS` and update to `system_state.hall_sensors`.
+fn parseHallStatus(buffer: []const u8) void {
+    // The first 4 bits are the message type, the following 13 bits are the
+    // message length. Actual message start after these bits
+    var msg_offset: usize = @bitSizeOf(u4) + @bitSizeOf(u13);
+    const num_of_active_axis = std.mem.readPackedInt(
+        mcl.Axis.Id.Line,
+        buffer,
+        msg_offset,
+        .little,
+    );
+    msg_offset += @bitSizeOf(mcl.Axis.Id.Line);
+    const IntType =
+        @typeInfo(SystemState.Hall).@"struct".backing_integer.?;
+    var detected_active_axis: usize = 0;
+    system_state.num_of_active_axis = 0;
+    while (detected_active_axis < num_of_active_axis) {
+        const hall_sensor_int = std.mem.readPackedInt(
+            IntType,
+            buffer,
+            msg_offset,
+            .little,
+        );
+        detected_active_axis += 1;
+        msg_offset += @bitSizeOf(IntType);
+        const hall_sensor: SystemState.Hall = @bitCast(hall_sensor_int);
+        system_state.hall_sensors[system_state.num_of_active_axis] = hall_sensor;
+        system_state.num_of_active_axis += 1;
+    }
+}
+
+/// When the client connects to the server, a separate connection is established
+/// and managed by this function in a new thread. This function will continuously
+/// request the system status.
+///
+/// TODO: `Auto_initialize` shall be moved to server side. Thus, `getStatus` will
+/// implement sleep so that the server does not get too much request over time
+fn getStatus() !void {
+    status_socket = try network.connectToHost(
+        allocator,
+        IP_address,
+        port,
+        .tcp,
+    );
+    const status = status_socket orelse return error.NotConnected;
+    var buffer: [8192]u8 = undefined;
+
+    // discard line information sent by the server to any new established connection
+    _ = status.receive(&buffer) catch |e| {
+        std.log.debug("{s}", .{@errorName(e)});
+        std.log.err("ConnectionClosedByServer", .{});
+        status.close();
+        main_socket.?.close();
+        try disconnectedClearence();
+        return;
+    };
+    std.log.debug("line information received", .{});
+    const kind: @typeInfo(
+        mmc.Param,
+    ).@"union".tag_type.? = .get_status;
+    while (main_socket) |s| {
+        // Get carrier status from the server
+        const carrier_param: mmc.ParamType(kind) = .{
+            .kind = .Carrier,
         };
-        var poll_fd: [1]std.posix.pollfd = .{fd};
-        const status = std.posix.poll(&poll_fd, 0) catch {
-            std.log.debug("poll failed", .{});
+        sendMessage(kind, carrier_param, status) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            status.close();
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        waitSocketReceive(status, .StatusCarrier) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            status.close();
+            s.close();
+            try disconnectedClearence();
             break;
         };
-        // Avoid blocking read from clients
-        if (status == 0) continue;
+        const carrier_msg_size = status.receive(&buffer) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            status.close();
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        status_lock.lock();
+        parseCarrierStatus(buffer[0..carrier_msg_size]);
+        status_lock.unlock();
 
-        const msg_size = s.receive(&buffer) catch break;
-        if (msg_size == 0) break;
-        try stdout.print("{s}\n", .{buffer[0..msg_size]});
+        // Get hall sensor status from the server
+        const hall_param: mmc.ParamType(kind) = .{
+            .kind = .Hall,
+        };
+        sendMessage(kind, hall_param, status) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            status.close();
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        waitSocketReceive(status, .StatusHall) catch |e| {
+            std.log.err("{s}", .{@errorName(e)});
+            status.close();
+            s.close();
+            try disconnectedClearence();
+            break;
+        };
+        const hall_msg_size = status.receive(&buffer) catch |e| {
+            std.log.err("{s}", .{@errorName(e)});
+            status.close();
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        status_lock.lock();
+        parseHallStatus(buffer[0..hall_msg_size]);
+        status_lock.unlock();
+    } else {
+        status.close();
+        status_socket = null;
     }
 }
 
 pub fn clientConnect(params: [][]const u8) !void {
     std.log.debug("{}", .{params.len});
+    if (main_socket != null) return error.ConnectionIsAlreadyEstablished;
     if (params[0].len != 0 and params[1].len == 0) return error.MissingParameter;
     if (params[1].len > 0) {
         port = try std.fmt.parseInt(u16, params[0], 0);
@@ -695,29 +849,26 @@ pub fn clientConnect(params: [][]const u8) !void {
         "Trying to connect to {s}:{}",
         .{ IP_address, port },
     );
-    server = try network.connectToHost(
+    main_socket = try network.connectToHost(
         allocator,
         IP_address,
         port,
         .tcp,
     );
-    if (server) |s| {
-        const server_thread = std.Thread.spawn(
-            .{},
-            waitErrorMessage,
-            .{},
-        ) catch |e| {
-            s.close();
-            return e;
-        };
-        server_thread.detach();
+    if (main_socket) |s| {
         std.log.info(
             "Connected to {}",
             .{try s.getRemoteEndPoint()},
         );
         std.log.info("Receiving line information...", .{});
         var buffer: [1024]u8 = undefined;
-        _ = try s.receive(&buffer);
+        _ = s.receive(&buffer) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
         std.log.debug("{s}", .{buffer});
         var tokenizer = std.mem.tokenizeSequence(
             u8,
@@ -805,6 +956,7 @@ pub fn clientConnect(params: [][]const u8) !void {
             );
             defer allocator.free(lines[i].ranges);
         }
+
         std.log.info(
             "Received the line configuration for the following line:",
             .{},
@@ -815,22 +967,39 @@ pub fn clientConnect(params: [][]const u8) !void {
             try stdout.writeAll(line_name);
             try stdout.writeByte('\n');
         }
+        const server_thread = std.Thread.spawn(
+            .{},
+            getStatus,
+            .{},
+        ) catch |e| {
+            s.close();
+            return e;
+        };
+        server_thread.detach();
     } else {
         std.log.err("Failed to connect to server", .{});
     }
 }
 
+fn disconnectedClearence() !void {
+    for (line_names) |name| {
+        allocator.free(name);
+    }
+    allocator.free(line_names);
+    allocator.free(line_accelerations);
+    allocator.free(line_speeds);
+    std.log.info(
+        "Disconnected from server {}",
+        .{try main_socket.?.getRemoteEndPoint()},
+    );
+    main_socket = null;
+    status_socket = null;
+}
+
 pub fn clientDisconnect(_: [][]const u8) !void {
-    if (server) |s| {
+    if (main_socket) |s| {
         s.close();
-        server = null;
-        for (line_names) |name| {
-            allocator.free(name);
-        }
-        allocator.free(line_names);
-        allocator.free(line_accelerations);
-        allocator.free(line_speeds);
-        std.log.info("Disconnected from server", .{});
+        try disconnectedClearence();
     } else return error.ServerNotConnected;
 }
 
@@ -906,23 +1075,40 @@ fn clientStationX(params: [][]const u8) !void {
         .line_idx = @intCast(line_idx),
         .axis_idx = @intCast(axis_idx),
     };
-    if (server) |s| {
+    if (main_socket) |s| {
         // The buffer might contain error message from the server
         var buffer: [128]u8 = undefined;
-        try sendMessage(kind, param, s);
-        const msg_size = try s.receive(&buffer);
-        std.log.debug("msg_size: {}", .{msg_size});
-        std.log.debug("data: {any}", .{buffer[0..msg_size]});
-        std.log.debug("x size: {}", .{@sizeOf(mcl.registers.X)});
-        if (msg_size != @sizeOf(mcl.registers.X)) {
-            std.log.err("{s}", .{buffer[0..msg_size]});
-        } else {
-            const x = std.mem.bytesToValue(
-                mcl.registers.X,
-                buffer[0..msg_size],
-            );
-            std.log.info("{}", .{x});
-        }
+        sendMessage(kind, param, s) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        waitSocketReceive(s, .RegisterX) catch |e| {
+            std.log.err("{s}", .{@errorName(e)});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        _ = s.receive(&buffer) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        // The first 4 bits are the message type, the following 13 bits are the
+        // message length. Actual message start after these bits
+        const msg_offset: usize = @bitSizeOf(u4) + @bitSizeOf(u13);
+        const msg = std.mem.readPackedInt(
+            @typeInfo(mcl.registers.X).@"struct".backing_integer.?,
+            &buffer,
+            msg_offset,
+            .little,
+        );
+        const x: mcl.registers.X = @bitCast(msg);
+        std.log.info("{}", .{x});
     } else return error.ServerNotConnected;
 }
 
@@ -945,20 +1131,40 @@ fn clientStationY(params: [][]const u8) !void {
         .line_idx = @intCast(line_idx),
         .axis_idx = @intCast(axis_idx),
     };
-    if (server) |s| {
+    if (main_socket) |s| {
         // The buffer might contain error message from the server
         var buffer: [128]u8 = undefined;
-        try sendMessage(kind, param, s);
-        const msg_size = try s.receive(&buffer);
-        if (msg_size != @sizeOf(mcl.registers.Y)) {
-            std.log.err("{s}", .{buffer[0..msg_size]});
-        } else {
-            const y = std.mem.bytesToValue(
-                mcl.registers.Y,
-                buffer[0..msg_size],
-            );
-            std.log.info("{}", .{y});
-        }
+        sendMessage(kind, param, s) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        waitSocketReceive(s, .RegisterY) catch |e| {
+            std.log.err("{s}", .{@errorName(e)});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        _ = s.receive(&buffer) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        // The first 4 bits are the message type, the following 13 bits are the
+        // message length. Actual message start after these bits
+        const msg_offset: usize = @bitSizeOf(u4) + @bitSizeOf(u13);
+        const msg = std.mem.readPackedInt(
+            @typeInfo(mcl.registers.Y).@"struct".backing_integer.?,
+            &buffer,
+            msg_offset,
+            .little,
+        );
+        const y: mcl.registers.Y = @bitCast(msg);
+        std.log.info("{}", .{y});
     } else return error.ServerNotConnected;
 }
 
@@ -981,21 +1187,40 @@ fn clientStationWr(params: [][]const u8) !void {
         .line_idx = @intCast(line_idx),
         .axis_idx = @intCast(axis_idx),
     };
-    if (server) |s| {
+    if (main_socket) |s| {
         // The buffer might contain error message from the server
         var buffer: [128]u8 = undefined;
-        try sendMessage(kind, param, s);
-        const msg_size = try s.receive(&buffer);
-        std.log.debug("data: {s}", .{buffer[0..msg_size]});
-        if (msg_size != @sizeOf(mcl.registers.Wr)) {
-            std.log.err("{s}", .{buffer[0..msg_size]});
-        } else {
-            const wr = std.mem.bytesToValue(
-                mcl.registers.Wr,
-                buffer[0..msg_size],
-            );
-            std.log.info("{}", .{wr});
-        }
+        sendMessage(kind, param, s) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        waitSocketReceive(s, .RegisterWr) catch |e| {
+            std.log.err("{s}", .{@errorName(e)});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        _ = s.receive(&buffer) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        // The first 4 bits are the message type, the following 13 bits are the
+        // message length. Actual message start after these bits
+        const msg_offset: usize = @bitSizeOf(u4) + @bitSizeOf(u13);
+        const msg = std.mem.readPackedInt(
+            @typeInfo(mcl.registers.Wr).@"struct".backing_integer.?,
+            &buffer,
+            msg_offset,
+            .little,
+        );
+        const wr: mcl.registers.Wr = @bitCast(msg);
+        std.log.info("{}", .{wr});
     } else return error.ServerNotConnected;
 }
 
@@ -1018,21 +1243,40 @@ fn clientStationWw(params: [][]const u8) !void {
         .line_idx = @intCast(line_idx),
         .axis_idx = @intCast(axis_idx),
     };
-    if (server) |s| {
+    if (main_socket) |s| {
         // The buffer might contain error message from the server
         var buffer: [128]u8 = undefined;
-        try sendMessage(kind, param, s);
-        const msg_size = try s.receive(&buffer);
-        std.log.debug("data: {s}", .{buffer[0..msg_size]});
-        if (msg_size != @sizeOf(mcl.registers.Ww)) {
-            std.log.err("{s}", .{buffer[0..msg_size]});
-        } else {
-            const ww = std.mem.bytesToValue(
-                mcl.registers.Ww,
-                buffer[0..msg_size],
-            );
-            std.log.info("{}", .{ww});
-        }
+        sendMessage(kind, param, s) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        waitSocketReceive(s, .RegisterWw) catch |e| {
+            std.log.err("{s}", .{@errorName(e)});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        _ = s.receive(&buffer) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        // The first 4 bits are the message type, the following 13 bits are the
+        // message length. Actual message start after these bits
+        const msg_offset: usize = @bitSizeOf(u4) + @bitSizeOf(u13);
+        const msg = std.mem.readPackedInt(
+            @typeInfo(mcl.registers.Ww).@"struct".backing_integer.?,
+            &buffer,
+            msg_offset,
+            .little,
+        );
+        const ww: mcl.registers.Ww = @bitCast(msg);
+        std.log.info("{}", .{ww});
     } else return error.ServerNotConnected;
 }
 
@@ -1047,69 +1291,35 @@ fn clientAxisCarrier(params: [][]const u8) !void {
         return error.InvalidAxis;
     }
 
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .get_status;
-    const param: mmc.ParamType(kind) = .{
-        .kind = .Carrier,
-    };
-    if (server) |s| {
-        var buffer: [1_000_000]u8 = undefined;
-        try sendMessage(kind, param, s);
-        const msg_size = try s.receive(&buffer);
-        var msg_bit_size: usize = 0;
-        const num_of_carriers = std.mem.readPackedInt(
-            u10,
-            buffer[0..msg_size],
-            0,
-            .little,
-        );
-        msg_bit_size += @bitSizeOf(u10);
-        const IntType =
-            @typeInfo(SystemState.Carrier).@"struct".backing_integer.?;
-        var detected_carriers: usize = 0;
-        while (detected_carriers < num_of_carriers) {
-            const carrier_int = std.mem.readPackedInt(
-                IntType,
-                &buffer,
-                msg_bit_size,
-                .little,
+    status_lock.lock();
+    const num_of_carriers = system_state.num_of_carriers;
+    status_lock.unlock();
+    for (0..num_of_carriers) |i| {
+        status_lock.lock();
+        const carrier = system_state.carriers[i];
+        status_lock.unlock();
+        if (carrier.line_id == line_idx + 1 and
+            carrier.id != 0 and
+            (carrier.axis_ids.first == axis_id or
+                carrier.axis_ids.second == axis_id))
+        {
+            std.log.info(
+                "Carrier {d} on axis {d}.\n",
+                .{ carrier.id, axis_id },
             );
-            detected_carriers += 1;
-            msg_bit_size += @bitSizeOf(IntType);
-            const carrier: SystemState.Carrier = @bitCast(carrier_int);
-            std.log.debug(
-                "carrier_id: {}\n first_axis: {}\n second_axis: {}\n location: {}",
-                .{
-                    carrier.carrier_id,
-                    carrier.axis_ids.first,
-                    carrier.axis_ids.second,
-                    carrier.location,
-                },
-            );
-            if (carrier.line_id == line_idx + 1 and
-                carrier.carrier_id != 0 and
-                (carrier.axis_ids.first == axis_id or
-                    carrier.axis_ids.second == axis_id))
-            {
-                std.log.info(
-                    "Carrier {d} on axis {d}.\n",
-                    .{ carrier.carrier_id, axis_id },
-                );
-                return;
-            }
+            return;
         }
-        std.log.info(
-            "No carrier recognized on axis {d}.\n",
-            .{axis_id},
-        );
-    } else return error.ServerNotConnected;
+    }
+    std.log.info(
+        "No carrier recognized on axis {d}.\n",
+        .{axis_id},
+    );
 }
 
 fn clientAutoInitialize(_: [][]const u8) !void {
-    var socket: network.Socket = undefined;
-    if (server) |s| {
-        socket = s;
+    var s: network.Socket = undefined;
+    if (main_socket) |socket| {
+        s = socket;
     } else return error.ServerNotConnected;
     var total_axes: usize = 0;
     // Track the starting index of each line when the lines are cascaded
@@ -1127,7 +1337,6 @@ fn clientAutoInitialize(_: [][]const u8) !void {
     hall_sensors = try mapHallSensors(
         hall_sensors,
         starting_axis_indices,
-        socket,
     );
     // 2nd: iterate over `hall_sensors` to determine clusters
     // -> clusters: range of index (start and end)
@@ -1419,7 +1628,10 @@ fn clientAutoInitialize(_: [][]const u8) !void {
             "initialized id: {}, current carrier id: {}",
             .{ initialized_carrier_id, carrier_id },
         );
-        if (try checkCarrierExistence(current_axis, aux_axis, socket)) |carrier_info| {
+        if (try checkCarrierExistence(
+            current_axis,
+            aux_axis,
+        )) |carrier_info| {
             const detected_carrier_id = carrier_info.@"0";
             var is_carrier_member = false;
             for (cluster.carrier_ids) |id| {
@@ -1466,11 +1678,17 @@ fn clientAutoInitialize(_: [][]const u8) !void {
             param.carrier_id = @truncate(detected_carrier_id);
             param.speed = line_speeds[line_idx];
             param.acceleration = line_accelerations[line_idx];
-            try sendMessage(
+            sendMessage(
                 .set_command,
                 param,
-                socket,
-            );
+                s,
+            ) catch |e| {
+                std.log.debug("{s}", .{@errorName(e)});
+                std.log.err("ConnectionClosedByServer", .{});
+                s.close();
+                try disconnectedClearence();
+                return;
+            };
             if ((cluster.current_hall_index < cluster.end - 1 and
                 cluster.direction == .backward) or
                 (cluster.current_hall_index > cluster.start + 1 and
@@ -1497,18 +1715,12 @@ fn clientAutoInitialize(_: [][]const u8) !void {
         } else if (initialized_carrier_id == carrier_id) {
             // Scan the hall sensor from the beginning of cluster (depending on
             // the direction).
-            if (try assertNoProgressing(
-                cluster.current_hall_index / 2,
-                socket,
-            ) == false) {
+            if (try assertNoProgressing(cluster.current_hall_index / 2) == false) {
                 try clusters.writeItem(cluster);
                 std.log.debug("\n\n", .{});
                 continue;
             }
-            if (try checkHallStatus(
-                cluster.current_hall_index,
-                socket,
-            ) == false) {
+            if (try checkHallStatus(cluster.current_hall_index) == false) {
                 try clusters.writeItem(.{
                     .current_hall_index = if (cluster.direction == .backward)
                         cluster.current_hall_index + 1
@@ -1557,11 +1769,17 @@ fn clientAutoInitialize(_: [][]const u8) !void {
             param.axis_idx = @truncate(axis_idx);
             param.carrier_id = @truncate(carrier_id);
             param.link_axis = link_axis;
-            try sendMessage(
+            sendMessage(
                 .set_command,
                 param,
-                socket,
-            );
+                s,
+            ) catch |e| {
+                std.log.debug("{s}", .{@errorName(e)});
+                std.log.err("ConnectionClosedByServer", .{});
+                s.close();
+                try disconnectedClearence();
+                return;
+            };
             var new_cluster = cluster;
             new_cluster.initialized_carriers += 1;
             new_cluster.carrier_ids[new_cluster.initialized_carriers] =
@@ -1592,8 +1810,14 @@ fn clientAxisReleaseServo(params: [][]const u8) !void {
         .line_idx = @intCast(line_idx),
         .axis_idx = axis_idx,
     };
-    if (server) |s| {
-        try sendMessage(kind, param, s);
+    if (main_socket) |s| {
+        sendMessage(kind, param, s) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
     } else return error.ServerNotConnected;
 }
 
@@ -1619,11 +1843,17 @@ fn clientClearErrors(params: [][]const u8) !void {
         mmc.Param,
     ).@"union".tag_type.? = .clear_errors;
     const param: mmc.ParamType(kind) = .{
-        .line_idx = line_idx,
+        .line_id = line_idx + 1,
         .axis_idx = axis_idx,
     };
-    if (server) |s| {
-        try sendMessage(kind, param, s);
+    if (main_socket) |s| {
+        sendMessage(kind, param, s) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
     } else return error.ServerNotConnected;
 }
 
@@ -1649,11 +1879,17 @@ fn clientClearCarrierInfo(params: [][]const u8) !void {
         mmc.Param,
     ).@"union".tag_type.? = .clear_carrier_info;
     const param: mmc.ParamType(kind) = .{
-        .line_idx = line_idx,
+        .line_id = line_idx + 1,
         .axis_idx = axis_idx,
     };
-    if (server) |s| {
-        try sendMessage(kind, param, s);
+    if (main_socket) |s| {
+        sendMessage(kind, param, s) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
     } else return error.ServerNotConnected;
 }
 
@@ -1663,61 +1899,28 @@ fn clientCarrierLocation(params: [][]const u8) !void {
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
     const line_idx: usize = try matchLine(line_names, line_name);
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .get_status;
-    const param: mmc.ParamType(kind) = .{
-        .kind = .Carrier,
-    };
-    if (server) |s| {
-        var buffer: [1_000_000]u8 = undefined;
-        try sendMessage(kind, param, s);
-        const msg_size = try s.receive(&buffer);
-        var msg_bit_size: usize = 0;
-        const num_of_carriers = std.mem.readPackedInt(
-            u10,
-            buffer[0..msg_size],
-            0,
-            .little,
-        );
-        msg_bit_size += @bitSizeOf(u10);
-        const IntType =
-            @typeInfo(SystemState.Carrier).@"struct".backing_integer.?;
-        var detected_carriers: usize = 0;
-        while (detected_carriers < num_of_carriers) {
-            const carrier_int = std.mem.readPackedInt(
-                IntType,
-                &buffer,
-                msg_bit_size,
-                .little,
+
+    status_lock.lock();
+    const num_of_carriers = system_state.num_of_carriers;
+    status_lock.unlock();
+    for (0..num_of_carriers) |i| {
+        status_lock.lock();
+        const carrier = system_state.carriers[i];
+        status_lock.unlock();
+        if (carrier.line_id == line_idx + 1 and
+            carrier.id == carrier_id)
+        {
+            std.log.info(
+                "Carrier {d} location: {d} mm",
+                .{ carrier.id, carrier.location },
             );
-            detected_carriers += 1;
-            msg_bit_size += @bitSizeOf(IntType);
-            const carrier: SystemState.Carrier = @bitCast(carrier_int);
-            std.log.debug(
-                "carrier_id: {}\n first_axis: {}\n second_axis: {}\n location: {}",
-                .{
-                    carrier.carrier_id,
-                    carrier.axis_ids.first,
-                    carrier.axis_ids.second,
-                    carrier.location,
-                },
-            );
-            if (carrier.line_id == line_idx + 1 and
-                carrier.carrier_id == carrier_id)
-            {
-                std.log.info(
-                    "Carrier {d} location: {d} mm",
-                    .{ carrier.carrier_id, carrier.location },
-                );
-                return;
-            }
+            return;
         }
-        std.log.err(
-            "Carrier not found",
-            .{},
-        );
-    } else return error.ServerNotConnected;
+    }
+    std.log.err(
+        "Carrier not found",
+        .{},
+    );
 }
 
 fn clientCarrierAxis(params: [][]const u8) !void {
@@ -1726,66 +1929,33 @@ fn clientCarrierAxis(params: [][]const u8) !void {
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
     const line_idx: usize = try matchLine(line_names, line_name);
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .get_status;
-    const param: mmc.ParamType(kind) = .{
-        .kind = .Carrier,
-    };
-    if (server) |s| {
-        var buffer: [1_000_000]u8 = undefined;
-        try sendMessage(kind, param, s);
-        const msg_size = try s.receive(&buffer);
-        var msg_bit_size: usize = 0;
-        const num_of_carriers = std.mem.readPackedInt(
-            u10,
-            buffer[0..msg_size],
-            0,
-            .little,
-        );
-        msg_bit_size += @bitSizeOf(u10);
-        const IntType =
-            @typeInfo(SystemState.Carrier).@"struct".backing_integer.?;
-        var detected_carriers: usize = 0;
-        while (detected_carriers < num_of_carriers) {
-            const carrier_int = std.mem.readPackedInt(
-                IntType,
-                &buffer,
-                msg_bit_size,
-                .little,
+
+    status_lock.lock();
+    const num_of_carriers = system_state.num_of_carriers;
+    status_lock.unlock();
+    for (0..num_of_carriers) |i| {
+        status_lock.lock();
+        const carrier = system_state.carriers[i];
+        status_lock.unlock();
+        if (carrier.line_id == line_idx + 1 and
+            carrier.id == carrier_id)
+        {
+            std.log.info(
+                "Carrier {d} axis: {}",
+                .{ carrier.id, carrier.axis_ids.first },
             );
-            detected_carriers += 1;
-            msg_bit_size += @bitSizeOf(IntType);
-            const carrier: SystemState.Carrier = @bitCast(carrier_int);
-            std.log.debug(
-                "carrier_id: {}\n first_axis: {}\n second_axis: {}\n location: {}",
-                .{
-                    carrier.carrier_id,
-                    carrier.axis_ids.first,
-                    carrier.axis_ids.second,
-                    carrier.location,
-                },
+            if (carrier.axis_ids.second == 0) return;
+            std.log.info(
+                "Carrier {d} axis: {}",
+                .{ carrier.id, carrier.axis_ids.second },
             );
-            if (carrier.line_id == line_idx + 1 and
-                carrier.carrier_id == carrier_id)
-            {
-                std.log.info(
-                    "Carrier {d} axis: {}",
-                    .{ carrier.carrier_id, carrier.axis_ids.first },
-                );
-                if (carrier.axis_ids.second == 0) return;
-                std.log.info(
-                    "Carrier {d} axis: {}",
-                    .{ carrier.carrier_id, carrier.axis_ids.second },
-                );
-                return;
-            }
+            return;
         }
-        std.log.err(
-            "Carrier not found",
-            .{},
-        );
-    } else return error.ServerNotConnected;
+    }
+    std.log.err(
+        "Carrier not found",
+        .{},
+    );
 }
 
 fn clientHallStatus(params: [][]const u8) !void {
@@ -1803,47 +1973,25 @@ fn clientHallStatus(params: [][]const u8) !void {
             return error.InvalidAxis;
         }
     }
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .get_status;
-    const param: mmc.ParamType(kind) = .{
-        .kind = .Hall,
-    };
-    if (server) |s| {
-        var buffer: [1_000_000]u8 = undefined;
-        try sendMessage(kind, param, s);
-        const msg_size = try s.receive(&buffer);
-        var msg_bit_size: usize = 0;
-        const num_of_active_axis = std.mem.readPackedInt(
-            mcl.Axis.Id.Line,
-            buffer[0..msg_size],
-            0,
-            .little,
-        );
-        msg_bit_size += @bitSizeOf(mcl.Axis.Id.Line);
-        const IntType =
-            @typeInfo(SystemState.Hall).@"struct".backing_integer.?;
-        var detected_active_axis: usize = 0;
-        while (detected_active_axis < num_of_active_axis) {
-            const hall_sensor_int = std.mem.readPackedInt(
-                IntType,
-                &buffer,
-                msg_bit_size,
-                .little,
-            );
-            detected_active_axis += 1;
-            msg_bit_size += @bitSizeOf(IntType);
-            const hall_sensor: SystemState.Hall = @bitCast(hall_sensor_int);
-            std.log.debug(
-                "line_id: {}\n axis_id: {}\n front hall sensor: {}\n back hall sensor: {}",
+
+    status_lock.lock();
+    const num_of_active_axis = system_state.num_of_active_axis;
+    status_lock.unlock();
+    for (0..num_of_active_axis) |i| {
+        status_lock.lock();
+        const hall_sensor = system_state.hall_sensors[i];
+        status_lock.unlock();
+        if (axis_id == 0) {
+            std.log.info(
+                "Axis {} Hall Sensor:\n\t FRONT - {s}\n\t BACK - {s}",
                 .{
-                    hall_sensor.line_id,
                     hall_sensor.axis_id,
-                    hall_sensor.hall_states.front,
-                    hall_sensor.hall_states.back,
+                    if (hall_sensor.hall_states.front) "ON" else "OFF",
+                    if (hall_sensor.hall_states.back) "ON" else "OFF",
                 },
             );
-            if (axis_id == 0) {
+        } else {
+            if (hall_sensor.axis_id == axis_id) {
                 std.log.info(
                     "Axis {} Hall Sensor:\n\t FRONT - {s}\n\t BACK - {s}",
                     .{
@@ -1852,20 +2000,10 @@ fn clientHallStatus(params: [][]const u8) !void {
                         if (hall_sensor.hall_states.back) "ON" else "OFF",
                     },
                 );
-            } else {
-                if (hall_sensor.axis_id == axis_id) {
-                    std.log.info(
-                        "Axis {} Hall Sensor:\n\t FRONT - {s}\n\t BACK - {s}",
-                        .{
-                            hall_sensor.axis_id,
-                            if (hall_sensor.hall_states.front) "ON" else "OFF",
-                            if (hall_sensor.hall_states.back) "ON" else "OFF",
-                        },
-                    );
-                }
+                return;
             }
         }
-    } else return error.ServerNotConnected;
+    }
 }
 
 fn clientAssertHall(params: [][]const u8) !void {
@@ -1898,64 +2036,31 @@ fn clientAssertHall(params: [][]const u8) !void {
             alarm_on = true;
         } else return error.InvalidHallAlarmState;
     }
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .get_status;
-    const param: mmc.ParamType(kind) = .{
-        .kind = .Hall,
-    };
-    if (server) |s| {
-        var buffer: [1_000_000]u8 = undefined;
-        try sendMessage(kind, param, s);
-        const msg_size = try s.receive(&buffer);
-        var msg_bit_size: usize = 0;
-        const num_of_active_axis = std.mem.readPackedInt(
-            mcl.Axis.Id.Line,
-            buffer[0..msg_size],
-            0,
-            .little,
-        );
-        msg_bit_size += @bitSizeOf(mcl.Axis.Id.Line);
-        const IntType =
-            @typeInfo(SystemState.Hall).@"struct".backing_integer.?;
-        var detected_active_axis: usize = 0;
-        while (detected_active_axis < num_of_active_axis) {
-            const hall_sensor_int = std.mem.readPackedInt(
-                IntType,
-                &buffer,
-                msg_bit_size,
-                .little,
-            );
-            detected_active_axis += 1;
-            msg_bit_size += @bitSizeOf(IntType);
-            const hall_sensor: SystemState.Hall = @bitCast(hall_sensor_int);
-            std.log.debug(
-                "line_id: {}\n axis_id: {}\n front hall sensor: {}\n back hall sensor: {}",
-                .{
-                    hall_sensor.line_id,
-                    hall_sensor.axis_id,
-                    hall_sensor.hall_states.front,
-                    hall_sensor.hall_states.back,
+
+    status_lock.lock();
+    const num_of_active_axis = system_state.num_of_active_axis;
+    status_lock.unlock();
+    for (0..num_of_active_axis) |i| {
+        status_lock.lock();
+        const hall_sensor = system_state.hall_sensors[i];
+        status_lock.unlock();
+        if (hall_sensor.axis_id == axis_id and
+            hall_sensor.line_id == line_idx + 1)
+        {
+            switch (side) {
+                .backward => {
+                    if (hall_sensor.hall_states.back != alarm_on) {
+                        return error.UnexpectedHallAlarm;
+                    }
                 },
-            );
-            if (hall_sensor.axis_id == axis_id and
-                hall_sensor.line_id == line_idx + 1)
-            {
-                switch (side) {
-                    .backward => {
-                        if (hall_sensor.hall_states.back != alarm_on) {
-                            return error.UnexpectedHallAlarm;
-                        }
-                    },
-                    .forward => {
-                        if (hall_sensor.hall_states.front != alarm_on) {
-                            return error.UnexpectedHallAlarm;
-                        }
-                    },
-                }
+                .forward => {
+                    if (hall_sensor.hall_states.front != alarm_on) {
+                        return error.UnexpectedHallAlarm;
+                    }
+                },
             }
         }
-    } else return error.ServerNotConnected;
+    }
 }
 
 fn clientMclReset(_: [][]const u8) !void {
@@ -1963,8 +2068,14 @@ fn clientMclReset(_: [][]const u8) !void {
         mmc.Param,
     ).@"union".tag_type.? = .reset_mcl;
     const param = {};
-    if (server) |s| {
-        try sendMessage(kind, param, s);
+    if (main_socket) |s| {
+        sendMessage(kind, param, s) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
     } else return error.ServerNotConnected;
 }
 
@@ -1975,8 +2086,18 @@ fn clientCalibrate(params: [][]const u8) !void {
     var param = std.mem.zeroes(mmc.ParamType(.set_command));
     param.command_code = .Calibration;
     param.line_idx = @truncate(line_idx);
-    if (server) |s| {
-        try sendMessage(.set_command, param, s);
+    if (main_socket) |s| {
+        sendMessage(
+            .set_command,
+            param,
+            s,
+        ) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
     } else return error.ServerNotConnected;
 }
 
@@ -1987,8 +2108,18 @@ fn clientSetLineZero(params: [][]const u8) !void {
     param.command_code = .SetLineZero;
     param.line_idx = @truncate(line_idx);
 
-    if (server) |s| {
-        try sendMessage(.set_command, param, s);
+    if (main_socket) |s| {
+        sendMessage(
+            .set_command,
+            param,
+            s,
+        ) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
     } else return error.ServerNotConnected;
 }
 
@@ -2041,11 +2172,47 @@ fn clientIsolate(params: [][]const u8) !void {
     param.axis_idx = axis_index;
     param.carrier_id = carrier_id;
     param.link_axis = link_axis;
-    if (server) |s| try sendMessage(
+    if (main_socket) |s| sendMessage(
         .set_command,
         param,
         s,
-    ) else return error.ServerNotConnected;
+    ) catch |e| {
+        std.log.debug("{s}", .{@errorName(e)});
+        std.log.err("ConnectionClosedByServer", .{});
+        s.close();
+        try disconnectedClearence();
+        return;
+    } else return error.ServerNotConnected;
+}
+
+fn clientWaitMoveCarrier(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+
+    status_lock.lock();
+    var system_state_idx: usize = 0;
+    for (0..system_state.num_of_carriers) |i| {
+        const carrier = system_state.carriers[i];
+        if (carrier.id == carrier_id and
+            carrier.line_id == line_idx + 1)
+        {
+            system_state_idx = i;
+            break;
+        }
+    }
+    status_lock.unlock();
+
+    while (true) {
+        try command.checkCommandInterrupt();
+        status_lock.lock();
+        const carrier = system_state.carriers[system_state_idx];
+        status_lock.unlock();
+        if (carrier.state == .PosMoveCompleted or
+            carrier.state == .SpdMoveCompleted) return;
+    }
 }
 
 fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
@@ -2068,11 +2235,11 @@ fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
     param.carrier_id = carrier_id;
     param.speed = line_speeds[line_idx];
     param.acceleration = line_accelerations[line_idx];
-    if (server) |s| try sendMessage(
-        .set_command,
+    try resetReceivedAndSendCommand(
         param,
-        s,
-    ) else return error.ServerNotConnected;
+        @truncate(line_idx),
+        carrier_id,
+    );
 }
 
 fn clientCarrierPosMoveLocation(params: [][]const u8) !void {
@@ -2090,11 +2257,11 @@ fn clientCarrierPosMoveLocation(params: [][]const u8) !void {
     param.carrier_id = carrier_id;
     param.speed = line_speeds[line_idx];
     param.acceleration = line_accelerations[line_idx];
-    if (server) |s| try sendMessage(
-        .set_command,
+    try resetReceivedAndSendCommand(
         param,
-        s,
-    ) else return error.ServerNotConnected;
+        @truncate(line_idx),
+        carrier_id,
+    );
 }
 
 fn clientCarrierPosMoveDistance(params: [][]const u8) !void {
@@ -2115,11 +2282,11 @@ fn clientCarrierPosMoveDistance(params: [][]const u8) !void {
     param.carrier_id = carrier_id;
     param.speed = line_speeds[line_idx];
     param.acceleration = line_accelerations[line_idx];
-    if (server) |s| try sendMessage(
-        .set_command,
+    try resetReceivedAndSendCommand(
         param,
-        s,
-    ) else return error.ServerNotConnected;
+        @truncate(line_idx),
+        carrier_id,
+    );
 }
 
 fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
@@ -2142,11 +2309,11 @@ fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
     param.carrier_id = carrier_id;
     param.speed = line_speeds[line_idx];
     param.acceleration = line_accelerations[line_idx];
-    if (server) |s| try sendMessage(
-        .set_command,
+    try resetReceivedAndSendCommand(
         param,
-        s,
-    ) else return error.ServerNotConnected;
+        @truncate(line_idx),
+        carrier_id,
+    );
 }
 
 fn clientCarrierSpdMoveLocation(params: [][]const u8) !void {
@@ -2164,11 +2331,11 @@ fn clientCarrierSpdMoveLocation(params: [][]const u8) !void {
     param.carrier_id = carrier_id;
     param.speed = line_speeds[line_idx];
     param.acceleration = line_accelerations[line_idx];
-    if (server) |s| try sendMessage(
-        .set_command,
+    try resetReceivedAndSendCommand(
         param,
-        s,
-    ) else return error.ServerNotConnected;
+        @truncate(line_idx),
+        carrier_id,
+    );
 }
 
 fn clientCarrierSpdMoveDistance(params: [][]const u8) !void {
@@ -2189,11 +2356,11 @@ fn clientCarrierSpdMoveDistance(params: [][]const u8) !void {
     param.carrier_id = carrier_id;
     param.speed = line_speeds[line_idx];
     param.acceleration = line_accelerations[line_idx];
-    if (server) |s| try sendMessage(
-        .set_command,
+    try resetReceivedAndSendCommand(
         param,
-        s,
-    ) else return error.ServerNotConnected;
+        @truncate(line_idx),
+        carrier_id,
+    );
 }
 
 fn clientCarrierPushForward(params: [][]const u8) !void {
@@ -2208,11 +2375,11 @@ fn clientCarrierPushForward(params: [][]const u8) !void {
     param.carrier_id = carrier_id;
     param.speed = line_speeds[line_idx];
     param.acceleration = line_accelerations[line_idx];
-    if (server) |s| try sendMessage(
-        .set_command,
+    try resetReceivedAndSendCommand(
         param,
-        s,
-    ) else return error.ServerNotConnected;
+        @truncate(line_idx),
+        carrier_id,
+    );
 }
 
 fn clientCarrierPushBackward(params: [][]const u8) !void {
@@ -2227,11 +2394,11 @@ fn clientCarrierPushBackward(params: [][]const u8) !void {
     param.carrier_id = carrier_id;
     param.speed = line_speeds[line_idx];
     param.acceleration = line_accelerations[line_idx];
-    if (server) |s| try sendMessage(
-        .set_command,
+    try resetReceivedAndSendCommand(
         param,
-        s,
-    ) else return error.ServerNotConnected;
+        @truncate(line_idx),
+        carrier_id,
+    );
 }
 
 fn clientCarrierPullForward(params: [][]const u8) !void {
@@ -2251,11 +2418,17 @@ fn clientCarrierPullForward(params: [][]const u8) !void {
     param.axis_idx = axis_index;
     param.speed = line_speeds[line_idx];
     param.acceleration = line_accelerations[line_idx];
-    if (server) |s| try sendMessage(
+    if (main_socket) |s| sendMessage(
         .set_command,
         param,
         s,
-    ) else return error.ServerNotConnected;
+    ) catch |e| {
+        std.log.debug("{s}", .{@errorName(e)});
+        std.log.err("ConnectionClosedByServer", .{});
+        s.close();
+        try disconnectedClearence();
+        return;
+    } else return error.ServerNotConnected;
 }
 
 fn clientCarrierPullBackward(params: [][]const u8) !void {
@@ -2275,11 +2448,17 @@ fn clientCarrierPullBackward(params: [][]const u8) !void {
     param.axis_idx = axis_index;
     param.speed = line_speeds[line_idx];
     param.acceleration = line_accelerations[line_idx];
-    if (server) |s| try sendMessage(
+    if (main_socket) |s| sendMessage(
         .set_command,
         param,
         s,
-    ) else return error.ServerNotConnected;
+    ) catch |e| {
+        std.log.debug("{s}", .{@errorName(e)});
+        std.log.err("ConnectionClosedByServer", .{});
+        s.close();
+        try disconnectedClearence();
+        return;
+    } else return error.ServerNotConnected;
 }
 
 fn clientCarrierStopPull(params: [][]const u8) !void {
@@ -2289,18 +2468,21 @@ fn clientCarrierStopPull(params: [][]const u8) !void {
     const line = mcl.lines[line_idx];
     if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .stop_pull_carrier;
-    const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .axis_idx = axis_index,
-    };
-    if (server) |s| try sendMessage(
-        kind,
+
+    var param = std.mem.zeroes(mmc.ParamType(.stop_pull_carrier));
+    param.line_idx = @intCast(line_idx);
+    param.axis_idx = axis_index;
+    if (main_socket) |s| sendMessage(
+        .stop_pull_carrier,
         param,
         s,
-    ) else return error.ServerNotConnected;
+    ) catch |e| {
+        std.log.debug("{s}", .{@errorName(e)});
+        std.log.err("ConnectionClosedByServer", .{});
+        s.close();
+        try disconnectedClearence();
+        return;
+    } else return error.ServerNotConnected;
 }
 
 fn matchLine(names: [][]u8, name: []const u8) !usize {
@@ -2311,6 +2493,50 @@ fn matchLine(names: [][]u8, name: []const u8) !usize {
     }
 }
 
+/// Wait until a socket receive any messages from the server
+fn waitSocketReceive(s: network.Socket, msg_type: mmc.MessageType) !void {
+    var peek_buffer: [8192]u8 = undefined;
+    while (main_socket) |_| {
+        const peek_size = s.peek(&peek_buffer) catch |e| {
+            std.log.debug("error message: {s}", .{@errorName(e)});
+            return error.ConnectionClosedByServer;
+        };
+        if (peek_size == 0) return error.ConnectionClosedByServer;
+        if (peek_size >= 3) {
+            const actual_msg_type = std.mem.readPackedInt(
+                u4,
+                peek_buffer[0..peek_size],
+                0,
+                .little,
+            );
+            if (actual_msg_type != @intFromEnum(msg_type)) {
+                const msg = @as(
+                    mmc.MessageType,
+                    @enumFromInt(actual_msg_type),
+                );
+                std.log.debug(
+                    "Actual message type: {s}, expected: {s}",
+                    .{ @tagName(msg), @tagName(msg_type) },
+                );
+                _ = s.receive(&peek_buffer) catch |e| {
+                    std.log.debug("error message: {s}", .{@errorName(e)});
+                    return error.ConnectionClosedByServer;
+                };
+                return error.UnexpectedMessage;
+            }
+            const msg_length = std.mem.readPackedInt(
+                u13,
+                peek_buffer[0..peek_size],
+                4,
+                .little,
+            );
+            if (peek_size >= msg_length) {
+                return;
+            }
+        }
+    }
+}
+
 fn sendMessage(
     comptime kind: @typeInfo(
         mmc.Param,
@@ -2318,14 +2544,51 @@ fn sendMessage(
     param: mmc.ParamType(kind),
     to_server: network.Socket,
 ) !void {
-    const msg: mmc.Message(kind) =
+    const command_msg: mmc.CommandMessage(kind) =
         .{
             .kind = @intFromEnum(kind),
             ._unused_kind = 0,
             .param = param,
             ._rest_param = 0,
         };
-    try to_server.writer().writeStruct(msg);
+    // The first 4 bits are the message type, the following 13 bits are the
+    // message length. Actual message start after these bits.
+    const msg_length_bit = @bitSizeOf(u4) + @bitSizeOf(u13) + @bitSizeOf(@TypeOf(command_msg));
+    const msg_size = if (msg_length_bit % 8 != 0)
+        msg_length_bit / 8 + 1
+    else
+        msg_length_bit;
+    var msg_buffer: [msg_size]u8 = undefined;
+    comptime var msg_bit_size = 0;
+    std.mem.writePackedInt(
+        u4,
+        &msg_buffer,
+        msg_bit_size,
+        @intFromEnum(mmc.MessageType.Command),
+        .little,
+    );
+    msg_bit_size += @bitSizeOf(u4);
+    std.mem.writePackedInt(
+        u13,
+        &msg_buffer,
+        msg_bit_size,
+        msg_size,
+        .little,
+    );
+    msg_bit_size += @bitSizeOf(u13);
+    std.mem.writePackedInt(
+        std.meta.Int(
+            .unsigned,
+            @bitSizeOf(@TypeOf(command_msg)),
+        ),
+        &msg_buffer,
+        msg_bit_size,
+        @bitCast(command_msg),
+        .little,
+    );
+    msg_bit_size += @bitSizeOf(@TypeOf(command_msg));
+    try to_server.writer().writeAll(&msg_buffer);
+    // try to_server.writer().writeStruct(msg);
     if (kind == .set_command) {
         if (param.command_code == .IsolateForward) {
             std.log.debug(
@@ -2369,7 +2632,6 @@ fn getFreeAxisIndex(
     start_hall_idx: usize,
     end_hall_idx: usize,
     direction: Direction,
-    socket: network.Socket,
 ) !usize {
     const start_axis_idx = if (start_hall_idx % 2 == 0)
         start_hall_idx / 2
@@ -2384,46 +2646,14 @@ fn getFreeAxisIndex(
         "result: {}, direction: {s}, start: {}, end: {}",
         .{ result, @tagName(direction), start_axis_idx, end_axis_idx },
     );
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .get_status;
-    const param: mmc.ParamType(kind) = .{
-        .kind = .Hall,
-    };
-    var buffer: [1_000_000]u8 = undefined;
-    try sendMessage(kind, param, socket);
-    const msg_size = try socket.receive(&buffer);
-    var msg_bit_size: usize = 0;
-    const num_of_active_axis = std.mem.readPackedInt(
-        mcl.Axis.Id.Line,
-        buffer[0..msg_size],
-        0,
-        .little,
-    );
-    msg_bit_size += @bitSizeOf(mcl.Axis.Id.Line);
-    const IntType =
-        @typeInfo(SystemState.Hall).@"struct".backing_integer.?;
-    var detected_active_axis: usize = 0;
-    while (detected_active_axis < num_of_active_axis) {
-        try command.checkCommandInterrupt();
-        const hall_sensor_int = std.mem.readPackedInt(
-            IntType,
-            &buffer,
-            msg_bit_size,
-            .little,
-        );
-        detected_active_axis += 1;
-        msg_bit_size += @bitSizeOf(IntType);
-        const hall_sensor: SystemState.Hall = @bitCast(hall_sensor_int);
-        std.log.debug(
-            "Hall status: \nline_id: {}\n axis_id: {}\n front hall sensor: {}\n back hall sensor: {}",
-            .{
-                hall_sensor.line_id,
-                hall_sensor.axis_id,
-                hall_sensor.hall_states.front,
-                hall_sensor.hall_states.back,
-            },
-        );
+
+    status_lock.lock();
+    const num_of_active_axis = system_state.num_of_active_axis;
+    status_lock.unlock();
+    for (0..num_of_active_axis) |i| {
+        status_lock.lock();
+        const hall_sensor = system_state.hall_sensors[i];
+        status_lock.unlock();
         if (hall_sensor.axis_id - 1 == result) {
             if (direction == .forward and hall_sensor.hall_states.front) {
                 std.log.debug(
@@ -2444,48 +2674,15 @@ fn getFreeAxisIndex(
     return result;
 }
 
-fn checkHallStatus(hall_index: usize, socket: network.Socket) !bool {
+fn checkHallStatus(hall_index: usize) !bool {
     const hall_axis_id = hall_index / 2 + 1;
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .get_status;
-    const param: mmc.ParamType(kind) = .{
-        .kind = .Hall,
-    };
-    var buffer: [1_000_000]u8 = undefined;
-    try sendMessage(kind, param, socket);
-    const msg_size = try socket.receive(&buffer);
-    var msg_bit_size: usize = 0;
-    const num_of_active_axis = std.mem.readPackedInt(
-        mcl.Axis.Id.Line,
-        buffer[0..msg_size],
-        0,
-        .little,
-    );
-    msg_bit_size += @bitSizeOf(mcl.Axis.Id.Line);
-    const IntType =
-        @typeInfo(SystemState.Hall).@"struct".backing_integer.?;
-    var detected_active_axis: usize = 0;
-    while (detected_active_axis < num_of_active_axis) {
-        try command.checkCommandInterrupt();
-        const hall_sensor_int = std.mem.readPackedInt(
-            IntType,
-            &buffer,
-            msg_bit_size,
-            .little,
-        );
-        detected_active_axis += 1;
-        msg_bit_size += @bitSizeOf(IntType);
-        const hall_sensor: SystemState.Hall = @bitCast(hall_sensor_int);
-        std.log.debug(
-            "Hall status: \nline_id: {}\n axis_id: {}\n front hall sensor: {}\n back hall sensor: {}",
-            .{
-                hall_sensor.line_id,
-                hall_sensor.axis_id,
-                hall_sensor.hall_states.front,
-                hall_sensor.hall_states.back,
-            },
-        );
+    status_lock.lock();
+    const num_of_active_axis = system_state.num_of_active_axis;
+    status_lock.unlock();
+    for (0..num_of_active_axis) |i| {
+        status_lock.lock();
+        const hall_sensor = system_state.hall_sensors[i];
+        status_lock.unlock();
         if (hall_axis_id == hall_sensor.axis_id) {
             if ((hall_index % 2 == 0 and hall_sensor.hall_states.back) or
                 (hall_index % 2 != 0 and hall_sensor.hall_states.front))
@@ -2501,61 +2698,27 @@ fn checkHallStatus(hall_index: usize, socket: network.Socket) !bool {
 fn checkCarrierExistence(
     main_idx: usize,
     aux_idx: usize,
-    socket: network.Socket,
 ) !?struct { usize, usize } {
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .get_status;
-    const param: mmc.ParamType(kind) = .{
-        .kind = .Carrier,
-    };
-    var buffer: [1_000_000]u8 = undefined;
-    try sendMessage(kind, param, socket);
-    const msg_size = try socket.receive(&buffer);
-    var msg_bit_size: usize = 0;
-    const num_of_carriers = std.mem.readPackedInt(
-        u10,
-        buffer[0..msg_size],
-        0,
-        .little,
-    );
-    msg_bit_size += @bitSizeOf(u10);
-    const IntType =
-        @typeInfo(SystemState.Carrier).@"struct".backing_integer.?;
-    var detected_carriers: usize = 0;
-    while (detected_carriers < num_of_carriers) {
-        try command.checkCommandInterrupt();
-        const carrier_int = std.mem.readPackedInt(
-            IntType,
-            &buffer,
-            msg_bit_size,
-            .little,
-        );
-        detected_carriers += 1;
-        msg_bit_size += @bitSizeOf(IntType);
-        const carrier: SystemState.Carrier = @bitCast(carrier_int);
-        std.log.debug(
-            "carrier_id: {}-first_axis: {}-second_axis: {}-location: {}",
-            .{
-                carrier.carrier_id,
-                carrier.axis_ids.first,
-                carrier.axis_ids.second,
-                carrier.location,
-            },
-        );
+    status_lock.lock();
+    const num_of_carriers = system_state.num_of_carriers;
+    status_lock.unlock();
+    for (0..num_of_carriers) |i| {
+        status_lock.lock();
+        const carrier = system_state.carriers[i];
+        status_lock.unlock();
         if ((carrier.axis_ids.first == main_idx + 1 or
             carrier.axis_ids.second == main_idx + 1) and
             (carrier.state == .BackwardIsolationCompleted or
                 carrier.state == .ForwardIsolationCompleted))
         {
-            return .{ carrier.carrier_id, main_idx };
+            return .{ carrier.id, main_idx };
         }
         if ((carrier.axis_ids.first == aux_idx + 1 or
             carrier.axis_ids.second == aux_idx + 1) and
             (carrier.state == .BackwardIsolationCompleted or
                 carrier.state == .ForwardIsolationCompleted))
         {
-            return .{ carrier.carrier_id, aux_idx };
+            return .{ carrier.id, aux_idx };
         }
     }
     return null;
@@ -2565,48 +2728,15 @@ fn checkCarrierExistence(
 fn mapHallSensors(
     hall_sensors: []bool,
     starting_axis_indices: []usize,
-    socket: network.Socket,
 ) ![]bool {
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .get_status;
-    const param: mmc.ParamType(kind) = .{
-        .kind = .Hall,
-    };
-    var buffer: [1_000_000]u8 = undefined;
-    try sendMessage(kind, param, socket);
-    const msg_size = try socket.receive(&buffer);
-    var msg_bit_size: usize = 0;
-    const num_of_active_axis = std.mem.readPackedInt(
-        mcl.Axis.Id.Line,
-        buffer[0..msg_size],
-        0,
-        .little,
-    );
-    msg_bit_size += @bitSizeOf(mcl.Axis.Id.Line);
-    const IntType =
-        @typeInfo(SystemState.Hall).@"struct".backing_integer.?;
-    var detected_active_axis: usize = 0;
-    while (detected_active_axis < num_of_active_axis) {
-        try command.checkCommandInterrupt();
-        const hall_sensor_int = std.mem.readPackedInt(
-            IntType,
-            &buffer,
-            msg_bit_size,
-            .little,
-        );
-        detected_active_axis += 1;
-        msg_bit_size += @bitSizeOf(IntType);
-        const hall_sensor: SystemState.Hall = @bitCast(hall_sensor_int);
-        std.log.debug(
-            "Hall status: \nline_id: {}\n axis_id: {}\n front hall sensor: {}\n back hall sensor: {}",
-            .{
-                hall_sensor.line_id,
-                hall_sensor.axis_id,
-                hall_sensor.hall_states.front,
-                hall_sensor.hall_states.back,
-            },
-        );
+    status_lock.lock();
+    const num_of_active_axis = system_state.num_of_active_axis;
+    status_lock.unlock();
+    for (0..num_of_active_axis) |i| {
+        status_lock.lock();
+        const hall_sensor = system_state.hall_sensors[i];
+        status_lock.unlock();
+        std.log.debug("line id from hall sensor: {}", .{hall_sensor.line_id});
         const back_idx = starting_axis_indices[hall_sensor.line_id - 1] +
             (hall_sensor.axis_id - 1) * 2;
         const front_idx = starting_axis_indices[hall_sensor.line_id - 1] +
@@ -2618,47 +2748,14 @@ fn mapHallSensors(
 }
 
 /// assert that current axis does not have a moving carrier
-fn assertNoProgressing(axis_idx: usize, socket: network.Socket) !bool {
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .get_status;
-    const param: mmc.ParamType(kind) = .{
-        .kind = .Carrier,
-    };
-    var buffer: [1_000_000]u8 = undefined;
-    try sendMessage(kind, param, socket);
-    const msg_size = try socket.receive(&buffer);
-    var msg_bit_size: usize = 0;
-    const num_of_carriers = std.mem.readPackedInt(
-        u10,
-        buffer[0..msg_size],
-        0,
-        .little,
-    );
-    msg_bit_size += @bitSizeOf(u10);
-    const IntType =
-        @typeInfo(SystemState.Carrier).@"struct".backing_integer.?;
-    var detected_carriers: usize = 0;
-    while (detected_carriers < num_of_carriers) {
-        try command.checkCommandInterrupt();
-        const carrier_int = std.mem.readPackedInt(
-            IntType,
-            &buffer,
-            msg_bit_size,
-            .little,
-        );
-        detected_carriers += 1;
-        msg_bit_size += @bitSizeOf(IntType);
-        const carrier: SystemState.Carrier = @bitCast(carrier_int);
-        std.log.debug(
-            "carrier_id: {}-first_axis: {}-second_axis: {}-location: {}",
-            .{
-                carrier.carrier_id,
-                carrier.axis_ids.first,
-                carrier.axis_ids.second,
-                carrier.location,
-            },
-        );
+fn assertNoProgressing(axis_idx: usize) !bool {
+    status_lock.lock();
+    const num_of_carriers = system_state.num_of_carriers;
+    status_lock.unlock();
+    for (0..num_of_carriers) |i| {
+        status_lock.lock();
+        const carrier = system_state.carriers[i];
+        status_lock.unlock();
         if ((carrier.axis_ids.first == axis_idx + 1 or
             carrier.axis_ids.second == axis_idx + 1) and
             (carrier.state == .ForwardIsolationProgressing or
@@ -2668,4 +2765,112 @@ fn assertNoProgressing(axis_idx: usize, socket: network.Socket) !bool {
         }
     }
     return true;
+}
+
+fn resetReceivedAndSendCommand(
+    param: mmc.ParamType(.set_command),
+    line_idx: mcl.Line.Index,
+    carrier_id: u10,
+) !void {
+    const reset_param: mmc.ParamType(.clear_command_status) = .{
+        .line_idx = line_idx,
+        .carrier_id = carrier_id,
+        .status = .StateAndReceived,
+    };
+
+    const reset_command_response_param: mmc.ParamType(.clear_command_status) = .{
+        .line_idx = line_idx,
+        .carrier_id = carrier_id,
+        .status = .Response,
+    };
+
+    var system_state_idx: usize = 0;
+    status_lock.lock();
+    for (0..system_state.num_of_carriers) |i| {
+        const carrier = system_state.carriers[i];
+        if (carrier.id == carrier_id and
+            carrier.line_id == line_idx + 1)
+        {
+            system_state_idx = i;
+            break;
+        }
+    }
+    status_lock.unlock();
+
+    if (main_socket) |s| {
+        sendMessage(
+            .clear_command_status,
+            reset_param,
+            s,
+        ) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        while (system_state.carriers[system_state_idx].command_received) {
+            std.log.debug(
+                "resetting -- state: {s}, received: {}",
+                .{
+                    @tagName(system_state.carriers[system_state_idx].state),
+                    system_state.carriers[system_state_idx].command_received,
+                },
+            );
+        }
+        std.log.debug(
+            "state: {s}, received: {}",
+            .{
+                @tagName(system_state.carriers[system_state_idx].state),
+                system_state.carriers[system_state_idx].command_received,
+            },
+        );
+        sendMessage(
+            .set_command,
+            param,
+            s,
+        ) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+
+        while (true) {
+            try command.checkCommandInterrupt();
+            status_lock.lock();
+            const carrier = system_state.carriers[system_state_idx];
+            status_lock.unlock();
+            std.log.debug(
+                "state: {s}, received: {}",
+                .{ @tagName(carrier.state), carrier.command_received },
+            );
+            if (carrier.command_received) {
+                if (carrier.command_response != .NoError) {
+                    sendMessage(
+                        .clear_command_status,
+                        reset_command_response_param,
+                        s,
+                    ) catch |e| {
+                        std.log.debug("{s}", .{@errorName(e)});
+                        std.log.err("ConnectionClosedByServer", .{});
+                        s.close();
+                        try disconnectedClearence();
+                        return;
+                    };
+                }
+                return switch (carrier.command_response) {
+                    .NoError => {},
+                    .InvalidCommand => error.InvalidCommand,
+                    .CarrierNotFound => error.CarrierNotFound,
+                    .HomingFailed => error.HomingFailed,
+                    .InvalidParameter => error.InvalidParameter,
+                    .InvalidSystemState => error.InvalidSystemState,
+                    .CarrierAlreadyExists => error.CarrierAlreadyExists,
+                    .InvalidAxis => error.InvalidAxis,
+                };
+            }
+        }
+    } else return error.ServerNotConnected;
 }
