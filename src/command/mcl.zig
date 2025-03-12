@@ -359,9 +359,9 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Set line zero position.",
         .long_description =
-        \\Set a system line's zero position based on a current carrier's 
+        \\Set a system line's zero position based on a current carrier's
         \\position. Aforementioned carrier must be located at first axis of
-        \\system line. 
+        \\system line.
         ,
         .execute = &setLineZero,
     });
@@ -387,41 +387,6 @@ pub fn init(c: Config) !void {
         .execute = &mclIsolate,
     });
     errdefer _ = command.registry.orderedRemove("ISOLATE");
-    try command.registry.put("RECOVER_CARRIER", .{
-        .name = "RECOVER_CARRIER",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-            .{ .name = "new carrier ID" },
-            .{ .name = "use sensor", .resolve = false, .optional = true },
-        },
-        .short_description = "Recover uninitialized carrier at given axis.",
-        .long_description =
-        \\Recover an unrecognized carrier at given axis. The provided carrier
-        \\ID must be a positive integer from 1 to 254 inclusive, and must be
-        \\unique to other recognized carrier  IDs. If a sensor is optionally
-        \\specified for use (valid sensor values include: front, back, left,
-        \\right), recovery will use the specified hall sensor.
-        ,
-        .execute = &mclRecoverCarrier,
-    });
-    errdefer _ = command.registry.orderedRemove("RECOVER_CARRIER");
-    try command.registry.put("WAIT_RECOVER_CARRIER", .{
-        .name = "WAIT_RECOVER_CARRIER",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-            .{ .name = "result variable", .resolve = false, .optional = true },
-        },
-        .short_description = "Wait until recovery of carrier is complete.",
-        .long_description =
-        \\Wait until carrier recovery is complete and a carrier is recognized.
-        \\If an optional result variable name is provided, then store the
-        \\recognized carrier ID in the variable.
-        ,
-        .execute = &mclWaitRecoverCarrier,
-    });
-    errdefer _ = command.registry.orderedRemove("WAIT_RECOVER_CARRIER");
     try command.registry.put("MOVE_CARRIER_AXIS", .{
         .name = "MOVE_CARRIER_AXIS",
         .parameters = &[_]command.Command.Parameter{
@@ -462,7 +427,7 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Move carrier by a distance.",
         .long_description =
-        \\Move given carrier by a provided distance. The carrier ID must be 
+        \\Move given carrier by a provided distance. The carrier ID must be
         \\currently recognized within the motion system, and the distance must
         \\be provided in millimeters as a whole or decimal number. The distance
         \\may be negative for backward movement.
@@ -512,7 +477,7 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Move carrier by a distance.",
         .long_description =
-        \\Move given carrier by a provided distance. The carrier ID must be 
+        \\Move given carrier by a provided distance. The carrier ID must be
         \\currently recognized within the motion system, and the distance must
         \\be provided in millimeters as a whole or decimal number. The distance
         \\may be negative for backward movement. This command moves the carrier
@@ -634,16 +599,16 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Add logging configuration for LOG_REGISTERS command.",
         .long_description =
-        \\Setup the logging configuration for the specified line. This will 
-        \\overwrite the existing configuration for the specified line if any. 
-        \\It will log registers based on the given "registers" parameter on the 
+        \\Setup the logging configuration for the specified line. This will
+        \\overwrite the existing configuration for the specified line if any.
+        \\It will log registers based on the given "registers" parameter on the
         \\station depending on the provided axes. Both "registers" and "axes"
-        \\shall be provided as comma-separated values: 
+        \\shall be provided as comma-separated values:
         \\
-        \\"ADD_LOG_REGISTERS line_name 1,4,7 x,y" 
+        \\"ADD_LOG_REGISTERS line_name 1,4,7 x,y"
         \\
         \\Both "registers" and "axes" accept "all" as the parameter to log every
-        \\register and axes. The line configured for logging registers can be 
+        \\register and axes. The line configured for logging registers can be
         \\evaluated by "STATUS_LOG_REGISTERS" command.
         ,
         .execute = &addLogRegisters,
@@ -666,7 +631,7 @@ pub fn init(c: Config) !void {
         .name = "RESET_LOG_REGISTERS",
         .short_description = "Remove all logging configurations.",
         .long_description =
-        \\Remove all logging configurations for logging registers for every 
+        \\Remove all logging configurations for logging registers for every
         \\line.
         ,
         .execute = &resetLogRegisters,
@@ -676,9 +641,9 @@ pub fn init(c: Config) !void {
         .name = "STATUS_LOG_REGISTERS",
         .short_description = "Print the logging configurations entry.",
         .long_description =
-        \\Print the logging configuration for each line (if any). The status is 
-        \\given by "line_name:station_id:registers" with stations and registers 
-        \\are a comma-separated string. 
+        \\Print the logging configuration for each line (if any). The status is
+        \\given by "line_name:station_id:registers" with stations and registers
+        \\are a comma-separated string.
         ,
         .execute = &statusLogRegisters,
     });
@@ -690,10 +655,10 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Create a logging file for the configured line.",
         .long_description =
-        \\Create a log file for logging registers. If no logging configuration 
-        \\is detected, it will return an error value. If a path is not provided, 
-        \\a default log file containing all register values triggered by 
-        \\LOG_REGISTERS will be created in the current working directory as 
+        \\Create a log file for logging registers. If no logging configuration
+        \\is detected, it will return an error value. If a path is not provided,
+        \\a default log file containing all register values triggered by
+        \\LOG_REGISTERS will be created in the current working directory as
         \\follows:
         \\"mmc-register-YYYY.MM.DD-HH.MM.SS.csv".
         \\
@@ -707,8 +672,8 @@ pub fn init(c: Config) !void {
         .name = "LOG_REGISTERS",
         .short_description = "Log the register values.",
         .long_description =
-        \\This command will trigger the logging functionality on every line 
-        \\configured for logging the registers. It writes register values to 
+        \\This command will trigger the logging functionality on every line
+        \\configured for logging the registers. It writes register values to
         \\the file specified by FILE_LOG_REGISTERS.
         ,
         .execute = &logRegisters,
@@ -1787,107 +1752,6 @@ fn mclWaitMoveCarrier(params: [][]const u8) !void {
     }
 }
 
-fn mclRecoverCarrier(params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const axis: u16 = try std.fmt.parseUnsigned(u16, params[1], 0);
-    const new_carrier_id: u10 = try std.fmt.parseUnsigned(u10, params[2], 0);
-    if (new_carrier_id == 0 or new_carrier_id > 254)
-        return error.InvalidCarrierID;
-    const sensor: []const u8 = params[3];
-
-    const line_idx: usize = try matchLine(line_names, line_name);
-    const line = mcl.lines[line_idx];
-    if (axis < 1 or axis > line.axes.len) {
-        return error.InvalidAxis;
-    }
-
-    const use_sensor: ?Direction = parse_use_sensor: {
-        if (sensor.len == 0) break :parse_use_sensor null;
-        if (std.ascii.eqlIgnoreCase("back", sensor) or
-            std.ascii.eqlIgnoreCase("left", sensor))
-        {
-            break :parse_use_sensor .backward;
-        } else if (std.ascii.eqlIgnoreCase("front", sensor) or
-            std.ascii.eqlIgnoreCase("right", sensor))
-        {
-            break :parse_use_sensor .forward;
-        } else return error.InvalidSensorSide;
-    };
-
-    const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
-    const local_axis_index: mcl.Axis.Index.Station = @intCast(axis_index % 3);
-
-    const station = line.stations[axis_index / 3];
-    try waitCommandReady(station);
-    if (use_sensor) |side| {
-        if (side == .backward) {
-            try station.setY(0x13);
-            station.y.recovery_use_hall_sensor.back = true;
-        } else {
-            try station.setY(0x14);
-            station.y.recovery_use_hall_sensor.front = true;
-        }
-    }
-    defer {
-        if (use_sensor) |side| {
-            if (side == .backward) {
-                if (station.resetY(0x13)) {
-                    station.y.recovery_use_hall_sensor.back = false;
-                } else |_| {}
-            } else {
-                if (station.resetY(0x14)) {
-                    station.y.recovery_use_hall_sensor.front = false;
-                } else |_| {}
-            }
-        }
-    }
-    station.ww.* = .{
-        .command = .RecoverCarrierAtAxis,
-        .axis = local_axis_index + 1,
-        .carrier = .{ .id = new_carrier_id },
-    };
-    try sendCommand(station);
-}
-
-fn mclWaitRecoverCarrier(params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const axis: u16 = try std.fmt.parseUnsigned(u16, params[1], 0);
-    const result_var: []const u8 = params[2];
-
-    const line_idx: usize = try matchLine(line_names, line_name);
-    const line = mcl.lines[line_idx];
-    if (axis == 0 or axis > line.axes.len) {
-        return error.InvalidAxis;
-    }
-
-    const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
-    const local_axis_index: mcl.Axis.Index.Station = @intCast(axis_index % 3);
-    const station = line.stations[axis_index / 3];
-
-    var carrier_id: u16 = undefined;
-    while (true) {
-        try command.checkCommandInterrupt();
-        try station.pollWr();
-
-        const carrier_number = station.wr.carrier.axis(local_axis_index).id;
-        if (carrier_number != 0 and station.wr.carrier.axis(
-            local_axis_index,
-        ).state == .PosMoveCompleted) {
-            carrier_id = carrier_number;
-            break;
-        }
-    }
-
-    std.log.info("Carrier {d} recovered.\n", .{carrier_id});
-    if (result_var.len > 0) {
-        var int_buf: [8]u8 = undefined;
-        try command.variables.put(
-            result_var,
-            try std.fmt.bufPrint(&int_buf, "{d}", .{carrier_id}),
-        );
-    }
-}
-
 /// Add logging configuration for registers logging in the specified line
 fn addLogRegisters(params: [][]const u8) !void {
     const line_name = params[0];
@@ -2241,11 +2105,11 @@ fn waitCommandReady(station: Station) !void {
 
 fn sendCommand(station: Station) !void {
     std.log.debug("Sending command...", .{});
-    try station.sendWw();
-    try station.setY(0x1);
-    errdefer station.resetY(0x1) catch {};
     while (true) {
         try command.checkCommandInterrupt();
+        try station.sendWw();
+        try station.setY(0x1);
+        errdefer station.resetY(0x1) catch {};
         try station.pollX();
         if (station.x.command_received) {
             break;
@@ -2257,10 +2121,10 @@ fn sendCommand(station: Station) !void {
     const command_response = station.wr.command_response;
 
     std.log.debug("Resetting command received flag...", .{});
-    try station.setY(0x2);
-    errdefer station.resetY(0x2) catch {};
     while (true) {
         try command.checkCommandInterrupt();
+        try station.setY(0x2);
+        errdefer station.resetY(0x2) catch {};
         try station.pollX();
         if (!station.x.command_received) {
             try station.resetY(0x2);
