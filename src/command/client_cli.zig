@@ -7,6 +7,8 @@ const CircularBuffer =
     @import("../circular_buffer.zig").CircularBuffer;
 const builtin = @import("builtin");
 
+const MMCErrorEnum = @import("mmc_config").MMCErrorEnum;
+
 var arena: std.heap.ArenaAllocator = undefined;
 var allocator: std.mem.Allocator = undefined;
 var line_names: [][]u8 = undefined;
@@ -672,7 +674,7 @@ pub fn deinit() void {
 }
 
 pub fn waitErrorMessage() !void {
-    var buffer: [128]u8 = undefined;
+    var buffer: [1]u8 = undefined;
     const stdout = std.io.getStdOut().writer();
     while (server) |s| {
         const fd: std.posix.pollfd = .{
@@ -694,8 +696,16 @@ pub fn waitErrorMessage() !void {
 
         const msg_size = s.receive(&buffer) catch break;
         if (msg_size == 0) break;
-        try stdout.print("{s}\n", .{buffer[0..msg_size]});
+
+        const error_msg = std.mem.readInt(
+            u8,
+            &buffer,
+            .little,
+        );
+        const error_type: MMCErrorEnum = @enumFromInt(error_msg);
+        try stdout.print("server error: {s}\n", .{@tagName(error_type)});
     }
+    try stdout.print("error: ServerDisconnected", .{});
 }
 
 pub fn clientConnect(params: [][]const u8) !void {
