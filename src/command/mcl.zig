@@ -1907,6 +1907,17 @@ fn statusLogRegisters(_: [][]const u8) !void {
 }
 
 fn pathLogRegisters(params: [][]const u8) !void {
+    var log_registers_initialized = false;
+    for (0..line_names.len) |line_idx| {
+        if (log_lines[line_idx].status == false) {
+            log_registers_initialized = true;
+            break;
+        }
+    }
+    if (!log_registers_initialized) {
+        std.log.err("Logging is not configured for any line", .{});
+        return;
+    }
     const path = params[0];
     var path_buffer: [512]u8 = undefined;
     const file_path = if (path.len > 0) path else p: {
