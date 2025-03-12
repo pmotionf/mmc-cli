@@ -1909,7 +1909,7 @@ fn statusLogRegisters(_: [][]const u8) !void {
 fn pathLogRegisters(params: [][]const u8) !void {
     var log_registers_initialized = false;
     for (0..line_names.len) |line_idx| {
-        if (log_lines[line_idx].status == false) {
+        if (log_lines[line_idx].status == true) {
             log_registers_initialized = true;
             break;
         }
