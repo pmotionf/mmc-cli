@@ -10,7 +10,7 @@ const v = @import("version");
 // Command modules.
 const mcl = @import("command/mcl.zig");
 const return_demo2 = @import("command/return_demo2.zig");
-
+const client_cli = @import("command/client_cli.zig");
 const Config = @import("Config.zig");
 
 // Global registry of all commands, including from other command modules.
@@ -498,6 +498,7 @@ fn deinitModules() void {
                 inline 0...fields.len - 1 => |i| {
                     @field(@This(), fields[i].name).deinit();
                 },
+                else => {},
             }
         }
     }
@@ -527,6 +528,7 @@ fn loadConfig(params: [][]const u8) !void {
                     true,
                 );
             },
+            else => {},
         }
     }
     config.deinit();
