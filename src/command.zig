@@ -296,7 +296,11 @@ pub fn execute() !void {
 }
 
 fn parseAndRun(input: []const u8) !void {
-    var token_iterator = std.mem.tokenizeSequence(u8, input, " ");
+    const trimmed = std.mem.trimLeft(u8, input, "\n\t ");
+    if (trimmed.len == 0 or trimmed[0] == '#') {
+        return;
+    }
+    var token_iterator = std.mem.tokenizeSequence(u8, trimmed, " ");
     var command: *Command = undefined;
     var command_buf: [32]u8 = undefined;
     if (token_iterator.next()) |token| {
@@ -477,7 +481,8 @@ fn file(params: [][]const u8) !void {
         '\n',
     )) |_line| {
         try checkCommandInterrupt();
-        const line = std.mem.trimRight(u8, _line, "\r");
+        const line = std.mem.trimLeft(u8, std.mem.trimRight(u8, _line, "\r"), "\n\t ");
+        if (line.len == 0 or line[0] == '#') continue;
         new_line.len = line.len;
         std.log.info("Queueing command: {s}", .{line});
         try command_queue.insert(current_len, new_line);
