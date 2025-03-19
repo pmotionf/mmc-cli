@@ -45,6 +45,16 @@ pub fn init(c: Config) !void {
         IP_address,
         port,
     });
+    try command.registry.put("SERVER_VERSION", .{
+        .name = "SERVER_VERSION",
+        .short_description = "Display the version of the MMC server",
+        .long_description =
+        \\Print the currently running version of the MMC server in Semantic 
+        \\Version format.
+        ,
+        .execute = &serverVersion,
+    });
+    errdefer _ = command.registry.orderedRemove("SERVER_VERSION");
     try command.registry.put("CONNECT", .{
         .name = "CONNECT",
         .parameters = &[_]command.Command.Parameter{
@@ -382,25 +392,6 @@ pub fn init(c: Config) !void {
         .execute = &clientWaitMoveCarrier,
     });
     errdefer _ = command.registry.orderedRemove("WAIT_MOVE_CARRIER");
-    // try command.registry.put("RECOVER_CARRIER", .{
-    //     .name = "RECOVER_CARRIER",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "line name" },
-    //         .{ .name = "axis" },
-    //         .{ .name = "new carrier ID" },
-    //         .{ .name = "use sensor", .resolve = false, .optional = true },
-    //     },
-    //     .short_description = "Recover an unrecognized carrier on a given axis.",
-    //     .long_description =
-    //     \\Recover an unrecognized carrier on a given axis. The provided carrier
-    //     \\ID must be a positive integer from 1 to 254 inclusive, and must be
-    //     \\unique to other recognized carrier IDs. If a sensor is optionally
-    //     \\specified for use (valid sensor values include: front, back, left,
-    //     \\right), recovery will use the specified hall sensor.
-    //     ,
-    //     .execute = &mclRecoverCarrier,
-    // });
-    // errdefer _ = command.registry.orderedRemove("RECOVER_CARRIER");
     try command.registry.put("MOVE_CARRIER_AXIS", .{
         .name = "MOVE_CARRIER_AXIS",
         .parameters = &[_]command.Command.Parameter{
@@ -577,95 +568,6 @@ pub fn init(c: Config) !void {
         .execute = &clientCarrierStopPull,
     });
     errdefer _ = command.registry.orderedRemove("STOP_PULL_CARRIER");
-    // try command.registry.put("ADD_LOG_REGISTERS", .{
-    //     .name = "ADD_LOG_REGISTERS",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "line name" },
-    //         .{ .name = "axes" },
-    //         .{ .name = "registers" },
-    //     },
-    //     .short_description = "Add logging configuration for LOG_REGISTERS command.",
-    //     .long_description =
-    //     \\Setup the logging configuration for the specified line. This will
-    //     \\overwrite the existing configuration for the specified line if any.
-    //     \\It will log registers based on the given "registers" parameter on the
-    //     \\station depending on the provided axes. Both "registers" and "axes"
-    //     \\shall be provided as comma-separated values:
-    //     \\
-    //     \\"ADD_LOG_REGISTERS line_name 1,4,7 x,y"
-    //     \\
-    //     \\Both "registers" and "axes" accept "all" as the parameter to log every
-    //     \\register and axes. The line configured for logging registers can be
-    //     \\evaluated by "STATUS_LOG_REGISTERS" command.
-    //     ,
-    //     .execute = &addLogRegisters,
-    // });
-    // errdefer _ = command.registry.orderedRemove("ADD_LOG_REGISTERS");
-    // try command.registry.put("REMOVE_LOG_REGISTERS", .{
-    //     .name = "REMOVE_LOG_REGISTERS",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "line name" },
-    //     },
-    //     .short_description = "Remove the logging configuration for the specified line.",
-    //     .long_description =
-    //     \\Remove logging configuration for logging registers on the specified
-    //     \\line.
-    //     ,
-    //     .execute = &removeLogRegisters,
-    // });
-    // errdefer _ = command.registry.orderedRemove("REMOVE_LOG_REGISTERS");
-    // try command.registry.put("RESET_LOG_REGISTERS", .{
-    //     .name = "RESET_LOG_REGISTERS",
-    //     .short_description = "Remove all logging configurations.",
-    //     .long_description =
-    //     \\Remove all logging configurations for logging registers for every
-    //     \\line.
-    //     ,
-    //     .execute = &resetLogRegisters,
-    // });
-    // errdefer _ = command.registry.orderedRemove("RESET_LOG_REGISTERS");
-    // try command.registry.put("STATUS_LOG_REGISTERS", .{
-    //     .name = "STATUS_LOG_REGISTERS",
-    //     .short_description = "Print the logging configurations entry.",
-    //     .long_description =
-    //     \\Print the logging configuration for each line (if any). The status is
-    //     \\given by "line_name:station_id:registers" with stations and registers
-    //     \\are a comma-separated string.
-    //     ,
-    //     .execute = &statusLogRegisters,
-    // });
-    // errdefer _ = command.registry.orderedRemove("STATUS_LOG_REGISTERS");
-    // try command.registry.put("FILE_LOG_REGISTERS", .{
-    //     .name = "FILE_LOG_REGISTERS",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "path", .optional = true },
-    //     },
-    //     .short_description = "Create a logging file for the configured line.",
-    //     .long_description =
-    //     \\Create a log file for logging registers. If no logging configuration
-    //     \\is detected, it will return an error value. If a path is not provided,
-    //     \\a default log file containing all register values triggered by
-    //     \\LOG_REGISTERS will be created in the current working directory as
-    //     \\follows:
-    //     \\"mmc-register-YYYY.MM.DD-HH.MM.SS.csv".
-    //     \\
-    //     \\Note that this command will not log any register value, the register
-    //     \\will be logged by LOG_REGISTERS command.
-    //     ,
-    //     .execute = &pathLogRegisters,
-    // });
-    // errdefer _ = command.registry.orderedRemove("FILE_LOG_REGISTERS");
-    // try command.registry.put("LOG_REGISTERS", .{
-    //     .name = "LOG_REGISTERS",
-    //     .short_description = "Log the register values.",
-    //     .long_description =
-    //     \\This command will trigger the logging functionality on every line
-    //     \\configured for logging the registers. It writes register values to
-    //     \\the file specified by FILE_LOG_REGISTERS.
-    //     ,
-    //     .execute = &logRegisters,
-    // });
-    // errdefer _ = command.registry.orderedRemove("LOG_REGISTERS");
 }
 
 pub fn deinit() void {
@@ -676,6 +578,49 @@ pub fn deinit() void {
         main_socket = null;
     }
     network.deinit();
+}
+
+fn serverVersion(_: [][]const u8) !void {
+    var buffer: [8192]u8 = undefined;
+    if (main_socket) |s| {
+        sendMessage(.get_version, {}, s) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        waitSocketReceive(s, .Version) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        _ = s.receive(&buffer) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        // The first 4 bits are the message type, the following 13 bits are the
+        // message length. Actual message start after these bits
+        const msg_offset: usize = @bitSizeOf(u4) + @bitSizeOf(u13);
+        const IntType = @typeInfo(mmc.Version).@"struct".backing_integer.?;
+        const version: mmc.Version = @bitCast(std.mem.readPackedInt(
+            IntType,
+            &buffer,
+            msg_offset,
+            .little,
+        ));
+        std.log.info("MMC Server Version: {d}.{d}.{d}\n", .{
+            version.major,
+            version.minor,
+            version.patch,
+        });
+    } else {
+        return error.NotConnected;
+    }
 }
 
 /// Parse carrier message from `GET_STATUS` and update to `system_state.carriers`.
@@ -1608,9 +1553,6 @@ fn clientAutoInitialize(_: [][]const u8) !void {
     var initialized_carrier_id: usize = 0;
     while (clusters.readItem()) |cluster| {
         try command.checkCommandInterrupt();
-        // if carrier detected in the current axis in interest, then move it
-        // to the middle of axis. If there is any axis left in the cluster,
-        // write to back to the clusters.
         const current_axis = cluster.current_hall_index / 2;
         var aux_axis: usize = undefined;
         if (cluster.direction == .backward and current_axis != 0) {
@@ -2588,7 +2530,6 @@ fn sendMessage(
     );
     msg_bit_size += @bitSizeOf(@TypeOf(command_msg));
     try to_server.writer().writeAll(&msg_buffer);
-    // try to_server.writer().writeStruct(msg);
     if (kind == .set_command) {
         if (param.command_code == .IsolateForward) {
             std.log.debug(
