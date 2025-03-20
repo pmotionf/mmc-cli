@@ -1746,6 +1746,17 @@ fn clientAutoInitialize(_: [][]const u8) !void {
         }
         std.log.debug("\n\n", .{});
     }
+    for (0..system_state.num_of_carriers) |i| {
+        while (system_state.carriers[i].state != .PosMoveCompleted) {}
+        std.log.info(
+            "Carrier ID: {}, Line: {s}, Axis ID: {}",
+            .{
+                system_state.carriers[i].id,
+                line_names[system_state.carriers[i].line_id - 1],
+                system_state.carriers[i].axis_ids.first,
+            },
+        );
+    }
 }
 
 fn clientAxisReleaseServo(params: [][]const u8) !void {
