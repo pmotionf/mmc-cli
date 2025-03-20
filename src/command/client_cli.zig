@@ -555,6 +555,20 @@ pub fn init(c: Config) !void {
         .execute = &clientCarrierPullBackward,
     });
     errdefer _ = command.registry.orderedRemove("PULL_CARRIER_BACKWARD");
+    try command.registry.put("WAIT_PULL_CARRIER", .{
+        .name = "WAIT_PULL_CARRIER",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "carrier" },
+        },
+        .short_description = "Wait for carrier pull to complete.",
+        .long_description =
+        \\Pause the execution of any further commands until active carrier
+        \\pull of the provided carrier is indicated as complete.
+        ,
+        .execute = &clientCarrrierWaitPull,
+    });
+    errdefer _ = command.registry.orderedRemove("WAIT_PULL_CARRIER");
     try command.registry.put("STOP_PULL_CARRIER", .{
         .name = "STOP_PULL_CARRIER",
         .parameters = &[_]command.Command.Parameter{
@@ -2403,6 +2417,33 @@ fn clientCarrierPullBackward(params: [][]const u8) !void {
     } else return error.ServerNotConnected;
 }
 
+fn clientCarrrierWaitPull(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+
+    while (true) {
+        try command.checkCommandInterrupt();
+        status_lock.lock();
+        var system_state_idx: usize = 0;
+        for (0..system_state.num_of_carriers) |i| {
+            const carrier = system_state.carriers[i];
+            if (carrier.id == carrier_id and
+                carrier.line_id == line_idx + 1)
+            {
+                system_state_idx = i;
+                break;
+            }
+        }
+        const carrier = system_state.carriers[system_state_idx];
+        status_lock.unlock();
+        if (carrier.state == .PullForwardCompleted or
+            carrier.state == .PullBackwardCompleted) return;
+    }
+}
+
 fn clientCarrierStopPull(params: [][]const u8) !void {
     const line_name = params[0];
     const axis = try std.fmt.parseInt(u16, params[1], 0);
@@ -2410,6 +2451,20 @@ fn clientCarrierStopPull(params: [][]const u8) !void {
     const line = mcl.lines[line_idx];
     if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
+
+    var carrier_found = false;
+    var carrier_id: u10 = 0;
+    for (0..system_state.num_of_carriers) |i| {
+        if (system_state.carriers[i].line_id == line.id and
+            (system_state.carriers[i].axis_ids.first == axis or
+                system_state.carriers[i].axis_ids.second == axis))
+        {
+            carrier_id = system_state.carriers[i].id;
+            carrier_found = true;
+            break;
+        }
+    }
+    if (!carrier_found) return error.CarrierNotFound;
 
     var param = std.mem.zeroes(mmc.ParamType(.stop_pull_carrier));
     param.line_idx = @intCast(line_idx);
@@ -2750,22 +2805,9 @@ fn resetReceivedAndSendCommand(
             try disconnectedClearence();
             return;
         };
-        while (system_state.carriers[system_state_idx].command_received) {
-            std.log.debug(
-                "resetting -- state: {s}, received: {}",
-                .{
-                    @tagName(system_state.carriers[system_state_idx].state),
-                    system_state.carriers[system_state_idx].command_received,
-                },
-            );
-        }
-        std.log.debug(
-            "state: {s}, received: {}",
-            .{
-                @tagName(system_state.carriers[system_state_idx].state),
-                system_state.carriers[system_state_idx].command_received,
-            },
-        );
+        std.log.info("Waiting command received", .{});
+        while (system_state.carriers[system_state_idx].command_received) {}
+
         sendMessage(
             .set_command,
             param,
@@ -2783,10 +2825,6 @@ fn resetReceivedAndSendCommand(
             status_lock.lock();
             const carrier = system_state.carriers[system_state_idx];
             status_lock.unlock();
-            std.log.debug(
-                "state: {s}, received: {}",
-                .{ @tagName(carrier.state), carrier.command_received },
-            );
             if (carrier.command_received) {
                 if (carrier.command_response != .NoError) {
                     sendMessage(
