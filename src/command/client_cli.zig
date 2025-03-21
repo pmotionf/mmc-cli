@@ -2053,6 +2053,7 @@ fn clientCalibrate(params: [][]const u8) !void {
     var param = std.mem.zeroes(mmc.ParamType(.set_command));
     param.command_code = .Calibration;
     param.line_idx = @truncate(line_idx);
+    param.carrier_id = 1;
     if (main_socket) |s| {
         sendMessage(
             .set_command,
