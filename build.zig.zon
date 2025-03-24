@@ -1,6 +1,6 @@
 .{
     .name = .mmc_cli,
-    .version = "0.4.4",
+    .version = "0.5.0",
     .fingerprint = 0x392c74984291bf14,
     .minimum_zig_version = "0.14.0-dev.1392+37df6ba86",
     .dependencies = .{
