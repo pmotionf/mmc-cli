@@ -602,10 +602,6 @@ fn clear(_: [][]const u8) !void {
 }
 
 fn exit(_: [][]const u8) !void {
-    if (client_cli.status_socket) |s| {
-        std.log.debug("closing {}", .{try s.getLocalEndPoint()});
-        s.close();
-    }
     if (client_cli.main_socket) |s| {
         std.log.debug("closing {}", .{try s.getLocalEndPoint()});
         s.close();
