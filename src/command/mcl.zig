@@ -2086,12 +2086,7 @@ fn registerValueToString(f: std.fs.File.Writer, parent_field: anytype) !void {
         } else {
             const child_value = @field(parent_field.*, child_field.name);
             if (comptime @typeInfo(@TypeOf(child_value)) == .@"enum") {
-                const enum_integer = @intFromEnum(child_value);
-                const enum_name = @tagName(child_value);
-                try f.print(
-                    "{s} ({d}),",
-                    .{ enum_name, enum_integer },
-                );
+                try f.print("{d},", .{@intFromEnum(child_value)});
             } else try f.print("{},", .{child_value});
         }
     }
