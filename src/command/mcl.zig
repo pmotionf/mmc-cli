@@ -505,13 +505,17 @@ pub fn init(c: Config) !void {
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
             .{ .name = "carrier" },
+            .{ .name = "axis", .optional = true },
         },
         .short_description = "Push carrier forward by carrier length.",
         .long_description =
         \\Push carrier forward with speed feedback-controlled movement. This
         \\movement targets a distance of the carrier length, and thus if it is
         \\used to cross a line boundary, the receiving axis at the destination
-        \\line must first be pulling the carrier.
+        \\line must first be pulling the carrier. Specifying the optional
+        \\`axis` parameter will push the carrier automatically when it arrives
+        \\at the given axis; otherwise, the carrier will be pushed immediately
+        \\from its current position.
         ,
         .execute = &mclCarrierPushForward,
     });
@@ -521,13 +525,17 @@ pub fn init(c: Config) !void {
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
             .{ .name = "carrier" },
+            .{ .name = "axis", .optional = true },
         },
         .short_description = "Push carrier backward by carrier length.",
         .long_description =
         \\Push carrier backward with speed feedback-controlled movement. This
         \\movement targets a distance of the carrier length, and thus if it is
         \\used to cross a line boundary, the receiving axis at the destination
-        \\line must first be pulling the carrier.
+        \\line must first be pulling the carrier. Specifying the optional
+        \\`axis` parameter will push the carrier automatically when it arrives
+        \\at the given axis; otherwise, the carrier will be pushed immediately
+        \\from its current position.
         ,
         .execute = &mclCarrierPushBackward,
     });
@@ -538,12 +546,14 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "axis" },
             .{ .name = "carrier" },
+            .{ .name = "destination", .optional = true },
         },
         .short_description = "Pull incoming carrier forward at axis.",
         .long_description =
-        \\Pull incoming carrier forward at axis. This command must be stopped
-        \\manually after it is completed with the "STOP_PULL_CARRIER" command.
-        \\The pulled carrier's ID must also be provided.
+        \\Pull incoming carrier forward at axis. The pulled carrier's new ID
+        \\must also be provided. If a destination in millimeters is specified,
+        \\the carrier will automatically move to the destination after pull is
+        \\completed.
         ,
         .execute = &mclCarrierPullForward,
     });
@@ -554,12 +564,14 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "axis" },
             .{ .name = "carrier" },
+            .{ .name = "destination", .optional = true },
         },
         .short_description = "Pull incoming carrier backward at axis.",
         .long_description =
-        \\Pull incoming carrier backward at axis. This command must be stopped
-        \\manually after it is completed with the "STOP_PULL_CARRIER" command.
-        \\The pulled carrier's ID must also be provided.
+        \\Pull incoming carrier backward at axis. The pulled carrier's new ID
+        \\must also be provided. If a destination in millimeters is specified,
+        \\the carrier will automatically move to the destination after pull is
+        \\completed.
         ,
         .execute = &mclCarrierPullBackward,
     });
@@ -577,6 +589,7 @@ pub fn init(c: Config) !void {
         ,
         .execute = &mclCarrierWaitPull,
     });
+    errdefer _ = command.registry.orderedRemove("WAIT_PULL_CARRIER");
     try command.registry.put("STOP_PULL_CARRIER", .{
         .name = "STOP_PULL_CARRIER",
         .parameters = &[_]command.Command.Parameter{
@@ -590,6 +603,20 @@ pub fn init(c: Config) !void {
         .execute = &mclCarrierStopPull,
     });
     errdefer _ = command.registry.orderedRemove("STOP_PULL_CARRIER");
+    try command.registry.put("WAIT_AXIS_EMPTY", .{
+        .name = "WAIT_AXIS_EMPTY",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+        },
+        .short_description = "Wait for axis to be empty.",
+        .long_description =
+        \\Pause the execution of any further commands until specified axis has
+        \\no carriers, no active hall alarms, and no wait for push/pull.
+        ,
+        .execute = &mclWaitAxisEmpty,
+    });
+    errdefer _ = command.registry.orderedRemove("WAIT_AXIS_EMPTY");
     try command.registry.put("ADD_LOG_REGISTERS", .{
         .name = "ADD_LOG_REGISTERS",
         .parameters = &[_]command.Command.Parameter{
@@ -1529,41 +1556,64 @@ fn mclCarrierPushForward(params: [][]const u8) !void {
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
+    const axis_id: ?mcl.Axis.Id.Line = if (params[2].len > 0)
+        try std.fmt.parseInt(mcl.Axis.Id.Line, params[2], 0)
+    else
+        null;
+
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
 
-    try line.pollWr();
-    const main, const _aux =
-        if (line.search(carrier_id)) |t| t else return error.CarrierNotFound;
-    var station: mcl.Station = main.station.*;
-    // Direction of auxiliary axis from main axis.
-    var direction: Direction = undefined;
+    if (axis_id) |id| {
+        if (id == 0 or id > line.axes.len) return error.InvalidAxis;
 
-    // Set command station in direction of movement command.
-    if (_aux) |aux| {
-        if (aux.index.line > main.index.line) {
-            direction = .forward;
-        } else {
-            direction = .backward;
+        const axis: mcl.Axis = line.axes[id - 1];
+
+        try waitCommandReady(axis.station.*);
+        axis.station.ww.* = .{
+            .command = .PushTransitionForward,
+            .axis = axis.id.station,
+            .carrier = .{
+                .id = carrier_id,
+                .speed = line_speeds[line_idx],
+                .acceleration = line_accelerations[line_idx],
+                .enable_cas = false,
+            },
+        };
+        try sendCommand(axis.station.*);
+    } else {
+        try line.pollWr();
+        const main, const _aux =
+            if (line.search(carrier_id)) |t| t else return error.CarrierNotFound;
+        var station: mcl.Station = main.station.*;
+        // Direction of auxiliary axis from main axis.
+        var direction: Direction = undefined;
+
+        // Set command station in direction of movement command.
+        if (_aux) |aux| {
+            if (aux.index.line > main.index.line) {
+                direction = .forward;
+            } else {
+                direction = .backward;
+            }
+            if (direction == .forward) {
+                station = aux.station.*;
+            }
         }
-        if (direction == .forward) {
-            station = aux.station.*;
-        }
+        try waitCommandReady(station);
+
+        station.ww.* = .{
+            .command = .PushForward,
+            .axis = main.index.station + 1,
+            .carrier = .{
+                .id = carrier_id,
+                .speed = line_speeds[line_idx],
+                .acceleration = line_accelerations[line_idx],
+                .enable_cas = false,
+            },
+        };
+        try sendCommand(station);
     }
-
-    try waitCommandReady(station);
-
-    station.ww.* = .{
-        .command = .PushAxisCarrierForward,
-        .axis = main.index.station + 1,
-        .carrier = .{
-            .id = carrier_id,
-            .speed = line_speeds[line_idx],
-            .acceleration = line_accelerations[line_idx],
-            .enable_cas = false,
-        },
-    };
-    try sendCommand(station);
 }
 
 fn mclCarrierPushBackward(params: [][]const u8) !void {
@@ -1571,42 +1621,66 @@ fn mclCarrierPushBackward(params: [][]const u8) !void {
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
+    const axis_id: ?mcl.Axis.Id.Line = if (params[2].len > 0)
+        try std.fmt.parseInt(mcl.Axis.Id.Line, params[2], 0)
+    else
+        null;
+
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
 
-    try line.pollWr();
-    const main, const _aux =
-        if (line.search(carrier_id)) |t| t else return error.CarrierNotFound;
-    var station: mcl.Station = main.station.*;
+    if (axis_id) |id| {
+        if (id == 0 or id > line.axes.len) return error.InvalidAxis;
 
-    // Direction of auxiliary axis from main axis.
-    var direction: Direction = undefined;
+        const axis: mcl.Axis = line.axes[id - 1];
 
-    // Set command station in direction of movement command.
-    if (_aux) |aux| {
-        if (aux.index.line > main.index.line) {
-            direction = .forward;
-        } else {
-            direction = .backward;
+        try waitCommandReady(axis.station.*);
+        axis.station.ww.* = .{
+            .command = .PushTransitionBackward,
+            .axis = axis.id.station,
+            .carrier = .{
+                .id = carrier_id,
+                .speed = line_speeds[line_idx],
+                .acceleration = line_accelerations[line_idx],
+                .enable_cas = false,
+            },
+        };
+        try sendCommand(axis.station.*);
+    } else {
+        try line.pollWr();
+        const main, const _aux =
+            if (line.search(carrier_id)) |t| t else return error.CarrierNotFound;
+        var station: mcl.Station = main.station.*;
+
+        // Direction of auxiliary axis from main axis.
+        var direction: Direction = undefined;
+
+        // Set command station in direction of movement command.
+        if (_aux) |aux| {
+            if (aux.index.line > main.index.line) {
+                direction = .forward;
+            } else {
+                direction = .backward;
+            }
+            if (direction == .backward) {
+                station = aux.station.*;
+            }
         }
-        if (direction == .backward) {
-            station = aux.station.*;
-        }
+
+        try waitCommandReady(station);
+
+        station.ww.* = .{
+            .command = .PushBackward,
+            .axis = main.index.station + 1,
+            .carrier = .{
+                .id = carrier_id,
+                .speed = line_speeds[line_idx],
+                .acceleration = line_accelerations[line_idx],
+                .enable_cas = false,
+            },
+        };
+        try sendCommand(station);
     }
-
-    try waitCommandReady(station);
-
-    station.ww.* = .{
-        .command = .PushAxisCarrierBackward,
-        .axis = main.index.station + 1,
-        .carrier = .{
-            .id = carrier_id,
-            .speed = line_speeds[line_idx],
-            .acceleration = line_accelerations[line_idx],
-            .enable_cas = false,
-        },
-    };
-    try sendCommand(station);
 }
 
 fn mclCarrierPullForward(params: [][]const u8) !void {
@@ -1616,6 +1690,11 @@ fn mclCarrierPullForward(params: [][]const u8) !void {
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
 
+    const destination: ?f32 = if (params[3].len > 0)
+        try std.fmt.parseFloat(f32, params[3])
+    else
+        null;
+
     if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
 
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
@@ -1624,7 +1703,7 @@ fn mclCarrierPullForward(params: [][]const u8) !void {
 
     try waitCommandReady(station);
     station.ww.* = .{
-        .command = .PullAxisCarrierForward,
+        .command = .PullForward,
         .axis = local_axis + 1,
         .carrier = .{
             .id = carrier_id,
@@ -1633,6 +1712,11 @@ fn mclCarrierPullForward(params: [][]const u8) !void {
             .enable_cas = false,
         },
     };
+    if (destination) |dest| {
+        station.ww.command = .PullTransitionLocationForward;
+        station.ww.carrier.target = .{ .f32 = dest };
+        station.ww.carrier.enable_cas = true;
+    }
     try sendCommand(station);
 }
 
@@ -1643,6 +1727,11 @@ fn mclCarrierPullBackward(params: [][]const u8) !void {
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
 
+    const destination: ?f32 = if (params[3].len > 0)
+        try std.fmt.parseFloat(f32, params[3])
+    else
+        null;
+
     if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
 
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
@@ -1651,7 +1740,7 @@ fn mclCarrierPullBackward(params: [][]const u8) !void {
 
     try waitCommandReady(station);
     station.ww.* = .{
-        .command = .PullAxisCarrierBackward,
+        .command = .PullBackward,
         .axis = local_axis + 1,
         .carrier = .{
             .id = carrier_id,
@@ -1660,6 +1749,11 @@ fn mclCarrierPullBackward(params: [][]const u8) !void {
             .enable_cas = false,
         },
     };
+    if (destination) |dest| {
+        station.ww.command = .PullTransitionLocationBackward;
+        station.ww.carrier.target = .{ .f32 = dest };
+        station.ww.carrier.enable_cas = true;
+    }
     try sendCommand(station);
 }
 
@@ -1703,7 +1797,32 @@ fn mclCarrierStopPull(params: [][]const u8) !void {
     while (true) {
         try command.checkCommandInterrupt();
         try station.pollX();
-        if (!station.x.pulling_carrier.axis(local_axis)) break;
+        if (!station.x.wait_pull_carrier.axis(local_axis)) break;
+    }
+}
+
+fn mclWaitAxisEmpty(params: [][]const u8) !void {
+    const line_name = params[0];
+    const axis_id = try std.fmt.parseInt(mcl.Axis.Id.Line, params[1], 0);
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line = mcl.lines[line_idx];
+
+    if (axis_id < 1 or axis_id > line.axes.len) return error.InvalidAxis;
+
+    const axis: mcl.Axis = line.axes[axis_id - 1];
+
+    while (true) {
+        try command.checkCommandInterrupt();
+        try axis.station.pollX();
+        try axis.station.pollWr();
+        const carrier = axis.station.wr.carrier.axis(axis.index.station);
+        const axis_alarms = axis.station.x.hall_alarm.axis(axis.index.station);
+        if (carrier.id == 0 and !axis_alarms.back and !axis_alarms.front and
+            !axis.station.x.wait_pull_carrier.axis(axis.index.station) and
+            !axis.station.x.wait_push_carrier.axis(axis.index.station))
+        {
+            break;
+        }
     }
 }
 
