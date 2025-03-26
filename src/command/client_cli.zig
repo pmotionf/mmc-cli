@@ -315,17 +315,20 @@ pub fn init(c: Config) !void {
         .execute = &clientAxisReleaseServo,
     });
     errdefer _ = command.registry.orderedRemove("RELEASE_AXIS_SERVO");
-    // try command.registry.put("AUTO_INITIALIZE", .{
-    //     .name = "AUTO_INITIALIZE",
-    //     .short_description = "Initialize all carriers automatically.",
-    //     .long_description =
-    //     \\Isolate all carriers detected in the system automatically and move the
-    //     \\carrier to a free space. Ignore the already initialized carrier. Upon
-    //     \\completion, all carrier IDs will be printed and its current location.
-    //     ,
-    //     .execute = &clientAutoInitialize,
-    // });
-    // errdefer _ = command.registry.orderedRemove("AUTO_INITIALIZE");
+    try command.registry.put("AUTO_INITIALIZE", .{
+        .name = "AUTO_INITIALIZE",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name", .optional = true },
+        },
+        .short_description = "Initialize all carriers automatically.",
+        .long_description =
+        \\Isolate all carriers detected in the system automatically and move the
+        \\carrier to a free space. Ignore the already initialized carrier. Upon
+        \\completion, all carrier IDs will be printed and its current location.
+        ,
+        .execute = &clientAutoInitialize,
+    });
+    errdefer _ = command.registry.orderedRemove("AUTO_INITIALIZE");
     try command.registry.put("CALIBRATE", .{
         .name = "CALIBRATE",
         .parameters = &[_]command.Command.Parameter{
@@ -634,7 +637,7 @@ fn serverVersion(_: [][]const u8) !void {
     }
 }
 
-pub fn clientConnect(params: [][]const u8) !void {
+fn clientConnect(params: [][]const u8) !void {
     std.log.debug("{}", .{params.len});
     if (main_socket != null) return error.ConnectionIsAlreadyEstablished;
     if (params[0].len != 0 and params[1].len == 0) return error.MissingParameter;
@@ -783,10 +786,31 @@ fn disconnectedClearence() !void {
     main_socket = null;
 }
 
-pub fn clientDisconnect(_: [][]const u8) !void {
+fn clientDisconnect(_: [][]const u8) !void {
     if (main_socket) |s| {
         s.close();
         try disconnectedClearence();
+    } else return error.ServerNotConnected;
+}
+
+fn clientAutoInitialize(params: [][]const u8) !void {
+    var line_id: usize = 0;
+    if (params[0].len != 0) {
+        const line_name: []const u8 = params[0];
+        line_id = try matchLine(line_names, line_name) + 1;
+    }
+    const param: mmc.ParamType(.auto_initialize) = .{
+        .line_id = @intCast(line_id),
+    };
+    if (main_socket) |s| {
+        // The buffer might contain error message from the server
+        sendMessage(.auto_initialize, param, s) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
     } else return error.ServerNotConnected;
 }
 
@@ -2038,145 +2062,6 @@ fn sendMessage(
     }
 }
 
-// fn getFreeAxisIndex(
-//     start_hall_idx: usize,
-//     end_hall_idx: usize,
-//     direction: Direction,
-// ) !usize {
-//     const start_axis_idx = if (start_hall_idx % 2 == 0)
-//         start_hall_idx / 2
-//     else
-//         start_hall_idx / 2 + 1;
-//     const end_axis_idx = if (end_hall_idx % 2 == 0)
-//         end_hall_idx / 2 - 1
-//     else
-//         end_hall_idx / 2;
-//     var result = if (direction == .backward) start_axis_idx else end_axis_idx;
-//     std.log.debug(
-//         "result: {}, direction: {s}, start: {}, end: {}",
-//         .{ result, @tagName(direction), start_axis_idx, end_axis_idx },
-//     );
-
-//     status_lock.lock();
-//     const num_of_active_axis = system_state.num_of_active_axis;
-//     status_lock.unlock();
-//     for (0..num_of_active_axis) |i| {
-//         status_lock.lock();
-//         const hall_sensor = system_state.hall_sensors[i];
-//         status_lock.unlock();
-//         if (hall_sensor.axis_id - 1 == result) {
-//             if (direction == .forward and hall_sensor.hall_states.front) {
-//                 std.log.debug(
-//                     "direction == .forward -> {}, hall_sensor.hall_states.front -> {}",
-//                     .{ direction == .forward, hall_sensor.hall_states.front },
-//                 );
-//                 result -= 1;
-//             } else if (direction == .backward and hall_sensor.hall_states.back) {
-//                 std.log.debug(
-//                     "direction == .forward -> {}, hall_sensor.hall_states.front -> {}",
-//                     .{ direction == .forward, hall_sensor.hall_states.front },
-//                 );
-//                 result += 1;
-//             }
-//         }
-//         std.log.debug("result: {}", .{result});
-//     }
-//     return result;
-// }
-
-// fn checkHallStatus(hall_index: usize) !bool {
-//     const hall_axis_id = hall_index / 2 + 1;
-//     status_lock.lock();
-//     const num_of_active_axis = system_state.num_of_active_axis;
-//     status_lock.unlock();
-//     for (0..num_of_active_axis) |i| {
-//         status_lock.lock();
-//         const hall_sensor = system_state.hall_sensors[i];
-//         status_lock.unlock();
-//         if (hall_axis_id == hall_sensor.axis_id) {
-//             if ((hall_index % 2 == 0 and hall_sensor.hall_states.back) or
-//                 (hall_index % 2 != 0 and hall_sensor.hall_states.front))
-//             {
-//                 return true;
-//             }
-//         }
-//     }
-//     return false;
-// }
-
-// /// check if there is a carrier at the specified axis
-// fn checkCarrierExistence(
-//     main_idx: usize,
-//     aux_idx: usize,
-// ) !?struct { usize, usize } {
-//     status_lock.lock();
-//     const num_of_carriers = system_state.num_of_carriers;
-//     status_lock.unlock();
-//     for (0..num_of_carriers) |i| {
-//         status_lock.lock();
-//         const carrier = system_state.carriers[i];
-//         status_lock.unlock();
-//         if ((carrier.axis_ids.first == main_idx + 1 or
-//             carrier.axis_ids.second == main_idx + 1) and
-//             (carrier.state == .BackwardIsolationCompleted or
-//                 carrier.state == .ForwardIsolationCompleted))
-//         {
-//             return .{ carrier.id, main_idx };
-//         }
-//         if ((carrier.axis_ids.first == aux_idx + 1 or
-//             carrier.axis_ids.second == aux_idx + 1) and
-//             (carrier.state == .BackwardIsolationCompleted or
-//                 carrier.state == .ForwardIsolationCompleted))
-//         {
-//             return .{ carrier.id, aux_idx };
-//         }
-//     }
-//     return null;
-// }
-
-// /// Map the hall sensor status from the server to `hall_sensors` variable
-// fn mapHallSensors(
-//     hall_sensors: []bool,
-//     starting_axis_indices: []usize,
-// ) ![]bool {
-//     status_lock.lock();
-//     const num_of_active_axis = system_state.num_of_active_axis;
-//     status_lock.unlock();
-//     for (0..num_of_active_axis) |i| {
-//         status_lock.lock();
-//         const hall_sensor = system_state.hall_sensors[i];
-//         status_lock.unlock();
-//         std.log.debug("line id from hall sensor: {}", .{hall_sensor.line_id});
-//         const back_idx = starting_axis_indices[hall_sensor.line_id - 1] +
-//             (hall_sensor.axis_id - 1) * 2;
-//         const front_idx = starting_axis_indices[hall_sensor.line_id - 1] +
-//             (hall_sensor.axis_id - 1) * 2 + 1;
-//         hall_sensors[back_idx] = hall_sensor.hall_states.back;
-//         hall_sensors[front_idx] = hall_sensor.hall_states.front;
-//     }
-//     return hall_sensors;
-// }
-
-// /// assert that current axis does not have a moving carrier
-// fn assertNoProgressing(axis_idx: usize) !bool {
-//     status_lock.lock();
-//     const num_of_carriers = system_state.num_of_carriers;
-//     status_lock.unlock();
-//     for (0..num_of_carriers) |i| {
-//         status_lock.lock();
-//         const carrier = system_state.carriers[i];
-//         status_lock.unlock();
-//         if ((carrier.axis_ids.first == axis_idx + 1 or
-//             carrier.axis_ids.second == axis_idx + 1) and
-//             (carrier.state == .ForwardIsolationProgressing or
-//                 carrier.state == .BackwardIsolationProgressing))
-//         {
-//             return false;
-//         }
-//     }
-//     return true;
-// }
-
 fn resetReceivedAndSendCommand(
     param: mmc.ParamType(.set_command),
     line_idx: mcl.Line.Index,
@@ -2208,6 +2093,7 @@ fn resetReceivedAndSendCommand(
         };
         std.log.info("Waiting command received", .{});
         while (true) {
+            try command.checkCommandInterrupt();
             const carrier_param: mmc.ParamType(.get_status) = .{
                 .kind = .Carrier,
                 .line_idx = @truncate(line_idx),
