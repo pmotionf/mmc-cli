@@ -911,33 +911,29 @@ fn mclClearErrors(params: [][]const u8) !void {
             if (station.x.errors_cleared) return;
         }
     }
-    for (0..3) |i| {
-        for (line.axes) |axis| {
-            if (axis.index.station != i) continue;
-            axis.station.y.clear_errors = true;
-            axis.station.ww.axis = axis.id.station;
-        }
-        try line.send();
-        wait_true: while (true) {
-            try command.checkCommandInterrupt();
-            for (line.stations) |station| {
-                try station.pollX();
-                if (station.x.errors_cleared == false) continue :wait_true;
-            }
-            break;
-        }
+    for (line.stations) |station| {
+        station.y.clear_errors = true;
+    }
+    try line.send();
+    wait_true: while (true) {
+        try command.checkCommandInterrupt();
         for (line.stations) |station| {
-            station.y.clear_errors = false;
+            try station.pollX();
+            if (station.x.errors_cleared == false) continue :wait_true;
         }
-        try line.sendY();
-        wait_false: while (true) {
-            try command.checkCommandInterrupt();
-            for (line.stations) |station| {
-                try station.pollX();
-                if (station.x.errors_cleared == true) continue :wait_false;
-            }
-            break;
+        break;
+    }
+    for (line.stations) |station| {
+        station.y.clear_errors = false;
+    }
+    try line.sendY();
+    wait_false: while (true) {
+        try command.checkCommandInterrupt();
+        for (line.stations) |station| {
+            try station.pollX();
+            if (station.x.errors_cleared == true) continue :wait_false;
         }
+        break;
     }
 }
 
