@@ -2165,7 +2165,7 @@ fn logRegisters(_: [][]const u8) !void {
     log_time_start = if (log_time_start == 0) std.time.microTimestamp() else log_time_start;
     if (log_file) |f| {
         const timestamp = @as(f64, @floatFromInt(std.time.microTimestamp() - log_time_start)) / 1_000_000;
-        try f.writer().print("{},", .{timestamp});
+        try f.writer().print("{d},", .{timestamp});
         for (line_names) |line| {
             const line_idx = try matchLine(line_names, line);
             if (log_lines[line_idx].status == false) continue;
@@ -2238,11 +2238,22 @@ fn registerFieldToString(
                     .{ prefix, child_field.name },
                 );
             } else {
-                try std.fmt.format(
-                    f,
-                    "{s}_{s},",
-                    .{ prefix, parent ++ "." ++ child_field.name },
-                );
+                if (@typeInfo(child_field.type) == .@"union") {
+                    const ti = @typeInfo(child_field.type).@"union";
+                    inline for (ti.fields) |union_field| {
+                        try std.fmt.format(
+                            f,
+                            "{s}_{s},",
+                            .{ prefix, parent ++ "." ++ child_field.name ++ "." ++ union_field.name },
+                        );
+                    }
+                } else {
+                    try std.fmt.format(
+                        f,
+                        "{s}_{s},",
+                        .{ prefix, parent ++ "." ++ child_field.name },
+                    );
+                }
             }
         }
     }
@@ -2262,7 +2273,19 @@ fn registerValueToString(f: std.fs.File.Writer, parent_field: anytype) !void {
             const child_value = @field(parent_field.*, child_field.name);
             if (comptime @typeInfo(@TypeOf(child_value)) == .@"enum") {
                 try f.print("{d},", .{@intFromEnum(child_value)});
-            } else try f.print("{},", .{child_value});
+            } else if (comptime @typeInfo(child_field.type) == .@"union") {
+                const ti = @typeInfo(child_field.type).@"union";
+                inline for (ti.fields) |union_field| {
+                    const union_val = @field(child_value, union_field.name);
+                    if (@typeInfo(@TypeOf(union_val)) == .float) {
+                        try f.print("{d},", .{union_val});
+                    } else try f.print("{},", .{union_val});
+                }
+            } else {
+                if (@typeInfo(@TypeOf(child_value)) == .float) {
+                    try f.print("{d},", .{child_value});
+                } else try f.print("{},", .{child_value});
+            }
         }
     }
 }
