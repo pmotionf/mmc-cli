@@ -291,12 +291,13 @@ pub fn init(c: Config) !void {
     try command.registry.put("CLEAR_ERRORS", .{
         .name = "CLEAR_ERRORS",
         .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
+            .{ .name = "line name", .optional = true },
+            .{ .name = "axis", .optional = true },
         },
-        .short_description = "Clear driver errors of specified axis.",
+        .short_description = "Clear driver errors.",
         .long_description =
-        \\Clear driver errors of specified axis.
+        \\Clear driver errors of specified axis. If no axis is provided, clear
+        \\driver errors of all axis.
         ,
         .execute = &mclClearErrors,
     });
@@ -313,12 +314,13 @@ pub fn init(c: Config) !void {
     try command.registry.put("CLEAR_CARRIER_INFO", .{
         .name = "CLEAR_CARRIER_INFO",
         .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
+            .{ .name = "line name", .optional = true },
+            .{ .name = "axis", .optional = true },
         },
-        .short_description = "Clear carrier information at specified axis.",
+        .short_description = "Clear carrier information.",
         .long_description =
-        \\Clear carrier information at specified axis.
+        \\Clear carrier information at specified axis. If no axis is provided, 
+        \\clear carrier information at all axis
         ,
         .execute = &mclClearCarrierInfo,
     });
@@ -883,28 +885,61 @@ fn mclAxisReleaseServo(params: [][]const u8) !void {
 }
 
 fn mclClearErrors(params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
+    if (params[0].len != 0 and params[1].len == 0) return error.MissingParameter;
+    if (params[1].len > 0) {
+        const line_name: []const u8 = params[0];
+        const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
 
-    const line_idx: usize = try matchLine(line_names, line_name);
-    const line: mcl.Line = mcl.lines[line_idx];
-    if (axis_id < 1 or axis_id > line.axes.len) {
-        return error.InvalidAxis;
+        const line_idx: usize = try matchLine(line_names, line_name);
+        const line: mcl.Line = mcl.lines[line_idx];
+        if (axis_id < 1 or axis_id > line.axes.len) {
+            return error.InvalidAxis;
+        }
+
+        const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
+        const local_axis_index: mcl.Axis.Index.Station = @intCast(axis_index % 3);
+        const station = line.stations[axis_index / 3];
+
+        station.ww.axis = local_axis_index + 1;
+        station.y.clear_errors = true;
+        try station.send();
+        defer station.sendY() catch {};
+        defer station.y.clear_errors = false;
+        while (true) {
+            try command.checkCommandInterrupt();
+            try station.pollX();
+            if (station.x.errors_cleared) return;
+        }
     }
-
-    const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
-    const local_axis_index: mcl.Axis.Index.Station = @intCast(axis_index % 3);
-    const station = line.stations[axis_index / 3];
-
-    station.ww.axis = local_axis_index + 1;
-    try station.sendWw();
-    try station.setY(0xB);
-    // Reset on error as well as on success.
-    defer station.resetY(0xB) catch {};
-    while (true) {
-        try command.checkCommandInterrupt();
-        try station.pollX();
-        if (station.x.errors_cleared) break;
+    for (mcl.lines) |line| {
+        for (0..3) |i| {
+            for (line.axes) |axis| {
+                if (axis.index.station != i) continue;
+                axis.station.y.clear_errors = true;
+                axis.station.ww.axis = axis.index.station;
+            }
+            try line.send();
+            wait_true: while (true) {
+                try command.checkCommandInterrupt();
+                for (line.stations) |station| {
+                    try station.pollX();
+                    if (station.x.errors_cleared == false) continue :wait_true;
+                }
+                break;
+            }
+            for (line.stations) |station| {
+                station.y.clear_errors = false;
+            }
+            try line.sendY();
+            wait_false: while (true) {
+                try command.checkCommandInterrupt();
+                for (line.stations) |station| {
+                    try station.pollX();
+                    if (station.x.errors_cleared == true) continue :wait_false;
+                }
+                break;
+            }
+        }
     }
 }
 
@@ -931,29 +966,57 @@ fn mclReset(_: [][]const u8) !void {
 }
 
 fn mclClearCarrierInfo(params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
+    if (params[0].len != 0 and params[1].len == 0) return error.MissingParameter;
+    if (params[1].len > 0) {
+        const line_name: []const u8 = params[0];
+        const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
 
-    const line_idx: usize = try matchLine(line_names, line_name);
-    const line: mcl.Line = mcl.lines[line_idx];
-    if (axis_id < 1 or axis_id > line.axes.len) {
-        return error.InvalidAxis;
+        const line_idx: usize = try matchLine(line_names, line_name);
+        const line: mcl.Line = mcl.lines[line_idx];
+        if (axis_id < 1 or axis_id > line.axes.len) {
+            return error.InvalidAxis;
+        }
+
+        const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
+        const local_axis_index: mcl.Axis.Index.Station = @intCast(axis_index % 3);
+        const station = line.stations[axis_index / 3];
+
+        station.ww.axis = local_axis_index + 1;
+        station.y.axis_clear_carrier = true;
+        try station.send();
+        defer station.sendY() catch {};
+        defer station.y.axis_clear_carrier = false;
+        while (true) {
+            try command.checkCommandInterrupt();
+            try station.pollX();
+            if (station.x.axis_cleared_carrier) return;
+        }
     }
-
-    const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
-    const station = line.stations[axis_index / 3];
-    const local_axis_index: mcl.Axis.Index.Station = @intCast(axis_index % 3);
-
-    station.ww.axis = local_axis_index + 1;
-    try station.sendWw();
-    try station.setY(0x3);
-    // Reset on error as well as on success.
-    defer station.resetY(0x3) catch {};
-
-    while (true) {
-        try command.checkCommandInterrupt();
-        try station.pollX();
-        if (station.x.axis_cleared_carrier) break;
+    for (mcl.lines) |line| {
+        for (line.stations) |station| {
+            station.y.clear_carrier = true;
+        }
+        try line.sendY();
+        wait_true: while (true) {
+            try command.checkCommandInterrupt();
+            for (line.stations) |station| {
+                try station.pollX();
+                if (station.x.cleared_carrier == false) continue :wait_true;
+            }
+            break;
+        }
+        for (line.stations) |station| {
+            station.y.clear_carrier = false;
+        }
+        try line.sendY();
+        wait_false: while (true) {
+            try command.checkCommandInterrupt();
+            for (line.stations) |station| {
+                try station.pollX();
+                if (station.x.cleared_carrier == true) continue :wait_false;
+            }
+            break;
+        }
     }
 }
 
