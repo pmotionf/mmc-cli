@@ -319,7 +319,7 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Clear carrier information.",
         .long_description =
-        \\Clear carrier information at specified axis. If no axis is provided, 
+        \\Clear carrier information at specified axis. If no axis is provided,
         \\clear carrier information at all axis
         ,
         .execute = &mclClearCarrierInfo,
@@ -603,6 +603,19 @@ pub fn init(c: Config) !void {
         \\Stop active carrier pull at axis.
         ,
         .execute = &mclCarrierStopPull,
+    });
+    errdefer _ = command.registry.orderedRemove("STOP_PULL_CARRIER");
+    try command.registry.put("STOP_PUSH_CARRIER", .{
+        .name = "STOP_PUSH_CARRIER",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+        },
+        .short_description = "Stop active carrier push at axis.",
+        .long_description =
+        \\Stop active carrier push at axis.
+        ,
+        .execute = &mclCarrierStopPush,
     });
     errdefer _ = command.registry.orderedRemove("STOP_PULL_CARRIER");
     try command.registry.put("WAIT_AXIS_EMPTY", .{
@@ -1854,6 +1867,30 @@ fn mclCarrierStopPull(params: [][]const u8) !void {
         try command.checkCommandInterrupt();
         try station.pollX();
         if (!station.x.wait_pull_carrier.axis(local_axis)) break;
+    }
+}
+
+fn mclCarrierStopPush(params: [][]const u8) !void {
+    const line_name = params[0];
+    const axis_id = try std.fmt.parseInt(mcl.Axis.Id.Line, params[1], 0);
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line = mcl.lines[line_idx];
+
+    if (axis_id < 1 or axis_id > line.axes.len) return error.InvalidAxis;
+
+    const axis = line.axes[axis_id - 1];
+
+    axis.station.y.reset_push_carrier.setAxis(axis.index.station, true);
+    try axis.station.sendY();
+    defer {
+        axis.station.y.reset_push_carrier.setAxis(axis.index.station, false);
+        axis.station.sendY() catch {};
+    }
+
+    while (true) {
+        try command.checkCommandInterrupt();
+        try axis.station.pollX();
+        if (!axis.station.x.wait_push_carrier.axis(axis.index.station)) break;
     }
 }
 
