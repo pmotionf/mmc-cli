@@ -1,1 +1,1 @@
-pub const version: []const u8 = "0.5.2";
+pub const version: []const u8 = "0.5.3";
