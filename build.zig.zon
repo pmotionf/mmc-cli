@@ -8,10 +8,7 @@
             .url = "https://github.com/mochalins/network/archive/dd8f929.tar.gz",
             .hash = "network-0.1.0-wh14CEr9AACUyPafTRpVsJYRP13gpw5a7a6wvN8dYtAD",
         },
-        .mcl = .{
-            .url = "https://github.com/pmotionf/mcl/archive/f0fe654.tar.gz",
-            .hash = "mcl-0.6.1-bTecRiPAAADkmDeyWXR8OxFIfPQR4uuk2k9pH9nYyzA_",
-        },
+        .mcl = .{ .path = "../mcl" },
         .chrono = .{
             .url = "https://github.com/pmotionf/chrono/archive/620de75.tar.gz",
             .hash = "chrono-0.1.0-uVd76GvCAwAvWrHupKdlB_UrmfZHRuVP-P4Xi_G8hz3R",
