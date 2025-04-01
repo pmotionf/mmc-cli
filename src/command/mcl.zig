@@ -1092,28 +1092,6 @@ fn mclIsolate(params: [][]const u8) !void {
     const local_axis: mcl.Axis.Index.Station = @intCast(axis_index % 3);
 
     try waitCommandReady(station);
-    if (link_axis) |a| {
-        if (a == .backward) {
-            try station.setY(0xD);
-            station.ww.carrier.isolate_link_prev_axis = true;
-        } else {
-            try station.setY(0xE);
-            station.ww.carrier.isolate_link_next_axis = true;
-        }
-    }
-    defer {
-        if (link_axis) |a| {
-            if (a == .backward) {
-                if (station.resetY(0xD)) {
-                    station.ww.carrier.isolate_link_prev_axis = false;
-                } else |_| {}
-            } else {
-                if (station.resetY(0xE)) {
-                    station.ww.carrier.isolate_link_next_axis = false;
-                } else |_| {}
-            }
-        }
-    }
     station.ww.* = .{
         .command = if (dir == .forward)
             .IsolateForward
@@ -1122,6 +1100,23 @@ fn mclIsolate(params: [][]const u8) !void {
         .axis = local_axis + 1,
         .carrier = .{ .id = carrier_id },
     };
+    if (link_axis) |a| {
+        if (a == .backward) {
+            station.ww.carrier.isolate_link_prev_axis = true;
+        } else {
+            station.ww.carrier.isolate_link_next_axis = true;
+        }
+    }
+    defer {
+        if (link_axis) |a| {
+            if (a == .backward) {
+                station.ww.carrier.isolate_link_prev_axis = false;
+            } else {
+                station.ww.carrier.isolate_link_next_axis = false;
+            }
+            station.sendWw() catch {};
+        }
+    }
     try sendCommand(station);
 }
 
