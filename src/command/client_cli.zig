@@ -496,13 +496,17 @@ pub fn init(c: Config) !void {
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
             .{ .name = "carrier" },
+            .{ .name = "axis", .optional = true },
         },
         .short_description = "Push carrier forward by carrier length.",
         .long_description =
         \\Push carrier forward with speed feedback-controlled movement. This
         \\movement targets a distance of the carrier length, and thus if it is
         \\used to cross a line boundary, the receiving axis at the destination
-        \\line must first be pulling the carrier.
+        \\line must first be pulling the carrier. Specifying the optional
+        \\`axis` parameter will push the carrier automatically when it arrives
+        \\at the given axis; otherwise, the carrier will be pushed immediately
+        \\from its current position.
         ,
         .execute = &clientCarrierPushForward,
     });
@@ -512,13 +516,17 @@ pub fn init(c: Config) !void {
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
             .{ .name = "carrier" },
+            .{ .name = "axis", .optional = true },
         },
         .short_description = "Push carrier backward by carrier length.",
         .long_description =
         \\Push carrier backward with speed feedback-controlled movement. This
         \\movement targets a distance of the carrier length, and thus if it is
         \\used to cross a line boundary, the receiving axis at the destination
-        \\line must first be pulling the carrier.
+        \\line must first be pulling the carrier. Specifying the optional
+        \\`axis` parameter will push the carrier automatically when it arrives
+        \\at the given axis; otherwise, the carrier will be pushed immediately
+        \\from its current position.
         ,
         .execute = &clientCarrierPushBackward,
     });
@@ -529,12 +537,14 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "axis" },
             .{ .name = "carrier" },
+            .{ .name = "destination", .optional = true },
         },
         .short_description = "Pull incoming carrier forward at axis.",
         .long_description =
-        \\Pull incoming carrier forward at axis. This command must be stopped
-        \\manually after it is completed with the "STOP_PULL_CARRIER" command.
-        \\The pulled carrier's ID must also be provided.
+        \\Pull incoming carrier forward at axis. The pulled carrier's new ID
+        \\must also be provided. If a destination in millimeters is specified,
+        \\the carrier will automatically move to the destination after pull is
+        \\completed.
         ,
         .execute = &clientCarrierPullForward,
     });
@@ -545,12 +555,14 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "axis" },
             .{ .name = "carrier" },
+            .{ .name = "destination", .optional = true },
         },
         .short_description = "Pull incoming carrier backward at axis.",
         .long_description =
-        \\Pull incoming carrier backward at axis. This command must be stopped
-        \\manually after it is completed with the "STOP_PULL_CARRIER" command.
-        \\The pulled carrier's ID must also be provided.
+        \\Pull incoming carrier backward at axis. The pulled carrier's new ID
+        \\must also be provided. If a destination in millimeters is specified,
+        \\the carrier will automatically move to the destination after pull is
+        \\completed.
         ,
         .execute = &clientCarrierPullBackward,
     });
@@ -582,6 +594,20 @@ pub fn init(c: Config) !void {
         .execute = &clientCarrierStopPull,
     });
     errdefer _ = command.registry.orderedRemove("STOP_PULL_CARRIER");
+    try command.registry.put("WAIT_AXIS_EMPTY", .{
+        .name = "WAIT_AXIS_EMPTY",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+        },
+        .short_description = "Wait for axis to be empty.",
+        .long_description =
+        \\Pause the execution of any further commands until specified axis has
+        \\no carriers, no active hall alarms, and no wait for push/pull.
+        ,
+        .execute = &clientWaitAxisEmpty,
+    });
+    errdefer _ = command.registry.orderedRemove("WAIT_AXIS_EMPTY");
 }
 
 pub fn deinit() void {
@@ -1763,14 +1789,28 @@ fn clientCarrierPushForward(params: [][]const u8) !void {
     const line_name = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
+
+    const axis_id: ?mcl.Axis.Id.Line = if (params[2].len > 0)
+        try std.fmt.parseInt(mcl.Axis.Id.Line, params[2], 0)
+    else
+        null;
+
     const line_idx: usize = try matchLine(line_names, line_name);
 
     var param = std.mem.zeroes(mmc.ParamType(.set_command));
-    param.command_code = .PushForward;
     param.line_idx = @truncate(line_idx);
     param.carrier_id = carrier_id;
     param.speed = line_speeds[line_idx];
     param.acceleration = line_accelerations[line_idx];
+    if (axis_id) |id| {
+        const line = mcl.lines[line_idx];
+        if (id == 0 or id > line.axes.len) return error.InvalidAxis;
+        const axis: mcl.Axis = line.axes[id - 1];
+        param.command_code = .PushTransitionForward;
+        param.axis_idx = axis.index.line;
+    } else {
+        param.command_code = .PushForward;
+    }
     try resetReceivedAndSendCommand(
         param,
         @truncate(line_idx),
@@ -1782,14 +1822,28 @@ fn clientCarrierPushBackward(params: [][]const u8) !void {
     const line_name = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
+
+    const axis_id: ?mcl.Axis.Id.Line = if (params[2].len > 0)
+        try std.fmt.parseInt(mcl.Axis.Id.Line, params[2], 0)
+    else
+        null;
+
     const line_idx: usize = try matchLine(line_names, line_name);
 
     var param = std.mem.zeroes(mmc.ParamType(.set_command));
-    param.command_code = .PushBackward;
     param.line_idx = @truncate(line_idx);
     param.carrier_id = carrier_id;
     param.speed = line_speeds[line_idx];
     param.acceleration = line_accelerations[line_idx];
+    if (axis_id) |id| {
+        const line = mcl.lines[line_idx];
+        if (id == 0 or id > line.axes.len) return error.InvalidAxis;
+        const axis: mcl.Axis = line.axes[id - 1];
+        param.command_code = .PushTransitionBackward;
+        param.axis_idx = axis.index.line;
+    } else {
+        param.command_code = .PushBackward;
+    }
     try resetReceivedAndSendCommand(
         param,
         @truncate(line_idx),
@@ -1801,6 +1855,10 @@ fn clientCarrierPullForward(params: [][]const u8) !void {
     const line_name = params[0];
     const axis = try std.fmt.parseInt(u16, params[1], 0);
     const carrier_id = try std.fmt.parseInt(u10, params[2], 0);
+    const destination: ?f32 = if (params[3].len > 0)
+        try std.fmt.parseFloat(f32, params[3])
+    else
+        null;
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
@@ -1808,29 +1866,33 @@ fn clientCarrierPullForward(params: [][]const u8) !void {
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
 
     var param = std.mem.zeroes(mmc.ParamType(.set_command));
-    param.command_code = .PullForward;
     param.line_idx = @truncate(line_idx);
     param.carrier_id = carrier_id;
     param.axis_idx = axis_index;
     param.speed = line_speeds[line_idx];
     param.acceleration = line_accelerations[line_idx];
-    if (main_socket) |s| sendMessage(
-        .set_command,
+    if (destination) |dest| {
+        param.command_code = .PullTransitionLocationForward;
+        param.location_distance = dest;
+    } else {
+        param.command_code = .PullForward;
+    }
+    try resetReceivedAndSendCommand(
         param,
-        s,
-    ) catch |e| {
-        std.log.debug("{s}", .{@errorName(e)});
-        std.log.err("ConnectionClosedByServer", .{});
-        s.close();
-        try disconnectedClearence();
-        return;
-    } else return error.ServerNotConnected;
+        @truncate(line_idx),
+        carrier_id,
+    );
 }
 
 fn clientCarrierPullBackward(params: [][]const u8) !void {
     const line_name = params[0];
     const axis = try std.fmt.parseInt(u16, params[1], 0);
     const carrier_id = try std.fmt.parseInt(u10, params[2], 0);
+    const destination: ?f32 = if (params[3].len > 0)
+        try std.fmt.parseFloat(f32, params[3])
+    else
+        null;
+
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
@@ -1838,23 +1900,22 @@ fn clientCarrierPullBackward(params: [][]const u8) !void {
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
 
     var param = std.mem.zeroes(mmc.ParamType(.set_command));
-    param.command_code = .PullBackward;
     param.line_idx = @truncate(line_idx);
     param.carrier_id = carrier_id;
     param.axis_idx = axis_index;
     param.speed = line_speeds[line_idx];
     param.acceleration = line_accelerations[line_idx];
-    if (main_socket) |s| sendMessage(
-        .set_command,
+    if (destination) |dest| {
+        param.command_code = .PullTransitionLocationBackward;
+        param.location_distance = dest;
+    } else {
+        param.command_code = .PullBackward;
+    }
+    try resetReceivedAndSendCommand(
         param,
-        s,
-    ) catch |e| {
-        std.log.debug("{s}", .{@errorName(e)});
-        std.log.err("ConnectionClosedByServer", .{});
-        s.close();
-        try disconnectedClearence();
-        return;
-    } else return error.ServerNotConnected;
+        @truncate(line_idx),
+        carrier_id,
+    );
 }
 
 fn clientCarrrierWaitPull(params: [][]const u8) !void {
@@ -1910,6 +1971,87 @@ fn clientCarrierStopPull(params: [][]const u8) !void {
         s.close();
         try disconnectedClearence();
         return;
+    } else return error.ServerNotConnected;
+}
+
+fn clientWaitAxisEmpty(params: [][]const u8) !void {
+    const line_name = params[0];
+    const axis_id = try std.fmt.parseInt(mcl.Axis.Id.Line, params[1], 0);
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line = mcl.lines[line_idx];
+
+    if (axis_id < 1 or axis_id > line.axes.len) return error.InvalidAxis;
+
+    const axis: mcl.Axis = line.axes[axis_id - 1];
+
+    const param_wr: mmc.ParamType(.get_wr) = .{
+        .line_idx = @intCast(line_idx),
+        .axis_idx = @intCast(axis.index.line),
+    };
+    const param_x: mmc.ParamType(.get_x) = .{
+        .line_idx = @intCast(line_idx),
+        .axis_idx = @intCast(axis.index.line),
+    };
+
+    if (main_socket) |s| {
+        while (true) {
+            try command.checkCommandInterrupt();
+            var buffer: [128]u8 = undefined;
+            sendMessage(.get_wr, param_wr, s) catch |e| {
+                std.log.debug("{s}", .{@errorName(e)});
+                std.log.err("ConnectionClosedByServer", .{});
+                s.close();
+                try disconnectedClearence();
+                return;
+            };
+            _ = s.receive(&buffer) catch |e| {
+                std.log.debug("{s}", .{@errorName(e)});
+                std.log.err("ConnectionClosedByServer", .{});
+                s.close();
+                try disconnectedClearence();
+                return;
+            };
+            // The first 4 bits are the message type, the following 13 bits are the
+            // message length. Actual message start after these bits
+            const msg_offset: usize = @bitSizeOf(u4) + @bitSizeOf(u13);
+            const msg_wr = std.mem.readPackedInt(
+                @typeInfo(mcl.registers.Wr).@"struct".backing_integer.?,
+                &buffer,
+                msg_offset,
+                .little,
+            );
+            const wr: mcl.registers.Wr = @bitCast(msg_wr);
+
+            sendMessage(.get_x, param_x, s) catch |e| {
+                std.log.debug("{s}", .{@errorName(e)});
+                std.log.err("ConnectionClosedByServer", .{});
+                s.close();
+                try disconnectedClearence();
+                return;
+            };
+            _ = s.receive(&buffer) catch |e| {
+                std.log.debug("{s}", .{@errorName(e)});
+                std.log.err("ConnectionClosedByServer", .{});
+                s.close();
+                try disconnectedClearence();
+                return;
+            };
+            const msg_x = std.mem.readPackedInt(
+                @typeInfo(mcl.registers.X).@"struct".backing_integer.?,
+                &buffer,
+                msg_offset,
+                .little,
+            );
+            const x: mcl.registers.X = @bitCast(msg_x);
+            const carrier = wr.carrier.axis(axis.index.station);
+            const axis_alarms = x.hall_alarm.axis(axis.index.station);
+            if (carrier.id == 0 and !axis_alarms.back and !axis_alarms.front and
+                !axis.station.x.wait_pull_carrier.axis(axis.index.station) and
+                !axis.station.x.wait_push_carrier.axis(axis.index.station))
+            {
+                break;
+            }
+        }
     } else return error.ServerNotConnected;
 }
 
