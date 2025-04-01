@@ -1321,6 +1321,7 @@ fn clientCarrierAxis(params: [][]const u8) !void {
 fn clientHallStatus(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     var axis_id: mcl.Axis.Id.Line = 0;
+    var axis_idx: mcl.Axis.Index.Line = undefined;
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
     if (params[1].len > 0) {
@@ -1332,8 +1333,8 @@ fn clientHallStatus(params: [][]const u8) !void {
         if (axis_id < 1 or axis_id > line.axes.len) {
             return error.InvalidAxis;
         }
+        axis_idx = @intCast(axis_id - 1);
     }
-    const axis_idx: mcl.Axis.Index.Line = @intCast(axis_id - 1);
 
     if (main_socket) |s| {
         if (axis_id > 0) {
