@@ -1095,21 +1095,21 @@ fn mclIsolate(params: [][]const u8) !void {
     if (link_axis) |a| {
         if (a == .backward) {
             try station.setY(0xD);
-            station.y.prev_axis_isolate_link = true;
+            station.ww.carrier.isolate_link_prev_axis = true;
         } else {
             try station.setY(0xE);
-            station.y.next_axis_isolate_link = true;
+            station.ww.carrier.isolate_link_next_axis = true;
         }
     }
     defer {
         if (link_axis) |a| {
             if (a == .backward) {
                 if (station.resetY(0xD)) {
-                    station.y.prev_axis_isolate_link = false;
+                    station.ww.carrier.isolate_link_prev_axis = false;
                 } else |_| {}
             } else {
                 if (station.resetY(0xE)) {
-                    station.y.next_axis_isolate_link = false;
+                    station.ww.carrier.isolate_link_next_axis = false;
                 } else |_| {}
             }
         }
