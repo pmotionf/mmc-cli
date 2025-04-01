@@ -266,7 +266,7 @@ pub fn init(c: Config) !void {
     try command.registry.put("CLEAR_ERRORS", .{
         .name = "CLEAR_ERRORS",
         .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name", .optional = true },
+            .{ .name = "line name" },
             .{ .name = "axis", .optional = true },
         },
         .short_description = "Clear driver errors.",
@@ -289,7 +289,7 @@ pub fn init(c: Config) !void {
     try command.registry.put("CLEAR_CARRIER_INFO", .{
         .name = "CLEAR_CARRIER_INFO",
         .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name", .optional = true },
+            .{ .name = "line name" },
             .{ .name = "axis", .optional = true },
         },
         .short_description = "Clear carrier information.",
@@ -1165,14 +1165,14 @@ fn clientAxisReleaseServo(params: [][]const u8) !void {
 }
 
 fn clientClearErrors(params: [][]const u8) !void {
-    if (params[0].len != 0 and params[1].len == 0) return error.MissingParameter;
-    var line_idx: mcl.Line.Index = 0;
-    var axis_idx: mcl.Axis.Index.Line = 0;
+    const line_name: []const u8 = params[0];
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(line_names, line_name));
+    const line_id: mcl.Line.Id = @intCast(line_idx + 1);
+    const line = mcl.lines[line_idx];
+
+    var axis_id: mcl.Axis.Id.Line = 0;
     if (params[1].len > 0) {
-        const line_name: []const u8 = params[0];
-        line_idx = @intCast(try matchLine(line_names, line_name));
-        const line = mcl.lines[line_idx];
-        const axis_id = try std.fmt.parseInt(
+        axis_id = try std.fmt.parseInt(
             mcl.Axis.Id.Line,
             params[1],
             0,
@@ -1180,17 +1180,13 @@ fn clientClearErrors(params: [][]const u8) !void {
         if (axis_id < 1 or axis_id > line.axes.len) {
             return error.InvalidAxis;
         }
-        axis_idx = axis_id - 1;
     }
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .clear_errors;
-    const param: mmc.ParamType(kind) = .{
-        .line_id = line_idx + 1,
-        .axis_idx = axis_idx,
+    const param: mmc.ParamType(.clear_errors) = .{
+        .line_id = line_id,
+        .axis_id = axis_id,
     };
     if (main_socket) |s| {
-        sendMessage(kind, param, s) catch |e| {
+        sendMessage(.clear_errors, param, s) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
             std.log.err("ConnectionClosedByServer", .{});
             s.close();
@@ -1201,14 +1197,14 @@ fn clientClearErrors(params: [][]const u8) !void {
 }
 
 fn clientClearCarrierInfo(params: [][]const u8) !void {
-    if (params[0].len != 0 and params[1].len == 0) return error.MissingParameter;
-    var line_idx: mcl.Line.Index = 0;
-    var axis_idx: mcl.Axis.Index.Line = 0;
+    const line_name: []const u8 = params[0];
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(line_names, line_name));
+    const line_id: mcl.Line.Id = @intCast(line_idx + 1);
+    const line = mcl.lines[line_idx];
+
+    var axis_id: mcl.Axis.Id.Line = 0;
     if (params[1].len > 0) {
-        const line_name: []const u8 = params[0];
-        line_idx = @intCast(try matchLine(line_names, line_name));
-        const line = mcl.lines[line_idx];
-        const axis_id = try std.fmt.parseInt(
+        axis_id = try std.fmt.parseInt(
             mcl.Axis.Id.Line,
             params[1],
             0,
@@ -1216,17 +1212,13 @@ fn clientClearCarrierInfo(params: [][]const u8) !void {
         if (axis_id < 1 or axis_id > line.axes.len) {
             return error.InvalidAxis;
         }
-        axis_idx = axis_id - 1;
     }
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .clear_carrier_info;
-    const param: mmc.ParamType(kind) = .{
-        .line_id = line_idx + 1,
-        .axis_idx = axis_idx,
+    const param: mmc.ParamType(.clear_carrier_info) = .{
+        .line_id = line_id,
+        .axis_id = axis_id,
     };
     if (main_socket) |s| {
-        sendMessage(kind, param, s) catch |e| {
+        sendMessage(.clear_carrier_info, param, s) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
             std.log.err("ConnectionClosedByServer", .{});
             s.close();
@@ -1774,7 +1766,7 @@ fn clientCarrierPushForward(params: [][]const u8) !void {
     const line_idx: usize = try matchLine(line_names, line_name);
 
     var param = std.mem.zeroes(mmc.ParamType(.set_command));
-    param.command_code = .PushAxisCarrierForward;
+    param.command_code = .PushForward;
     param.line_idx = @truncate(line_idx);
     param.carrier_id = carrier_id;
     param.speed = line_speeds[line_idx];
@@ -1793,7 +1785,7 @@ fn clientCarrierPushBackward(params: [][]const u8) !void {
     const line_idx: usize = try matchLine(line_names, line_name);
 
     var param = std.mem.zeroes(mmc.ParamType(.set_command));
-    param.command_code = .PushAxisCarrierBackward;
+    param.command_code = .PushBackward;
     param.line_idx = @truncate(line_idx);
     param.carrier_id = carrier_id;
     param.speed = line_speeds[line_idx];
@@ -1816,7 +1808,7 @@ fn clientCarrierPullForward(params: [][]const u8) !void {
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
 
     var param = std.mem.zeroes(mmc.ParamType(.set_command));
-    param.command_code = .PullAxisCarrierForward;
+    param.command_code = .PullForward;
     param.line_idx = @truncate(line_idx);
     param.carrier_id = carrier_id;
     param.axis_idx = axis_index;
@@ -1846,7 +1838,7 @@ fn clientCarrierPullBackward(params: [][]const u8) !void {
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
 
     var param = std.mem.zeroes(mmc.ParamType(.set_command));
-    param.command_code = .PullAxisCarrierBackward;
+    param.command_code = .PullBackward;
     param.line_idx = @truncate(line_idx);
     param.carrier_id = carrier_id;
     param.axis_idx = axis_index;
