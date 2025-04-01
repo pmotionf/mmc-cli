@@ -2132,6 +2132,7 @@ fn pathLogRegisters(params: [][]const u8) !void {
     }
     const path = params[0];
     var path_buffer: [512]u8 = undefined;
+    log_time_start = 0;
     const file_path = if (path.len > 0) path else p: {
         var timestamp: u64 = @intCast(std.time.timestamp());
         timestamp += std.time.s_per_hour * 9;
