@@ -2110,6 +2110,7 @@ fn resetReceivedAndSendCommand(
                 try disconnectedClearence();
                 return;
             };
+            if (carrier.initialized == false) return error.CarrierNotFound;
             if (carrier.command_received == false) break;
         }
 
