@@ -2202,22 +2202,46 @@ fn resetReceivedAndSendCommand(
     line_idx: mcl.Line.Index,
     carrier_id: u10,
 ) !void {
-    const reset_param: mmc.ParamType(.clear_command_status) = .{
-        .line_idx = line_idx,
-        .carrier_id = carrier_id,
-        .status = .StateAndReceived,
-    };
-
-    const reset_command_response_param: mmc.ParamType(.clear_command_status) = .{
-        .line_idx = line_idx,
-        .carrier_id = carrier_id,
-        .status = .Response,
-    };
-
     if (main_socket) |s| {
+        // 1st step: Get station index from carrier id
+        const carrier_param: mmc.ParamType(.get_status) = .{
+            .kind = .Carrier,
+            .line_idx = @truncate(line_idx),
+            .axis_idx = 0,
+            .carrier_id = carrier_id,
+        };
+        const carrier = parseCarrierStatus(
+            carrier_param,
+            s,
+        ) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        if (carrier.id == 0) return error.CarrierNotFound;
+        const station_idx: mcl.Station.Index =
+            @intCast(carrier.axis_idx.main_axis / 3);
+
+        // parameter definition for reset command_received and command_response
+        const reset_command_received: mmc.ParamType(.clear_command_status) = .{
+            .line_idx = line_idx,
+            .station_idx = station_idx,
+            .status = .CommandReceived,
+        };
+
+        const reset_command_response: mmc.ParamType(.clear_command_status) = .{
+            .line_idx = line_idx,
+            .station_idx = station_idx,
+            .status = .CommandResponse,
+        };
+
+        // 2nd step: Clear command_received on the station where carrier is
+        //           positioned
         sendMessage(
             .clear_command_status,
-            reset_param,
+            reset_command_received,
             s,
         ) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
@@ -2229,14 +2253,14 @@ fn resetReceivedAndSendCommand(
         std.log.info("Waiting command received", .{});
         while (true) {
             try command.checkCommandInterrupt();
-            const carrier_param: mmc.ParamType(.get_status) = .{
-                .kind = .Carrier,
+            const command_param: mmc.ParamType(.get_status) = .{
+                .kind = .Command,
                 .line_idx = @truncate(line_idx),
-                .axis_idx = 0,
-                .carrier_id = carrier_id,
+                .axis_idx = station_idx * 3,
+                .carrier_id = 0,
             };
-            const carrier = parseCarrierStatus(
-                carrier_param,
+            const command_status = parseCommandStatus(
+                command_param,
                 s,
             ) catch |e| {
                 std.log.debug("{s}", .{@errorName(e)});
@@ -2245,10 +2269,10 @@ fn resetReceivedAndSendCommand(
                 try disconnectedClearence();
                 return;
             };
-            if (carrier.id == 0) return error.CarrierNotFound;
-            if (carrier.command_received == false) break;
+            if (command_status.command_received == false) break;
         }
 
+        // 3rd step: Send the command to the server
         sendMessage(
             .set_command,
             param,
@@ -2263,14 +2287,14 @@ fn resetReceivedAndSendCommand(
 
         while (true) {
             try command.checkCommandInterrupt();
-            const carrier_param: mmc.ParamType(.get_status) = .{
-                .kind = .Carrier,
+            const command_param: mmc.ParamType(.get_status) = .{
+                .kind = .Command,
                 .line_idx = @truncate(line_idx),
-                .axis_idx = 0,
-                .carrier_id = carrier_id,
+                .axis_idx = station_idx * 3,
+                .carrier_id = 0,
             };
-            const carrier = parseCarrierStatus(
-                carrier_param,
+            const command_status = parseCommandStatus(
+                command_param,
                 s,
             ) catch |e| {
                 std.log.debug("{s}", .{@errorName(e)});
@@ -2279,11 +2303,13 @@ fn resetReceivedAndSendCommand(
                 try disconnectedClearence();
                 return;
             };
-            if (carrier.command_received) {
-                if (carrier.command_response != .NoError) {
+            // 4th step: If command is received by server, check if the CC-Link
+            //           give any response to the command.
+            if (command_status.command_received) {
+                if (command_status.command_response != .NoError) {
                     sendMessage(
                         .clear_command_status,
-                        reset_command_response_param,
+                        reset_command_response,
                         s,
                     ) catch |e| {
                         std.log.debug("{s}", .{@errorName(e)});
@@ -2293,7 +2319,7 @@ fn resetReceivedAndSendCommand(
                         return;
                     };
                 }
-                return switch (carrier.command_response) {
+                return switch (command_status.command_response) {
                     .NoError => {},
                     .InvalidCommand => error.InvalidCommand,
                     .CarrierNotFound => error.CarrierNotFound,
@@ -2360,4 +2386,31 @@ fn parseHallStatus(
         .little,
     );
     return @bitCast(hall_int);
+}
+
+fn parseCommandStatus(
+    param: mmc.ParamType(.get_status),
+    socket: network.Socket,
+) !SystemState.Command {
+    try sendMessage(.get_status, param, socket);
+    // The size of get_status command is based on SystemState.Carrier
+    const bit_max_size = 4 + 13 + @bitSizeOf(SystemState.Carrier);
+    const max_size = if (bit_max_size % 8 == 0)
+        bit_max_size / 8
+    else
+        (bit_max_size / 8) + 1;
+    var buffer = std.mem.zeroes([max_size]u8);
+    _ = try socket.receive(&buffer);
+    // The first 4 bits are the message type, the following 13 bits are the
+    // message length. Actual message start after these bits
+    const msg_offset: usize = @bitSizeOf(u4) + @bitSizeOf(u13);
+    const IntType =
+        @typeInfo(SystemState.Command).@"struct".backing_integer.?;
+    const carrier_int = std.mem.readPackedInt(
+        IntType,
+        &buffer,
+        msg_offset,
+        .little,
+    );
+    return @bitCast(carrier_int);
 }
