@@ -1147,7 +1147,7 @@ fn clientAxisCarrier(params: [][]const u8) !void {
             try disconnectedClearence();
             return;
         };
-        if (carrier.initialized == false) {
+        if (carrier.id == 0) {
             std.log.info(
                 "No carrier recognized on axis {d}.\n",
                 .{axis_id},
@@ -1279,7 +1279,7 @@ fn clientCarrierLocation(params: [][]const u8) !void {
             try disconnectedClearence();
             return;
         };
-        if (carrier.initialized == false) {
+        if (carrier.id == 0) {
             std.log.err(
                 "Carrier not found",
                 .{},
@@ -1317,7 +1317,7 @@ fn clientCarrierAxis(params: [][]const u8) !void {
             try disconnectedClearence();
             return;
         };
-        if (carrier.initialized == false) {
+        if (carrier.id == 0) {
             std.log.err(
                 "Carrier not found",
                 .{},
@@ -1628,7 +1628,7 @@ fn clientWaitMoveCarrier(params: [][]const u8) !void {
                 try disconnectedClearence();
                 return;
             };
-            if (carrier.initialized == false) {
+            if (carrier.id == 0) {
                 return error.CarrierNotFound;
             }
             if (carrier.state == .PosMoveCompleted or
@@ -2245,7 +2245,7 @@ fn resetReceivedAndSendCommand(
                 try disconnectedClearence();
                 return;
             };
-            if (carrier.initialized == false) return error.CarrierNotFound;
+            if (carrier.id == 0) return error.CarrierNotFound;
             if (carrier.command_received == false) break;
         }
 
