@@ -4,8 +4,7 @@
 
 const std = @import("std");
 const chrono = @import("chrono");
-
-const v = @import("version");
+const build = @import("build.zig.zon");
 
 // Command modules.
 const mcl = @import("command/mcl.zig");
@@ -428,7 +427,7 @@ fn help(params: [][]const u8) !void {
 
 fn version(_: [][]const u8) !void {
     // TODO: Figure out better way to get version from `build.zig.zon`.
-    std.log.info("CLI Version: {s}\n", .{v.version});
+    std.log.info("CLI Version: {s}\n", .{build.version});
 }
 
 fn set(params: [][]const u8) !void {

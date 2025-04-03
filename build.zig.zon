@@ -2,15 +2,15 @@
     .name = .mmc_cli,
     .version = "0.6.2",
     .fingerprint = 0x392c74984291bf14,
-    .minimum_zig_version = "0.14.0-dev.1392+37df6ba86",
+    .minimum_zig_version = "0.15.0-dev.190+bfbf4badd",
     .dependencies = .{
         .network = .{
             .url = "https://github.com/mochalins/network/archive/dd8f929.tar.gz",
             .hash = "network-0.1.0-wh14CEr9AACUyPafTRpVsJYRP13gpw5a7a6wvN8dYtAD",
         },
         .mcl = .{
-            .url = "https://github.com/pmotionf/mcl/archive/4324630.tar.gz",
-            .hash = "mcl-0.7.0-bTecRgrAAADzI3tL74dXnvudi2is5KSf2TFoJe9KB01L",
+            .url = "https://github.com/pmotionf/mcl/archive/8d348f5.tar.gz",
+            .hash = "mcl-0.7.0-bTecRt6_AADvxJK_exUoWWXi11_2qz9Jzu9i1UhGB6ak",
         },
         .chrono = .{
             .url = "https://github.com/pmotionf/chrono/archive/620de75.tar.gz",
