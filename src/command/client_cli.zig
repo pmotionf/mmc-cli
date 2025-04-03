@@ -1503,19 +1503,10 @@ fn clientCalibrate(params: [][]const u8) !void {
     param.command_code = .Calibration;
     param.line_idx = @truncate(line_idx);
     param.carrier_id = 1;
-    if (main_socket) |s| {
-        sendMessage(
-            .set_command,
-            param,
-            s,
-        ) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearence();
-            return;
-        };
-    } else return error.ServerNotConnected;
+    try sendMessageAndWaitReceived(
+        param,
+        @truncate(line_idx),
+    );
 }
 
 fn clientSetLineZero(params: [][]const u8) !void {
@@ -1524,20 +1515,10 @@ fn clientSetLineZero(params: [][]const u8) !void {
     var param = std.mem.zeroes(mmc.ParamType(.set_command));
     param.command_code = .SetLineZero;
     param.line_idx = @truncate(line_idx);
-
-    if (main_socket) |s| {
-        sendMessage(
-            .set_command,
-            param,
-            s,
-        ) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearence();
-            return;
-        };
-    } else return error.ServerNotConnected;
+    try sendMessageAndWaitReceived(
+        param,
+        @truncate(line_idx),
+    );
 }
 
 fn clientIsolate(params: [][]const u8) !void {
@@ -1589,17 +1570,10 @@ fn clientIsolate(params: [][]const u8) !void {
     param.axis_idx = axis_index;
     param.carrier_id = carrier_id;
     param.link_axis = link_axis;
-    if (main_socket) |s| sendMessage(
-        .set_command,
+    try sendMessageAndWaitReceived(
         param,
-        s,
-    ) catch |e| {
-        std.log.debug("{s}", .{@errorName(e)});
-        std.log.err("ConnectionClosedByServer", .{});
-        s.close();
-        try disconnectedClearence();
-        return;
-    } else return error.ServerNotConnected;
+        @truncate(line_idx),
+    );
 }
 
 fn clientWaitMoveCarrier(params: [][]const u8) !void {
@@ -1628,6 +1602,10 @@ fn clientWaitMoveCarrier(params: [][]const u8) !void {
                 try disconnectedClearence();
                 return;
             };
+            std.log.debug(
+                "line: {s}, carrier id: {}, carrier state: {s}",
+                .{ line_name, carrier.id, @tagName(carrier.state) },
+            );
             if (carrier.id == 0) {
                 return error.CarrierNotFound;
             }
@@ -1657,10 +1635,9 @@ fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
     param.carrier_id = carrier_id;
     param.speed = line_speeds[line_idx];
     param.acceleration = line_accelerations[line_idx];
-    try resetReceivedAndSendCommand(
+    try sendMessageAndWaitReceived(
         param,
         @truncate(line_idx),
-        carrier_id,
     );
 }
 
@@ -1679,10 +1656,9 @@ fn clientCarrierPosMoveLocation(params: [][]const u8) !void {
     param.carrier_id = carrier_id;
     param.speed = line_speeds[line_idx];
     param.acceleration = line_accelerations[line_idx];
-    try resetReceivedAndSendCommand(
+    try sendMessageAndWaitReceived(
         param,
         @truncate(line_idx),
-        carrier_id,
     );
 }
 
@@ -1704,10 +1680,9 @@ fn clientCarrierPosMoveDistance(params: [][]const u8) !void {
     param.carrier_id = carrier_id;
     param.speed = line_speeds[line_idx];
     param.acceleration = line_accelerations[line_idx];
-    try resetReceivedAndSendCommand(
+    try sendMessageAndWaitReceived(
         param,
         @truncate(line_idx),
-        carrier_id,
     );
 }
 
@@ -1731,10 +1706,9 @@ fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
     param.carrier_id = carrier_id;
     param.speed = line_speeds[line_idx];
     param.acceleration = line_accelerations[line_idx];
-    try resetReceivedAndSendCommand(
+    try sendMessageAndWaitReceived(
         param,
         @truncate(line_idx),
-        carrier_id,
     );
 }
 
@@ -1753,10 +1727,9 @@ fn clientCarrierSpdMoveLocation(params: [][]const u8) !void {
     param.carrier_id = carrier_id;
     param.speed = line_speeds[line_idx];
     param.acceleration = line_accelerations[line_idx];
-    try resetReceivedAndSendCommand(
+    try sendMessageAndWaitReceived(
         param,
         @truncate(line_idx),
-        carrier_id,
     );
 }
 
@@ -1778,10 +1751,9 @@ fn clientCarrierSpdMoveDistance(params: [][]const u8) !void {
     param.carrier_id = carrier_id;
     param.speed = line_speeds[line_idx];
     param.acceleration = line_accelerations[line_idx];
-    try resetReceivedAndSendCommand(
+    try sendMessageAndWaitReceived(
         param,
         @truncate(line_idx),
-        carrier_id,
     );
 }
 
@@ -1811,10 +1783,9 @@ fn clientCarrierPushForward(params: [][]const u8) !void {
     } else {
         param.command_code = .PushForward;
     }
-    try resetReceivedAndSendCommand(
+    try sendMessageAndWaitReceived(
         param,
         @truncate(line_idx),
-        carrier_id,
     );
 }
 
@@ -1844,10 +1815,9 @@ fn clientCarrierPushBackward(params: [][]const u8) !void {
     } else {
         param.command_code = .PushBackward;
     }
-    try resetReceivedAndSendCommand(
+    try sendMessageAndWaitReceived(
         param,
         @truncate(line_idx),
-        carrier_id,
     );
 }
 
@@ -1877,10 +1847,9 @@ fn clientCarrierPullForward(params: [][]const u8) !void {
     } else {
         param.command_code = .PullForward;
     }
-    try resetReceivedAndSendCommand(
+    try sendMessageAndWaitReceived(
         param,
         @truncate(line_idx),
-        carrier_id,
     );
 }
 
@@ -1911,10 +1880,9 @@ fn clientCarrierPullBackward(params: [][]const u8) !void {
     } else {
         param.command_code = .PullBackward;
     }
-    try resetReceivedAndSendCommand(
+    try sendMessageAndWaitReceived(
         param,
         @truncate(line_idx),
-        carrier_id,
     );
 }
 
@@ -2197,82 +2165,11 @@ fn sendMessage(
     }
 }
 
-fn resetReceivedAndSendCommand(
+fn sendMessageAndWaitReceived(
     param: mmc.ParamType(.set_command),
     line_idx: mcl.Line.Index,
-    carrier_id: u10,
 ) !void {
     if (main_socket) |s| {
-        // 1st step: Get station index from carrier id
-        const carrier_param: mmc.ParamType(.get_status) = .{
-            .kind = .Carrier,
-            .line_idx = @truncate(line_idx),
-            .axis_idx = 0,
-            .carrier_id = carrier_id,
-        };
-        const carrier = parseCarrierStatus(
-            carrier_param,
-            s,
-        ) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearence();
-            return;
-        };
-        if (carrier.id == 0) return error.CarrierNotFound;
-        const station_idx: mcl.Station.Index =
-            @intCast(carrier.axis_idx.main_axis / 3);
-
-        // parameter definition for reset command_received and command_response
-        const reset_command_received: mmc.ParamType(.clear_command_status) = .{
-            .line_idx = line_idx,
-            .station_idx = station_idx,
-            .status = .CommandReceived,
-        };
-
-        const reset_command_response: mmc.ParamType(.clear_command_status) = .{
-            .line_idx = line_idx,
-            .station_idx = station_idx,
-            .status = .CommandResponse,
-        };
-
-        // 2nd step: Clear command_received on the station where carrier is
-        //           positioned
-        sendMessage(
-            .clear_command_status,
-            reset_command_received,
-            s,
-        ) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearence();
-            return;
-        };
-        std.log.info("Waiting command received", .{});
-        while (true) {
-            try command.checkCommandInterrupt();
-            const command_param: mmc.ParamType(.get_status) = .{
-                .kind = .Command,
-                .line_idx = @truncate(line_idx),
-                .axis_idx = station_idx * 3,
-                .carrier_id = 0,
-            };
-            const command_status = parseCommandStatus(
-                command_param,
-                s,
-            ) catch |e| {
-                std.log.debug("{s}", .{@errorName(e)});
-                std.log.err("ConnectionClosedByServer", .{});
-                s.close();
-                try disconnectedClearence();
-                return;
-            };
-            if (command_status.command_received == false) break;
-        }
-
-        // 3rd step: Send the command to the server
         sendMessage(
             .set_command,
             param,
@@ -2290,7 +2187,7 @@ fn resetReceivedAndSendCommand(
             const command_param: mmc.ParamType(.get_status) = .{
                 .kind = .Command,
                 .line_idx = @truncate(line_idx),
-                .axis_idx = station_idx * 3,
+                .axis_idx = 0,
                 .carrier_id = 0,
             };
             const command_status = parseCommandStatus(
@@ -2303,22 +2200,7 @@ fn resetReceivedAndSendCommand(
                 try disconnectedClearence();
                 return;
             };
-            // 4th step: If command is received by server, check if the CC-Link
-            //           give any response to the command.
             if (command_status.command_received) {
-                if (command_status.command_response != .NoError) {
-                    sendMessage(
-                        .clear_command_status,
-                        reset_command_response,
-                        s,
-                    ) catch |e| {
-                        std.log.debug("{s}", .{@errorName(e)});
-                        std.log.err("ConnectionClosedByServer", .{});
-                        s.close();
-                        try disconnectedClearence();
-                        return;
-                    };
-                }
                 return switch (command_status.command_response) {
                     .NoError => {},
                     .InvalidCommand => error.InvalidCommand,
