@@ -1606,9 +1606,6 @@ fn clientWaitMoveCarrier(params: [][]const u8) !void {
                 "line: {s}, carrier id: {}, carrier state: {s}",
                 .{ line_name, carrier.id, @tagName(carrier.state) },
             );
-            if (carrier.id == 0) {
-                return error.CarrierNotFound;
-            }
             if (carrier.state == .PosMoveCompleted or
                 carrier.state == .SpdMoveCompleted) return;
         }
