@@ -2238,6 +2238,7 @@ fn logRegisters(_: [][]const u8) !void {
             for (0..256) |station_idx| {
                 if (log_lines[line_idx].stations[station_idx] == false) continue;
                 var reg_iterator = log_lines[line_idx].registers.iterator();
+                var command_code: mcl.registers.Ww.Command = .None;
                 while (reg_iterator.next()) |reg_entry| {
                     const reg_type = @TypeOf(reg_entry.key);
                     inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
@@ -2256,6 +2257,7 @@ fn logRegisters(_: [][]const u8) !void {
                                     mcl.lines[line_idx].stations[station_idx],
                                     reg_enum.name,
                                 ),
+                                &command_code,
                             );
                             break;
                         }
@@ -2326,26 +2328,55 @@ fn registerFieldToString(
 }
 
 // Write register values into the logging file
-fn registerValueToString(f: std.fs.File.Writer, parent_field: anytype) !void {
+fn registerValueToString(
+    f: std.fs.File.Writer,
+    parent_field: anytype,
+    command_code: *mcl.registers.Ww.Command,
+) !void {
     const parent_type = @TypeOf(parent_field.*);
     inline for (@typeInfo(parent_type).@"struct".fields) |child_field| {
         if (child_field.name[0] == '_') continue;
         if (comptime @typeInfo(child_field.type) == .@"struct") {
             try registerValueToString(
                 f,
-                &@field(parent_field.*, child_field.name),
+                &@field(
+                    parent_field.*,
+                    child_field.name,
+                ),
+                command_code,
             );
         } else {
             const child_value = @field(parent_field.*, child_field.name);
             if (comptime @typeInfo(@TypeOf(child_value)) == .@"enum") {
+                if (@TypeOf(child_value) == mcl.registers.Ww.Command) {
+                    command_code.* = child_value;
+                }
                 try f.print("{d},", .{@intFromEnum(child_value)});
             } else if (comptime @typeInfo(child_field.type) == .@"union") {
                 const ti = @typeInfo(child_field.type).@"union";
                 inline for (ti.fields) |union_field| {
                     const union_val = @field(child_value, union_field.name);
-                    if (@typeInfo(@TypeOf(union_val)) == .float) {
-                        try f.print("{d},", .{union_val});
-                    } else try f.print("{},", .{union_val});
+                    switch (command_code.*) {
+                        .SpeedMoveCarrierAxis,
+                        .PositionMoveCarrierAxis,
+                        => {
+                            if (@typeInfo(@TypeOf(union_val)) == .int) {
+                                try f.print("{},", .{union_val});
+                            } else try f.print("0,", .{});
+                        },
+                        .SpeedMoveCarrierDistance,
+                        .SpeedMoveCarrierLocation,
+                        .PositionMoveCarrierDistance,
+                        .PositionMoveCarrierLocation,
+                        .PullTransitionLocationBackward,
+                        .PullTransitionLocationForward,
+                        => {
+                            if (@typeInfo(@TypeOf(union_val)) == .float) {
+                                try f.print("{d},", .{union_val});
+                            } else try f.print("0,", .{});
+                        },
+                        else => try f.print("0,", .{}),
+                    }
                 }
             } else {
                 if (@typeInfo(@TypeOf(child_value)) == .float) {
@@ -2375,6 +2406,20 @@ fn waitCommandReady(station: Station) !void {
 
 fn sendCommand(station: Station) !void {
     std.log.debug("Sending command...", .{});
+    switch (station.ww.command) {
+        .PositionMoveCarrierAxis,
+        .PositionMoveCarrierDistance,
+        .PositionMoveCarrierLocation,
+        .SpeedMoveCarrierAxis,
+        .SpeedMoveCarrierDistance,
+        .SpeedMoveCarrierLocation,
+        .PullTransitionLocationBackward,
+        .PullTransitionLocationForward,
+        => {},
+        else => {
+            station.ww.carrier.target = .{ .u32 = 0 };
+        },
+    }
     while (true) {
         try command.checkCommandInterrupt();
         try station.sendWw();
