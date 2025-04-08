@@ -1,8 +1,8 @@
 .{
     .name = .mmc_cli,
-    .version = "0.6.2",
+    .version = "0.6.3",
     .fingerprint = 0x392c74984291bf14,
-    .minimum_zig_version = "0.15.0-dev.190+bfbf4badd",
+    .minimum_zig_version = "0.15.0-dev.208+8acedfd5b",
     .dependencies = .{
         .network = .{
             .url = "https://github.com/mochalins/network/archive/dd8f929.tar.gz",
