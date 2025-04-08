@@ -1231,6 +1231,7 @@ fn clientClearErrors(params: [][]const u8) !void {
             try disconnectedClearence();
             return;
         };
+        try waitReceived(@intCast(line_id - 1));
     } else return error.ServerNotConnected;
 }
 
@@ -1263,6 +1264,7 @@ fn clientClearCarrierInfo(params: [][]const u8) !void {
             try disconnectedClearence();
             return;
         };
+        try waitReceived(@intCast(line_id - 1));
     } else return error.ServerNotConnected;
 }
 
@@ -2245,6 +2247,31 @@ fn sendMessageAndWaitReceived(
                     .InvalidAxis => error.InvalidAxis,
                 };
             }
+        }
+    } else return error.ServerNotConnected;
+}
+
+fn waitReceived(line_idx: mcl.Line.Index) !void {
+    if (main_socket) |s| {
+        while (true) {
+            try command.checkCommandInterrupt();
+            const command_param: mmc.ParamType(.get_status) = .{
+                .kind = .Command,
+                .line_idx = @truncate(line_idx),
+                .axis_idx = 0,
+                .carrier_id = 0,
+            };
+            const command_status = parseCommandStatus(
+                command_param,
+                s,
+            ) catch |e| {
+                std.log.debug("{s}", .{@errorName(e)});
+                std.log.err("ConnectionClosedByServer", .{});
+                s.close();
+                try disconnectedClearence();
+                return;
+            };
+            if (command_status.command_received) return;
         }
     } else return error.ServerNotConnected;
 }
