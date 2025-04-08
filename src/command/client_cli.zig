@@ -378,6 +378,24 @@ pub fn init(c: Config) !void {
         .execute = &clientIsolate,
     });
     errdefer _ = command.registry.orderedRemove("ISOLATE");
+    try command.registry.put("WAIT_ISOLATE", .{
+        .name = "WAIT_ISOLATE",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "carrier" },
+            .{ .name = "timeout", .optional = true },
+        },
+        .short_description = "Wait for carrier isolation to complete.",
+        .long_description =
+        \\Pause the execution of any further commands until the isolation of the
+        \\given carrier is indicated as complete. If a timeout is specified, the 
+        \\command will return an error if the waiting action takes longer than 
+        \\the specified timeout duration. The timeout must be provided in 
+        \\milliseconds.
+        ,
+        .execute = &clientWaitIsolate,
+    });
+    errdefer _ = command.registry.orderedRemove("WAIT_ISOLATE");
     try command.registry.put("WAIT_MOVE_CARRIER", .{
         .name = "WAIT_MOVE_CARRIER",
         .parameters = &[_]command.Command.Parameter{
@@ -1586,6 +1604,50 @@ fn clientIsolate(params: [][]const u8) !void {
         param,
         @truncate(line_idx),
     );
+}
+
+fn clientWaitIsolate(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    const timeout = if (params[2].len > 0)
+        try std.fmt.parseInt(u64, params[2], 0)
+    else
+        0;
+    if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
+
+    const line_idx: usize = try matchLine(line_names, line_name);
+
+    if (main_socket) |s| {
+        var wait_timer = try std.time.Timer.start();
+        while (true) {
+            if (timeout != 0 and
+                wait_timer.read() > timeout * std.time.ns_per_ms)
+                return error.WaitTimeout;
+            try command.checkCommandInterrupt();
+            const carrier_param: mmc.ParamType(.get_status) = .{
+                .kind = .Carrier,
+                .line_idx = @truncate(line_idx),
+                .axis_idx = 0,
+                .carrier_id = carrier_id,
+            };
+            const carrier = parseCarrierStatus(
+                carrier_param,
+                s,
+            ) catch |e| {
+                std.log.debug("{s}", .{@errorName(e)});
+                std.log.err("ConnectionClosedByServer", .{});
+                s.close();
+                try disconnectedClearence();
+                return;
+            };
+            std.log.debug(
+                "line: {s}, carrier id: {}, carrier state: {s}",
+                .{ line_name, carrier.id, @tagName(carrier.state) },
+            );
+            if (carrier.state == .BackwardIsolationCompleted or
+                carrier.state == .ForwardIsolationCompleted) return;
+        }
+    } else return error.ServerNotConnected;
 }
 
 fn clientWaitMoveCarrier(params: [][]const u8) !void {
