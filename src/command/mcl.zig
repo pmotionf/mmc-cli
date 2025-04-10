@@ -2,6 +2,8 @@ const std = @import("std");
 const command = @import("../command.zig");
 const mcl = @import("mcl");
 const chrono = @import("chrono");
+const CircularBuffer =
+    @import("../circular_buffer.zig").CircularBuffer;
 
 var arena: std.heap.ArenaAllocator = undefined;
 var allocator: std.mem.Allocator = undefined;
@@ -33,6 +35,9 @@ const Registers = struct {
 };
 
 var log_lines: []LogLine = undefined;
+
+var log_buffer: CircularBuffer([]u64) = undefined;
+var title_log_buffer: []u8 = undefined;
 
 pub const Config = struct {
     line_names: [][]const u8,
@@ -2237,42 +2242,53 @@ fn pathLogRegisters(params: [][]const u8) !void {
     };
     std.log.info("The registers will be logged to {s}", .{file_path});
     log_file = try std.fs.cwd().createFile(file_path, .{});
+    // TODO: Is there a way to define how long the title (the first row of csv
+    //       file)? 1_024_000 is pretty arbitrary.
+    title_log_buffer = try allocator.alloc(u8, 1_024_000);
+    var buf_length: usize = 0;
+    var _buf: [1_024]u8 = undefined;
 
-    if (log_file) |f| {
-        try std.fmt.format(f, "timestamp,", .{});
-        for (line_names) |line_name| {
-            const line_idx = try matchLine(line_names, line_name);
-            if (log_lines[line_idx].status == false) continue;
-            for (0..256) |station_idx| {
-                if (log_lines[line_idx].stations[station_idx] == false) continue;
-                var reg_iterator = log_lines[line_idx].registers.iterator();
-                while (reg_iterator.next()) |reg_entry| {
-                    const reg_type = @TypeOf(reg_entry.key);
-                    inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
-                        if (@intFromEnum(reg_entry.key) == reg_enum.value and
-                            reg_entry.value.* == true)
-                        {
-                            var _buffer: [64]u8 = undefined;
-                            try registerFieldToString(
-                                f.writer(),
-                                try std.fmt.bufPrint(
-                                    &_buffer,
-                                    "{s}_station{d}_{s}",
-                                    .{ line_name, station_idx + 1, reg_enum.name },
-                                ),
-                                "",
-                                @FieldType(
-                                    Registers,
-                                    reg_enum.name,
-                                ),
-                            );
-                            break;
-                        }
+    const _timestamp = try std.fmt.bufPrint(
+        title_log_buffer,
+        "timestamp,",
+        .{},
+    );
+    buf_length += _timestamp.len;
+
+    for (line_names) |line_name| {
+        const line_idx = try matchLine(line_names, line_name);
+        if (log_lines[line_idx].status == false) continue;
+        for (0..256) |station_idx| {
+            if (log_lines[line_idx].stations[station_idx] == false) continue;
+            var reg_iterator = log_lines[line_idx].registers.iterator();
+            while (reg_iterator.next()) |reg_entry| {
+                const reg_type = @TypeOf(reg_entry.key);
+                inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
+                    if (@intFromEnum(reg_entry.key) == reg_enum.value and
+                        reg_entry.value.* == true)
+                    {
+                        buf_length += try registerFieldToString(
+                            title_log_buffer,
+                            buf_length,
+                            try std.fmt.bufPrint(
+                                &_buf,
+                                "{s}_station{d}_{s}",
+                                .{ line_name, station_idx + 1, reg_enum.name },
+                            ),
+                            "",
+                            @FieldType(
+                                Registers,
+                                reg_enum.name,
+                            ),
+                        );
+                        break;
                     }
                 }
             }
         }
-        try f.writer().writeByte('\n');
+    }
+    if (log_file) |f| {
+        try f.writeAll(title_log_buffer[0..buf_length]);
     }
 }
 
@@ -2325,26 +2341,31 @@ fn logRegisters(_: [][]const u8) !void {
     }
 }
 
-/// Write register fields name into the logging file.
+/// Write the register field to a buffer. Return the number of bytes used.
 fn registerFieldToString(
-    f: std.fs.File.Writer,
+    buf: []u8,
+    start_buf_idx: usize,
     prefix: []const u8,
     comptime parent: []const u8,
     comptime ParentType: type,
-) !void {
+) !usize {
+    var buf_idx: usize = 0;
+    var _buf: [1_024]u8 = undefined;
     inline for (@typeInfo(ParentType).@"struct".fields) |child_field| {
         if (child_field.name[0] == '_') continue;
         if (@typeInfo(child_field.type) == .@"struct") {
             if (parent.len == 0) {
-                try registerFieldToString(
-                    f,
+                buf_idx += try registerFieldToString(
+                    buf,
+                    start_buf_idx + buf_idx,
                     prefix,
                     child_field.name,
                     child_field.type,
                 );
             } else {
-                try registerFieldToString(
-                    f,
+                buf_idx += try registerFieldToString(
+                    buf,
+                    start_buf_idx + buf_idx,
                     prefix,
                     parent ++ "." ++ child_field.name,
                     child_field.type,
@@ -2352,31 +2373,62 @@ fn registerFieldToString(
             }
         } else {
             if (parent.len == 0) {
-                try std.fmt.format(
-                    f,
+                const len = std.fmt.count(
                     "{s}_{s},",
                     .{ prefix, child_field.name },
                 );
+                const initial_idx = start_buf_idx + buf_idx;
+                const final_idx = initial_idx + len;
+                @memcpy(
+                    buf[initial_idx..final_idx],
+                    try std.fmt.bufPrint(
+                        &_buf,
+                        "{s}_{s},",
+                        .{ prefix, child_field.name },
+                    ),
+                );
+                buf_idx += len;
             } else {
                 if (@typeInfo(child_field.type) == .@"union") {
                     const ti = @typeInfo(child_field.type).@"union";
                     inline for (ti.fields) |union_field| {
-                        try std.fmt.format(
-                            f,
+                        const len = std.fmt.count(
                             "{s}_{s},",
                             .{ prefix, parent ++ "." ++ child_field.name ++ "." ++ union_field.name },
                         );
+                        const initial_idx = start_buf_idx + buf_idx;
+                        const final_idx = initial_idx + len;
+                        @memcpy(
+                            buf[initial_idx..final_idx],
+                            try std.fmt.bufPrint(
+                                &_buf,
+                                "{s}_{s},",
+                                .{ prefix, parent ++ "." ++ child_field.name ++ "." ++ union_field.name },
+                            ),
+                        );
+                        buf_idx += len;
                     }
                 } else {
-                    try std.fmt.format(
-                        f,
+                    const len = std.fmt.count(
                         "{s}_{s},",
                         .{ prefix, parent ++ "." ++ child_field.name },
                     );
+                    const initial_idx = start_buf_idx + buf_idx;
+                    const final_idx = initial_idx + len;
+                    @memcpy(
+                        buf[initial_idx..final_idx],
+                        try std.fmt.bufPrint(
+                            &_buf,
+                            "{s}_{s},",
+                            .{ prefix, parent ++ "." ++ child_field.name },
+                        ),
+                    );
+                    buf_idx += len;
                 }
             }
         }
     }
+    return buf_idx;
 }
 
 // Write register values into the logging file
@@ -2509,4 +2561,32 @@ fn sendCommand(station: Station) !void {
         .CarrierAlreadyExists => error.CarrierAlreadyExists,
         .InvalidAxis => error.InvalidAxis,
     };
+}
+
+test "FileLogRegisters" {
+    // const stdout = std.io.getStdOut().writer();
+    const stations = 2;
+    const line_name = "test";
+    const RegisterType = enum { x, y, wr, ww };
+    var tests_log_buffer: [1_024_000]u8 = undefined;
+    var _buf: [1_024]u8 = undefined;
+    var buf_length: usize = 0;
+    for (0..stations) |station| {
+        inline for (@typeInfo(RegisterType).@"enum".fields) |register| {
+            buf_length += try registerFieldToString(
+                &tests_log_buffer,
+                buf_length,
+                try std.fmt.bufPrint(
+                    &_buf,
+                    "{s}_station{d}_{s}",
+                    .{ line_name, station + 1, register.name },
+                ),
+                "",
+                @FieldType(
+                    Registers,
+                    register.name,
+                ),
+            );
+        }
+    }
 }
