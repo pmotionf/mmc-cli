@@ -36,6 +36,24 @@ pub fn CircularBuffer(comptime T: type) type {
             self.tail = (self.tail + 1) % self.buffer.len;
         }
 
+        /// Writes item to the tail of the buffer. Overwrites the oldest item if
+        /// full. Does not allocate.
+        pub fn writeItemOverwrite(self: *Self, item: T) void {
+            self.buffer[self.tail] = item;
+            self.tail = (self.tail + 1) % self.buffer.len;
+            if (self.tail == self.head)
+                self.head = (self.head + 1) % self.buffer.len;
+        }
+
+        /// Writes slice to the tail of the buffer. Overwrites the oldest slice if
+        /// full. Does not allocate.
+        pub fn writeSliceOverwrite(self: *Self, item: T) void {
+            @memcpy(self.buffer[self.tail], item);
+            self.tail = (self.tail + 1) % self.buffer.len;
+            if (self.tail == self.head)
+                self.head = (self.head + 1) % self.buffer.len;
+        }
+
         /// Read next item from front of buffer. Advances buffer head.
         pub fn readItem(self: *Self) ?T {
             if (self.tail == self.head) return null;
