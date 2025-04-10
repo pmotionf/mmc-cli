@@ -2284,13 +2284,13 @@ fn pathLogRegisters(params: [][]const u8) !void {
             }
         }
     }
-    if (log_file) |f| {
-        try f.writeAll(title_log_buffer[0..buf_length]);
-    }
+    // if (log_file) |f| {
+    //     try f.writeAll(title_log_buffer[0..buf_length]);
+    // }
 
     var logging_data = try CircularBuffer([]u8).initCapacity(
         allocator,
-        10_485_760,
+        1_048_576,
     );
     // The last additional 8 bytes for storing timestamp
     const buf_size = try calculateRegistersBufferSize() + 8;
@@ -2329,8 +2329,308 @@ fn pathLogRegisters(params: [][]const u8) !void {
     //     "{}",
     //     .{@as(u64, @bitCast(mcl.lines[0].stations[0].x.*))},
     // );
+
+    // The addition of bytes is to accomodate new line '\n' byte
+    const result_buffer = try allocator.alloc(
+        u8,
+        buf_size * 256 * logging_data.buffer.len + logging_data.buffer.len,
+    );
+    const result_buffer_len = try logToString(&logging_data, result_buffer);
+    if (log_file) |f| {
+        try f.writeAll(title_log_buffer[0..buf_length]);
+        try f.writeAll(result_buffer[0..result_buffer_len]);
+    }
     defer allocator.free(register_buffer);
     defer logging_data.deinit();
+}
+
+fn logToString(logging_data: *CircularBuffer([]u8), result_buffer: []u8) !usize {
+    var result_buffer_offset: usize = 0;
+    while (logging_data.readItem()) |item| {
+        // Copy a newline in every logging data entry
+        @memcpy(result_buffer[result_buffer_offset .. result_buffer_offset + 1], "\n");
+        result_buffer_offset += 1;
+        // timestamp
+        const timestamp = @as(
+            f64,
+            @bitCast(
+                std.mem.readPackedInt(
+                    std.meta.Int(
+                        .unsigned,
+                        @bitSizeOf(f64),
+                    ),
+                    item,
+                    0,
+                    .little,
+                ),
+            ),
+        );
+        std.log.debug("timestamp: {d}", .{timestamp});
+        var _buf: [128]u8 = undefined;
+        const count = std.fmt.count("{d},", .{timestamp});
+        @memcpy(
+            result_buffer[result_buffer_offset .. result_buffer_offset + count],
+            try std.fmt.bufPrint(&_buf, "{d},", .{timestamp}),
+        );
+        result_buffer_offset += count;
+        var binary_buffer_offset: usize = @bitSizeOf(f64);
+        for (line_names) |line_name| {
+            const line_idx = try matchLine(line_names, line_name);
+            if (log_lines[line_idx].status == false) continue;
+            const line = mcl.lines[line_idx];
+            try line.poll();
+            try line.pollWw();
+            try line.pollY();
+            for (0..256) |station_idx| {
+                if (log_lines[line_idx].stations[station_idx] == false) continue;
+                const station = line.stations[station_idx];
+                var reg_iterator = log_lines[line_idx].registers.iterator();
+                var command_code: mcl.registers.Ww.Command = .None;
+                while (reg_iterator.next()) |reg_entry| {
+                    const reg_type = @TypeOf(reg_entry.key);
+                    inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
+                        if (@intFromEnum(reg_entry.key) == reg_enum.value and
+                            reg_entry.value.* == true)
+                        {
+                            const registers = @field(
+                                station,
+                                reg_enum.name,
+                            );
+                            result_buffer_offset += try NEWregisterValueToString(
+                                item,
+                                binary_buffer_offset,
+                                result_buffer,
+                                result_buffer_offset,
+                                @TypeOf(registers.*),
+                                &command_code,
+                            );
+                            binary_buffer_offset += @bitSizeOf(@TypeOf(registers));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return result_buffer_offset;
+}
+
+// Write register values into the string
+fn NEWregisterValueToString(
+    binary_buf: []u8,
+    start_binary_idx: usize,
+    result_buf: []u8,
+    start_result_idx: usize,
+    parent_type: anytype,
+    command_code: *mcl.registers.Ww.Command,
+) !usize {
+    var result_buf_idx: usize = 0;
+    var binary_buf_idx: usize = 0;
+    var _buf: [1_024]u8 = undefined;
+    inline for (@typeInfo(parent_type).@"struct".fields) |child_field| {
+        if (child_field.name[0] == '_') {
+            // nothing is done
+        }
+        if (comptime @typeInfo(child_field.type) == .@"struct") {
+            result_buf_idx += try NEWregisterValueToString(
+                binary_buf,
+                start_binary_idx,
+                result_buf,
+                start_result_idx + result_buf_idx,
+                child_field.type,
+                command_code,
+            );
+        } else {
+            if (comptime @typeInfo(child_field.type) == .@"enum") {
+                const child_value = @as(
+                    child_field.type,
+                    @enumFromInt(
+                        std.mem.readPackedInt(
+                            std.meta.Int(
+                                .unsigned,
+                                @bitSizeOf(child_field.type),
+                            ),
+                            binary_buf,
+                            binary_buf_idx,
+                            .little,
+                        ),
+                    ),
+                );
+                if (child_field.type == mcl.registers.Ww.Command) {
+                    command_code.* = child_value;
+                }
+                const len = std.fmt.count(
+                    "{d},",
+                    .{@intFromEnum(child_value)},
+                );
+                const initial_idx = start_result_idx + result_buf_idx;
+                const final_idx = initial_idx + len;
+                @memcpy(
+                    result_buf[initial_idx..final_idx],
+                    try std.fmt.bufPrint(
+                        &_buf,
+                        "{d},",
+                        .{@intFromEnum(child_value)},
+                    ),
+                );
+                result_buf_idx += len;
+            } else if (comptime @typeInfo(child_field.type) == .@"union") {
+                const child_value = @as(
+                    child_field.type,
+                    @bitCast(
+                        std.mem.readPackedInt(
+                            std.meta.Int(
+                                .unsigned,
+                                @bitSizeOf(child_field.type),
+                            ),
+                            binary_buf,
+                            binary_buf_idx,
+                            .little,
+                        ),
+                    ),
+                );
+                const ti = @typeInfo(child_field.type).@"union";
+                inline for (ti.fields) |union_field| {
+                    const union_val = @field(child_value, union_field.name);
+                    switch (command_code.*) {
+                        .SpeedMoveCarrierAxis,
+                        .PositionMoveCarrierAxis,
+                        => {
+                            if (@typeInfo(@TypeOf(union_val)) == .int) {
+                                const len = std.fmt.count("{},", .{union_val});
+                                const initial_idx = start_result_idx + result_buf_idx;
+                                const final_idx = initial_idx + len;
+                                @memcpy(
+                                    result_buf[initial_idx..final_idx],
+                                    try std.fmt.bufPrint(
+                                        &_buf,
+                                        "{},",
+                                        .{union_val},
+                                    ),
+                                );
+                                result_buf_idx += len;
+                            } else {
+                                const len = std.fmt.count("0,", .{});
+                                const initial_idx = start_result_idx + result_buf_idx;
+                                const final_idx = initial_idx + len;
+                                @memcpy(
+                                    result_buf[initial_idx..final_idx],
+                                    try std.fmt.bufPrint(
+                                        &_buf,
+                                        "0,",
+                                        .{},
+                                    ),
+                                );
+                                result_buf_idx += len;
+                            }
+                        },
+                        .SpeedMoveCarrierDistance,
+                        .SpeedMoveCarrierLocation,
+                        .PositionMoveCarrierDistance,
+                        .PositionMoveCarrierLocation,
+                        .PullTransitionLocationBackward,
+                        .PullTransitionLocationForward,
+                        => {
+                            if (@typeInfo(@TypeOf(union_val)) == .float) {
+                                const len = std.fmt.count(
+                                    "{d},",
+                                    .{union_val},
+                                );
+                                const initial_idx = start_result_idx + result_buf_idx;
+                                const final_idx = initial_idx + len;
+                                @memcpy(
+                                    result_buf[initial_idx..final_idx],
+                                    try std.fmt.bufPrint(
+                                        &_buf,
+                                        "{d},",
+                                        .{union_val},
+                                    ),
+                                );
+                                result_buf_idx += len;
+                            } else {
+                                const len = std.fmt.count("0,", .{});
+                                const initial_idx = start_result_idx + result_buf_idx;
+                                const final_idx = initial_idx + len;
+                                @memcpy(
+                                    result_buf[initial_idx..final_idx],
+                                    try std.fmt.bufPrint(
+                                        &_buf,
+                                        "0,",
+                                        .{},
+                                    ),
+                                );
+                                result_buf_idx += len;
+                            }
+                        },
+                        else => {
+                            const len = std.fmt.count("0,", .{});
+                            const initial_idx = start_result_idx + result_buf_idx;
+                            const final_idx = initial_idx + len;
+                            @memcpy(
+                                result_buf[initial_idx..final_idx],
+                                try std.fmt.bufPrint(
+                                    &_buf,
+                                    "0,",
+                                    .{},
+                                ),
+                            );
+                            result_buf_idx += len;
+                        },
+                    }
+                }
+            } else {
+                const child_value = @as(
+                    child_field.type,
+                    @bitCast(
+                        std.mem.readPackedInt(
+                            std.meta.Int(
+                                .unsigned,
+                                @bitSizeOf(child_field.type),
+                            ),
+                            binary_buf,
+                            binary_buf_idx,
+                            .little,
+                        ),
+                    ),
+                );
+                if (@typeInfo(@TypeOf(child_value)) == .float) {
+                    const len = std.fmt.count(
+                        "{d},",
+                        .{child_value},
+                    );
+                    const initial_idx = start_result_idx + result_buf_idx;
+                    const final_idx = initial_idx + len;
+                    @memcpy(
+                        result_buf[initial_idx..final_idx],
+                        try std.fmt.bufPrint(
+                            &_buf,
+                            "{d},",
+                            .{child_value},
+                        ),
+                    );
+                    result_buf_idx += len;
+                } else {
+                    const len = std.fmt.count(
+                        "{},",
+                        .{child_value},
+                    );
+                    const initial_idx = start_result_idx + result_buf_idx;
+                    const final_idx = initial_idx + len;
+                    @memcpy(
+                        result_buf[initial_idx..final_idx],
+                        try std.fmt.bufPrint(
+                            &_buf,
+                            "{},",
+                            .{child_value},
+                        ),
+                    );
+                    result_buf_idx += len;
+                }
+            }
+        }
+        binary_buf_idx += @bitSizeOf(child_field.type);
+    }
+    return result_buf_idx;
 }
 
 fn NEWlogRegisters(log_time_start: i64, buffer: []u8) ![]u8 {
@@ -2348,6 +2648,21 @@ fn NEWlogRegisters(log_time_start: i64, buffer: []u8) ![]u8 {
         .little,
     );
     buf_idx += @bitSizeOf(@TypeOf(timestamp));
+    const _timestamp = @as(
+        f64,
+        @bitCast(
+            std.mem.readPackedInt(
+                std.meta.Int(
+                    .unsigned,
+                    @bitSizeOf(f64),
+                ),
+                buffer,
+                0,
+                .little,
+            ),
+        ),
+    );
+    std.log.debug("timestamp: {d}", .{_timestamp});
     for (line_names) |line_name| {
         const line_idx = try matchLine(line_names, line_name);
         if (log_lines[line_idx].status == false) continue;
