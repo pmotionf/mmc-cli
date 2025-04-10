@@ -11,7 +11,6 @@ var line_names: [][]u8 = undefined;
 var line_speeds: []u5 = undefined;
 var line_accelerations: []u8 = undefined;
 var log_file: ?std.fs.File = null;
-var log_time_start: i64 = 0;
 
 const Direction = mcl.Direction;
 const Station = mcl.Station;
@@ -2134,7 +2133,6 @@ fn resetLogRegisters(_: [][]const u8) !void {
         log_lines[i].status = false;
     }
     log_file = null;
-    log_time_start = 0;
 }
 
 fn statusLogRegisters(_: [][]const u8) !void {
@@ -2217,7 +2215,6 @@ fn pathLogRegisters(params: [][]const u8) !void {
     }
     const path = params[0];
     var path_buffer: [512]u8 = undefined;
-    log_time_start = 0;
     const file_path = if (path.len > 0) path else p: {
         var timestamp: u64 = @intCast(std.time.timestamp());
         timestamp += std.time.s_per_hour * 9;
@@ -2290,55 +2287,181 @@ fn pathLogRegisters(params: [][]const u8) !void {
     if (log_file) |f| {
         try f.writeAll(title_log_buffer[0..buf_length]);
     }
+
+    var logging_data = try CircularBuffer([]u8).initCapacity(
+        allocator,
+        10_485_760,
+    );
+    // The last additional 8 bytes for storing timestamp
+    const buf_size = try calculateRegistersBufferSize() + 8;
+    const register_buffer = try allocator.alloc(u8, buf_size);
+    for (0..logging_data.buffer.len) |i| {
+        logging_data.buffer[i] = try allocator.alloc(u8, buf_size);
+    }
+    const log_time_start = std.time.microTimestamp();
+    std.log.info("logging registers data..", .{});
+    while (true) {
+        command.checkCommandInterrupt() catch {
+            std.log.info("saving logging data..", .{});
+            break;
+        };
+        logging_data.writeItemOverwrite(try NEWlogRegisters(
+            log_time_start,
+            register_buffer,
+        ));
+    }
+    // var bytes: [8]u8 = undefined;
+
+    // // Convert u64 to [8]u8 in big or little endian
+    // std.mem.writeInt(
+    //     u64,
+    //     &bytes,
+    //     @as(u64, @bitCast(mcl.lines[0].stations[0].x.*)),
+    //     .little,
+    // ); // or .little
+
+    // for (8..buf_size) |i| {
+    //     std.log.debug("timestamp {}: {}", .{ i - 8, register_buffer[i - 8] });
+    //     std.log.debug("buffer {}: {}", .{ i - 8, register_buffer[i] });
+    //     std.log.debug("station {}: {}", .{ i - 8, register_buffer[i] });
+    // }
+    // std.log.debug(
+    //     "{}",
+    //     .{@as(u64, @bitCast(mcl.lines[0].stations[0].x.*))},
+    // );
+    defer allocator.free(register_buffer);
+    defer logging_data.deinit();
+}
+
+fn NEWlogRegisters(log_time_start: i64, buffer: []u8) ![]u8 {
+    const timestamp = @as(f64, @floatFromInt(std.time.microTimestamp() - log_time_start)) / 1_000_000;
+    std.log.debug("{}", .{timestamp});
+    var buf_idx: usize = 0;
+    std.mem.writePackedInt(
+        std.meta.Int(
+            .unsigned,
+            @bitSizeOf(@TypeOf(timestamp)),
+        ),
+        buffer,
+        buf_idx,
+        @as(u64, @bitCast(timestamp)),
+        .little,
+    );
+    buf_idx += @bitSizeOf(@TypeOf(timestamp));
+    for (line_names) |line_name| {
+        const line_idx = try matchLine(line_names, line_name);
+        if (log_lines[line_idx].status == false) continue;
+        const line = mcl.lines[line_idx];
+        try line.poll();
+        try line.pollWw();
+        try line.pollY();
+        for (0..256) |station_idx| {
+            if (log_lines[line_idx].stations[station_idx] == false) continue;
+            const station = line.stations[station_idx];
+            var reg_iterator = log_lines[line_idx].registers.iterator();
+            while (reg_iterator.next()) |reg_entry| {
+                const reg_type = @TypeOf(reg_entry.key);
+                inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
+                    if (@intFromEnum(reg_entry.key) == reg_enum.value and
+                        reg_entry.value.* == true)
+                    {
+                        const registers = @field(station, reg_enum.name);
+                        std.mem.writePackedInt(
+                            std.meta.Int(
+                                .unsigned,
+                                @bitSizeOf(@TypeOf(registers.*)),
+                            ),
+                            buffer,
+                            buf_idx,
+                            @bitCast(registers.*),
+                            .little,
+                        );
+                        buf_idx += @bitSizeOf(@TypeOf(registers));
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    return buffer;
+}
+
+/// Calculate the required total bytes to log registers based on the logging
+/// configuration.
+fn calculateRegistersBufferSize() !usize {
+    var result: usize = 0;
+    for (line_names) |line_name| {
+        const line_idx = try matchLine(line_names, line_name);
+        if (log_lines[line_idx].status == false) continue;
+        for (0..256) |station_idx| {
+            if (log_lines[line_idx].stations[station_idx] == false) continue;
+            var reg_iterator = log_lines[line_idx].registers.iterator();
+            while (reg_iterator.next()) |reg_entry| {
+                const reg_type = @TypeOf(reg_entry.key);
+                inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
+                    if (@intFromEnum(reg_entry.key) == reg_enum.value and
+                        reg_entry.value.* == true)
+                    {
+                        result += @sizeOf(@FieldType(
+                            Registers,
+                            reg_enum.name,
+                        ));
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    return result;
 }
 
 /// Write the register values to the logging file specified by
 /// line_name parameter. If the line has not ben set for logging,
 /// it will return error.
 fn logRegisters(_: [][]const u8) !void {
-    log_time_start = if (log_time_start == 0) std.time.microTimestamp() else log_time_start;
-    if (log_file) |f| {
-        const timestamp = @as(f64, @floatFromInt(std.time.microTimestamp() - log_time_start)) / 1_000_000;
-        try f.writer().print("{d},", .{timestamp});
-        for (line_names) |line| {
-            const line_idx = try matchLine(line_names, line);
-            if (log_lines[line_idx].status == false) continue;
-            for (0..256) |station_idx| {
-                if (log_lines[line_idx].stations[station_idx] == false) continue;
-                var reg_iterator = log_lines[line_idx].registers.iterator();
-                var command_code: mcl.registers.Ww.Command = .None;
-                while (reg_iterator.next()) |reg_entry| {
-                    const reg_type = @TypeOf(reg_entry.key);
-                    inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
-                        if (@intFromEnum(reg_entry.key) == reg_enum.value and
-                            reg_entry.value.* == true)
-                        {
-                            switch (reg_entry.key) {
-                                .x => try mcl.lines[line_idx].stations[station_idx].pollX(),
-                                .y => try mcl.lines[line_idx].stations[station_idx].pollY(),
-                                .wr => try mcl.lines[line_idx].stations[station_idx].pollWr(),
-                                .ww => try mcl.lines[line_idx].stations[station_idx].pollWw(),
-                            }
-                            try registerValueToString(
-                                f.writer(),
-                                @field(
-                                    mcl.lines[line_idx].stations[station_idx],
-                                    reg_enum.name,
-                                ),
-                                &command_code,
-                            );
-                            break;
-                        }
-                    }
-                }
-            }
-            if (log_lines[line_idx].status) {}
-        }
-        try f.writer().writeByte('\n');
-    } else {
-        std.log.err("Logging file not configured", .{});
-        return;
-    }
+    // log_time_start = if (log_time_start == 0) std.time.microTimestamp() else log_time_start;
+    // if (log_file) |f| {
+    //     const timestamp = @as(f64, @floatFromInt(std.time.microTimestamp() - log_time_start)) / 1_000_000;
+    //     try f.writer().print("{d},", .{timestamp});
+    //     for (line_names) |line| {
+    //         const line_idx = try matchLine(line_names, line);
+    //         if (log_lines[line_idx].status == false) continue;
+    //         for (0..256) |station_idx| {
+    //             if (log_lines[line_idx].stations[station_idx] == false) continue;
+    //             var reg_iterator = log_lines[line_idx].registers.iterator();
+    //             var command_code: mcl.registers.Ww.Command = .None;
+    //             while (reg_iterator.next()) |reg_entry| {
+    //                 const reg_type = @TypeOf(reg_entry.key);
+    //                 inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
+    //                     if (@intFromEnum(reg_entry.key) == reg_enum.value and
+    //                         reg_entry.value.* == true)
+    //                     {
+    //                         switch (reg_entry.key) {
+    //                             .x => try mcl.lines[line_idx].stations[station_idx].pollX(),
+    //                             .y => try mcl.lines[line_idx].stations[station_idx].pollY(),
+    //                             .wr => try mcl.lines[line_idx].stations[station_idx].pollWr(),
+    //                             .ww => try mcl.lines[line_idx].stations[station_idx].pollWw(),
+    //                         }
+    //                         try registerValueToString(
+    //                             f.writer(),
+    //                             @field(
+    //                                 mcl.lines[line_idx].stations[station_idx],
+    //                                 reg_enum.name,
+    //                             ),
+    //                             &command_code,
+    //                         );
+    //                         break;
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //         if (log_lines[line_idx].status) {}
+    //     }
+    //     try f.writer().writeByte('\n');
+    // } else {
+    //     std.log.err("Logging file not configured", .{});
+    //     return;
+    // }
 }
 
 /// Write the register field to a buffer. Return the number of bytes used.
