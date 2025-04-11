@@ -41,6 +41,8 @@ pub fn CircularBuffer(comptime T: type) type {
         pub fn writeItemOverwrite(self: *Self, item: T) void {
             self.buffer[self.tail] = item;
             self.tail = (self.tail + 1) % self.buffer.len;
+            if (self.tail == self.head)
+                self.head = (self.head + 1) % self.buffer.len;
         }
 
         /// Writes array to the tail of the buffer. Overwrites the oldest item if
@@ -51,6 +53,8 @@ pub fn CircularBuffer(comptime T: type) type {
             @memcpy(self.buffer[self.tail], item);
             // self.buffer[self.tail] = item;
             self.tail = (self.tail + 1) % self.buffer.len;
+            if (self.tail == self.head)
+                self.head = (self.head + 1) % self.buffer.len;
         }
 
         /// Read next item from front of buffer. Advances buffer head.
