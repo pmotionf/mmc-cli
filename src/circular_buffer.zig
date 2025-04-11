@@ -43,6 +43,16 @@ pub fn CircularBuffer(comptime T: type) type {
             self.tail = (self.tail + 1) % self.buffer.len;
         }
 
+        /// Writes array to the tail of the buffer. Overwrites the oldest item if
+        /// full. Does not allocate.
+        pub fn writeArrayOverwrite(self: *Self, item: T) void {
+            // std.log.debug("{s}", .{@typeName(@TypeOf(item))});
+            // if (@typeInfo(@TypeOf(item))) return error.NotArrayType;
+            @memcpy(self.buffer[self.tail], item);
+            // self.buffer[self.tail] = item;
+            self.tail = (self.tail + 1) % self.buffer.len;
+        }
+
         /// Read next item from front of buffer. Advances buffer head.
         pub fn readItem(self: *Self) ?T {
             if (self.tail == self.head) return null;
