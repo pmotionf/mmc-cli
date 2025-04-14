@@ -202,6 +202,19 @@ pub fn init(c: Config) !void {
         .execute = &clientAxisCarrier,
     });
     errdefer _ = command.registry.orderedRemove("AXIS_CARRIER");
+    try command.registry.put("ASSERT_CARRIER_LOCATION", .{
+        .name = "ASSERT_CARRIER_LOCATION",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "carrier" },
+            .{ .name = "location" },
+        },
+        .short_description = "Check that a carrier is on the expected location.",
+        .long_description =
+        \\Throw an error if the carrier is not on the specified location. 
+        ,
+        .execute = &clientAssertLocation,
+    });
     try command.registry.put("CARRIER_LOCATION", .{
         .name = "CARRIER_LOCATION",
         .parameters = &[_]command.Command.Parameter{
@@ -1188,6 +1201,39 @@ fn clientAxisCarrier(params: [][]const u8) !void {
                 .{ carrier.id, axis_id },
             );
         }
+    } else return error.ServerNotConnected;
+}
+
+fn clientAssertLocation(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    const expected_location: f32 = try std.fmt.parseFloat(f32, params[2]);
+    const line_idx: usize = try matchLine(line_names, line_name);
+
+    if (main_socket) |s| {
+        // Get carrier status from the server
+        const carrier_param: mmc.ParamType(.get_status) = .{
+            .kind = .Carrier,
+            .line_idx = @truncate(line_idx),
+            .axis_idx = 0,
+            .carrier_id = carrier_id,
+        };
+        const carrier = parseCarrierStatus(
+            carrier_param,
+            s,
+        ) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        // Assumptions: The location threshold is 1 mm.
+        const location_thr = 1;
+        const location: f32 = carrier.location;
+        if (location < expected_location - location_thr or
+            location > expected_location + location_thr)
+            return error.UnexpectedCarrierLocation;
     } else return error.ServerNotConnected;
 }
 
