@@ -224,6 +224,22 @@ pub fn init(c: Config) !void {
         .execute = &mclAxisCarrier,
     });
     errdefer _ = command.registry.orderedRemove("AXIS_CARRIER");
+    try command.registry.put("ASSERT_CARRIER_LOCATION", .{
+        .name = "ASSERT_CARRIER_LOCATION",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "carrier" },
+            .{ .name = "location" },
+            .{ .name = "threshold", .optional = true },
+        },
+        .short_description = "Check that a carrier is on the expected location.",
+        .long_description =
+        \\Throw an error if the carrier is not located on the specified location 
+        \\within the threshold. The default threshold value is 1 mm. Both the 
+        \\location and threshold must be provided in millimeters.
+        ,
+        .execute = &mclAssertLocation,
+    });
     try command.registry.put("CARRIER_LOCATION", .{
         .name = "CARRIER_LOCATION",
         .parameters = &[_]command.Command.Parameter{
@@ -1232,6 +1248,32 @@ fn mclGetAcceleration(params: [][]const u8) !void {
             @as(f32, @floatFromInt(line_accelerations[line_idx])) / 10.0,
         },
     );
+}
+
+fn mclAssertLocation(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    const expected_location: f32 = try std.fmt.parseFloat(f32, params[2]);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
+    const line: mcl.Line = mcl.lines[line_idx];
+    try line.pollWr();
+    const main: mcl.Axis, _ =
+        if (line.search(carrier_id)) |t| t else return error.CarrierNotFound;
+
+    const station = main.station;
+
+    const location: f32 = station.wr.carrier.axis(main.index.station).location;
+    // Default location threshold value is 1 mm
+    const location_thr = if (params[3].len > 0)
+        try std.fmt.parseFloat(f32, params[3])
+    else
+        1.0;
+    if (location < expected_location - location_thr or
+        location > expected_location + location_thr)
+        return error.UnexpectedCarrierLocation;
 }
 
 fn mclCarrierLocation(params: [][]const u8) !void {

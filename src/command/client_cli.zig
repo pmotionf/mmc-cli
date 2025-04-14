@@ -202,6 +202,22 @@ pub fn init(c: Config) !void {
         .execute = &clientAxisCarrier,
     });
     errdefer _ = command.registry.orderedRemove("AXIS_CARRIER");
+    try command.registry.put("ASSERT_CARRIER_LOCATION", .{
+        .name = "ASSERT_CARRIER_LOCATION",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "carrier" },
+            .{ .name = "location" },
+            .{ .name = "threshold", .optional = true },
+        },
+        .short_description = "Check that a carrier is on the expected location.",
+        .long_description =
+        \\Throw an error if the carrier is not located on the specified location 
+        \\within the threshold. The default threshold value is 1 mm. Both the 
+        \\location and threshold must be provided in millimeters.
+        ,
+        .execute = &clientAssertLocation,
+    });
     try command.registry.put("CARRIER_LOCATION", .{
         .name = "CARRIER_LOCATION",
         .parameters = &[_]command.Command.Parameter{
@@ -1188,6 +1204,42 @@ fn clientAxisCarrier(params: [][]const u8) !void {
                 .{ carrier.id, axis_id },
             );
         }
+    } else return error.ServerNotConnected;
+}
+
+fn clientAssertLocation(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    const expected_location: f32 = try std.fmt.parseFloat(f32, params[2]);
+    // Default location threshold value is 1 mm
+    const location_thr = if (params[3].len > 0)
+        try std.fmt.parseFloat(f32, params[3])
+    else
+        1.0;
+    const line_idx: usize = try matchLine(line_names, line_name);
+
+    if (main_socket) |s| {
+        // Get carrier status from the server
+        const carrier_param: mmc.ParamType(.get_status) = .{
+            .kind = .Carrier,
+            .line_idx = @truncate(line_idx),
+            .axis_idx = 0,
+            .carrier_id = carrier_id,
+        };
+        const carrier = parseCarrierStatus(
+            carrier_param,
+            s,
+        ) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        const location: f32 = carrier.location;
+        if (location < expected_location - location_thr or
+            location > expected_location + location_thr)
+            return error.UnexpectedCarrierLocation;
     } else return error.ServerNotConnected;
 }
 
