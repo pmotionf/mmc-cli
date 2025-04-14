@@ -230,10 +230,13 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{ .name = "location" },
+            .{ .name = "threshold", .optional = true },
         },
         .short_description = "Check that a carrier is on the expected location.",
         .long_description =
-        \\Throw an error if the carrier is not on the specified location. 
+        \\Throw an error if the carrier is not located on the specified location 
+        \\within the threshold. The default threshold value is 1 mm. Both the 
+        \\location and threshold must be provided in millimeters.
         ,
         .execute = &mclAssertLocation,
     });
@@ -1263,8 +1266,11 @@ fn mclAssertLocation(params: [][]const u8) !void {
     const station = main.station;
 
     const location: f32 = station.wr.carrier.axis(main.index.station).location;
-    // Assumptions: The location threshold is 1 mm.
-    const location_thr = 1;
+    // Default location threshold value is 1 mm
+    const location_thr = if (params[3].len > 0)
+        try std.fmt.parseFloat(f32, params[3])
+    else
+        1.0;
     if (location < expected_location - location_thr or
         location > expected_location + location_thr)
         return error.UnexpectedCarrierLocation;
