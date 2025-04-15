@@ -25,11 +25,17 @@ const LogLine = struct {
     const RegisterType = enum { x, y, wr, ww };
 };
 
-const Registers = struct {
+const Registers = packed struct {
     x: mcl.registers.X,
     y: mcl.registers.Y,
     wr: mcl.registers.Wr,
     ww: mcl.registers.Ww,
+};
+
+const LoggingRegisters = struct {
+    timestamp: f64,
+    /// The maximum number of stations is 64 * 4
+    registers: [64 * 4]Registers,
 };
 
 var log_lines: []LogLine = undefined;
@@ -2313,16 +2319,11 @@ fn startLogRegisters(params: [][]const u8) !void {
         }
     }
 
-    var logging_data = try CircularBuffer([]u8).initCapacity(
-        allocator,
-        logging_size,
-    );
-    // The last additional 8 bytes for storing timestamp
-    const buf_size = try calculateRegistersBufferSize() + 8;
-    const register_buffer = try allocator.alloc(u8, buf_size);
-    for (0..logging_data.buffer.len) |i| {
-        logging_data.buffer[i] = try allocator.alloc(u8, buf_size);
-    }
+    var logging_data =
+        try CircularBuffer(LoggingRegisters).initCapacity(
+            allocator,
+            logging_size,
+        );
     const log_time_start = std.time.microTimestamp();
     std.log.info("logging registers data..", .{});
     var timer = try std.time.Timer.start();
@@ -2331,9 +2332,8 @@ fn startLogRegisters(params: [][]const u8) !void {
             std.log.info("saving logging data..", .{});
             break;
         };
-        logging_data.writeSliceOverwrite(try logRegisters(
+        logging_data.writeItemOverwrite(try logRegisters(
             log_time_start,
-            register_buffer,
             &timer,
         ));
     }
@@ -2341,44 +2341,23 @@ fn startLogRegisters(params: [][]const u8) !void {
         &logging_data,
         log_writer,
     );
-    defer allocator.free(register_buffer);
     defer logging_data.deinit();
-    defer {
-        for (0..logging_data.buffer.len) |i| {
-            allocator.free(logging_data.buffer[i]);
-        }
-    }
 }
 
 /// Convert the logged binary data to string and save it to the logging file
-fn logToString(logging_data: *CircularBuffer([]u8), writer: std.fs.File.Writer) !void {
+fn logToString(logging_data: *CircularBuffer(LoggingRegisters), writer: std.fs.File.Writer) !void {
     while (logging_data.readItem()) |item| {
         // Copy a newline in every logging data entry
         try writer.writeByte('\n');
         // write timestamp to the buffer
-        const timestamp = @as(
-            f64,
-            @bitCast(
-                std.mem.readPackedInt(
-                    std.meta.Int(
-                        .unsigned,
-                        @bitSizeOf(f64),
-                    ),
-                    item,
-                    0,
-                    .little,
-                ),
-            ),
-        );
-        try writer.print("{d},", .{timestamp});
-        var binary_buffer_offset: usize = @bitSizeOf(f64);
+        try writer.print("{d},", .{item.timestamp});
+
+        var reg_idx: usize = 0;
         for (line_names) |line_name| {
             const line_idx = try matchLine(line_names, line_name);
             if (log_lines[line_idx].status == false) continue;
-            const line = mcl.lines[line_idx];
             for (0..256) |station_idx| {
                 if (log_lines[line_idx].stations[station_idx] == false) continue;
-                const station = line.stations[station_idx];
                 var reg_iterator = log_lines[line_idx].registers.iterator();
                 var command_code: mcl.registers.Ww.Command = .None;
                 while (reg_iterator.next()) |reg_entry| {
@@ -2387,18 +2366,15 @@ fn logToString(logging_data: *CircularBuffer([]u8), writer: std.fs.File.Writer) 
                         if (@intFromEnum(reg_entry.key) == reg_enum.value and
                             reg_entry.value.* == true)
                         {
-                            const registers = @field(
-                                station,
-                                reg_enum.name,
-                            ).*;
                             try registerValueToString(
-                                item,
-                                binary_buffer_offset,
+                                @field(
+                                    item.registers[reg_idx],
+                                    reg_enum.name,
+                                ),
                                 writer,
-                                @TypeOf(registers),
                                 &command_code,
                             );
-                            binary_buffer_offset += @bitSizeOf(@TypeOf(registers));
+                            reg_idx += 1;
                             break;
                         }
                     }
@@ -2410,58 +2386,32 @@ fn logToString(logging_data: *CircularBuffer([]u8), writer: std.fs.File.Writer) 
 
 // Write register values into the string
 fn registerValueToString(
-    binary_buf: []u8,
-    start_binary_idx: usize,
+    parent: anytype,
     writer: std.fs.File.Writer,
-    parent_type: anytype,
     command_code: *mcl.registers.Ww.Command,
 ) !void {
     var binary_buf_idx: usize = 0;
-    inline for (@typeInfo(parent_type).@"struct".fields) |child_field| {
+    const parent_ti = @typeInfo(@TypeOf(parent)).@"struct";
+    inline for (parent_ti.fields) |child_field| {
         if (child_field.name[0] == '_') {
             binary_buf_idx += @bitSizeOf(child_field.type);
             continue;
         }
         if (comptime @typeInfo(child_field.type) == .@"struct") {
             try registerValueToString(
-                binary_buf,
-                start_binary_idx + binary_buf_idx,
+                @field(parent, child_field.name),
                 writer,
-                child_field.type,
                 command_code,
             );
         } else {
             if (comptime @typeInfo(child_field.type) == .@"enum") {
-                const child_value = @as(
-                    child_field.type,
-                    @enumFromInt(
-                        std.mem.readPackedInt(
-                            @typeInfo(child_field.type).@"enum".tag_type,
-                            binary_buf,
-                            start_binary_idx + binary_buf_idx,
-                            .little,
-                        ),
-                    ),
-                );
+                const child_value = @field(parent, child_field.name);
                 if (child_field.type == mcl.registers.Ww.Command) {
                     command_code.* = child_value;
                 }
                 try writer.print("{d},", .{@intFromEnum(child_value)});
             } else if (comptime @typeInfo(child_field.type) == .@"union") {
-                const child_value = @as(
-                    child_field.type,
-                    @bitCast(
-                        std.mem.readPackedInt(
-                            std.meta.Int(
-                                .unsigned,
-                                @bitSizeOf(child_field.type),
-                            ),
-                            binary_buf,
-                            start_binary_idx + binary_buf_idx,
-                            .little,
-                        ),
-                    ),
-                );
+                const child_value = @field(parent, child_field.name);
                 const ti = @typeInfo(child_field.type).@"union";
                 inline for (ti.fields) |union_field| {
                     const union_val = @field(child_value, union_field.name);
@@ -2492,47 +2442,25 @@ fn registerValueToString(
                     }
                 }
             } else {
-                const child_value = @as(
-                    child_field.type,
-                    @bitCast(
-                        std.mem.readPackedInt(
-                            std.meta.Int(
-                                .unsigned,
-                                @bitSizeOf(child_field.type),
-                            ),
-                            binary_buf,
-                            start_binary_idx + binary_buf_idx,
-                            .little,
-                        ),
-                    ),
-                );
+                const child_value = @field(parent, child_field.name);
                 if (@typeInfo(@TypeOf(child_value)) == .float) {
                     try writer.print("{d},", .{child_value});
                 } else try writer.print("{},", .{child_value});
             }
         }
-        binary_buf_idx += @bitSizeOf(child_field.type);
     }
 }
 
 /// Log the registers value. The registers value is logged in binary data, but
 /// saved into slice of bytes
-fn logRegisters(log_time_start: i64, buffer: []u8, timer: *std.time.Timer) ![]u8 {
+fn logRegisters(log_time_start: i64, timer: *std.time.Timer) !LoggingRegisters {
     while (timer.read() < 3 * std.time.ns_per_ms) {}
     const timestamp = @as(f64, @floatFromInt(std.time.microTimestamp() - log_time_start)) / 1_000_000;
     timer.reset();
-    var buf_idx: usize = 0;
-    std.mem.writePackedInt(
-        std.meta.Int(
-            .unsigned,
-            @bitSizeOf(@TypeOf(timestamp)),
-        ),
-        buffer,
-        buf_idx,
-        @as(u64, @bitCast(timestamp)),
-        .little,
-    );
-    buf_idx += @bitSizeOf(@TypeOf(timestamp));
+    var result: LoggingRegisters = undefined;
+    result.timestamp = timestamp;
+
+    var reg_idx: usize = 0;
     for (line_names) |line_name| {
         const line_idx = try matchLine(line_names, line_name);
         if (log_lines[line_idx].status == false) continue;
@@ -2548,53 +2476,24 @@ fn logRegisters(log_time_start: i64, buffer: []u8, timer: *std.time.Timer) ![]u8
                         reg_entry.value.* == true)
                     {
                         switch (reg_entry.key) {
-                            .x => try mcl.lines[line_idx].stations[station_idx].pollX(),
-                            .y => try mcl.lines[line_idx].stations[station_idx].pollY(),
-                            .wr => try mcl.lines[line_idx].stations[station_idx].pollWr(),
-                            .ww => try mcl.lines[line_idx].stations[station_idx].pollWw(),
+                            .x => {
+                                try mcl.lines[line_idx].stations[station_idx].pollX();
+                                result.registers[reg_idx].x = station.x.*;
+                            },
+                            .y => {
+                                try mcl.lines[line_idx].stations[station_idx].pollY();
+                                result.registers[reg_idx].y = station.y.*;
+                            },
+                            .wr => {
+                                try mcl.lines[line_idx].stations[station_idx].pollWr();
+                                result.registers[reg_idx].wr = station.wr.*;
+                            },
+                            .ww => {
+                                try mcl.lines[line_idx].stations[station_idx].pollWw();
+                                result.registers[reg_idx].ww = station.ww.*;
+                            },
                         }
-                        // register variable used only to get the register type
-                        const register = @field(station, reg_enum.name).*;
-                        std.mem.writePackedInt(
-                            std.meta.Int(
-                                .unsigned,
-                                @bitSizeOf(@TypeOf(register)),
-                            ),
-                            buffer,
-                            buf_idx,
-                            @bitCast(register),
-                            .little,
-                        );
-                        buf_idx += @bitSizeOf(@TypeOf(register));
-                        break;
-                    }
-                }
-            }
-        }
-    }
-    return buffer;
-}
-
-/// Calculate the required total bytes to log registers based on the logging
-/// configuration.
-fn calculateRegistersBufferSize() !usize {
-    var result: usize = 0;
-    for (line_names) |line_name| {
-        const line_idx = try matchLine(line_names, line_name);
-        if (log_lines[line_idx].status == false) continue;
-        for (0..256) |station_idx| {
-            if (log_lines[line_idx].stations[station_idx] == false) continue;
-            var reg_iterator = log_lines[line_idx].registers.iterator();
-            while (reg_iterator.next()) |reg_entry| {
-                const reg_type = @TypeOf(reg_entry.key);
-                inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
-                    if (@intFromEnum(reg_entry.key) == reg_enum.value and
-                        reg_entry.value.* == true)
-                    {
-                        result += @sizeOf(@FieldType(
-                            Registers,
-                            reg_enum.name,
-                        ));
+                        reg_idx += 1;
                         break;
                     }
                 }
