@@ -1,0 +1,213 @@
+syntax = "proto3";
+package mmc;
+
+message GetRegister{
+    int32 line_idx = 1;
+    int32 axis_idx = 2;
+}
+
+message GetStatus{
+    enum Status{
+        StatusUnspecified = 0;
+        Hall = 1;
+        Carrier = 2;
+        Command = 3;
+    }
+    Status kind = 1;
+    int32 line_idx = 2;
+    optional int32 axis_idx = 3;
+    optional int32 carrier_id = 4;
+}
+
+message NoParam {}
+
+message ClearErrorsAndCarrier{
+    int32 line_id = 1;
+    int32 axis_id = 2;
+}
+
+message SetCommand{
+    enum CommandCode{
+        None = 0x0;
+        SetLineZero = 0x1;
+        // "By Position" commands calculate carrier movement by constant hall
+        // sensor position feedback, and is much more precise in destination.
+        PositionMoveCarrierAxis = 0x12;
+        PositionMoveCarrierLocation = 0x13;
+        PositionMoveCarrierDistance = 0x14;
+        // "By Speed" commands calculate carrier movement by constant hall
+        // sensor speed feedback. It should mostly not be used, as the
+        // destination position becomes far too imprecise. However, it is
+        // meant to maintain a certain speed while the carrier is traveling,
+        // and to avoid the requirement of having a known system position.
+        SpeedMoveCarrierAxis = 0x15;
+        SpeedMoveCarrierLocation = 0x16;
+        SpeedMoveCarrierDistance = 0x17;
+        IsolateForward = 0x18;
+        IsolateBackward = 0x19;
+        Calibration = 0x1A;
+        SetCarrierIdAtAxis = 0x1D;
+        PushForward = 0x1E;
+        PushBackward = 0x1F;
+        PullForward = 0x20;
+        PullBackward = 0x21;
+        PushTransitionForward = 0x22;
+        PushTransitionBackward = 0x23;
+        PullTransitionAxisForward = 0x24;
+        PullTransitionAxisBackward = 0x25;
+        PullTransitionLocationForward = 0x26;
+        PullTransitionLocationBackward = 0x27;
+    }
+    enum Direction{
+        NoDirection = 0;
+        Backward = 1;
+        Forward = 2;
+    }
+    CommandCode command_code = 1;
+    int32 line_idx = 2;
+    int32 axis_idx = 3;
+    optional int32 carrier_id = 4;
+    optional float location_distance = 5;
+    optional int32 speed = 6;
+    optional int32 acceleration = 7;
+    optional Direction link_axis = 8;
+    optional Direction use_sensor = 9;
+}
+
+message AutoInitialize{
+    optional int32 line_id = 1;
+}
+
+message SendCommand{
+    enum ServerCommand{
+        ServerCommandUnspecified = 0;
+        GetX = 1;
+        GetY = 2;
+        GetWr = 3;
+        GetWw = 4;
+        GetStatus = 5;
+        GetVersion = 6;
+        reserved 7;
+        ClearErrors = 8;
+        ClearCarrierInfo = 9;
+        ResetMCL = 10;
+        ReleaseAxisServo = 11;
+        SetCommand = 12;
+        StopPullCarrier = 13;
+        reserved 14;
+        // STOP_PUSH_CARRIER = 14;
+        AutoInitialize = 15;
+    }
+
+    ServerCommand kind = 1;
+    oneof parameter{
+        GetRegister get_x = 2;
+        GetRegister get_y = 3;
+        GetRegister get_wr = 4;
+        GetRegister get_ww = 5;
+        GetStatus get_status = 6;
+        NoParam get_version = 7;
+        ClearErrorsAndCarrier clear_errors = 9;
+        ClearErrorsAndCarrier clear_carrier_info = 10;
+        NoParam reset_mcl = 11;
+        GetRegister release_axis_servo = 12;
+        SetCommand set_command = 13;
+        GetRegister stop_pull_carrier = 14;
+        AutoInitialize auto_initialize = 16;
+    }
+}
+
+message LineConfig{
+    message LineConfiguration{
+        message Range{
+            enum Channel{
+                CHANNEL_UNSPECIFIED = 0;
+                cc_link_1slot = 1;
+                cc_link_2slot = 2;
+                cc_link_3slot = 3;
+                cc_link_4slot = 4;
+            }
+            Channel channel = 1;
+            int32 start = 2;
+            int32 end = 3;
+        }
+        int32 axes = 1;
+        repeated Range ranges = 2;
+    }
+    repeated LineConfiguration lines = 1;
+    repeated string line_names = 2;
+}
+
+message ServerVersion{
+    int32 major = 1;
+    int32 minor = 2;
+    int32 patch = 3;
+}
+
+message HallStatus{
+    bool configured = 1;
+    bool front = 2;
+    bool back = 3;
+}
+
+message CarrierStatus{
+    message AxisIndices{
+        int32 main_axis = 1;
+        int32 aux_axis = 2;
+    }
+    enum CarrierState{
+        None = 0x0;
+
+        WarmupProgressing = 0x1;
+        WarmupCompleted = 0x2;
+
+        PosMoveProgressing = 0x4;
+        PosMoveCompleted = 0x5;
+        SpdMoveProgressing = 0x6;
+        SpdMoveCompleted = 0x7;
+        Auxiliary = 0x8;
+        AuxiliaryCompleted = 0x9;
+
+        ForwardCalibrationProgressing = 0xA;
+        ForwardCalibrationCompleted = 0xB;
+        BackwardCalibrationProgressing = 0xC;
+        BackwardCalibrationCompleted = 0xD;
+
+        ForwardIsolationProgressing = 0x10;
+        ForwardIsolationCompleted = 0x11;
+        BackwardIsolationProgressing = 0x12;
+        BackwardIsolationCompleted = 0x13;
+        ForwardRestartProgressing = 0x14;
+        ForwardRestartCompleted = 0x15;
+        BackwardRestartProgressing = 0x16;
+        BackwardRestartCompleted = 0x17;
+
+        PullForward = 0x19;
+        PullForwardCompleted = 0x1A;
+        PullBackward = 0x1B;
+        PullBackwardCompleted = 0x1C;
+        Push = 0x1D;
+        PushCompleted = 0x1E;
+
+        Overcurrent = 0x1F;
+    }
+    int32 id = 1;
+    AxisIndices axis_idx = 2;
+    float location = 3;
+    CarrierState state = 4;        
+}
+
+message CommandStatus{
+    enum CommandResponse{
+        NoError = 0;
+        InvalidCommand = 1;
+        CarrierNotFound = 2;
+        HomingFailed = 3;
+        InvalidParameter = 4;
+        InvalidSystemState = 5;
+        CarrierAlreadyExists = 6;
+        InvalidAxis = 7;
+    }
+    bool received = 1;
+    CommandResponse response = 2;
+}
