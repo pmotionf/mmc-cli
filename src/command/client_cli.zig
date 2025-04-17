@@ -12,8 +12,9 @@ const MMCErrorEnum = @import("mmc_config").MMCErrorEnum;
 const proto = @import("../proto/mmc.pb.zig");
 
 // TODO: Decide the value properly
-var line_buffer: [1_024_000]u8 = undefined;
-pub var line_fba = std.heap.FixedBufferAllocator.init(&line_buffer);
+var fba_buffer: [1_024_000]u8 = undefined;
+var fba = std.heap.FixedBufferAllocator.init(&fba_buffer);
+const fba_allocator = fba.allocator();
 
 var arena: std.heap.ArenaAllocator = undefined;
 var allocator: std.mem.Allocator = undefined;
@@ -682,33 +683,29 @@ fn serverVersion(_: [][]const u8) !void {
             try disconnectedClearence();
             return;
         };
-        waitSocketReceive(s, .Version) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            s.close();
-            try disconnectedClearence();
-            return;
-        };
-        _ = s.receive(&buffer) catch |e| {
+        // waitSocketReceive(s, .Version) catch |e| {
+        //     std.log.debug("{s}", .{@errorName(e)});
+        //     s.close();
+        //     try disconnectedClearence();
+        //     return;
+        // };
+        const msg_len = s.receive(&buffer) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
             std.log.err("ConnectionClosedByServer", .{});
             s.close();
             try disconnectedClearence();
             return;
         };
-        // The first 4 bits are the message type, the following 13 bits are the
-        // message length. Actual message start after these bits
-        const msg_offset: usize = @bitSizeOf(u4) + @bitSizeOf(u13);
-        const IntType = @typeInfo(mmc.Version).@"struct".backing_integer.?;
-        const version: mmc.Version = @bitCast(std.mem.readPackedInt(
-            IntType,
-            &buffer,
-            msg_offset,
-            .little,
-        ));
+        const ServerVersion = proto.ServerVersion;
+        const response: ServerVersion = try ServerVersion.decode(
+            buffer[0..msg_len],
+            fba_allocator,
+        );
+        defer response.deinit();
         std.log.info("MMC Server Version: {d}.{d}.{d}\n", .{
-            version.major,
-            version.minor,
-            version.patch,
+            response.major,
+            response.minor,
+            response.patch,
         });
     } else {
         return error.NotConnected;
@@ -747,7 +744,6 @@ fn clientConnect(params: [][]const u8) !void {
             try disconnectedClearence();
             return;
         };
-        const fba_allocator = line_fba.allocator();
         const LineConfig = proto.LineConfig;
         const response: LineConfig = try LineConfig.decode(
             buffer[0..msg_len],
