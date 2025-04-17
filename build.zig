@@ -1,4 +1,5 @@
 const std = @import("std");
+const protobuf = @import("protobuf");
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -39,6 +40,12 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
+    // first create a build for the dependency
+    const protobuf_dep = b.dependency("protobuf", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const exe = b.addExecutable(.{
         .name = "mmc-cli",
         .root_source_file = b.path("src/main.zig"),
@@ -53,6 +60,8 @@ pub fn build(b: *std.Build) !void {
         mmc_config.module("mmc-config"),
     );
     exe.root_module.addImport("build.zig.zon", build_zig_zon);
+    // and lastly use the dependency as a module
+    exe.root_module.addImport("protobuf", protobuf_dep.module("protobuf"));
 
     b.installArtifact(exe);
 
@@ -94,7 +103,7 @@ pub fn build(b: *std.Build) !void {
         mmc_config_mock.module("mmc-config"),
     );
     check_exe.root_module.addImport("build.zig.zon", build_zig_zon);
-
+    check_exe.root_module.addImport("protobuf", protobuf_dep.module("protobuf"));
     const check = b.step("check", "Check if `mmc-cli` compiles");
     check.dependOn(&check_exe.step);
 
@@ -113,8 +122,21 @@ pub fn build(b: *std.Build) !void {
         mmc_config_mock.module("mmc-config"),
     );
     unit_tests.root_module.addImport("build.zig.zon", build_zig_zon);
-
+    unit_tests.root_module.addImport("protobuf", protobuf_dep.module("protobuf"));
     const run_unit_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
+
+    const gen_proto = b.step("gen-proto", "generates zig files from protocol buffer definitions");
+
+    const protoc_step = protobuf.RunProtocStep.create(b, protobuf_dep.builder, target, .{
+        // out directory for the generated zig files
+        .destination_directory = b.path("src/proto"),
+        .source_files = &.{
+            "protocol/all.proto",
+        },
+        .include_directories = &.{},
+    });
+
+    gen_proto.dependOn(&protoc_step.step);
 }

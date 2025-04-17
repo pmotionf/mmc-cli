@@ -9,6 +9,13 @@ const builtin = @import("builtin");
 
 const MMCErrorEnum = @import("mmc_config").MMCErrorEnum;
 
+const proto = @import("../proto/mmc.pb.zig");
+
+// TODO: Decide the value properly
+var fba_buffer: [1_024_000]u8 = undefined;
+var fba = std.heap.FixedBufferAllocator.init(&fba_buffer);
+const fba_allocator = fba.allocator();
+
 var arena: std.heap.ArenaAllocator = undefined;
 var allocator: std.mem.Allocator = undefined;
 var line_names: [][]u8 = undefined;
@@ -676,33 +683,29 @@ fn serverVersion(_: [][]const u8) !void {
             try disconnectedClearence();
             return;
         };
-        waitSocketReceive(s, .Version) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            s.close();
-            try disconnectedClearence();
-            return;
-        };
-        _ = s.receive(&buffer) catch |e| {
+        // waitSocketReceive(s, .Version) catch |e| {
+        //     std.log.debug("{s}", .{@errorName(e)});
+        //     s.close();
+        //     try disconnectedClearence();
+        //     return;
+        // };
+        const msg_len = s.receive(&buffer) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
             std.log.err("ConnectionClosedByServer", .{});
             s.close();
             try disconnectedClearence();
             return;
         };
-        // The first 4 bits are the message type, the following 13 bits are the
-        // message length. Actual message start after these bits
-        const msg_offset: usize = @bitSizeOf(u4) + @bitSizeOf(u13);
-        const IntType = @typeInfo(mmc.Version).@"struct".backing_integer.?;
-        const version: mmc.Version = @bitCast(std.mem.readPackedInt(
-            IntType,
-            &buffer,
-            msg_offset,
-            .little,
-        ));
+        const ServerVersion = proto.ServerVersion;
+        const response: ServerVersion = try ServerVersion.decode(
+            buffer[0..msg_len],
+            fba_allocator,
+        );
+        defer response.deinit();
         std.log.info("MMC Server Version: {d}.{d}.{d}\n", .{
-            version.major,
-            version.minor,
-            version.patch,
+            response.major,
+            response.minor,
+            response.patch,
         });
     } else {
         return error.NotConnected;
@@ -734,24 +737,22 @@ fn clientConnect(params: [][]const u8) !void {
         );
         std.log.info("Receiving line information...", .{});
         var buffer: [1024]u8 = undefined;
-        _ = s.receive(&buffer) catch |e| {
+        const msg_len = s.receive(&buffer) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
             std.log.err("ConnectionClosedByServer", .{});
             s.close();
             try disconnectedClearence();
             return;
         };
-        std.log.debug("{s}", .{buffer});
-        var tokenizer = std.mem.tokenizeSequence(
-            u8,
-            &buffer,
-            ",",
+        const LineConfig = proto.LineConfig;
+        const response: LineConfig = try LineConfig.decode(
+            buffer[0..msg_len],
+            fba_allocator,
         );
-        const line_numbers = try std.fmt.parseInt(
-            usize,
-            tokenizer.next().?,
-            0,
-        );
+        defer response.deinit();
+        if (response.line_names.items.len != response.lines.items.len)
+            return error.ConfigLineNumberOfLineNamesDoesNotMatch;
+        const line_numbers = response.line_names.items.len;
         line_names = try allocator.alloc([]u8, line_numbers);
         var lines = try allocator.alloc(
             mcl.Config.Line,
@@ -759,54 +760,39 @@ fn clientConnect(params: [][]const u8) !void {
         );
         defer allocator.free(lines);
         errdefer allocator.free(lines);
-        for (0..line_numbers) |li| {
-            if (tokenizer.next()) |token| {
-                var line_description = std.mem.tokenizeSequence(
-                    u8,
-                    token,
-                    ":",
+        for (
+            response.lines.items,
+            response.line_names.items,
+            0..,
+        ) |line, line_name, idx| {
+            line_names[idx] = try allocator.alloc(u8, line_name.getSlice().len);
+            @memcpy(line_names[idx], line_name.getSlice());
+            lines[idx].axes = @intCast(line.axes);
+            lines[idx].ranges = try allocator.alloc(
+                mcl.Config.Line.Range,
+                line.ranges.items.len,
+            );
+            for (0..line.ranges.items.len) |range_idx| {
+                const range = line.ranges.items[range_idx];
+                lines[idx].ranges[range_idx].channel = std.meta.stringToEnum(
+                    mcl.cc_link.Channel,
+                    @tagName(range.channel),
+                ).?;
+                lines[idx].ranges[range_idx].end = @intCast(range.end);
+                lines[idx].ranges[range_idx].start = @intCast(range.start);
+            }
+        }
+        for (
+            line_names,
+            lines,
+        ) |line_name, line| {
+            std.log.debug("line name: {s}", .{line_name});
+            std.log.debug("axes: {}", .{line.axes});
+            for (line.ranges) |range| {
+                std.log.debug(
+                    "channel: {s}, start: {}, end: {}",
+                    .{ @tagName(range.channel), range.start, range.end },
                 );
-                const line_name =
-                    line_description.next() orelse return error.LineNameNotReceived;
-                line_names[li] = try allocator.alloc(u8, line_name.len);
-                @memcpy(line_names[li], line_name);
-                lines[li].axes = try std.fmt.parseInt(
-                    mcl.Axis.Id.Line,
-                    line_description.next() orelse return error.AxisNumberNotReceived,
-                    0,
-                );
-                const range_len = try std.fmt.parseInt(
-                    usize,
-                    line_description.next() orelse return error.RangeNumberNotReceived,
-                    0,
-                );
-                lines[li].ranges = try allocator.alloc(
-                    mcl.Config.Line.Range,
-                    range_len,
-                );
-                for (0..range_len) |ri| {
-                    lines[li].ranges[ri].channel = std.meta.stringToEnum(
-                        mcl.cc_link.Channel,
-                        line_description.next() orelse return error.ChannelInfoNotReceived,
-                    ) orelse return error.ChannelUnknown;
-                    lines[li].ranges[ri].start = try std.fmt.parseInt(
-                        mcl.cc_link.Id,
-                        line_description.next() orelse return error.StartInfoDataNotReceived,
-                        0,
-                    );
-                    lines[li].ranges[ri].end = try std.fmt.parseInt(
-                        mcl.cc_link.Id,
-                        line_description.next() orelse return error.EndInfoNotReceived,
-                        0,
-                    );
-                }
-                if (line_description.peek() != null) {
-                    std.log.debug(
-                        "Remaining unexpected line description: {s}",
-                        .{line_description.rest()},
-                    );
-                    return error.UnexpectedDataReceived;
-                }
             }
         }
         try mcl.Config.validate(.{ .lines = lines });
