@@ -43,6 +43,32 @@ pub fn CircularBuffer(comptime T: type) type {
             self.count += 1;
         }
 
+        test writeItem {
+            const text1 = "Testing from the Earth";
+            const text2 = "Received by someone in the future";
+            const full_text = text1 ++ "\n" ++ text2;
+            var ring_buf =
+                try CircularBuffer([full_text.len]u8).initCapacity(
+                    std.testing.allocator,
+                    1,
+                );
+
+            defer ring_buf.deinit();
+
+            // test writeItem
+            try ring_buf.writeItem(full_text.*);
+
+            var iterator =
+                std.mem.tokenizeSequence(
+                    u8,
+                    &ring_buf.readItem().?,
+                    "\n",
+                );
+            try std.testing.expectEqualStrings(text1, iterator.next().?);
+            try std.testing.expectEqualStrings(text2, iterator.next().?);
+            try std.testing.expect(ring_buf.isEmpty());
+        }
+
         /// Writes item to the tail of the buffer. Overwrites the oldest item if
         /// full. Does not allocate.
         pub fn writeItemOverwrite(self: *Self, item: T) void {
@@ -58,6 +84,35 @@ pub fn CircularBuffer(comptime T: type) type {
                 self.head = (self.head + 1) % self.buffer.len
             else
                 self.count += 1;
+        }
+
+        test writeItemOverwrite {
+            const text1 = "Testing from the Earth";
+            const text2 = "Received by someone in the future";
+            const full_text1 = text1 ++ "\n" ++ text2;
+            const text3 = "Testing from the future";
+            const text4 = "Received by someone in the Earth";
+            const full_text2 = text3 ++ "\n" ++ text4;
+            var ring_buf =
+                try CircularBuffer([full_text1.len]u8).initCapacity(
+                    std.testing.allocator,
+                    1,
+                );
+
+            defer ring_buf.deinit();
+
+            ring_buf.writeItemOverwrite(full_text1.*);
+            try std.testing.expect(ring_buf.isFull());
+            ring_buf.writeItemOverwrite(full_text2.*);
+            var iterator =
+                std.mem.tokenizeSequence(
+                    u8,
+                    &ring_buf.readItem().?,
+                    "\n",
+                );
+            try std.testing.expectEqualStrings(text3, iterator.next().?);
+            try std.testing.expectEqualStrings(text4, iterator.next().?);
+            try std.testing.expect(ring_buf.isEmpty());
         }
 
         /// Read next item from front of buffer. Advances buffer head.
@@ -106,45 +161,4 @@ pub fn CircularBuffer(comptime T: type) type {
             self.count;
         }
     };
-}
-
-test "write array" {
-    const text1 = "Testing from the Earth";
-    const text2 = "Received by someone in the future";
-    const full_text1 = text1 ++ "\n" ++ text2;
-    const text3 = "Testing from the future";
-    const text4 = "Received by someone in the Earth";
-    const full_text2 = text3 ++ "\n" ++ text4;
-    var ring_buf =
-        try CircularBuffer([full_text1.len]u8).initCapacity(
-            std.testing.allocator,
-            1,
-        );
-    defer ring_buf.deinit();
-    // test writeItem
-    try ring_buf.writeItem(full_text1.*);
-
-    var iterator1 =
-        std.mem.tokenizeSequence(
-            u8,
-            &ring_buf.readItem().?,
-            "\n",
-        );
-    try std.testing.expectEqualStrings(text1, iterator1.next().?);
-    try std.testing.expectEqualStrings(text2, iterator1.next().?);
-    try std.testing.expect(ring_buf.isEmpty());
-
-    // test writeItemOverwrite
-    ring_buf.writeItemOverwrite(full_text1.*);
-    try std.testing.expect(ring_buf.isFull());
-    ring_buf.writeItemOverwrite(full_text2.*);
-    var iterator2 =
-        std.mem.tokenizeSequence(
-            u8,
-            &ring_buf.readItem().?,
-            "\n",
-        );
-    try std.testing.expectEqualStrings(text3, iterator2.next().?);
-    try std.testing.expectEqualStrings(text4, iterator2.next().?);
-    try std.testing.expect(ring_buf.isEmpty());
 }
