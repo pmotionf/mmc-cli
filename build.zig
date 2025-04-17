@@ -94,7 +94,6 @@ pub fn build(b: *std.Build) !void {
         mmc_config_mock.module("mmc-config"),
     );
     check_exe.root_module.addImport("build.zig.zon", build_zig_zon);
-
     const check = b.step("check", "Check if `mmc-cli` compiles");
     check.dependOn(&check_exe.step);
 
@@ -113,7 +112,6 @@ pub fn build(b: *std.Build) !void {
         mmc_config_mock.module("mmc-config"),
     );
     unit_tests.root_module.addImport("build.zig.zon", build_zig_zon);
-
     const run_unit_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);

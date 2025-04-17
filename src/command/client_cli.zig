@@ -9,6 +9,14 @@ const builtin = @import("builtin");
 
 const MMCErrorEnum = @import("mmc_config").MMCErrorEnum;
 
+const protobuf_msg = mmc.protobuf_msg;
+const protobuf = mmc.protobuf;
+
+// TODO: Decide the value properly
+var fba_buffer: [1_024_000]u8 = undefined;
+var fba = std.heap.FixedBufferAllocator.init(&fba_buffer);
+const fba_allocator = fba.allocator();
+
 var arena: std.heap.ArenaAllocator = undefined;
 var allocator: std.mem.Allocator = undefined;
 var line_names: [][]u8 = undefined;
@@ -669,40 +677,41 @@ pub fn deinit() void {
 fn serverVersion(_: [][]const u8) !void {
     var buffer: [8192]u8 = undefined;
     if (main_socket) |s| {
-        sendMessage(.get_version, {}, s) catch |e| {
+        const SendCommand = protobuf_msg.SendCommand;
+        var command_msg: SendCommand = SendCommand.init(fba_allocator);
+        defer command_msg.deinit();
+        errdefer command_msg.deinit();
+        command_msg = .{
+            .command_kind = .{
+                .get_version = .{},
+            },
+        };
+        const encoded = try command_msg.encode(fba_allocator);
+        defer fba_allocator.free(encoded);
+        s.writer().writeAll(encoded) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
             std.log.err("ConnectionClosedByServer", .{});
             s.close();
             try disconnectedClearence();
             return;
         };
-        waitSocketReceive(s, .Version) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            s.close();
-            try disconnectedClearence();
-            return;
-        };
-        _ = s.receive(&buffer) catch |e| {
+        const msg_len = s.receive(&buffer) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
             std.log.err("ConnectionClosedByServer", .{});
             s.close();
             try disconnectedClearence();
             return;
         };
-        // The first 4 bits are the message type, the following 13 bits are the
-        // message length. Actual message start after these bits
-        const msg_offset: usize = @bitSizeOf(u4) + @bitSizeOf(u13);
-        const IntType = @typeInfo(mmc.Version).@"struct".backing_integer.?;
-        const version: mmc.Version = @bitCast(std.mem.readPackedInt(
-            IntType,
-            &buffer,
-            msg_offset,
-            .little,
-        ));
+        const ServerVersion = protobuf_msg.ServerVersion;
+        const response: ServerVersion = try ServerVersion.decode(
+            buffer[0..msg_len],
+            fba_allocator,
+        );
+        defer response.deinit();
         std.log.info("MMC Server Version: {d}.{d}.{d}\n", .{
-            version.major,
-            version.minor,
-            version.patch,
+            response.major,
+            response.minor,
+            response.patch,
         });
     } else {
         return error.NotConnected;
@@ -734,24 +743,22 @@ fn clientConnect(params: [][]const u8) !void {
         );
         std.log.info("Receiving line information...", .{});
         var buffer: [1024]u8 = undefined;
-        _ = s.receive(&buffer) catch |e| {
+        const msg_len = s.receive(&buffer) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
             std.log.err("ConnectionClosedByServer", .{});
             s.close();
             try disconnectedClearence();
             return;
         };
-        std.log.debug("{s}", .{buffer});
-        var tokenizer = std.mem.tokenizeSequence(
-            u8,
-            &buffer,
-            ",",
+        const LineConfig = protobuf_msg.LineConfig;
+        const response: LineConfig = try LineConfig.decode(
+            buffer[0..msg_len],
+            fba_allocator,
         );
-        const line_numbers = try std.fmt.parseInt(
-            usize,
-            tokenizer.next().?,
-            0,
-        );
+        defer response.deinit();
+        if (response.line_names.items.len != response.lines.items.len)
+            return error.ConfigLineNumberOfLineNamesDoesNotMatch;
+        const line_numbers = response.line_names.items.len;
         line_names = try allocator.alloc([]u8, line_numbers);
         var lines = try allocator.alloc(
             mcl.Config.Line,
@@ -759,54 +766,39 @@ fn clientConnect(params: [][]const u8) !void {
         );
         defer allocator.free(lines);
         errdefer allocator.free(lines);
-        for (0..line_numbers) |li| {
-            if (tokenizer.next()) |token| {
-                var line_description = std.mem.tokenizeSequence(
-                    u8,
-                    token,
-                    ":",
+        for (
+            response.lines.items,
+            response.line_names.items,
+            0..,
+        ) |line, line_name, idx| {
+            line_names[idx] = try allocator.alloc(u8, line_name.getSlice().len);
+            @memcpy(line_names[idx], line_name.getSlice());
+            lines[idx].axes = @intCast(line.axes);
+            lines[idx].ranges = try allocator.alloc(
+                mcl.Config.Line.Range,
+                line.ranges.items.len,
+            );
+            for (0..line.ranges.items.len) |range_idx| {
+                const range = line.ranges.items[range_idx];
+                lines[idx].ranges[range_idx].channel = std.meta.stringToEnum(
+                    mcl.cc_link.Channel,
+                    @tagName(range.channel),
+                ).?;
+                lines[idx].ranges[range_idx].end = @intCast(range.end);
+                lines[idx].ranges[range_idx].start = @intCast(range.start);
+            }
+        }
+        for (
+            line_names,
+            lines,
+        ) |line_name, line| {
+            std.log.debug("line name: {s}", .{line_name});
+            std.log.debug("axes: {}", .{line.axes});
+            for (line.ranges) |range| {
+                std.log.debug(
+                    "channel: {s}, start: {}, end: {}",
+                    .{ @tagName(range.channel), range.start, range.end },
                 );
-                const line_name =
-                    line_description.next() orelse return error.LineNameNotReceived;
-                line_names[li] = try allocator.alloc(u8, line_name.len);
-                @memcpy(line_names[li], line_name);
-                lines[li].axes = try std.fmt.parseInt(
-                    mcl.Axis.Id.Line,
-                    line_description.next() orelse return error.AxisNumberNotReceived,
-                    0,
-                );
-                const range_len = try std.fmt.parseInt(
-                    usize,
-                    line_description.next() orelse return error.RangeNumberNotReceived,
-                    0,
-                );
-                lines[li].ranges = try allocator.alloc(
-                    mcl.Config.Line.Range,
-                    range_len,
-                );
-                for (0..range_len) |ri| {
-                    lines[li].ranges[ri].channel = std.meta.stringToEnum(
-                        mcl.cc_link.Channel,
-                        line_description.next() orelse return error.ChannelInfoNotReceived,
-                    ) orelse return error.ChannelUnknown;
-                    lines[li].ranges[ri].start = try std.fmt.parseInt(
-                        mcl.cc_link.Id,
-                        line_description.next() orelse return error.StartInfoDataNotReceived,
-                        0,
-                    );
-                    lines[li].ranges[ri].end = try std.fmt.parseInt(
-                        mcl.cc_link.Id,
-                        line_description.next() orelse return error.EndInfoNotReceived,
-                        0,
-                    );
-                }
-                if (line_description.peek() != null) {
-                    std.log.debug(
-                        "Remaining unexpected line description: {s}",
-                        .{line_description.rest()},
-                    );
-                    return error.UnexpectedDataReceived;
-                }
             }
         }
         try mcl.Config.validate(.{ .lines = lines });
@@ -871,12 +863,24 @@ fn clientAutoInitialize(params: [][]const u8) !void {
         const line_name: []const u8 = params[0];
         line_id = try matchLine(line_names, line_name) + 1;
     }
-    const param: mmc.ParamType(.auto_initialize) = .{
-        .line_id = @intCast(line_id),
-    };
     if (main_socket) |s| {
-        // The buffer might contain error message from the server
-        sendMessage(.auto_initialize, param, s) catch |e| {
+        const SendCommand = protobuf_msg.SendCommand;
+        var command_msg: SendCommand = SendCommand.init(fba_allocator);
+        defer command_msg.deinit();
+        errdefer command_msg.deinit();
+        command_msg = .{
+            .command_kind = .{
+                .auto_initialize = .{
+                    .line_id = if (line_id != 0)
+                        @intCast(line_id)
+                    else
+                        null,
+                },
+            },
+        };
+        const encoded = try command_msg.encode(fba_allocator);
+        defer fba_allocator.free(encoded);
+        s.writer().writeAll(encoded) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
             std.log.err("ConnectionClosedByServer", .{});
             s.close();
@@ -939,6 +943,76 @@ fn clientGetAcceleration(params: [][]const u8) !void {
     );
 }
 
+fn parseRegisterX(
+    buffer: []const u8,
+    a: std.mem.Allocator,
+) !mcl.registers.X {
+    const RegisterX = protobuf_msg.RegisterX;
+    const response: RegisterX = try RegisterX.decode(
+        buffer,
+        a,
+    );
+    defer response.deinit();
+    const x: mcl.registers.X = .{
+        .cc_link_enabled = response.cc_link_enabled,
+        .command_ready = response.command_ready,
+        .command_received = response.command_received,
+        .axis_cleared_carrier = response.axis_cleared_carrier,
+        .cleared_carrier = response.cleared_carrier,
+        .servo_enabled = response.servo_enabled,
+        .emergency_stop_enabled = response.emergency_stop_enabled,
+        .paused = response.paused,
+        .motor_enabled = .{
+            .axis1 = response.motor_enabled.?.axis1,
+            .axis2 = response.motor_enabled.?.axis2,
+            .axis3 = response.motor_enabled.?.axis3,
+        },
+        .vdc_overvoltage_detected = response.vdc_overvoltage_detected,
+        .vdc_undervoltage_detected = response.vdc_undervoltage_detected,
+        .errors_cleared = response.errors_cleared,
+        .communication_error = .{
+            .from_next = response.communication_error.?.from_next,
+            .from_prev = response.communication_error.?.from_prev,
+        },
+        .inverter_overheat_detected = response.inverter_overheat_detected,
+        .overcurrent_detected = .{
+            .axis1 = response.overcurrent_detected.?.axis1,
+            .axis2 = response.overcurrent_detected.?.axis2,
+            .axis3 = response.overcurrent_detected.?.axis3,
+        },
+        .hall_alarm = .{
+            .axis1 = .{
+                .back = response.hall_alarm.?.axis1.?.back,
+                .front = response.hall_alarm.?.axis1.?.front,
+            },
+            .axis2 = .{
+                .back = response.hall_alarm.?.axis2.?.back,
+                .front = response.hall_alarm.?.axis2.?.front,
+            },
+            .axis3 = .{
+                .back = response.hall_alarm.?.axis3.?.back,
+                .front = response.hall_alarm.?.axis3.?.front,
+            },
+        },
+        .wait_pull_carrier = .{
+            .axis1 = response.wait_pull_carrier.?.axis1,
+            .axis2 = response.wait_pull_carrier.?.axis2,
+            .axis3 = response.wait_pull_carrier.?.axis3,
+        },
+        .wait_push_carrier = .{
+            .axis1 = response.wait_push_carrier.?.axis1,
+            .axis2 = response.wait_push_carrier.?.axis2,
+            .axis3 = response.wait_push_carrier.?.axis3,
+        },
+        .control_loop_max_time_exceeded = response.control_loop_max_time_exceeded,
+        .initial_data_processing_request = response.initial_data_processing_request,
+        .initial_data_setting_complete = response.initial_data_setting_complete,
+        .error_status = response.error_status,
+        .remote_ready = response.remote_ready,
+    };
+    return x;
+}
+
 fn clientStationX(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(i16, params[1], 0);
@@ -951,48 +1025,78 @@ fn clientStationX(params: [][]const u8) !void {
     }
 
     const axis_idx: mcl.Axis.Index.Line = @intCast(axis_id - 1);
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .get_x;
-    const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .axis_idx = @intCast(axis_idx),
-    };
+
     if (main_socket) |s| {
-        // The buffer might contain error message from the server
+        const SendCommand = protobuf_msg.SendCommand;
+        var command_msg: SendCommand = SendCommand.init(fba_allocator);
+        defer command_msg.deinit();
+        errdefer command_msg.deinit();
+        command_msg = .{
+            .command_kind = .{
+                .get_x = .{
+                    .line_idx = @intCast(line_idx),
+                    .axis_idx = @intCast(axis_idx),
+                },
+            },
+        };
+        const encoded = try command_msg.encode(fba_allocator);
+        defer fba_allocator.free(encoded);
+        s.writer().writeAll(encoded) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
         var buffer: [128]u8 = undefined;
-        sendMessage(kind, param, s) catch |e| {
+        const msg_len = s.receive(&buffer) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
             std.log.err("ConnectionClosedByServer", .{});
             s.close();
             try disconnectedClearence();
             return;
         };
-        waitSocketReceive(s, .RegisterX) catch |e| {
-            std.log.err("{s}", .{@errorName(e)});
-            s.close();
-            try disconnectedClearence();
-            return;
-        };
-        _ = s.receive(&buffer) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearence();
-            return;
-        };
-        // The first 4 bits are the message type, the following 13 bits are the
-        // message length. Actual message start after these bits
-        const msg_offset: usize = @bitSizeOf(u4) + @bitSizeOf(u13);
-        const msg = std.mem.readPackedInt(
-            @typeInfo(mcl.registers.X).@"struct".backing_integer.?,
-            &buffer,
-            msg_offset,
-            .little,
+        const x = try parseRegisterX(
+            buffer[0..msg_len],
+            fba_allocator,
         );
-        const x: mcl.registers.X = @bitCast(msg);
         std.log.info("{}", .{x});
     } else return error.ServerNotConnected;
+}
+
+fn parseRegisterY(
+    buffer: []const u8,
+    a: std.mem.Allocator,
+) !mcl.registers.Y {
+    const RegisterY = protobuf_msg.RegisterY;
+    const response: RegisterY = try RegisterY.decode(
+        buffer,
+        a,
+    );
+    defer response.deinit();
+    const y: mcl.registers.Y = .{
+        .cc_link_enable = response.cc_link_enable,
+        .start_command = response.start_command,
+        .reset_command_received = response.reset_command_received,
+        .axis_clear_carrier = response.axis_clear_carrier,
+        .clear_carrier = response.clear_carrier,
+        .axis_servo_release = response.axis_servo_release,
+        .servo_release = response.servo_release,
+        .emergency_stop = response.emergency_stop,
+        .temporary_pause = response.temporary_pause,
+        .clear_errors = response.clear_errors,
+        .reset_pull_carrier = .{
+            .axis1 = response.reset_pull_carrier.?.axis1,
+            .axis2 = response.reset_pull_carrier.?.axis2,
+            .axis3 = response.reset_pull_carrier.?.axis3,
+        },
+        .reset_push_carrier = .{
+            .axis1 = response.reset_push_carrier.?.axis1,
+            .axis2 = response.reset_push_carrier.?.axis2,
+            .axis3 = response.reset_push_carrier.?.axis3,
+        },
+    };
+    return y;
 }
 
 fn clientStationY(params: [][]const u8) !void {
@@ -1007,48 +1111,140 @@ fn clientStationY(params: [][]const u8) !void {
     }
 
     const axis_idx: mcl.Axis.Index.Line = @intCast(axis_id - 1);
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .get_y;
-    const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .axis_idx = @intCast(axis_idx),
-    };
     if (main_socket) |s| {
-        // The buffer might contain error message from the server
+        const SendCommand = protobuf_msg.SendCommand;
+        var command_msg: SendCommand = SendCommand.init(fba_allocator);
+        defer command_msg.deinit();
+        errdefer command_msg.deinit();
+        command_msg = .{
+            .command_kind = .{
+                .get_y = .{
+                    .line_idx = @intCast(line_idx),
+                    .axis_idx = @intCast(axis_idx),
+                },
+            },
+        };
+        const encoded = try command_msg.encode(fba_allocator);
+        defer fba_allocator.free(encoded);
+        s.writer().writeAll(encoded) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
         var buffer: [128]u8 = undefined;
-        sendMessage(kind, param, s) catch |e| {
+        const msg_len = s.receive(&buffer) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
             std.log.err("ConnectionClosedByServer", .{});
             s.close();
             try disconnectedClearence();
             return;
         };
-        waitSocketReceive(s, .RegisterY) catch |e| {
-            std.log.err("{s}", .{@errorName(e)});
-            s.close();
-            try disconnectedClearence();
-            return;
-        };
-        _ = s.receive(&buffer) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearence();
-            return;
-        };
-        // The first 4 bits are the message type, the following 13 bits are the
-        // message length. Actual message start after these bits
-        const msg_offset: usize = @bitSizeOf(u4) + @bitSizeOf(u13);
-        const msg = std.mem.readPackedInt(
-            @typeInfo(mcl.registers.Y).@"struct".backing_integer.?,
-            &buffer,
-            msg_offset,
-            .little,
+        const y = try parseRegisterY(
+            buffer[0..msg_len],
+            fba_allocator,
         );
-        const y: mcl.registers.Y = @bitCast(msg);
         std.log.info("{}", .{y});
     } else return error.ServerNotConnected;
+}
+
+fn parseRegisterWr(
+    buffer: []const u8,
+    a: std.mem.Allocator,
+) !mcl.registers.Wr {
+    const RegisterWr = protobuf_msg.RegisterWr;
+    const response: RegisterWr = try RegisterWr.decode(
+        buffer,
+        a,
+    );
+    defer response.deinit();
+    // wr.received_backward.kind type cannot be accessed within mcl library
+    comptime var kind_type: type = undefined;
+    inline for (@typeInfo(mcl.registers.Wr).@"struct".fields) |field| {
+        if (comptime std.mem.eql(u8, "received_backward", field.name)) {
+            inline for (@typeInfo(field.type).@"struct".fields) |inner_field| {
+                if (comptime std.mem.eql(u8, "kind", inner_field.name)) {
+                    kind_type = inner_field.type;
+                    break;
+                }
+            }
+            break;
+        }
+    }
+    const wr: mcl.registers.Wr = .{
+        .command_response = std.meta.stringToEnum(
+            mcl.registers.Wr.CommandResponseCode,
+            @tagName(response.command_response),
+        ) orelse return error.UnknownCommandResponse,
+        .received_backward = .{
+            .id = @intCast(response.received_backward.?.id),
+            .failed_bcc = response.received_backward.?.failed_bcc,
+            .kind = std.meta.stringToEnum(
+                kind_type,
+                @tagName(response.received_backward.?.kind),
+            ).?,
+        },
+        .received_forward = .{
+            .id = @intCast(response.received_forward.?.id),
+            .failed_bcc = response.received_forward.?.failed_bcc,
+            .kind = std.meta.stringToEnum(
+                kind_type,
+                @tagName(response.received_forward.?.kind),
+            ).?,
+        },
+        .carrier = .{
+            .axis1 = .{
+                .location = response.carrier.?.axis1.?.location,
+                .id = @intCast(response.carrier.?.axis1.?.id),
+                .arrived = response.carrier.?.axis1.?.arrived,
+                .auxiliary = response.carrier.?.axis1.?.auxiliary,
+                .enabled = response.carrier.?.axis1.?.enabled,
+                .quasi = response.carrier.?.axis1.?.quasi,
+                .cas = .{
+                    .enabled = response.carrier.?.axis1.?.cas.?.enabled,
+                    .triggered = response.carrier.?.axis1.?.cas.?.triggered,
+                },
+                .state = std.meta.stringToEnum(
+                    mcl.registers.Wr.Carrier.State,
+                    @tagName(response.carrier.?.axis1.?.state),
+                ).?,
+            },
+            .axis2 = .{
+                .location = response.carrier.?.axis2.?.location,
+                .id = @intCast(response.carrier.?.axis2.?.id),
+                .arrived = response.carrier.?.axis2.?.arrived,
+                .auxiliary = response.carrier.?.axis2.?.auxiliary,
+                .enabled = response.carrier.?.axis2.?.enabled,
+                .quasi = response.carrier.?.axis2.?.quasi,
+                .cas = .{
+                    .enabled = response.carrier.?.axis2.?.cas.?.enabled,
+                    .triggered = response.carrier.?.axis2.?.cas.?.triggered,
+                },
+                .state = std.meta.stringToEnum(
+                    mcl.registers.Wr.Carrier.State,
+                    @tagName(response.carrier.?.axis2.?.state),
+                ).?,
+            },
+            .axis3 = .{
+                .location = response.carrier.?.axis3.?.location,
+                .id = @intCast(response.carrier.?.axis3.?.id),
+                .arrived = response.carrier.?.axis3.?.arrived,
+                .auxiliary = response.carrier.?.axis3.?.auxiliary,
+                .enabled = response.carrier.?.axis3.?.enabled,
+                .quasi = response.carrier.?.axis3.?.quasi,
+                .cas = .{
+                    .enabled = response.carrier.?.axis3.?.cas.?.enabled,
+                    .triggered = response.carrier.?.axis3.?.cas.?.triggered,
+                },
+                .state = std.meta.stringToEnum(
+                    mcl.registers.Wr.Carrier.State,
+                    @tagName(response.carrier.?.axis3.?.state),
+                ).?,
+            },
+        },
+    };
+    return wr;
 }
 
 fn clientStationWr(params: [][]const u8) !void {
@@ -1063,48 +1259,83 @@ fn clientStationWr(params: [][]const u8) !void {
     }
 
     const axis_idx: mcl.Axis.Index.Line = @intCast(axis_id - 1);
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .get_wr;
-    const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .axis_idx = @intCast(axis_idx),
-    };
     if (main_socket) |s| {
-        // The buffer might contain error message from the server
+        const SendCommand = protobuf_msg.SendCommand;
+        var command_msg: SendCommand = SendCommand.init(fba_allocator);
+        defer command_msg.deinit();
+        errdefer command_msg.deinit();
+        command_msg = .{
+            .command_kind = .{
+                .get_wr = .{
+                    .line_idx = @intCast(line_idx),
+                    .axis_idx = @intCast(axis_idx),
+                },
+            },
+        };
+        const encoded = try command_msg.encode(fba_allocator);
+        defer fba_allocator.free(encoded);
+        s.writer().writeAll(encoded) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
         var buffer: [128]u8 = undefined;
-        sendMessage(kind, param, s) catch |e| {
+        const msg_len = s.receive(&buffer) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
             std.log.err("ConnectionClosedByServer", .{});
             s.close();
             try disconnectedClearence();
             return;
         };
-        waitSocketReceive(s, .RegisterWr) catch |e| {
-            std.log.err("{s}", .{@errorName(e)});
-            s.close();
-            try disconnectedClearence();
-            return;
-        };
-        _ = s.receive(&buffer) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearence();
-            return;
-        };
-        // The first 4 bits are the message type, the following 13 bits are the
-        // message length. Actual message start after these bits
-        const msg_offset: usize = @bitSizeOf(u4) + @bitSizeOf(u13);
-        const msg = std.mem.readPackedInt(
-            @typeInfo(mcl.registers.Wr).@"struct".backing_integer.?,
-            &buffer,
-            msg_offset,
-            .little,
+        const wr = try parseRegisterWr(
+            buffer[0..msg_len],
+            fba_allocator,
         );
-        const wr: mcl.registers.Wr = @bitCast(msg);
         std.log.info("{}", .{wr});
     } else return error.ServerNotConnected;
+}
+
+fn parseRegisterWw(
+    buffer: []const u8,
+    a: std.mem.Allocator,
+) !mcl.registers.Ww {
+    const RegisterWw = protobuf_msg.RegisterWw;
+    const response: RegisterWw = try RegisterWw.decode(
+        buffer,
+        a,
+    );
+    defer response.deinit();
+    const ww: mcl.registers.Ww = .{
+        .command = std.meta.stringToEnum(
+            mcl.registers.Ww.Command,
+            @tagName(response.command),
+        ).?,
+        .axis = @intCast(response.axis),
+        .carrier = .{
+            .id = @intCast(response.carrier.?.id),
+            .enable_cas = response.carrier.?.enable_cas,
+            .isolate_link_next_axis = response.carrier.?.isolate_link_next_axis,
+            .isolate_link_prev_axis = response.carrier.?.isolate_link_prev_axis,
+            .speed = @intCast(response.carrier.?.speed),
+            .acceleration = @intCast(response.carrier.?.acceleration),
+            .target = switch (response.command) {
+                .SpeedMoveCarrierAxis,
+                .PositionMoveCarrierAxis,
+                => .{ .u32 = @intCast(response.carrier.?.target.?.u32) },
+                .SpeedMoveCarrierDistance,
+                .SpeedMoveCarrierLocation,
+                .PositionMoveCarrierDistance,
+                .PositionMoveCarrierLocation,
+                .PullTransitionLocationBackward,
+                .PullTransitionLocationForward,
+                => .{ .f32 = response.carrier.?.target.?.f32 },
+                else => .{ .u32 = 0 },
+            },
+        },
+    };
+    return ww;
 }
 
 fn clientStationWw(params: [][]const u8) !void {
@@ -1119,46 +1350,41 @@ fn clientStationWw(params: [][]const u8) !void {
     }
 
     const axis_idx: mcl.Axis.Index.Line = @intCast(axis_id - 1);
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .get_ww;
-    const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .axis_idx = @intCast(axis_idx),
-    };
+
     if (main_socket) |s| {
-        // The buffer might contain error message from the server
+        const SendCommand = protobuf_msg.SendCommand;
+        var command_msg: SendCommand = SendCommand.init(fba_allocator);
+        defer command_msg.deinit();
+        errdefer command_msg.deinit();
+        command_msg = .{
+            .command_kind = .{
+                .get_ww = .{
+                    .line_idx = @intCast(line_idx),
+                    .axis_idx = @intCast(axis_idx),
+                },
+            },
+        };
+        const encoded = try command_msg.encode(fba_allocator);
+        defer fba_allocator.free(encoded);
+        s.writer().writeAll(encoded) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
         var buffer: [128]u8 = undefined;
-        sendMessage(kind, param, s) catch |e| {
+        const msg_len = s.receive(&buffer) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
             std.log.err("ConnectionClosedByServer", .{});
             s.close();
             try disconnectedClearence();
             return;
         };
-        waitSocketReceive(s, .RegisterWw) catch |e| {
-            std.log.err("{s}", .{@errorName(e)});
-            s.close();
-            try disconnectedClearence();
-            return;
-        };
-        _ = s.receive(&buffer) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearence();
-            return;
-        };
-        // The first 4 bits are the message type, the following 13 bits are the
-        // message length. Actual message start after these bits
-        const msg_offset: usize = @bitSizeOf(u4) + @bitSizeOf(u13);
-        const msg = std.mem.readPackedInt(
-            @typeInfo(mcl.registers.Ww).@"struct".backing_integer.?,
-            &buffer,
-            msg_offset,
-            .little,
+        const ww = try parseRegisterWw(
+            buffer[0..msg_len],
+            fba_allocator,
         );
-        const ww: mcl.registers.Ww = @bitCast(msg);
         std.log.info("{}", .{ww});
     } else return error.ServerNotConnected;
 }
@@ -1176,23 +1402,43 @@ fn clientAxisCarrier(params: [][]const u8) !void {
     const axis_idx: mcl.Axis.Index.Line = @intCast(axis_id - 1);
 
     if (main_socket) |s| {
-        // Get carrier status from the server
-        const carrier_param: mmc.ParamType(.get_status) = .{
-            .kind = .Carrier,
-            .line_idx = @truncate(line_idx),
-            .axis_idx = axis_idx,
-            .carrier_id = 0,
+        const SendCommand = protobuf_msg.SendCommand;
+        var command_msg: SendCommand = SendCommand.init(fba_allocator);
+        defer command_msg.deinit();
+        errdefer command_msg.deinit();
+        command_msg = .{
+            .command_kind = .{
+                .get_status = .{
+                    .status_kind = .{
+                        .carrier = .{
+                            .line_idx = @intCast(line_idx),
+                            .axis_idx = @intCast(axis_idx),
+                        },
+                    },
+                },
+            },
         };
-        const carrier = parseCarrierStatus(
-            carrier_param,
-            s,
-        ) catch |e| {
+        const encoded = try command_msg.encode(fba_allocator);
+        defer fba_allocator.free(encoded);
+        s.writer().writeAll(encoded) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
             std.log.err("ConnectionClosedByServer", .{});
             s.close();
             try disconnectedClearence();
             return;
         };
+        var buffer: [128]u8 = undefined;
+        const msg_len = s.receive(&buffer) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        const carrier = try parseCarrierStatus(
+            buffer[0..msg_len],
+            fba_allocator,
+        );
         if (carrier.id == 0) {
             std.log.info(
                 "No carrier recognized on axis {d}.\n",
@@ -1220,22 +1466,43 @@ fn clientAssertLocation(params: [][]const u8) !void {
 
     if (main_socket) |s| {
         // Get carrier status from the server
-        const carrier_param: mmc.ParamType(.get_status) = .{
-            .kind = .Carrier,
-            .line_idx = @truncate(line_idx),
-            .axis_idx = 0,
-            .carrier_id = carrier_id,
+        const SendCommand = protobuf_msg.SendCommand;
+        var command_msg: SendCommand = SendCommand.init(fba_allocator);
+        defer command_msg.deinit();
+        errdefer command_msg.deinit();
+        command_msg = .{
+            .command_kind = .{
+                .get_status = .{
+                    .status_kind = .{
+                        .carrier = .{
+                            .line_idx = @intCast(line_idx),
+                            .carrier_id = @intCast(carrier_id),
+                        },
+                    },
+                },
+            },
         };
-        const carrier = parseCarrierStatus(
-            carrier_param,
-            s,
-        ) catch |e| {
+        const encoded = try command_msg.encode(fba_allocator);
+        defer fba_allocator.free(encoded);
+        s.writer().writeAll(encoded) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
             std.log.err("ConnectionClosedByServer", .{});
             s.close();
             try disconnectedClearence();
             return;
         };
+        var buffer: [128]u8 = undefined;
+        const msg_len = s.receive(&buffer) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        const carrier = try parseCarrierStatus(
+            buffer[0..msg_len],
+            fba_allocator,
+        );
         const location: f32 = carrier.location;
         if (location < expected_location - location_thr or
             location > expected_location + location_thr)
@@ -1254,15 +1521,22 @@ fn clientAxisReleaseServo(params: [][]const u8) !void {
     }
 
     const axis_idx: mcl.Axis.Index.Line = @intCast(axis_id - 1);
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .release_axis_servo;
-    const param: mmc.ParamType(kind) = .{
-        .line_idx = @intCast(line_idx),
-        .axis_idx = axis_idx,
-    };
     if (main_socket) |s| {
-        sendMessage(kind, param, s) catch |e| {
+        const SendCommand = protobuf_msg.SendCommand;
+        var command_msg: SendCommand = SendCommand.init(fba_allocator);
+        defer command_msg.deinit();
+        errdefer command_msg.deinit();
+        command_msg = .{
+            .command_kind = .{
+                .release_axis_servo = .{
+                    .line_idx = @intCast(line_idx),
+                    .axis_idx = @intCast(axis_idx),
+                },
+            },
+        };
+        const encoded = try command_msg.encode(fba_allocator);
+        defer fba_allocator.free(encoded);
+        s.writer().writeAll(encoded) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
             std.log.err("ConnectionClosedByServer", .{});
             s.close();
@@ -1278,23 +1552,40 @@ fn clientClearErrors(params: [][]const u8) !void {
     const line_id: mcl.Line.Id = @intCast(line_idx + 1);
     const line = mcl.lines[line_idx];
 
-    var axis_id: mcl.Axis.Id.Line = 0;
+    var axis_id: ?mcl.Axis.Id.Line = null;
     if (params[1].len > 0) {
         axis_id = try std.fmt.parseInt(
             mcl.Axis.Id.Line,
             params[1],
             0,
         );
-        if (axis_id < 1 or axis_id > line.axes.len) {
+        if (axis_id.? < 1 or axis_id.? > line.axes.len) {
             return error.InvalidAxis;
         }
     }
-    const param: mmc.ParamType(.clear_errors) = .{
-        .line_id = line_id,
-        .axis_id = axis_id,
-    };
+    const axis_idx: ?mcl.Axis.Index.Line = if (axis_id) |id|
+        @intCast(id - 1)
+    else
+        null;
     if (main_socket) |s| {
-        sendMessage(.clear_errors, param, s) catch |e| {
+        const SendCommand = protobuf_msg.SendCommand;
+        var command_msg: SendCommand = SendCommand.init(fba_allocator);
+        defer command_msg.deinit();
+        errdefer command_msg.deinit();
+        command_msg = .{
+            .command_kind = .{
+                .clear_errors = .{
+                    .line_idx = @intCast(line_idx),
+                    .axis_idx = if (axis_idx) |idx|
+                        @intCast(idx)
+                    else
+                        null,
+                },
+            },
+        };
+        const encoded = try command_msg.encode(fba_allocator);
+        defer fba_allocator.free(encoded);
+        s.writer().writeAll(encoded) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
             std.log.err("ConnectionClosedByServer", .{});
             s.close();
@@ -1311,23 +1602,40 @@ fn clientClearCarrierInfo(params: [][]const u8) !void {
     const line_id: mcl.Line.Id = @intCast(line_idx + 1);
     const line = mcl.lines[line_idx];
 
-    var axis_id: mcl.Axis.Id.Line = 0;
+    var axis_id: ?mcl.Axis.Id.Line = null;
     if (params[1].len > 0) {
         axis_id = try std.fmt.parseInt(
             mcl.Axis.Id.Line,
             params[1],
             0,
         );
-        if (axis_id < 1 or axis_id > line.axes.len) {
+        if (axis_id.? < 1 or axis_id.? > line.axes.len) {
             return error.InvalidAxis;
         }
     }
-    const param: mmc.ParamType(.clear_carrier_info) = .{
-        .line_id = line_id,
-        .axis_id = axis_id,
-    };
+    const axis_idx: ?mcl.Axis.Index.Line = if (axis_id) |id|
+        @intCast(id - 1)
+    else
+        null;
     if (main_socket) |s| {
-        sendMessage(.clear_carrier_info, param, s) catch |e| {
+        const SendCommand = protobuf_msg.SendCommand;
+        var command_msg: SendCommand = SendCommand.init(fba_allocator);
+        defer command_msg.deinit();
+        errdefer command_msg.deinit();
+        command_msg = .{
+            .command_kind = .{
+                .clear_carrier_info = .{
+                    .line_idx = @intCast(line_idx),
+                    .axis_idx = if (axis_idx) |idx|
+                        @intCast(idx)
+                    else
+                        null,
+                },
+            },
+        };
+        const encoded = try command_msg.encode(fba_allocator);
+        defer fba_allocator.free(encoded);
+        s.writer().writeAll(encoded) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
             std.log.err("ConnectionClosedByServer", .{});
             s.close();
@@ -1347,22 +1655,43 @@ fn clientCarrierLocation(params: [][]const u8) !void {
 
     if (main_socket) |s| {
         // Get carrier status from the server
-        const carrier_param: mmc.ParamType(.get_status) = .{
-            .kind = .Carrier,
-            .line_idx = @truncate(line_idx),
-            .axis_idx = 0,
-            .carrier_id = carrier_id,
+        const SendCommand = protobuf_msg.SendCommand;
+        var command_msg: SendCommand = SendCommand.init(fba_allocator);
+        defer command_msg.deinit();
+        errdefer command_msg.deinit();
+        command_msg = .{
+            .command_kind = .{
+                .get_status = .{
+                    .status_kind = .{
+                        .carrier = .{
+                            .line_idx = @intCast(line_idx),
+                            .carrier_id = @intCast(carrier_id),
+                        },
+                    },
+                },
+            },
         };
-        const carrier = parseCarrierStatus(
-            carrier_param,
-            s,
-        ) catch |e| {
+        const encoded = try command_msg.encode(fba_allocator);
+        defer fba_allocator.free(encoded);
+        s.writer().writeAll(encoded) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
             std.log.err("ConnectionClosedByServer", .{});
             s.close();
             try disconnectedClearence();
             return;
         };
+        var buffer: [128]u8 = undefined;
+        const msg_len = s.receive(&buffer) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        const carrier = try parseCarrierStatus(
+            buffer[0..msg_len],
+            fba_allocator,
+        );
         if (carrier.id == 0) {
             std.log.err(
                 "Carrier not found",
@@ -1385,22 +1714,43 @@ fn clientCarrierAxis(params: [][]const u8) !void {
     const line_idx: usize = try matchLine(line_names, line_name);
     if (main_socket) |s| {
         // Get carrier status from the server
-        const carrier_param: mmc.ParamType(.get_status) = .{
-            .kind = .Carrier,
-            .line_idx = @truncate(line_idx),
-            .axis_idx = 0,
-            .carrier_id = carrier_id,
+        const SendCommand = protobuf_msg.SendCommand;
+        var command_msg: SendCommand = SendCommand.init(fba_allocator);
+        defer command_msg.deinit();
+        errdefer command_msg.deinit();
+        command_msg = .{
+            .command_kind = .{
+                .get_status = .{
+                    .status_kind = .{
+                        .carrier = .{
+                            .line_idx = @intCast(line_idx),
+                            .carrier_id = @intCast(carrier_id),
+                        },
+                    },
+                },
+            },
         };
-        const carrier = parseCarrierStatus(
-            carrier_param,
-            s,
-        ) catch |e| {
+        const encoded = try command_msg.encode(fba_allocator);
+        defer fba_allocator.free(encoded);
+        s.writer().writeAll(encoded) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
             std.log.err("ConnectionClosedByServer", .{});
             s.close();
             try disconnectedClearence();
             return;
         };
+        var buffer: [128]u8 = undefined;
+        const msg_len = s.receive(&buffer) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        const carrier = try parseCarrierStatus(
+            buffer[0..msg_len],
+            fba_allocator,
+        );
         if (carrier.id == 0) {
             std.log.err(
                 "Carrier not found",
@@ -1422,8 +1772,7 @@ fn clientCarrierAxis(params: [][]const u8) !void {
 
 fn clientHallStatus(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    var axis_id: mcl.Axis.Id.Line = 0;
-    var axis_idx: mcl.Axis.Index.Line = undefined;
+    var axis_id: ?mcl.Axis.Id.Line = null;
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
     if (params[1].len > 0) {
@@ -1432,35 +1781,62 @@ fn clientHallStatus(params: [][]const u8) !void {
             params[1],
             0,
         );
-        if (axis_id < 1 or axis_id > line.axes.len) {
+        if (axis_id.? < 1 or axis_id.? > line.axes.len) {
             return error.InvalidAxis;
         }
-        axis_idx = @intCast(axis_id - 1);
     }
+    const axis_idx: ?mcl.Axis.Index.Line = if (axis_id != null)
+        @intCast(axis_id.? - 1)
+    else
+        axis_id;
 
     if (main_socket) |s| {
-        if (axis_id > 0) {
+        if (axis_idx) |idx| {
             // Get hall sensor status from the server
-            const hall_param: mmc.ParamType(.get_status) = .{
-                .kind = .Hall,
-                .line_idx = @truncate(line_idx),
-                .axis_idx = axis_idx,
-                .carrier_id = 0,
+            const SendCommand = protobuf_msg.SendCommand;
+            var command_msg: SendCommand = SendCommand.init(fba_allocator);
+            defer command_msg.deinit();
+            errdefer command_msg.deinit();
+            command_msg = .{
+                .command_kind = .{
+                    .get_status = .{
+                        .status_kind = .{
+                            .hall = .{
+                                .line_idx = @intCast(line_idx),
+                                .axis_idx = if (axis_idx != null)
+                                    @intCast(idx)
+                                else
+                                    null,
+                            },
+                        },
+                    },
+                },
             };
-            const hall_sensor = parseHallStatus(
-                hall_param,
-                s,
-            ) catch |e| {
+            const encoded = try command_msg.encode(fba_allocator);
+            defer fba_allocator.free(encoded);
+            s.writer().writeAll(encoded) catch |e| {
                 std.log.debug("{s}", .{@errorName(e)});
                 std.log.err("ConnectionClosedByServer", .{});
                 s.close();
                 try disconnectedClearence();
                 return;
             };
+            var buffer: [128]u8 = undefined;
+            const msg_len = s.receive(&buffer) catch |e| {
+                std.log.debug("{s}", .{@errorName(e)});
+                std.log.err("ConnectionClosedByServer", .{});
+                s.close();
+                try disconnectedClearence();
+                return;
+            };
+            const hall_sensor = try parseHallStatus(
+                buffer[0..msg_len],
+                fba_allocator,
+            );
             std.log.info(
                 "Axis {} Hall Sensor:\n\t FRONT - {s}\n\t BACK - {s}",
                 .{
-                    axis_id,
+                    axis_id.?,
                     if (hall_sensor.front) "ON" else "OFF",
                     if (hall_sensor.back) "ON" else "OFF",
                 },
@@ -1470,22 +1846,43 @@ fn clientHallStatus(params: [][]const u8) !void {
 
         for (line.axes) |axis| {
             // Get carrier status from the server
-            const hall_param: mmc.ParamType(.get_status) = .{
-                .kind = .Hall,
-                .line_idx = @truncate(line_idx),
-                .axis_idx = axis.index.line,
-                .carrier_id = 0,
+            const SendCommand = protobuf_msg.SendCommand;
+            var command_msg: SendCommand = SendCommand.init(fba_allocator);
+            defer command_msg.deinit();
+            errdefer command_msg.deinit();
+            command_msg = .{
+                .command_kind = .{
+                    .get_status = .{
+                        .status_kind = .{
+                            .hall = .{
+                                .line_idx = @intCast(line_idx),
+                                .axis_idx = @intCast(axis.index.line),
+                            },
+                        },
+                    },
+                },
             };
-            const hall_sensor = parseHallStatus(
-                hall_param,
-                s,
-            ) catch |e| {
+            const encoded = try command_msg.encode(fba_allocator);
+            defer fba_allocator.free(encoded);
+            s.writer().writeAll(encoded) catch |e| {
                 std.log.debug("{s}", .{@errorName(e)});
                 std.log.err("ConnectionClosedByServer", .{});
                 s.close();
                 try disconnectedClearence();
                 return;
             };
+            var buffer: [128]u8 = undefined;
+            const msg_len = s.receive(&buffer) catch |e| {
+                std.log.debug("{s}", .{@errorName(e)});
+                std.log.err("ConnectionClosedByServer", .{});
+                s.close();
+                try disconnectedClearence();
+                return;
+            };
+            const hall_sensor = try parseHallStatus(
+                buffer[0..msg_len],
+                fba_allocator,
+            );
             std.log.info(
                 "Axis {} Hall Sensor:\n\t FRONT - {s}\n\t BACK - {s}",
                 .{
@@ -1532,22 +1929,43 @@ fn clientAssertHall(params: [][]const u8) !void {
 
     if (main_socket) |s| {
         // Get hall status from the server
-        const hall_param: mmc.ParamType(.get_status) = .{
-            .kind = .Hall,
-            .line_idx = @truncate(line_idx),
-            .axis_idx = axis_idx,
-            .carrier_id = 0,
+        const SendCommand = protobuf_msg.SendCommand;
+        var command_msg: SendCommand = SendCommand.init(fba_allocator);
+        defer command_msg.deinit();
+        errdefer command_msg.deinit();
+        command_msg = .{
+            .command_kind = .{
+                .get_status = .{
+                    .status_kind = .{
+                        .hall = .{
+                            .line_idx = @intCast(line_idx),
+                            .axis_idx = @intCast(axis_idx),
+                        },
+                    },
+                },
+            },
         };
-        const hall_sensor = parseHallStatus(
-            hall_param,
-            s,
-        ) catch |e| {
+        const encoded = try command_msg.encode(fba_allocator);
+        defer fba_allocator.free(encoded);
+        s.writer().writeAll(encoded) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
             std.log.err("ConnectionClosedByServer", .{});
             s.close();
             try disconnectedClearence();
             return;
         };
+        var buffer: [128]u8 = undefined;
+        const msg_len = s.receive(&buffer) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
+        const hall_sensor = try parseHallStatus(
+            buffer[0..msg_len],
+            fba_allocator,
+        );
         switch (side) {
             .backward => {
                 if (hall_sensor.back != alarm_on) {
@@ -1564,12 +1982,19 @@ fn clientAssertHall(params: [][]const u8) !void {
 }
 
 fn clientMclReset(_: [][]const u8) !void {
-    const kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.? = .reset_mcl;
-    const param = {};
     if (main_socket) |s| {
-        sendMessage(kind, param, s) catch |e| {
+        const SendCommand = protobuf_msg.SendCommand;
+        var command_msg: SendCommand = SendCommand.init(fba_allocator);
+        defer command_msg.deinit();
+        errdefer command_msg.deinit();
+        command_msg = .{
+            .command_kind = .{
+                .reset_mcl = .{},
+            },
+        };
+        const encoded = try command_msg.encode(fba_allocator);
+        defer fba_allocator.free(encoded);
+        s.writer().writeAll(encoded) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
             std.log.err("ConnectionClosedByServer", .{});
             s.close();
@@ -1583,10 +2008,15 @@ fn clientCalibrate(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx: usize = try matchLine(line_names, line_name);
 
-    var param = std.mem.zeroes(mmc.ParamType(.set_command));
-    param.command_code = .Calibration;
-    param.line_idx = @truncate(line_idx);
-    param.carrier_id = 1;
+    const SetCommand = protobuf_msg.SendCommand.SetCommand;
+    var param: SetCommand = SetCommand.init(fba_allocator);
+    defer param.deinit();
+    errdefer param.deinit();
+    param = .{
+        .command_code = .Calibration,
+        .line_idx = @intCast(line_idx),
+        .carrier_id = 1,
+    };
     try sendMessageAndWaitReceived(
         param,
         @truncate(line_idx),
@@ -1596,9 +2026,15 @@ fn clientCalibrate(params: [][]const u8) !void {
 fn clientSetLineZero(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx: usize = try matchLine(line_names, line_name);
-    var param = std.mem.zeroes(mmc.ParamType(.set_command));
-    param.command_code = .SetLineZero;
-    param.line_idx = @truncate(line_idx);
+    const SetCommand = protobuf_msg.SendCommand.SetCommand;
+    var param: SetCommand = SetCommand.init(fba_allocator);
+    defer param.deinit();
+    errdefer param.deinit();
+    param = .{
+        .command_code = .SetLineZero,
+        .line_idx = @intCast(line_idx),
+        .carrier_id = 1,
+    };
     try sendMessageAndWaitReceived(
         param,
         @truncate(line_idx),
@@ -1629,31 +2065,36 @@ fn clientIsolate(params: [][]const u8) !void {
         try std.fmt.parseInt(u10, params[3], 0)
     else
         0;
-    const link_axis: mmc.Direction = link: {
+    const SetCommand = protobuf_msg.SendCommand.SetCommand;
+    const link_axis: ?SetCommand.Direction = link: {
         if (params[4].len > 0) {
             if (std.ascii.eqlIgnoreCase("next", params[4]) or
                 std.ascii.eqlIgnoreCase("right", params[4]))
             {
-                break :link .forward;
+                break :link .Forward;
             } else if (std.ascii.eqlIgnoreCase("prev", params[4]) or
                 std.ascii.eqlIgnoreCase("left", params[4]))
             {
-                break :link .backward;
+                break :link .Backward;
             } else return error.InvalidIsolateLinkAxis;
-        } else break :link .no_direction;
+        } else break :link null;
     };
 
     const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
 
-    var param = std.mem.zeroes(mmc.ParamType(.set_command));
-    param.command_code = if (dir == .forward)
-        .IsolateForward
-    else
-        .IsolateBackward;
-    param.line_idx = @truncate(line_idx);
-    param.axis_idx = axis_index;
-    param.carrier_id = carrier_id;
-    param.link_axis = link_axis;
+    var param: SetCommand = SetCommand.init(fba_allocator);
+    defer param.deinit();
+    errdefer param.deinit();
+    param = .{
+        .command_code = if (dir == .forward)
+            .IsolateForward
+        else
+            .IsolateBackward,
+        .line_idx = @intCast(line_idx),
+        .axis_idx = @intCast(axis_index),
+        .carrier_id = carrier_id,
+        .link_axis = link_axis,
+    };
     try sendMessageAndWaitReceived(
         param,
         @truncate(line_idx),
@@ -1678,22 +2119,43 @@ fn clientWaitIsolate(params: [][]const u8) !void {
                 wait_timer.read() > timeout * std.time.ns_per_ms)
                 return error.WaitTimeout;
             try command.checkCommandInterrupt();
-            const carrier_param: mmc.ParamType(.get_status) = .{
-                .kind = .Carrier,
-                .line_idx = @truncate(line_idx),
-                .axis_idx = 0,
-                .carrier_id = carrier_id,
+            const SendCommand = protobuf_msg.SendCommand;
+            var command_msg: SendCommand = SendCommand.init(fba_allocator);
+            defer command_msg.deinit();
+            errdefer command_msg.deinit();
+            command_msg = .{
+                .command_kind = .{
+                    .get_status = .{
+                        .status_kind = .{
+                            .carrier = .{
+                                .line_idx = @intCast(line_idx),
+                                .carrier_id = @intCast(carrier_id),
+                            },
+                        },
+                    },
+                },
             };
-            const carrier = parseCarrierStatus(
-                carrier_param,
-                s,
-            ) catch |e| {
+            const encoded = try command_msg.encode(fba_allocator);
+            defer fba_allocator.free(encoded);
+            s.writer().writeAll(encoded) catch |e| {
                 std.log.debug("{s}", .{@errorName(e)});
                 std.log.err("ConnectionClosedByServer", .{});
                 s.close();
                 try disconnectedClearence();
                 return;
             };
+            var buffer: [128]u8 = undefined;
+            const msg_len = s.receive(&buffer) catch |e| {
+                std.log.debug("{s}", .{@errorName(e)});
+                std.log.err("ConnectionClosedByServer", .{});
+                s.close();
+                try disconnectedClearence();
+                return;
+            };
+            const carrier = try parseCarrierStatus(
+                buffer[0..msg_len],
+                fba_allocator,
+            );
             std.log.debug(
                 "line: {s}, carrier id: {}, carrier state: {s}",
                 .{ line_name, carrier.id, @tagName(carrier.state) },
@@ -1722,22 +2184,43 @@ fn clientWaitMoveCarrier(params: [][]const u8) !void {
                 wait_timer.read() > timeout * std.time.ns_per_ms)
                 return error.WaitTimeout;
             try command.checkCommandInterrupt();
-            const carrier_param: mmc.ParamType(.get_status) = .{
-                .kind = .Carrier,
-                .line_idx = @truncate(line_idx),
-                .axis_idx = 0,
-                .carrier_id = carrier_id,
+            const SendCommand = protobuf_msg.SendCommand;
+            var command_msg: SendCommand = SendCommand.init(fba_allocator);
+            defer command_msg.deinit();
+            errdefer command_msg.deinit();
+            command_msg = .{
+                .command_kind = .{
+                    .get_status = .{
+                        .status_kind = .{
+                            .carrier = .{
+                                .line_idx = @intCast(line_idx),
+                                .carrier_id = @intCast(carrier_id),
+                            },
+                        },
+                    },
+                },
             };
-            const carrier = parseCarrierStatus(
-                carrier_param,
-                s,
-            ) catch |e| {
+            const encoded = try command_msg.encode(fba_allocator);
+            defer fba_allocator.free(encoded);
+            s.writer().writeAll(encoded) catch |e| {
                 std.log.debug("{s}", .{@errorName(e)});
                 std.log.err("ConnectionClosedByServer", .{});
                 s.close();
                 try disconnectedClearence();
                 return;
             };
+            var buffer: [128]u8 = undefined;
+            const msg_len = s.receive(&buffer) catch |e| {
+                std.log.debug("{s}", .{@errorName(e)});
+                std.log.err("ConnectionClosedByServer", .{});
+                s.close();
+                try disconnectedClearence();
+                return;
+            };
+            const carrier = try parseCarrierStatus(
+                buffer[0..msg_len],
+                fba_allocator,
+            );
             std.log.debug(
                 "line: {s}, carrier id: {}, carrier state: {s}",
                 .{ line_name, carrier.id, @tagName(carrier.state) },
@@ -1761,13 +2244,18 @@ fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
     }
     const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
 
-    var param = std.mem.zeroes(mmc.ParamType(.set_command));
-    param.command_code = .PositionMoveCarrierAxis;
-    param.line_idx = @truncate(line_idx);
-    param.axis_idx = axis_index;
-    param.carrier_id = carrier_id;
-    param.speed = line_speeds[line_idx];
-    param.acceleration = line_accelerations[line_idx];
+    const SetCommand = protobuf_msg.SendCommand.SetCommand;
+    var param: SetCommand = SetCommand.init(fba_allocator);
+    defer param.deinit();
+    errdefer param.deinit();
+    param = .{
+        .command_code = .PositionMoveCarrierAxis,
+        .line_idx = @intCast(line_idx),
+        .axis_idx = @intCast(axis_index),
+        .carrier_id = carrier_id,
+        .speed = @intCast(line_speeds[line_idx]),
+        .acceleration = @intCast(line_accelerations[line_idx]),
+    };
     try sendMessageAndWaitReceived(
         param,
         @truncate(line_idx),
@@ -1782,13 +2270,18 @@ fn clientCarrierPosMoveLocation(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
 
-    var param = std.mem.zeroes(mmc.ParamType(.set_command));
-    param.command_code = .PositionMoveCarrierLocation;
-    param.line_idx = @truncate(line_idx);
-    param.location_distance = location;
-    param.carrier_id = carrier_id;
-    param.speed = line_speeds[line_idx];
-    param.acceleration = line_accelerations[line_idx];
+    const SetCommand = protobuf_msg.SendCommand.SetCommand;
+    var param: SetCommand = SetCommand.init(fba_allocator);
+    defer param.deinit();
+    errdefer param.deinit();
+    param = .{
+        .command_code = .PositionMoveCarrierLocation,
+        .line_idx = @intCast(line_idx),
+        .location_distance = location,
+        .carrier_id = carrier_id,
+        .speed = @intCast(line_speeds[line_idx]),
+        .acceleration = @intCast(line_accelerations[line_idx]),
+    };
     try sendMessageAndWaitReceived(
         param,
         @truncate(line_idx),
@@ -1806,13 +2299,18 @@ fn clientCarrierPosMoveDistance(params: [][]const u8) !void {
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     const line_idx: usize = try matchLine(line_names, line_name);
 
-    var param = std.mem.zeroes(mmc.ParamType(.set_command));
-    param.command_code = .PositionMoveCarrierDistance;
-    param.line_idx = @truncate(line_idx);
-    param.location_distance = distance;
-    param.carrier_id = carrier_id;
-    param.speed = line_speeds[line_idx];
-    param.acceleration = line_accelerations[line_idx];
+    const SetCommand = protobuf_msg.SendCommand.SetCommand;
+    var param: SetCommand = SetCommand.init(fba_allocator);
+    defer param.deinit();
+    errdefer param.deinit();
+    param = .{
+        .command_code = .PositionMoveCarrierDistance,
+        .line_idx = @intCast(line_idx),
+        .location_distance = distance,
+        .carrier_id = carrier_id,
+        .speed = @intCast(line_speeds[line_idx]),
+        .acceleration = @intCast(line_accelerations[line_idx]),
+    };
     try sendMessageAndWaitReceived(
         param,
         @truncate(line_idx),
@@ -1832,13 +2330,18 @@ fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
 
     const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
 
-    var param = std.mem.zeroes(mmc.ParamType(.set_command));
-    param.command_code = .SpeedMoveCarrierAxis;
-    param.line_idx = @truncate(line_idx);
-    param.axis_idx = axis_index;
-    param.carrier_id = carrier_id;
-    param.speed = line_speeds[line_idx];
-    param.acceleration = line_accelerations[line_idx];
+    const SetCommand = protobuf_msg.SendCommand.SetCommand;
+    var param: SetCommand = SetCommand.init(fba_allocator);
+    defer param.deinit();
+    errdefer param.deinit();
+    param = .{
+        .command_code = .SpeedMoveCarrierAxis,
+        .line_idx = @intCast(line_idx),
+        .axis_idx = @intCast(axis_index),
+        .carrier_id = carrier_id,
+        .speed = @intCast(line_speeds[line_idx]),
+        .acceleration = @intCast(line_accelerations[line_idx]),
+    };
     try sendMessageAndWaitReceived(
         param,
         @truncate(line_idx),
@@ -1853,13 +2356,18 @@ fn clientCarrierSpdMoveLocation(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
 
-    var param = std.mem.zeroes(mmc.ParamType(.set_command));
-    param.command_code = .SpeedMoveCarrierLocation;
-    param.line_idx = @truncate(line_idx);
-    param.location_distance = location;
-    param.carrier_id = carrier_id;
-    param.speed = line_speeds[line_idx];
-    param.acceleration = line_accelerations[line_idx];
+    const SetCommand = protobuf_msg.SendCommand.SetCommand;
+    var param: SetCommand = SetCommand.init(fba_allocator);
+    defer param.deinit();
+    errdefer param.deinit();
+    param = .{
+        .command_code = .SpeedMoveCarrierLocation,
+        .line_idx = @intCast(line_idx),
+        .location_distance = location,
+        .carrier_id = carrier_id,
+        .speed = @intCast(line_speeds[line_idx]),
+        .acceleration = @intCast(line_accelerations[line_idx]),
+    };
     try sendMessageAndWaitReceived(
         param,
         @truncate(line_idx),
@@ -1877,13 +2385,18 @@ fn clientCarrierSpdMoveDistance(params: [][]const u8) !void {
     }
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
-    var param = std.mem.zeroes(mmc.ParamType(.set_command));
-    param.command_code = .SpeedMoveCarrierDistance;
-    param.line_idx = @truncate(line_idx);
-    param.location_distance = distance;
-    param.carrier_id = carrier_id;
-    param.speed = line_speeds[line_idx];
-    param.acceleration = line_accelerations[line_idx];
+    const SetCommand = protobuf_msg.SendCommand.SetCommand;
+    var param: SetCommand = SetCommand.init(fba_allocator);
+    defer param.deinit();
+    errdefer param.deinit();
+    param = .{
+        .command_code = .SpeedMoveCarrierDistance,
+        .line_idx = @intCast(line_idx),
+        .location_distance = distance,
+        .carrier_id = carrier_id,
+        .speed = @intCast(line_speeds[line_idx]),
+        .acceleration = @intCast(line_accelerations[line_idx]),
+    };
     try sendMessageAndWaitReceived(
         param,
         @truncate(line_idx),
@@ -1902,17 +2415,22 @@ fn clientCarrierPushForward(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
 
-    var param = std.mem.zeroes(mmc.ParamType(.set_command));
-    param.line_idx = @truncate(line_idx);
-    param.carrier_id = carrier_id;
-    param.speed = line_speeds[line_idx];
-    param.acceleration = line_accelerations[line_idx];
+    const SetCommand = protobuf_msg.SendCommand.SetCommand;
+    var param: SetCommand = SetCommand.init(fba_allocator);
+    defer param.deinit();
+    errdefer param.deinit();
+    param = .{
+        .line_idx = @intCast(line_idx),
+        .carrier_id = carrier_id,
+        .speed = @intCast(line_speeds[line_idx]),
+        .acceleration = @intCast(line_accelerations[line_idx]),
+    };
     if (axis_id) |id| {
         const line = mcl.lines[line_idx];
         if (id == 0 or id > line.axes.len) return error.InvalidAxis;
         const axis: mcl.Axis = line.axes[id - 1];
         param.command_code = .PushTransitionForward;
-        param.axis_idx = axis.index.line;
+        param.axis_idx = @intCast(axis.index.line);
     } else {
         param.command_code = .PushForward;
     }
@@ -1934,17 +2452,22 @@ fn clientCarrierPushBackward(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
 
-    var param = std.mem.zeroes(mmc.ParamType(.set_command));
-    param.line_idx = @truncate(line_idx);
-    param.carrier_id = carrier_id;
-    param.speed = line_speeds[line_idx];
-    param.acceleration = line_accelerations[line_idx];
+    const SetCommand = protobuf_msg.SendCommand.SetCommand;
+    var param: SetCommand = SetCommand.init(fba_allocator);
+    defer param.deinit();
+    errdefer param.deinit();
+    param = .{
+        .line_idx = @intCast(line_idx),
+        .carrier_id = carrier_id,
+        .speed = @intCast(line_speeds[line_idx]),
+        .acceleration = @intCast(line_accelerations[line_idx]),
+    };
     if (axis_id) |id| {
         const line = mcl.lines[line_idx];
         if (id == 0 or id > line.axes.len) return error.InvalidAxis;
         const axis: mcl.Axis = line.axes[id - 1];
         param.command_code = .PushTransitionBackward;
-        param.axis_idx = axis.index.line;
+        param.axis_idx = @intCast(axis.index.line);
     } else {
         param.command_code = .PushBackward;
     }
@@ -1968,12 +2491,17 @@ fn clientCarrierPullForward(params: [][]const u8) !void {
     if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
 
-    var param = std.mem.zeroes(mmc.ParamType(.set_command));
-    param.line_idx = @truncate(line_idx);
-    param.carrier_id = carrier_id;
-    param.axis_idx = axis_index;
-    param.speed = line_speeds[line_idx];
-    param.acceleration = line_accelerations[line_idx];
+    const SetCommand = protobuf_msg.SendCommand.SetCommand;
+    var param: SetCommand = SetCommand.init(fba_allocator);
+    defer param.deinit();
+    errdefer param.deinit();
+    param = .{
+        .line_idx = @intCast(line_idx),
+        .axis_idx = @intCast(axis_index),
+        .carrier_id = carrier_id,
+        .speed = @intCast(line_speeds[line_idx]),
+        .acceleration = @intCast(line_accelerations[line_idx]),
+    };
     if (destination) |dest| {
         param.command_code = .PullTransitionLocationForward;
         param.location_distance = dest;
@@ -2001,12 +2529,17 @@ fn clientCarrierPullBackward(params: [][]const u8) !void {
     if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
 
-    var param = std.mem.zeroes(mmc.ParamType(.set_command));
-    param.line_idx = @truncate(line_idx);
-    param.carrier_id = carrier_id;
-    param.axis_idx = axis_index;
-    param.speed = line_speeds[line_idx];
-    param.acceleration = line_accelerations[line_idx];
+    const SetCommand = protobuf_msg.SendCommand.SetCommand;
+    var param: SetCommand = SetCommand.init(fba_allocator);
+    defer param.deinit();
+    errdefer param.deinit();
+    param = .{
+        .line_idx = @intCast(line_idx),
+        .axis_idx = @intCast(axis_index),
+        .carrier_id = carrier_id,
+        .speed = @intCast(line_speeds[line_idx]),
+        .acceleration = @intCast(line_accelerations[line_idx]),
+    };
     if (destination) |dest| {
         param.command_code = .PullTransitionLocationBackward;
         param.location_distance = dest;
@@ -2037,22 +2570,43 @@ fn clientCarrrierWaitPull(params: [][]const u8) !void {
                 wait_timer.read() > timeout * std.time.ns_per_ms)
                 return error.WaitTimeout;
             try command.checkCommandInterrupt();
-            const carrier_param: mmc.ParamType(.get_status) = .{
-                .kind = .Carrier,
-                .line_idx = @truncate(line_idx),
-                .axis_idx = 0,
-                .carrier_id = carrier_id,
+            const SendCommand = protobuf_msg.SendCommand;
+            var command_msg: SendCommand = SendCommand.init(fba_allocator);
+            defer command_msg.deinit();
+            errdefer command_msg.deinit();
+            command_msg = .{
+                .command_kind = .{
+                    .get_status = .{
+                        .status_kind = .{
+                            .carrier = .{
+                                .line_idx = @intCast(line_idx),
+                                .carrier_id = @intCast(carrier_id),
+                            },
+                        },
+                    },
+                },
             };
-            const carrier = parseCarrierStatus(
-                carrier_param,
-                s,
-            ) catch |e| {
+            const encoded = try command_msg.encode(fba_allocator);
+            defer fba_allocator.free(encoded);
+            s.writer().writeAll(encoded) catch |e| {
                 std.log.debug("{s}", .{@errorName(e)});
                 std.log.err("ConnectionClosedByServer", .{});
                 s.close();
                 try disconnectedClearence();
                 return;
             };
+            var buffer: [128]u8 = undefined;
+            const msg_len = s.receive(&buffer) catch |e| {
+                std.log.debug("{s}", .{@errorName(e)});
+                std.log.err("ConnectionClosedByServer", .{});
+                s.close();
+                try disconnectedClearence();
+                return;
+            };
+            const carrier = try parseCarrierStatus(
+                buffer[0..msg_len],
+                fba_allocator,
+            );
             if (carrier.state == .PullForwardCompleted or
                 carrier.state == .PullBackwardCompleted) return;
         }
@@ -2070,16 +2624,28 @@ fn clientCarrierStopPull(params: [][]const u8) !void {
     var param = std.mem.zeroes(mmc.ParamType(.stop_pull_carrier));
     param.line_idx = @intCast(line_idx);
     param.axis_idx = axis_index;
-    if (main_socket) |s| sendMessage(
-        .stop_pull_carrier,
-        param,
-        s,
-    ) catch |e| {
-        std.log.debug("{s}", .{@errorName(e)});
-        std.log.err("ConnectionClosedByServer", .{});
-        s.close();
-        try disconnectedClearence();
-        return;
+    if (main_socket) |s| {
+        const SendCommand = protobuf_msg.SendCommand;
+        var command_msg: SendCommand = SendCommand.init(fba_allocator);
+        defer command_msg.deinit();
+        errdefer command_msg.deinit();
+        command_msg = .{
+            .command_kind = .{
+                .stop_pull_carrier = .{
+                    .line_idx = @intCast(line_idx),
+                    .axis_idx = @intCast(axis_index),
+                },
+            },
+        };
+        const encoded = try command_msg.encode(fba_allocator);
+        defer fba_allocator.free(encoded);
+        s.writer().writeAll(encoded) catch |e| {
+            std.log.debug("{s}", .{@errorName(e)});
+            std.log.err("ConnectionClosedByServer", .{});
+            s.close();
+            try disconnectedClearence();
+            return;
+        };
     } else return error.ServerNotConnected;
 }
 
@@ -2097,15 +2663,6 @@ fn clientWaitAxisEmpty(params: [][]const u8) !void {
 
     const axis: mcl.Axis = line.axes[axis_id - 1];
 
-    const param_wr: mmc.ParamType(.get_wr) = .{
-        .line_idx = @intCast(line_idx),
-        .axis_idx = @intCast(axis.index.line),
-    };
-    const param_x: mmc.ParamType(.get_x) = .{
-        .line_idx = @intCast(line_idx),
-        .axis_idx = @intCast(axis.index.line),
-    };
-
     if (main_socket) |s| {
         var wait_timer = try std.time.Timer.start();
         while (true) {
@@ -2113,53 +2670,66 @@ fn clientWaitAxisEmpty(params: [][]const u8) !void {
                 wait_timer.read() > timeout * std.time.ns_per_ms)
                 return error.WaitTimeout;
             try command.checkCommandInterrupt();
+            const SendCommand = protobuf_msg.SendCommand;
+            var command_msg: SendCommand = SendCommand.init(fba_allocator);
+            defer command_msg.deinit();
+            errdefer command_msg.deinit();
+            command_msg = .{
+                .command_kind = .{
+                    .get_wr = .{
+                        .line_idx = @intCast(line_idx),
+                        .axis_idx = @intCast(axis.index.line),
+                    },
+                },
+            };
+            var encoded = try command_msg.encode(fba_allocator);
+            defer fba_allocator.free(encoded);
+            s.writer().writeAll(encoded) catch |e| {
+                std.log.debug("{s}", .{@errorName(e)});
+                std.log.err("ConnectionClosedByServer", .{});
+                s.close();
+                try disconnectedClearence();
+                return;
+            };
             var buffer: [128]u8 = undefined;
-            sendMessage(.get_wr, param_wr, s) catch |e| {
+            const wr_msg_len = s.receive(&buffer) catch |e| {
                 std.log.debug("{s}", .{@errorName(e)});
                 std.log.err("ConnectionClosedByServer", .{});
                 s.close();
                 try disconnectedClearence();
                 return;
             };
-            _ = s.receive(&buffer) catch |e| {
-                std.log.debug("{s}", .{@errorName(e)});
-                std.log.err("ConnectionClosedByServer", .{});
-                s.close();
-                try disconnectedClearence();
-                return;
-            };
-            // The first 4 bits are the message type, the following 13 bits are the
-            // message length. Actual message start after these bits
-            const msg_offset: usize = @bitSizeOf(u4) + @bitSizeOf(u13);
-            const msg_wr = std.mem.readPackedInt(
-                @typeInfo(mcl.registers.Wr).@"struct".backing_integer.?,
-                &buffer,
-                msg_offset,
-                .little,
+            const wr = try parseRegisterWr(
+                buffer[0..wr_msg_len],
+                fba_allocator,
             );
-            const wr: mcl.registers.Wr = @bitCast(msg_wr);
-
-            sendMessage(.get_x, param_x, s) catch |e| {
+            command_msg = .{
+                .command_kind = .{
+                    .get_x = .{
+                        .line_idx = @intCast(line_idx),
+                        .axis_idx = @intCast(axis.index.line),
+                    },
+                },
+            };
+            encoded = try command_msg.encode(fba_allocator);
+            s.writer().writeAll(encoded) catch |e| {
                 std.log.debug("{s}", .{@errorName(e)});
                 std.log.err("ConnectionClosedByServer", .{});
                 s.close();
                 try disconnectedClearence();
                 return;
             };
-            _ = s.receive(&buffer) catch |e| {
+            const x_msg_len = s.receive(&buffer) catch |e| {
                 std.log.debug("{s}", .{@errorName(e)});
                 std.log.err("ConnectionClosedByServer", .{});
                 s.close();
                 try disconnectedClearence();
                 return;
             };
-            const msg_x = std.mem.readPackedInt(
-                @typeInfo(mcl.registers.X).@"struct".backing_integer.?,
-                &buffer,
-                msg_offset,
-                .little,
+            const x = try parseRegisterX(
+                buffer[0..x_msg_len],
+                fba_allocator,
             );
-            const x: mcl.registers.X = @bitCast(msg_x);
             const carrier = wr.carrier.axis(axis.index.station);
             const axis_alarms = x.hall_alarm.axis(axis.index.station);
             if (carrier.id == 0 and !axis_alarms.back and !axis_alarms.front and
@@ -2180,6 +2750,7 @@ fn matchLine(names: [][]u8, name: []const u8) !usize {
     }
 }
 
+//TODO: Implement std.posix.pollfd to avoid blocking from socket
 /// Wait until a socket receive any messages from the server
 fn waitSocketReceive(s: network.Socket, msg_type: mmc.MessageType) !void {
     var peek_buffer: [8192]u8 = undefined;
@@ -2224,106 +2795,23 @@ fn waitSocketReceive(s: network.Socket, msg_type: mmc.MessageType) !void {
     }
 }
 
-fn sendMessage(
-    comptime kind: @typeInfo(
-        mmc.Param,
-    ).@"union".tag_type.?,
-    param: mmc.ParamType(kind),
-    to_server: network.Socket,
-) !void {
-    const command_msg: mmc.CommandMessage(kind) =
-        .{
-            .kind = @intFromEnum(kind),
-            ._unused_kind = 0,
-            .param = param,
-            ._rest_param = 0,
-        };
-    // The first 4 bits are the message type, the following 13 bits are the
-    // message length. Actual message start after these bits.
-    const msg_length_bit = @bitSizeOf(u4) + @bitSizeOf(u13) + @bitSizeOf(@TypeOf(command_msg));
-    const msg_size = if (msg_length_bit % 8 != 0)
-        msg_length_bit / 8 + 1
-    else
-        msg_length_bit;
-    var msg_buffer: [msg_size]u8 = undefined;
-    comptime var msg_bit_size = 0;
-    std.mem.writePackedInt(
-        u4,
-        &msg_buffer,
-        msg_bit_size,
-        @intFromEnum(mmc.MessageType.Command),
-        .little,
-    );
-    msg_bit_size += @bitSizeOf(u4);
-    std.mem.writePackedInt(
-        u13,
-        &msg_buffer,
-        msg_bit_size,
-        msg_size,
-        .little,
-    );
-    msg_bit_size += @bitSizeOf(u13);
-    std.mem.writePackedInt(
-        std.meta.Int(
-            .unsigned,
-            @bitSizeOf(@TypeOf(command_msg)),
-        ),
-        &msg_buffer,
-        msg_bit_size,
-        @bitCast(command_msg),
-        .little,
-    );
-    msg_bit_size += @bitSizeOf(@TypeOf(command_msg));
-    try to_server.writer().writeAll(&msg_buffer);
-    if (kind == .set_command) {
-        if (param.command_code == .IsolateForward) {
-            std.log.debug(
-                "Sent command {s}\nline: {s}\naxis id: {}\ncarrier_id: {}\ndirection: {s}\nlink_axis: {s}\n",
-                .{
-                    @tagName(param.command_code),
-                    line_names[param.line_idx],
-                    param.axis_idx + 1,
-                    param.carrier_id,
-                    "forward",
-                    @tagName(param.link_axis),
-                },
-            );
-        } else if (param.command_code == .IsolateBackward) {
-            std.log.debug(
-                "Sent command {s}\nline: {s}\naxis id: {}\ncarrier_id: {}\ndirection: {s}\nlink_axis: {s}\n",
-                .{
-                    @tagName(param.command_code),
-                    line_names[param.line_idx],
-                    param.axis_idx + 1,
-                    param.carrier_id,
-                    "backward",
-                    @tagName(param.link_axis),
-                },
-            );
-        } else if (param.command_code == .PositionMoveCarrierAxis) {
-            std.log.debug(
-                "Sent command{s}\nline: {s}\ncarrier_id: {}\ndestination: {}\n",
-                .{
-                    @tagName(param.command_code),
-                    line_names[param.line_idx],
-                    param.carrier_id,
-                    param.axis_idx + 1,
-                },
-            );
-        }
-    }
-}
-
 fn sendMessageAndWaitReceived(
-    param: mmc.ParamType(.set_command),
+    set_command_param: protobuf_msg.SendCommand.SetCommand,
     line_idx: mcl.Line.Index,
 ) !void {
     if (main_socket) |s| {
-        sendMessage(
-            .set_command,
-            param,
-            s,
-        ) catch |e| {
+        const SendCommand = protobuf_msg.SendCommand;
+        var command_msg: SendCommand = SendCommand.init(fba_allocator);
+        defer command_msg.deinit();
+        errdefer command_msg.deinit();
+        command_msg = .{
+            .command_kind = .{
+                .set_command = set_command_param,
+            },
+        };
+        var encoded = try command_msg.encode(fba_allocator);
+        defer fba_allocator.free(encoded);
+        s.writer().writeAll(encoded) catch |e| {
             std.log.debug("{s}", .{@errorName(e)});
             std.log.err("ConnectionClosedByServer", .{});
             s.close();
@@ -2333,22 +2821,37 @@ fn sendMessageAndWaitReceived(
 
         while (true) {
             try command.checkCommandInterrupt();
-            const command_param: mmc.ParamType(.get_status) = .{
-                .kind = .Command,
-                .line_idx = @truncate(line_idx),
-                .axis_idx = 0,
-                .carrier_id = 0,
+            command_msg = .{
+                .command_kind = .{
+                    .get_status = .{
+                        .status_kind = .{
+                            .command = .{
+                                .line_idx = @intCast(line_idx),
+                            },
+                        },
+                    },
+                },
             };
-            const command_status = parseCommandStatus(
-                command_param,
-                s,
-            ) catch |e| {
+            encoded = try command_msg.encode(fba_allocator);
+            s.writer().writeAll(encoded) catch |e| {
                 std.log.debug("{s}", .{@errorName(e)});
                 std.log.err("ConnectionClosedByServer", .{});
                 s.close();
                 try disconnectedClearence();
                 return;
             };
+            var buffer: [128]u8 = undefined;
+            const msg_len = s.receive(&buffer) catch |e| {
+                std.log.debug("{s}", .{@errorName(e)});
+                std.log.err("ConnectionClosedByServer", .{});
+                s.close();
+                try disconnectedClearence();
+                return;
+            };
+            const command_status = try parseCommandStatus(
+                buffer[0..msg_len],
+                fba_allocator,
+            );
             if (command_status.command_received) {
                 return switch (command_status.command_response) {
                     .NoError => {},
@@ -2369,104 +2872,122 @@ fn waitReceived(line_idx: mcl.Line.Index) !void {
     if (main_socket) |s| {
         while (true) {
             try command.checkCommandInterrupt();
-            const command_param: mmc.ParamType(.get_status) = .{
-                .kind = .Command,
-                .line_idx = @truncate(line_idx),
-                .axis_idx = 0,
-                .carrier_id = 0,
+            const SendCommand = protobuf_msg.SendCommand;
+            var command_msg: SendCommand = SendCommand.init(fba_allocator);
+            defer command_msg.deinit();
+            errdefer command_msg.deinit();
+            command_msg = .{
+                .command_kind = .{
+                    .get_status = .{
+                        .status_kind = .{
+                            .command = .{
+                                .line_idx = @intCast(line_idx),
+                            },
+                        },
+                    },
+                },
             };
-            const command_status = parseCommandStatus(
-                command_param,
-                s,
-            ) catch |e| {
+            const encoded = try command_msg.encode(fba_allocator);
+            defer fba_allocator.free(encoded);
+            s.writer().writeAll(encoded) catch |e| {
                 std.log.debug("{s}", .{@errorName(e)});
                 std.log.err("ConnectionClosedByServer", .{});
                 s.close();
                 try disconnectedClearence();
                 return;
             };
+            var buffer: [128]u8 = undefined;
+            const msg_len = s.receive(&buffer) catch |e| {
+                std.log.debug("{s}", .{@errorName(e)});
+                std.log.err("ConnectionClosedByServer", .{});
+                s.close();
+                try disconnectedClearence();
+                return;
+            };
+            const command_status = try parseCommandStatus(
+                buffer[0..msg_len],
+                fba_allocator,
+            );
             if (command_status.command_received) return;
         }
     } else return error.ServerNotConnected;
 }
 
 fn parseCarrierStatus(
-    param: mmc.ParamType(.get_status),
-    socket: network.Socket,
+    buffer: []const u8,
+    a: std.mem.Allocator,
 ) !SystemState.Carrier {
-    try sendMessage(.get_status, param, socket);
-    // The size of get_status command is based on SystemState.Carrier
-    const bit_max_size = 4 + 13 + @bitSizeOf(SystemState.Carrier);
-    const max_size = if (bit_max_size % 8 == 0)
-        bit_max_size / 8
-    else
-        (bit_max_size / 8) + 1;
-    var buffer = std.mem.zeroes([max_size]u8);
-    _ = try socket.receive(&buffer);
-    // The first 4 bits are the message type, the following 13 bits are the
-    // message length. Actual message start after these bits
-    const msg_offset: usize = @bitSizeOf(u4) + @bitSizeOf(u13);
-    const IntType =
-        @typeInfo(SystemState.Carrier).@"struct".backing_integer.?;
-    const carrier_int = std.mem.readPackedInt(
-        IntType,
-        &buffer,
-        msg_offset,
-        .little,
+    const CarrierStatus = protobuf_msg.CarrierStatus;
+    const response: CarrierStatus = try CarrierStatus.decode(
+        buffer,
+        a,
     );
-    return @bitCast(carrier_int);
+    defer response.deinit();
+    // TODO: Find out why state_type != mcl.registers.Wr.Carrier.State
+    comptime var state_type: type = undefined;
+    inline for (@typeInfo(SystemState.Carrier).@"struct".fields) |field| {
+        if (comptime std.mem.eql(u8, "state", field.name)) {
+            state_type = field.type;
+            break;
+        }
+    }
+    const carrier: SystemState.Carrier = .{
+        .axis_idx = .{
+            .aux_axis = @intCast(response.axis_idx.?.aux_axis),
+            .main_axis = @intCast(response.axis_idx.?.main_axis),
+        },
+        .id = @intCast(response.id),
+        .location = response.location,
+        .state = std.meta.stringToEnum(
+            state_type,
+            @tagName(response.state),
+        ).?,
+    };
+    return carrier;
 }
 
 fn parseHallStatus(
-    param: mmc.ParamType(.get_status),
-    socket: network.Socket,
+    buffer: []const u8,
+    a: std.mem.Allocator,
 ) !SystemState.Hall {
-    try sendMessage(.get_status, param, socket);
-    // The size of get_status command is based on SystemState.Carrier
-    const bit_max_size = 4 + 13 + @bitSizeOf(SystemState.Carrier);
-    const max_size = if (bit_max_size % 8 == 0)
-        bit_max_size / 8
-    else
-        (bit_max_size / 8) + 1;
-    var buffer = std.mem.zeroes([max_size]u8);
-    _ = try socket.receive(&buffer);
-    // The first 4 bits are the message type, the following 13 bits are the
-    // message length. Actual message start after these bits
-    const msg_offset: usize = @bitSizeOf(u4) + @bitSizeOf(u13);
-    const IntType =
-        @typeInfo(SystemState.Hall).@"struct".backing_integer.?;
-    const hall_int = std.mem.readPackedInt(
-        IntType,
-        &buffer,
-        msg_offset,
-        .little,
+    const HallStatus = protobuf_msg.HallStatus;
+    const response: HallStatus = try HallStatus.decode(
+        buffer,
+        a,
     );
-    return @bitCast(hall_int);
+    defer response.deinit();
+    const hall: SystemState.Hall = .{
+        .configured = response.configured,
+        .back = response.back,
+        .front = response.front,
+    };
+    return hall;
 }
 
 fn parseCommandStatus(
-    param: mmc.ParamType(.get_status),
-    socket: network.Socket,
+    buffer: []const u8,
+    a: std.mem.Allocator,
 ) !SystemState.Command {
-    try sendMessage(.get_status, param, socket);
-    // The size of get_status command is based on SystemState.Carrier
-    const bit_max_size = 4 + 13 + @bitSizeOf(SystemState.Carrier);
-    const max_size = if (bit_max_size % 8 == 0)
-        bit_max_size / 8
-    else
-        (bit_max_size / 8) + 1;
-    var buffer = std.mem.zeroes([max_size]u8);
-    _ = try socket.receive(&buffer);
-    // The first 4 bits are the message type, the following 13 bits are the
-    // message length. Actual message start after these bits
-    const msg_offset: usize = @bitSizeOf(u4) + @bitSizeOf(u13);
-    const IntType =
-        @typeInfo(SystemState.Command).@"struct".backing_integer.?;
-    const carrier_int = std.mem.readPackedInt(
-        IntType,
-        &buffer,
-        msg_offset,
-        .little,
+    const CommandStatus = protobuf_msg.CommandStatus;
+    const response: CommandStatus = try CommandStatus.decode(
+        buffer,
+        a,
     );
-    return @bitCast(carrier_int);
+    defer response.deinit();
+    // TODO: Find out why response_type != mcl.registers.Wr.CommandResponseCode
+    comptime var response_type: type = undefined;
+    inline for (@typeInfo(SystemState.Command).@"struct".fields) |field| {
+        if (comptime std.mem.eql(u8, "command_response", field.name)) {
+            response_type = field.type;
+            break;
+        }
+    }
+    const command_status: SystemState.Command = .{
+        .command_received = response.received,
+        .command_response = std.meta.stringToEnum(
+            response_type,
+            @tagName(response.response),
+        ).?,
+    };
+    return command_status;
 }
