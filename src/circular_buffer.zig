@@ -117,10 +117,10 @@ test "write array" {
     const full_text2 = text3 ++ "\n" ++ text4;
     var ring_buf =
         try CircularBuffer([full_text1.len]u8).initCapacity(
-            std.heap.page_allocator,
+            std.testing.allocator,
             1,
         );
-
+    defer ring_buf.deinit();
     // test writeItem
     try ring_buf.writeItem(full_text1.*);
 
