@@ -12,8 +12,38 @@ const return_demo2 = @import("command/return_demo2.zig");
 const client_cli = @import("command/client_cli.zig");
 const Config = @import("Config.zig");
 
+pub const Registry = struct {
+    mapping: std.StringArrayHashMap(Command),
+
+    pub fn init(alloc: std.mem.Allocator) Registry {
+        return .{
+            .mapping = std.StringArrayHashMap(Command).init(alloc),
+        };
+    }
+
+    pub fn deinit(self: *Registry) void {
+        self.mapping.deinit();
+    }
+
+    pub fn values(self: *Registry) []Command {
+        return self.mapping.values();
+    }
+
+    pub fn put(self: *Registry, command: Command) !void {
+        try self.mapping.put(command.name, command);
+    }
+
+    pub fn getPtr(self: *Registry, key: []const u8) ?*Command {
+        return self.mapping.getPtr(key);
+    }
+
+    pub fn orderedRemove(self: *Registry, key: []const u8) void {
+        _ = self.mapping.orderedRemove(key);
+    }
+};
+
 // Global registry of all commands, including from other command modules.
-pub var registry: std.StringArrayHashMap(Command) = undefined;
+pub var registry: Registry = undefined;
 
 // Global "stop" flag to interrupt command execution. Command modules should
 // not use this atomic flag directly, but instead prefer to use the
@@ -91,13 +121,13 @@ pub fn init() !void {
     allocator = arena.allocator();
 
     initialized_modules = std.EnumArray(Config.Module, bool).initFill(false);
-    registry = std.StringArrayHashMap(Command).init(allocator);
+    registry = Registry.init(allocator);
     variables = std.BufMap.init(allocator);
     command_queue = std.ArrayList(CommandString).init(allocator);
     stop.store(false, .monotonic);
     timer = try std.time.Timer.start();
 
-    try registry.put("HELP", .{
+    try registry.put(.{
         .name = "HELP",
         .parameters = &[_]Command.Parameter{
             .{ .name = "command", .optional = true, .resolve = false },
@@ -110,7 +140,7 @@ pub fn init() !void {
         ,
         .execute = &help,
     });
-    try registry.put("VERSION", .{
+    try registry.put(.{
         .name = "VERSION",
         .short_description = "Display the version of the MMC CLI.",
         .long_description =
@@ -119,7 +149,7 @@ pub fn init() !void {
         ,
         .execute = &version,
     });
-    try registry.put("LOAD_CONFIG", .{
+    try registry.put(.{
         .name = "LOAD_CONFIG",
         .parameters = &[_]Command.Parameter{
             .{ .name = "file path", .optional = true },
@@ -132,7 +162,7 @@ pub fn init() !void {
         ,
         .execute = &loadConfig,
     });
-    try registry.put("WAIT", .{
+    try registry.put(.{
         .name = "WAIT",
         .parameters = &[_]Command.Parameter{
             .{ .name = "duration", .resolve = true },
@@ -144,14 +174,14 @@ pub fn init() !void {
         ,
         .execute = &wait,
     });
-    try registry.put("CLEAR", .{
+    try registry.put(.{
         .name = "CLEAR",
         .parameters = &.{},
         .short_description = "Clear visible screen output.",
         .long_description = "Clear visible screen output.",
         .execute = &clear,
     });
-    try registry.put("SET", .{
+    try registry.put(.{
         .name = "SET",
         .parameters = &[_]Command.Parameter{
             .{ .name = "variable", .resolve = false },
@@ -164,7 +194,7 @@ pub fn init() !void {
         ,
         .execute = &set,
     });
-    try registry.put("GET", .{
+    try registry.put(.{
         .name = "GET",
         .parameters = &[_]Command.Parameter{
             .{ .name = "variable", .resolve = false },
@@ -176,7 +206,7 @@ pub fn init() !void {
         ,
         .execute = &get,
     });
-    try registry.put("VARIABLES", .{
+    try registry.put(.{
         .name = "VARIABLES",
         .short_description = "Display all variables with their values.",
         .long_description =
@@ -184,7 +214,7 @@ pub fn init() !void {
         ,
         .execute = &printVariables,
     });
-    try registry.put("TIMER_START", .{
+    try registry.put(.{
         .name = "TIMER_START",
         .short_description = "Start a monotonic system timer.",
         .long_description =
@@ -194,7 +224,7 @@ pub fn init() !void {
         ,
         .execute = &timerStart,
     });
-    try registry.put("TIMER_READ", .{
+    try registry.put(.{
         .name = "TIMER_READ",
         .short_description = "Read elapsed time from the system timer.",
         .long_description =
@@ -204,7 +234,7 @@ pub fn init() !void {
         ,
         .execute = &timerRead,
     });
-    try registry.put("FILE", .{
+    try registry.put(.{
         .name = "FILE",
         .parameters = &[_]Command.Parameter{.{ .name = "path" }},
         .short_description = "Queue commands listed in the provided file.",
@@ -219,7 +249,7 @@ pub fn init() !void {
         ,
         .execute = &file,
     });
-    try registry.put("SAVE_OUTPUT", .{
+    try registry.put(.{
         .name = "SAVE_OUTPUT",
         .parameters = &[_]Command.Parameter{
             .{ .name = "mode" },
@@ -240,7 +270,7 @@ pub fn init() !void {
         ,
         .execute = &setLog,
     });
-    try registry.put("EXIT", .{
+    try registry.put(.{
         .name = "EXIT",
         .short_description = "Exit the MMC command line utility.",
         .long_description =
