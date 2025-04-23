@@ -41,17 +41,17 @@ pub fn init(c: Config) !void {
         IP_address,
         port,
     });
-    try command.registry.put("SERVER_VERSION", .{
+    try command.registry.put(.{
         .name = "SERVER_VERSION",
         .short_description = "Display the version of the MMC server",
         .long_description =
-        \\Print the currently running version of the MMC server in Semantic 
+        \\Print the currently running version of the MMC server in Semantic
         \\Version format.
         ,
         .execute = &serverVersion,
     });
-    errdefer _ = command.registry.orderedRemove("SERVER_VERSION");
-    try command.registry.put("CONNECT", .{
+    errdefer command.registry.orderedRemove("SERVER_VERSION");
+    try command.registry.put(.{
         .name = "CONNECT",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "port", .optional = true },
@@ -61,13 +61,13 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Attempt to connect the client application to the server. The IP address
         \\and the port should be provided in the configuration file. The port
-        \\and IP address can be overwritten by providing the new port and IP 
+        \\and IP address can be overwritten by providing the new port and IP
         \\address to this command.
         ,
         .execute = &clientConnect,
     });
-    errdefer _ = command.registry.orderedRemove("CONNECT");
-    try command.registry.put("DISCONNECT", .{
+    errdefer command.registry.orderedRemove("CONNECT");
+    try command.registry.put(.{
         .name = "DISCONNECT",
         .short_description = "Disconnect MCL from motion system.",
         .long_description =
@@ -75,8 +75,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientDisconnect,
     });
-    errdefer _ = command.registry.orderedRemove("DISCONNECT");
-    try command.registry.put("SET_SPEED", .{
+    errdefer command.registry.orderedRemove("DISCONNECT");
+    try command.registry.put(.{
         .name = "SET_SPEED",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -90,8 +90,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientSetSpeed,
     });
-    errdefer _ = command.registry.orderedRemove("SET_SPEED");
-    try command.registry.put("SET_ACCELERATION", .{
+    errdefer command.registry.orderedRemove("SET_SPEED");
+    try command.registry.put(.{
         .name = "SET_ACCELERATION",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -105,8 +105,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientSetAcceleration,
     });
-    errdefer _ = command.registry.orderedRemove("SET_ACCELERATION");
-    try command.registry.put("GET_SPEED", .{
+    errdefer command.registry.orderedRemove("SET_ACCELERATION");
+    try command.registry.put(.{
         .name = "GET_SPEED",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -118,8 +118,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientGetSpeed,
     });
-    errdefer _ = command.registry.orderedRemove("GET_SPEED");
-    try command.registry.put("GET_ACCELERATION", .{
+    errdefer command.registry.orderedRemove("GET_SPEED");
+    try command.registry.put(.{
         .name = "GET_ACCELERATION",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -132,8 +132,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientGetAcceleration,
     });
-    errdefer _ = command.registry.orderedRemove("GET_ACCELERATION");
-    try command.registry.put("PRINT_X", .{
+    errdefer command.registry.orderedRemove("GET_ACCELERATION");
+    try command.registry.put(.{
         .name = "PRINT_X",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -146,8 +146,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientStationX,
     });
-    errdefer _ = command.registry.orderedRemove("PRINT_X");
-    try command.registry.put("PRINT_Y", .{
+    errdefer command.registry.orderedRemove("PRINT_X");
+    try command.registry.put(.{
         .name = "PRINT_Y",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -160,8 +160,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientStationY,
     });
-    errdefer _ = command.registry.orderedRemove("PRINT_Y");
-    try command.registry.put("PRINT_WR", .{
+    errdefer command.registry.orderedRemove("PRINT_Y");
+    try command.registry.put(.{
         .name = "PRINT_WR",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -174,8 +174,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientStationWr,
     });
-    errdefer _ = command.registry.orderedRemove("PRINT_WR");
-    try command.registry.put("PRINT_WW", .{
+    errdefer command.registry.orderedRemove("PRINT_WR");
+    try command.registry.put(.{
         .name = "PRINT_WW",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -188,8 +188,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientStationWw,
     });
-    errdefer _ = command.registry.orderedRemove("PRINT_WW");
-    try command.registry.put("AXIS_CARRIER", .{
+    errdefer command.registry.orderedRemove("PRINT_WW");
+    try command.registry.put(.{
         .name = "AXIS_CARRIER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -202,7 +202,7 @@ pub fn init(c: Config) !void {
         .execute = &clientAxisCarrier,
     });
     errdefer _ = command.registry.orderedRemove("AXIS_CARRIER");
-    try command.registry.put("ASSERT_CARRIER_LOCATION", .{
+    try command.registry.put(.{
         .name = "ASSERT_CARRIER_LOCATION",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -212,13 +212,13 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Check that a carrier is on the expected location.",
         .long_description =
-        \\Throw an error if the carrier is not located on the specified location 
-        \\within the threshold. The default threshold value is 1 mm. Both the 
+        \\Throw an error if the carrier is not located on the specified location
+        \\within the threshold. The default threshold value is 1 mm. Both the
         \\location and threshold must be provided in millimeters.
         ,
         .execute = &clientAssertLocation,
     });
-    try command.registry.put("CARRIER_LOCATION", .{
+    try command.registry.put(.{
         .name = "CARRIER_LOCATION",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -231,8 +231,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientCarrierLocation,
     });
-    errdefer _ = command.registry.orderedRemove("CARRIER_LOCATION");
-    try command.registry.put("CARRIER_AXIS", .{
+    errdefer command.registry.orderedRemove("CARRIER_LOCATION");
+    try command.registry.put(.{
         .name = "CARRIER_AXIS",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -245,8 +245,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientCarrierAxis,
     });
-    errdefer _ = command.registry.orderedRemove("CARRIER_AXIS");
-    try command.registry.put("HALL_STATUS", .{
+    errdefer command.registry.orderedRemove("CARRIER_AXIS");
+    try command.registry.put(.{
         .name = "HALL_STATUS",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -260,8 +260,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientHallStatus,
     });
-    errdefer _ = command.registry.orderedRemove("HALL_STATUS");
-    try command.registry.put("ASSERT_HALL", .{
+    errdefer command.registry.orderedRemove("HALL_STATUS");
+    try command.registry.put(.{
         .name = "ASSERT_HALL",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -278,8 +278,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientAssertHall,
     });
-    errdefer _ = command.registry.orderedRemove("ASSERT_HALL");
-    try command.registry.put("CLEAR_ERRORS", .{
+    errdefer command.registry.orderedRemove("ASSERT_HALL");
+    try command.registry.put(.{
         .name = "CLEAR_ERRORS",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -292,8 +292,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientClearErrors,
     });
-    errdefer _ = command.registry.orderedRemove("CLEAR_ERRORS");
-    try command.registry.put("RESET_MCL", .{
+    errdefer command.registry.orderedRemove("CLEAR_ERRORS");
+    try command.registry.put(.{
         .name = "RESET_MCL",
         .short_description = "Reset all MCL registers.",
         .long_description =
@@ -301,8 +301,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientMclReset,
     });
-    errdefer _ = command.registry.orderedRemove("RESET_MCL");
-    try command.registry.put("CLEAR_CARRIER_INFO", .{
+    errdefer command.registry.orderedRemove("RESET_MCL");
+    try command.registry.put(.{
         .name = "CLEAR_CARRIER_INFO",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -310,13 +310,13 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Clear carrier information.",
         .long_description =
-        \\Clear carrier information at specified axis. If no axis is provided, 
+        \\Clear carrier information at specified axis. If no axis is provided,
         \\clear carrier information at all axis
         ,
         .execute = &clientClearCarrierInfo,
     });
-    errdefer _ = command.registry.orderedRemove("CLEAR_CARRIER_INFO");
-    try command.registry.put("RELEASE_AXIS_SERVO", .{
+    errdefer command.registry.orderedRemove("CLEAR_CARRIER_INFO");
+    try command.registry.put(.{
         .name = "RELEASE_AXIS_SERVO",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -330,8 +330,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientAxisReleaseServo,
     });
-    errdefer _ = command.registry.orderedRemove("RELEASE_AXIS_SERVO");
-    try command.registry.put("AUTO_INITIALIZE", .{
+    errdefer command.registry.orderedRemove("RELEASE_AXIS_SERVO");
+    try command.registry.put(.{
         .name = "AUTO_INITIALIZE",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name", .optional = true },
@@ -344,8 +344,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientAutoInitialize,
     });
-    errdefer _ = command.registry.orderedRemove("AUTO_INITIALIZE");
-    try command.registry.put("CALIBRATE", .{
+    errdefer command.registry.orderedRemove("AUTO_INITIALIZE");
+    try command.registry.put(.{
         .name = "CALIBRATE",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -358,8 +358,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientCalibrate,
     });
-    errdefer _ = command.registry.orderedRemove("CALIBRATE");
-    try command.registry.put("SET_LINE_ZERO", .{
+    errdefer command.registry.orderedRemove("CALIBRATE");
+    try command.registry.put(.{
         .name = "SET_LINE_ZERO",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -372,8 +372,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientSetLineZero,
     });
-    errdefer _ = command.registry.orderedRemove("SET_LINE_ZERO");
-    try command.registry.put("ISOLATE", .{
+    errdefer command.registry.orderedRemove("SET_LINE_ZERO");
+    try command.registry.put(.{
         .name = "ISOLATE",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -393,8 +393,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientIsolate,
     });
-    errdefer _ = command.registry.orderedRemove("ISOLATE");
-    try command.registry.put("WAIT_ISOLATE", .{
+    errdefer command.registry.orderedRemove("ISOLATE");
+    try command.registry.put(.{
         .name = "WAIT_ISOLATE",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -404,15 +404,15 @@ pub fn init(c: Config) !void {
         .short_description = "Wait for carrier isolation to complete.",
         .long_description =
         \\Pause the execution of any further commands until the isolation of the
-        \\given carrier is indicated as complete. If a timeout is specified, the 
-        \\command will return an error if the waiting action takes longer than 
-        \\the specified timeout duration. The timeout must be provided in 
+        \\given carrier is indicated as complete. If a timeout is specified, the
+        \\command will return an error if the waiting action takes longer than
+        \\the specified timeout duration. The timeout must be provided in
         \\milliseconds.
         ,
         .execute = &clientWaitIsolate,
     });
-    errdefer _ = command.registry.orderedRemove("WAIT_ISOLATE");
-    try command.registry.put("WAIT_MOVE_CARRIER", .{
+    errdefer command.registry.orderedRemove("WAIT_ISOLATE");
+    try command.registry.put(.{
         .name = "WAIT_MOVE_CARRIER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -422,15 +422,15 @@ pub fn init(c: Config) !void {
         .short_description = "Wait for carrier movement to complete.",
         .long_description =
         \\Pause the execution of any further commands until movement for the
-        \\given carrier is indicated as complete. If a timeout is specified, the 
-        \\command will return an error if the waiting action takes longer than 
-        \\the specified timeout duration. The timeout must be provided in 
+        \\given carrier is indicated as complete. If a timeout is specified, the
+        \\command will return an error if the waiting action takes longer than
+        \\the specified timeout duration. The timeout must be provided in
         \\milliseconds.
         ,
         .execute = &clientWaitMoveCarrier,
     });
-    errdefer _ = command.registry.orderedRemove("WAIT_MOVE_CARRIER");
-    try command.registry.put("MOVE_CARRIER_AXIS", .{
+    errdefer command.registry.orderedRemove("WAIT_MOVE_CARRIER");
+    try command.registry.put(.{
         .name = "MOVE_CARRIER_AXIS",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -444,8 +444,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientCarrierPosMoveAxis,
     });
-    errdefer _ = command.registry.orderedRemove("MOVE_CARRIER_AXIS");
-    try command.registry.put("MOVE_CARRIER_LOCATION", .{
+    errdefer command.registry.orderedRemove("MOVE_CARRIER_AXIS");
+    try command.registry.put(.{
         .name = "MOVE_CARRIER_LOCATION",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -460,8 +460,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientCarrierPosMoveLocation,
     });
-    errdefer _ = command.registry.orderedRemove("MOVE_CARRIER_LOCATION");
-    try command.registry.put("MOVE_CARRIER_DISTANCE", .{
+    errdefer command.registry.orderedRemove("MOVE_CARRIER_LOCATION");
+    try command.registry.put(.{
         .name = "MOVE_CARRIER_DISTANCE",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -477,8 +477,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientCarrierPosMoveDistance,
     });
-    errdefer _ = command.registry.orderedRemove("MOVE_CARRIER_DISTANCE");
-    try command.registry.put("SPD_MOVE_CARRIER_AXIS", .{
+    errdefer command.registry.orderedRemove("MOVE_CARRIER_DISTANCE");
+    try command.registry.put(.{
         .name = "SPD_MOVE_CARRIER_AXIS",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -493,8 +493,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientCarrierSpdMoveAxis,
     });
-    errdefer _ = command.registry.orderedRemove("SPD_MOVE_CARRIER_AXIS");
-    try command.registry.put("SPD_MOVE_CARRIER_LOCATION", .{
+    errdefer command.registry.orderedRemove("SPD_MOVE_CARRIER_AXIS");
+    try command.registry.put(.{
         .name = "SPD_MOVE_CARRIER_LOCATION",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -510,8 +510,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientCarrierSpdMoveLocation,
     });
-    errdefer _ = command.registry.orderedRemove("SPD_MOVE_CARRIER_LOCATION");
-    try command.registry.put("SPD_MOVE_CARRIER_DISTANCE", .{
+    errdefer command.registry.orderedRemove("SPD_MOVE_CARRIER_LOCATION");
+    try command.registry.put(.{
         .name = "SPD_MOVE_CARRIER_DISTANCE",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -528,8 +528,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientCarrierSpdMoveDistance,
     });
-    errdefer _ = command.registry.orderedRemove("SPD_MOVE_CARRIER_DISTANCE");
-    try command.registry.put("PUSH_CARRIER_FORWARD", .{
+    errdefer command.registry.orderedRemove("SPD_MOVE_CARRIER_DISTANCE");
+    try command.registry.put(.{
         .name = "PUSH_CARRIER_FORWARD",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -548,8 +548,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientCarrierPushForward,
     });
-    errdefer _ = command.registry.orderedRemove("PUSH_CARRIER_FORWARD");
-    try command.registry.put("PUSH_CARRIER_BACKWARD", .{
+    errdefer command.registry.orderedRemove("PUSH_CARRIER_FORWARD");
+    try command.registry.put(.{
         .name = "PUSH_CARRIER_BACKWARD",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -568,8 +568,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientCarrierPushBackward,
     });
-    errdefer _ = command.registry.orderedRemove("PUSH_CARRIER_BACKWARD");
-    try command.registry.put("PULL_CARRIER_FORWARD", .{
+    errdefer command.registry.orderedRemove("PUSH_CARRIER_BACKWARD");
+    try command.registry.put(.{
         .name = "PULL_CARRIER_FORWARD",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -586,8 +586,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientCarrierPullForward,
     });
-    errdefer _ = command.registry.orderedRemove("PULL_CARRIER_FORWARD");
-    try command.registry.put("PULL_CARRIER_BACKWARD", .{
+    errdefer command.registry.orderedRemove("PULL_CARRIER_FORWARD");
+    try command.registry.put(.{
         .name = "PULL_CARRIER_BACKWARD",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -604,8 +604,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientCarrierPullBackward,
     });
-    errdefer _ = command.registry.orderedRemove("PULL_CARRIER_BACKWARD");
-    try command.registry.put("WAIT_PULL_CARRIER", .{
+    errdefer command.registry.orderedRemove("PULL_CARRIER_BACKWARD");
+    try command.registry.put(.{
         .name = "WAIT_PULL_CARRIER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -615,15 +615,15 @@ pub fn init(c: Config) !void {
         .short_description = "Wait for carrier pull to complete.",
         .long_description =
         \\Pause the execution of any further commands until active carrier
-        \\pull of the provided carrier is indicated as complete. If a timeout is 
-        \\specified, the command will return an error if the waiting action 
-        \\takes longer than the specified timeout duration. The timeout must be 
+        \\pull of the provided carrier is indicated as complete. If a timeout is
+        \\specified, the command will return an error if the waiting action
+        \\takes longer than the specified timeout duration. The timeout must be
         \\provided in milliseconds.
         ,
         .execute = &clientCarrrierWaitPull,
     });
-    errdefer _ = command.registry.orderedRemove("WAIT_PULL_CARRIER");
-    try command.registry.put("STOP_PULL_CARRIER", .{
+    errdefer command.registry.orderedRemove("WAIT_PULL_CARRIER");
+    try command.registry.put(.{
         .name = "STOP_PULL_CARRIER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -635,8 +635,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientCarrierStopPull,
     });
-    errdefer _ = command.registry.orderedRemove("STOP_PULL_CARRIER");
-    try command.registry.put("WAIT_AXIS_EMPTY", .{
+    errdefer command.registry.orderedRemove("STOP_PULL_CARRIER");
+    try command.registry.put(.{
         .name = "WAIT_AXIS_EMPTY",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -646,14 +646,14 @@ pub fn init(c: Config) !void {
         .short_description = "Wait for axis to be empty.",
         .long_description =
         \\Pause the execution of any further commands until specified axis has
-        \\no carriers, no active hall alarms, and no wait for push/pull. If a 
-        \\timeout is specified, the command will return an error if the waiting 
-        \\action takes longer than the specified timeout duration. The timeout 
+        \\no carriers, no active hall alarms, and no wait for push/pull. If a
+        \\timeout is specified, the command will return an error if the waiting
+        \\action takes longer than the specified timeout duration. The timeout
         \\must be provided in milliseconds.
         ,
         .execute = &clientWaitAxisEmpty,
     });
-    errdefer _ = command.registry.orderedRemove("WAIT_AXIS_EMPTY");
+    errdefer command.registry.orderedRemove("WAIT_AXIS_EMPTY");
 }
 
 pub fn deinit() void {

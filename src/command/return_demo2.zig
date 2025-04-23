@@ -75,7 +75,7 @@ pub fn init(_: Config) !void {
         server_stop.store(false, .monotonic);
     }
 
-    try command.registry.put("HOME_RETURN_SYSTEM", .{
+    try command.registry.put(.{
         .name = "HOME_RETURN_SYSTEM",
         .short_description = "Home the return system.",
         .long_description =
@@ -86,7 +86,7 @@ pub fn init(_: Config) !void {
         ,
         .execute = &home,
     });
-    try command.registry.put("RAISE_START_AXIS", .{
+    try command.registry.put(.{
         .name = "RAISE_START_AXIS",
         .short_description = "Raise start axis to upper motion system.",
         .long_description =
@@ -96,7 +96,7 @@ pub fn init(_: Config) !void {
         ,
         .execute = &raiseStartAxis,
     });
-    try command.registry.put("LOWER_START_AXIS", .{
+    try command.registry.put(.{
         .name = "LOWER_START_AXIS",
         .short_description = "Lower start axis to return system.",
         .long_description =
@@ -106,7 +106,7 @@ pub fn init(_: Config) !void {
         ,
         .execute = &lowerStartAxis,
     });
-    try command.registry.put("RAISE_END_AXIS", .{
+    try command.registry.put(.{
         .name = "RAISE_END_AXIS",
         .short_description = "Raise end axis to upper motion system.",
         .long_description =
@@ -116,7 +116,7 @@ pub fn init(_: Config) !void {
         ,
         .execute = &raiseEndAxis,
     });
-    try command.registry.put("LOWER_END_AXIS", .{
+    try command.registry.put(.{
         .name = "LOWER_END_AXIS",
         .short_description = "Lower end axis to return system.",
         .long_description =
@@ -126,7 +126,7 @@ pub fn init(_: Config) !void {
         ,
         .execute = &lowerEndAxis,
     });
-    try command.registry.put("BELT_MOVE_START", .{
+    try command.registry.put(.{
         .name = "BELT_MOVE_START",
         .short_description = "Move the return system belt to the start axis.",
         .long_description =
@@ -136,7 +136,7 @@ pub fn init(_: Config) !void {
         ,
         .execute = &beltMoveStart,
     });
-    try command.registry.put("BELT_MOVE_END", .{
+    try command.registry.put(.{
         .name = "BELT_MOVE_END",
         .short_description = "Move the return system belt to the end axis.",
         .long_description =
