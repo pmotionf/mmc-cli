@@ -24,13 +24,23 @@ pub fn build(b: *std.Build) !void {
         .mdfunc = mdfunc_lib_path,
         .mdfunc_mock = mdfunc_mock_build,
     });
-    const network_dep = b.dependency("network", .{});
-    const chrono = b.dependency("chrono", .{});
+    const network_dep = b.dependency("network", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const chrono = b.dependency("chrono", .{
+        .target = target,
+        .optimize = optimize,
+    });
     const mmc_config = b.dependency("mmc_config", .{
         .target = target,
         .optimize = optimize,
         .mdfunc = mdfunc_lib_path,
         .mdfunc_mock = mdfunc_mock_build,
+    });
+    const soem = b.dependency("soem", .{
+        .target = target,
+        .optimize = optimize,
     });
 
     const build_zig_zon = b.createModule(.{
@@ -55,6 +65,8 @@ pub fn build(b: *std.Build) !void {
             mod.addImport("win32", zwin32.module("win32"));
         }
     }
+    mod.linkLibrary(soem.artifact("soem"));
+    mod.addIncludePath(soem.path("include"));
 
     const exe = b.addExecutable(.{ .name = "mmc-cli", .root_module = mod });
     b.installArtifact(exe);
@@ -126,6 +138,8 @@ pub fn build(b: *std.Build) !void {
         "mmc_config",
         mmc_config_mock.module("mmc-config"),
     );
+    unit_tests.root_module.linkLibrary(soem.artifact("soem"));
+    unit_tests.root_module.addIncludePath(soem.path("include"));
     unit_tests.root_module.addImport("build.zig.zon", build_zig_zon);
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
