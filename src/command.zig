@@ -535,6 +535,7 @@ fn timerLoop(params: [][]const u8) !void {
         );
     };
     timer_log_file = try std.fs.cwd().createFile(file_path, .{});
+    try timer_log_file.?.writer().print("elapsed time", .{});
     timer_log_data = try CircularBuffer(f64).initCapacity(
         allocator,
         iteration,
