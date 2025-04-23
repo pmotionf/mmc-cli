@@ -499,6 +499,9 @@ fn timerRead(_: [][]const u8) !void {
                     .{},
                 );
                 timer_log_file.?.close();
+                timer_log_file = null;
+                timer_iteration = null;
+                timer_log_data = null;
                 return error.MaximumTimerLoopExceeded;
             }
         }
