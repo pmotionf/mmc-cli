@@ -36,6 +36,7 @@ var timer: ?std.time.Timer = null;
 var log_file: ?std.fs.File = null;
 var timer_iteration: ?usize = null;
 var timer_log_file: ?std.fs.File = null;
+var timer_log_path: []u8 = undefined;
 var timer_log_data: ?CircularBuffer(f64) = null;
 
 const CommandString = struct {
@@ -490,6 +491,8 @@ fn timerRead(_: [][]const u8) !void {
         if (timer_iteration) |iteration| {
             try timer_log_data.?.writeItem(timer_value);
             if (timer_log_data.?.count == iteration) {
+                timer_log_file = try std.fs.cwd().createFile(timer_log_path, .{});
+                try timer_log_file.?.writer().print("elapsed time\n", .{});
                 const file_writer = timer_log_file.?.writer();
                 while (timer_log_data.?.readItem()) |item| {
                     try file_writer.print("{d}\n", .{item});
@@ -513,9 +516,15 @@ fn timerRead(_: [][]const u8) !void {
 fn timerLoop(params: [][]const u8) !void {
     const iteration = try std.fmt.parseInt(usize, params[0], 0);
     timer_iteration = iteration;
-    const path = params[1];
-    var path_buffer: [512]u8 = undefined;
-    const file_path = if (path.len > 0) path else p: {
+    timer_log_data = try CircularBuffer(f64).initCapacity(
+        allocator,
+        iteration,
+    );
+    if (params[1].len > 0) {
+        timer_log_path = try allocator.alloc(u8, params[1].len);
+        @memcpy(timer_log_path, params[1]);
+    } else {
+        var path_buffer: [512]u8 = undefined;
         var timestamp: u64 = @intCast(std.time.timestamp());
         timestamp += std.time.s_per_hour * 9;
         const days_since_epoch: i32 = @intCast(timestamp / std.time.s_per_day);
@@ -523,8 +532,7 @@ fn timerLoop(params: [][]const u8) !void {
             chrono.date.YearMonthDay.fromDaysSinceUnixEpoch(days_since_epoch);
         const time_day: u32 = @intCast(timestamp % std.time.s_per_day);
         const time = try chrono.Time.fromNumSecondsFromMidnight(time_day, 0);
-
-        break :p try std.fmt.bufPrint(
+        const file_path = try std.fmt.bufPrint(
             &path_buffer,
             "time-logging-{}.{:0>2}.{:0>2}-{:0>2}.{:0>2}.{:0>2}.csv",
             .{
@@ -536,13 +544,35 @@ fn timerLoop(params: [][]const u8) !void {
                 time.second(),
             },
         );
-    };
-    timer_log_file = try std.fs.cwd().createFile(file_path, .{});
-    try timer_log_file.?.writer().print("elapsed time\n", .{});
-    timer_log_data = try CircularBuffer(f64).initCapacity(
-        allocator,
-        iteration,
-    );
+        timer_log_path = try allocator.alloc(u8, file_path.len);
+        @memcpy(timer_log_path, file_path);
+    }
+    // const path = params[1];
+    // var path_buffer: [512]u8 = undefined;
+    // const file_path = if (path.len > 0) path else p: {
+    //     var timestamp: u64 = @intCast(std.time.timestamp());
+    //     timestamp += std.time.s_per_hour * 9;
+    //     const days_since_epoch: i32 = @intCast(timestamp / std.time.s_per_day);
+    //     const ymd =
+    //         chrono.date.YearMonthDay.fromDaysSinceUnixEpoch(days_since_epoch);
+    //     const time_day: u32 = @intCast(timestamp % std.time.s_per_day);
+    //     const time = try chrono.Time.fromNumSecondsFromMidnight(time_day, 0);
+
+    //     break :p try std.fmt.bufPrint(
+    //         &path_buffer,
+    //         "time-logging-{}.{:0>2}.{:0>2}-{:0>2}.{:0>2}.{:0>2}.csv",
+    //         .{
+    //             ymd.year,
+    //             ymd.month.number(),
+    //             ymd.day,
+    //             time.hour(),
+    //             time.minute(),
+    //             time.second(),
+    //         },
+    //     );
+    // };
+    // timer_log_file = try std.fs.cwd().createFile(file_path, .{});
+    // try timer_log_file.?.writer().print("elapsed time\n", .{});
 }
 
 fn file(params: [][]const u8) !void {
