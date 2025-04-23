@@ -523,7 +523,7 @@ fn timerLoop(params: [][]const u8) !void {
 
         break :p try std.fmt.bufPrint(
             &path_buffer,
-            "mmc-register-{}.{:0>2}.{:0>2}-{:0>2}.{:0>2}.{:0>2}.csv",
+            "time-logging-{}.{:0>2}.{:0>2}-{:0>2}.{:0>2}.{:0>2}.csv",
             .{
                 ymd.year,
                 ymd.month.number(),
