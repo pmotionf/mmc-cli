@@ -11,6 +11,8 @@ const mcl = @import("command/mcl.zig");
 const return_demo2 = @import("command/return_demo2.zig");
 const client_cli = @import("command/client_cli.zig");
 const Config = @import("Config.zig");
+const CircularBuffer =
+    @import("circular_buffer.zig").CircularBuffer;
 
 // Global registry of all commands, including from other command modules.
 pub var registry: std.StringArrayHashMap(Command) = undefined;
@@ -32,6 +34,9 @@ var command_queue: std.ArrayList(CommandString) = undefined;
 
 var timer: ?std.time.Timer = null;
 var log_file: ?std.fs.File = null;
+var timer_iteration: ?usize = null;
+var timer_log_file: ?std.fs.File = null;
+var timer_log_data: ?CircularBuffer(f64) = null;
 
 const CommandString = struct {
     buffer: [1024]u8,
@@ -203,6 +208,23 @@ pub fn init() !void {
         \\or timezone.
         ,
         .execute = &timerRead,
+    });
+    try registry.put("TIMER_LOOP", .{
+        .name = "TIMER_LOOP",
+        .parameters = &[_]Command.Parameter{
+            .{ .name = "iterations" },
+            .{ .name = "path", .optional = true },
+        },
+        .short_description = "Set automatic time logging with desired iterations.",
+        .long_description =
+        \\Automatically log the time whenever TIMER_READ is executed. TIMER_READ
+        \\will return error after executed the same number as iterations parameter.
+        \\If no path is provided, a default log file containing the elapsed time 
+        \\between each iteration will be created in the current working directory 
+        \\as:
+        \\    "time-logging-YYYY.MM.DD-HH.MM.SS.csv".
+        ,
+        .execute = &timerLoop,
     });
     try registry.put("FILE", .{
         .name = "FILE",
@@ -465,9 +487,58 @@ fn timerRead(_: [][]const u8) !void {
         timer_value = timer_value / std.time.ns_per_s;
         // Only print to microsecond precision.
         std.log.info("Timer: {d:.6}\n", .{timer_value});
+        if (timer_iteration) |iteration| {
+            try timer_log_data.?.writeItem(timer_value);
+            if (timer_log_data.?.count == iteration) {
+                const file_writer = timer_log_file.?.writer();
+                while (timer_log_data.?.readItem()) |item| {
+                    try file_writer.print("{d}\n", .{item});
+                }
+                std.log.info(
+                    "Timer logging has been saved successfully",
+                    .{},
+                );
+                timer_log_file.?.close();
+                return error.MaximumTimerLoopExceeded;
+            }
+        }
     } else {
         return error.SystemTimerFailure;
     }
+}
+
+fn timerLoop(params: [][]const u8) !void {
+    const iteration = try std.fmt.parseInt(usize, params[0], 0);
+    timer_iteration = iteration;
+    const path = params[1];
+    var path_buffer: [512]u8 = undefined;
+    const file_path = if (path.len > 0) path else p: {
+        var timestamp: u64 = @intCast(std.time.timestamp());
+        timestamp += std.time.s_per_hour * 9;
+        const days_since_epoch: i32 = @intCast(timestamp / std.time.s_per_day);
+        const ymd =
+            chrono.date.YearMonthDay.fromDaysSinceUnixEpoch(days_since_epoch);
+        const time_day: u32 = @intCast(timestamp % std.time.s_per_day);
+        const time = try chrono.Time.fromNumSecondsFromMidnight(time_day, 0);
+
+        break :p try std.fmt.bufPrint(
+            &path_buffer,
+            "mmc-register-{}.{:0>2}.{:0>2}-{:0>2}.{:0>2}.{:0>2}.csv",
+            .{
+                ymd.year,
+                ymd.month.number(),
+                ymd.day,
+                time.hour(),
+                time.minute(),
+                time.second(),
+            },
+        );
+    };
+    timer_log_file = try std.fs.cwd().createFile(file_path, .{});
+    timer_log_data = try CircularBuffer(f64).initCapacity(
+        allocator,
+        iteration,
+    );
 }
 
 fn file(params: [][]const u8) !void {
