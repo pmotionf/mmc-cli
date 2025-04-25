@@ -691,7 +691,7 @@ pub fn init(c: Config) !void {
             .{ .name = "axes" },
             .{ .name = "registers" },
         },
-        .short_description = "Add logging configuration for LOG_REGISTERS command.",
+        .short_description = "Add registers logging configuration.",
         .long_description =
         \\Setup the logging configuration for the specified line. This will
         \\overwrite the existing configuration for the specified line if any.
