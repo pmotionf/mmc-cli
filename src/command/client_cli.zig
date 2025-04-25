@@ -7,8 +7,6 @@ const CircularBuffer =
     @import("../circular_buffer.zig").CircularBuffer;
 const builtin = @import("builtin");
 
-const MMCErrorEnum = @import("mmc_config").MMCErrorEnum;
-
 const protobuf_msg = mmc.protobuf_msg;
 const protobuf = mmc.protobuf;
 
@@ -22,8 +20,6 @@ var allocator: std.mem.Allocator = undefined;
 var line_names: [][]u8 = undefined;
 var line_speeds: []u5 = undefined;
 var line_accelerations: []u8 = undefined;
-const Direction = mmc.Direction;
-const Station = mmc.Station;
 const SystemState = mmc.SystemState;
 
 var IP_address: []u8 = undefined;
@@ -1013,6 +1009,137 @@ fn parseRegisterX(
     return x;
 }
 
+test parseRegisterX {
+    const x: mcl.registers.X = .{
+        .cc_link_enabled = true,
+        .command_ready = true,
+        .command_received = false,
+        .axis_cleared_carrier = false,
+        .cleared_carrier = false,
+        .servo_enabled = true,
+        .emergency_stop_enabled = false,
+        .paused = false,
+        .motor_enabled = .{
+            .axis1 = true,
+            .axis2 = true,
+            .axis3 = false,
+        },
+        .vdc_overvoltage_detected = false,
+        .vdc_undervoltage_detected = false,
+        .errors_cleared = false,
+        .communication_error = .{
+            .from_next = false,
+            .from_prev = true,
+        },
+        .inverter_overheat_detected = false,
+        .overcurrent_detected = .{
+            .axis1 = false,
+            .axis2 = false,
+            .axis3 = false,
+        },
+        .hall_alarm = .{
+            .axis1 = .{
+                .back = false,
+                .front = true,
+            },
+            .axis2 = .{
+                .back = true,
+                .front = false,
+            },
+            .axis3 = .{
+                .back = false,
+                .front = false,
+            },
+        },
+        .wait_pull_carrier = .{
+            .axis1 = false,
+            .axis2 = false,
+            .axis3 = false,
+        },
+        .wait_push_carrier = .{
+            .axis1 = false,
+            .axis2 = false,
+            .axis3 = false,
+        },
+        .control_loop_max_time_exceeded = false,
+        .initial_data_processing_request = false,
+        .initial_data_setting_complete = false,
+        .error_status = false,
+        .remote_ready = false,
+    };
+    const RegisterX = protobuf_msg.RegisterX;
+    var response: RegisterX = RegisterX.init(std.testing.allocator);
+    response = std.mem.zeroInit(RegisterX, .{});
+    defer response.deinit();
+    // Copy the value of x to response
+    response = .{
+        .cc_link_enabled = true,
+        .command_ready = true,
+        .command_received = false,
+        .axis_cleared_carrier = false,
+        .cleared_carrier = false,
+        .servo_enabled = true,
+        .emergency_stop_enabled = false,
+        .paused = false,
+        .motor_enabled = .{
+            .axis1 = true,
+            .axis2 = true,
+            .axis3 = false,
+        },
+        .vdc_overvoltage_detected = false,
+        .vdc_undervoltage_detected = false,
+        .errors_cleared = false,
+        .communication_error = .{
+            .from_next = false,
+            .from_prev = true,
+        },
+        .inverter_overheat_detected = false,
+        .overcurrent_detected = .{
+            .axis1 = false,
+            .axis2 = false,
+            .axis3 = false,
+        },
+        .hall_alarm = .{
+            .axis1 = .{
+                .back = false,
+                .front = true,
+            },
+            .axis2 = .{
+                .back = true,
+                .front = false,
+            },
+            .axis3 = .{
+                .back = false,
+                .front = false,
+            },
+        },
+        .wait_pull_carrier = .{
+            .axis1 = false,
+            .axis2 = false,
+            .axis3 = false,
+        },
+        .wait_push_carrier = .{
+            .axis1 = false,
+            .axis2 = false,
+            .axis3 = false,
+        },
+        .control_loop_max_time_exceeded = false,
+        .initial_data_processing_request = false,
+        .initial_data_setting_complete = false,
+        .error_status = false,
+        .remote_ready = false,
+    };
+    const encoded = try response.encode(std.testing.allocator);
+    defer std.testing.allocator.free(encoded);
+    try std.testing.expectEqual(
+        x,
+        try parseRegisterX(
+            encoded,
+            std.testing.allocator,
+        ),
+    );
+}
+
 fn clientStationX(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(i16, params[1], 0);
@@ -1097,6 +1224,67 @@ fn parseRegisterY(
         },
     };
     return y;
+}
+
+test parseRegisterY {
+    const y: mcl.registers.Y = .{
+        .cc_link_enable = true,
+        .start_command = false,
+        .reset_command_received = false,
+        .axis_clear_carrier = false,
+        .clear_carrier = false,
+        .axis_servo_release = false,
+        .servo_release = false,
+        .emergency_stop = false,
+        .temporary_pause = false,
+        .clear_errors = false,
+        .reset_pull_carrier = .{
+            .axis1 = false,
+            .axis2 = false,
+            .axis3 = false,
+        },
+        .reset_push_carrier = .{
+            .axis1 = false,
+            .axis2 = false,
+            .axis3 = false,
+        },
+    };
+    const RegisterY = protobuf_msg.RegisterY;
+    var response: RegisterY = RegisterY.init(std.testing.allocator);
+    response = std.mem.zeroInit(RegisterY, .{});
+    defer response.deinit();
+    // Copy the value of y to the response
+    response = .{
+        .cc_link_enable = true,
+        .start_command = false,
+        .reset_command_received = false,
+        .axis_clear_carrier = false,
+        .clear_carrier = false,
+        .axis_servo_release = false,
+        .servo_release = false,
+        .emergency_stop = false,
+        .temporary_pause = false,
+        .clear_errors = false,
+        .reset_pull_carrier = .{
+            .axis1 = false,
+            .axis2 = false,
+            .axis3 = false,
+        },
+        .reset_push_carrier = .{
+            .axis1 = false,
+            .axis2 = false,
+            .axis3 = false,
+        },
+    };
+    const encoded = try response.encode(std.testing.allocator);
+    defer std.testing.allocator.free(encoded);
+    try std.testing.expectEqual(
+        y,
+        try parseRegisterY(
+            encoded,
+            std.testing.allocator,
+        ),
+    );
 }
 
 fn clientStationY(params: [][]const u8) !void {
@@ -1247,6 +1435,140 @@ fn parseRegisterWr(
     return wr;
 }
 
+// This test cannot run at all. It is stuck in defining wr variable.
+// However, the usage of parseRegisterWr written in this test is correct.
+test parseRegisterWr {
+    // const wr: mcl.registers.Wr = .{
+    //     .command_response = .CarrierAlreadyExists,
+    //     ._16 = 0,
+    //     .received_backward = .{
+    //         .id = 1,
+    //         .failed_bcc = false,
+    //         .kind = .off_pos_req,
+    //     },
+    //     .received_forward = .{
+    //         .id = 2,
+    //         .failed_bcc = false,
+    //         .kind = .prof_noti,
+    //     },
+    //     .carrier = .{
+    //         .axis1 = .{
+    //             .location = 0.0,
+    //             .id = 0,
+    //             .arrived = false,
+    //             .auxiliary = false,
+    //             .enabled = false,
+    //             .quasi = false,
+    //             .cas = .{
+    //                 .enabled = false,
+    //                 .triggered = false,
+    //             },
+    //             .state = .None,
+    //             ._42 = 0,
+    //             ._54 = 0,
+    //         },
+    //         .axis2 = .{
+    //             .location = 330.0,
+    //             .id = 1,
+    //             .arrived = true,
+    //             .auxiliary = false,
+    //             .enabled = true,
+    //             .quasi = false,
+    //             .cas = .{
+    //                 .enabled = true,
+    //                 .triggered = false,
+    //             },
+    //             .state = .PosMoveCompleted,
+    //             ._42 = 0,
+    //             ._54 = 0,
+    //         },
+    //         .axis3 = .{
+    //             .location = 0.0,
+    //             .id = 0,
+    //             .arrived = false,
+    //             .auxiliary = false,
+    //             .enabled = false,
+    //             .quasi = false,
+    //             .cas = .{
+    //                 .enabled = false,
+    //                 .triggered = false,
+    //             },
+    //             .state = .None,
+    //             ._42 = 0,
+    //             ._54 = 0,
+    //         },
+    //     },
+    // };
+    // const RegisterWr = protobuf_msg.RegisterWr;
+    // var response: RegisterWr = RegisterWr.init(std.testing.allocator);
+    // response = std.mem.zeroInit(RegisterWr, .{});
+    // defer response.deinit();
+    // // Copy the value of wr to the response
+    // response = .{
+    //     .command_response = .CarrierAlreadyExists,
+    //     .received_backward = .{
+    //         .id = 1,
+    //         .failed_bcc = false,
+    //         .kind = .off_pos_req,
+    //     },
+    //     .received_forward = .{
+    //         .id = 2,
+    //         .failed_bcc = false,
+    //         .kind = .prof_noti,
+    //     },
+    //     .carrier = .{
+    //         .axis1 = .{
+    //             .location = 0,
+    //             .id = 0,
+    //             .arrived = false,
+    //             .auxiliary = false,
+    //             .enabled = false,
+    //             .quasi = false,
+    //             .cas = .{
+    //                 .enabled = false,
+    //                 .triggered = false,
+    //             },
+    //             .state = .None,
+    //         },
+    //         .axis2 = .{
+    //             .location = 330,
+    //             .id = 1,
+    //             .arrived = true,
+    //             .auxiliary = false,
+    //             .enabled = true,
+    //             .quasi = false,
+    //             .cas = .{
+    //                 .enabled = true,
+    //                 .triggered = false,
+    //             },
+    //             .state = .PosMoveCompleted,
+    //         },
+    //         .axis3 = .{
+    //             .location = 0,
+    //             .id = 0,
+    //             .arrived = false,
+    //             .auxiliary = false,
+    //             .enabled = false,
+    //             .quasi = false,
+    //             .cas = .{
+    //                 .enabled = false,
+    //                 .triggered = false,
+    //             },
+    //             .state = .None,
+    //         },
+    //     },
+    // };
+    // const encoded = try response.encode(std.testing.allocator);
+    // defer std.testing.allocator.free(encoded);
+    // try std.testing.expectEqual(
+    //     wr,
+    //     try parseRegisterWr(
+    //         encoded,
+    //         std.testing.allocator,
+    //     ),
+    // );
+}
+
 fn clientStationWr(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(i16, params[1], 0);
@@ -1336,6 +1658,58 @@ fn parseRegisterWw(
         },
     };
     return ww;
+}
+
+// This test cannot be run as Ww have a packed union (untagged union). Zig
+// cannot compare untagged union. However, the usage of parseRegisterWr written
+// in this test is correct.
+test parseRegisterWw {
+    // const ww: mcl.registers.Ww = .{
+    //     .command = .PositionMoveCarrierAxis,
+    //     .axis = 0,
+    //     .carrier = .{
+    //         .id = 1,
+    //         .enable_cas = true,
+    //         .isolate_link_next_axis = false,
+    //         .isolate_link_prev_axis = false,
+    //         .speed = 12,
+    //         .acceleration = 78,
+    //         .target = .{
+    //             .u32 = 2,
+    //         },
+    //     },
+    // };
+    // inline for (@typeInfo(@TypeOf(ww)).@"struct".fields) |field| {
+    //     @compileLog(field.name, field.type);
+    // }
+
+    // const RegisterWw = protobuf_msg.RegisterWw;
+    // var response: RegisterWw = RegisterWw.init(std.testing.allocator);
+    // response = std.mem.zeroInit(RegisterWw, .{});
+    // defer response.deinit();
+    // // Copy the value of wr to the response
+    // response = .{
+    //     .command = .PositionMoveCarrierAxis,
+    //     .axis = 0,
+    //     .carrier = .{
+    //         .id = 1,
+    //         .enable_cas = true,
+    //         .isolate_link_next_axis = false,
+    //         .isolate_link_prev_axis = false,
+    //         .speed = 12,
+    //         .acceleration = 78,
+    //         .target = .{ .u32 = 2 },
+    //     },
+    // };
+    // const encoded = try response.encode(std.testing.allocator);
+    // defer std.testing.allocator.free(encoded);
+    // try std.testing.expectEqual(
+    //     ww,
+    //     try parseRegisterWw(
+    //         encoded,
+    //         std.testing.allocator,
+    //     ),
+    // );
 }
 
 fn clientStationWw(params: [][]const u8) !void {
@@ -2051,7 +2425,7 @@ fn clientIsolate(params: [][]const u8) !void {
         return error.InvalidAxis;
     }
 
-    const dir: Direction = dir_parse: {
+    const dir: mcl.Direction = dir_parse: {
         if (std.ascii.eqlIgnoreCase("forward", params[2])) {
             break :dir_parse .forward;
         } else if (std.ascii.eqlIgnoreCase("backward", params[2])) {
@@ -2621,9 +2995,6 @@ fn clientCarrierStopPull(params: [][]const u8) !void {
     if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
 
-    var param = std.mem.zeroes(mmc.ParamType(.stop_pull_carrier));
-    param.line_idx = @intCast(line_idx);
-    param.axis_idx = axis_index;
     if (main_socket) |s| {
         const SendCommand = protobuf_msg.SendCommand;
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
@@ -2747,51 +3118,6 @@ fn matchLine(names: [][]u8, name: []const u8) !usize {
         if (std.mem.eql(u8, n, name)) return i;
     } else {
         return error.LineNameNotFound;
-    }
-}
-
-//TODO: Implement std.posix.pollfd to avoid blocking from socket
-/// Wait until a socket receive any messages from the server
-fn waitSocketReceive(s: network.Socket, msg_type: mmc.MessageType) !void {
-    var peek_buffer: [8192]u8 = undefined;
-    while (main_socket) |_| {
-        const peek_size = s.peek(&peek_buffer) catch |e| {
-            std.log.debug("error message: {s}", .{@errorName(e)});
-            return error.ConnectionClosedByServer;
-        };
-        if (peek_size == 0) return error.ConnectionClosedByServer;
-        if (peek_size >= 3) {
-            const actual_msg_type = std.mem.readPackedInt(
-                u4,
-                peek_buffer[0..peek_size],
-                0,
-                .little,
-            );
-            if (actual_msg_type != @intFromEnum(msg_type)) {
-                const msg = @as(
-                    mmc.MessageType,
-                    @enumFromInt(actual_msg_type),
-                );
-                std.log.debug(
-                    "Actual message type: {s}, expected: {s}",
-                    .{ @tagName(msg), @tagName(msg_type) },
-                );
-                _ = s.receive(&peek_buffer) catch |e| {
-                    std.log.debug("error message: {s}", .{@errorName(e)});
-                    return error.ConnectionClosedByServer;
-                };
-                return error.UnexpectedMessage;
-            }
-            const msg_length = std.mem.readPackedInt(
-                u13,
-                peek_buffer[0..peek_size],
-                4,
-                .little,
-            );
-            if (peek_size >= msg_length) {
-                return;
-            }
-        }
     }
 }
 
@@ -2946,6 +3272,41 @@ fn parseCarrierStatus(
     return carrier;
 }
 
+test parseCarrierStatus {
+    const carrier: SystemState.Carrier = .{
+        .axis_idx = .{
+            .aux_axis = 1,
+            .main_axis = 2,
+        },
+        .id = 1,
+        .location = 0.0,
+        .state = .PosMoveCompleted,
+    };
+    const CarrierStatus = protobuf_msg.CarrierStatus;
+    var response: CarrierStatus = CarrierStatus.init(std.testing.allocator);
+    response = std.mem.zeroInit(CarrierStatus, .{});
+    defer response.deinit();
+    // Copy the value of y to the response
+    response = .{
+        .axis_idx = .{
+            .aux_axis = 1,
+            .main_axis = 2,
+        },
+        .id = 1,
+        .location = 0.0,
+        .state = .PosMoveCompleted,
+    };
+    const encoded = try response.encode(std.testing.allocator);
+    defer std.testing.allocator.free(encoded);
+    try std.testing.expectEqual(
+        carrier,
+        try parseCarrierStatus(
+            encoded,
+            std.testing.allocator,
+        ),
+    );
+}
+
 fn parseHallStatus(
     buffer: []const u8,
     a: std.mem.Allocator,
@@ -2962,6 +3323,33 @@ fn parseHallStatus(
         .front = response.front,
     };
     return hall;
+}
+
+test parseHallStatus {
+    const hall: SystemState.Hall = .{
+        .configured = true,
+        .back = true,
+        .front = false,
+    };
+    const HallStatus = protobuf_msg.HallStatus;
+    var response: HallStatus = HallStatus.init(std.testing.allocator);
+    response = std.mem.zeroInit(HallStatus, .{});
+    defer response.deinit();
+    // Copy the value of y to the response
+    response = .{
+        .configured = true,
+        .back = true,
+        .front = false,
+    };
+    const encoded = try response.encode(std.testing.allocator);
+    defer std.testing.allocator.free(encoded);
+    try std.testing.expectEqual(
+        hall,
+        try parseHallStatus(
+            encoded,
+            std.testing.allocator,
+        ),
+    );
 }
 
 fn parseCommandStatus(
@@ -2990,4 +3378,29 @@ fn parseCommandStatus(
         ).?,
     };
     return command_status;
+}
+
+test parseCommandStatus {
+    const com: SystemState.Command = .{
+        .command_received = true,
+        .command_response = .InvalidCommand,
+    };
+    const CommandStatus = protobuf_msg.CommandStatus;
+    var response: CommandStatus = CommandStatus.init(std.testing.allocator);
+    response = std.mem.zeroInit(CommandStatus, .{});
+    defer response.deinit();
+    // Copy the value of y to the response
+    response = .{
+        .received = true,
+        .response = .InvalidCommand,
+    };
+    const encoded = try response.encode(std.testing.allocator);
+    defer std.testing.allocator.free(encoded);
+    try std.testing.expectEqual(
+        com,
+        try parseCommandStatus(
+            encoded,
+            std.testing.allocator,
+        ),
+    );
 }

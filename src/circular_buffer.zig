@@ -158,7 +158,7 @@ pub fn CircularBuffer(comptime T: type) type {
 
         /// Get the total number of items in buffer.
         pub fn items(self: Self) usize {
-            self.count;
+            return self.count;
         }
     };
 }
