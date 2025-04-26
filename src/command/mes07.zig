@@ -204,7 +204,7 @@ fn process() void {
         _ = c.ec_send_processdata();
         wkc = c.ec_receive_processdata(c.EC_TIMEOUTRET);
         while (wkc < expected_WKC) {
-            std.Thread.sleep(std.time.ns_per_us * 100);
+            std.Thread.sleep(std.time.ns_per_us * 10);
             _ = c.ec_send_processdata();
             wkc = c.ec_receive_processdata(c.EC_TIMEOUTRET);
         }
@@ -223,12 +223,12 @@ fn process() void {
         const reading_fixed: i32 = result_fixed_ptr.*;
         laser_value.store(reading_fixed, .monotonic);
         read_laser_value.store(false, .monotonic);
-        std.Thread.sleep(std.time.ns_per_us * 100);
+        std.Thread.sleep(std.time.ns_per_us * 10);
     }
 }
 
 fn read(_: [][]const u8) !void {
-    if (read_laser_value.load(.monotonic)) {
+    if (read_laser_value.load(.monotonic) or !processing.load(.monotonic)) {
         std.log.err(
             "MES07 Communication Processing Failed. Please reconnect.",
             .{},
@@ -237,10 +237,12 @@ fn read(_: [][]const u8) !void {
     }
 
     const reading_fixed = laser_value.load(.monotonic);
-    read_laser_value.store(false, .monotonic);
+    read_laser_value.store(true, .monotonic);
 
-    std.log.info("Laser reading: {d}.{d}", .{
-        @divTrunc(reading_fixed, 1000),
-        @abs(reading_fixed) % 1000,
+    const abs_val: u32 = @abs(reading_fixed);
+    std.log.info("Laser reading: {c}{d}.{d:0>3.0}", .{
+        @as(u8, if (reading_fixed > 0) '+' else '-'),
+        abs_val / 1000,
+        abs_val % 1000,
     });
 }
