@@ -687,84 +687,84 @@ pub fn init(c: Config) !void {
         .execute = &clientWaitAxisEmpty,
     });
     errdefer command.registry.orderedRemove("WAIT_AXIS_EMPTY");
-    // try command.registry.put(.{
-    //     .name = "ADD_LOG_REGISTERS",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "line name" },
-    //         .{ .name = "axes" },
-    //         .{ .name = "registers" },
-    //     },
-    //     .short_description = "Add registers logging configuration.",
-    //     .long_description =
-    //     \\Setup the logging configuration for the specified line. This will
-    //     \\overwrite the existing configuration for the specified line if any.
-    //     \\It will log registers based on the given "registers" parameter on the
-    //     \\station depending on the provided axes. Both "registers" and "axes"
-    //     \\shall be provided as comma-separated values:
-    //     \\
-    //     \\"ADD_LOG_REGISTERS line_name 1,4,7 x,y"
-    //     \\
-    //     \\Both "registers" and "axes" accept "all" as the parameter to log every
-    //     \\register and axes. The line configured for logging registers can be
-    //     \\evaluated by "STATUS_LOG_REGISTERS" command.
-    //     ,
-    //     .execute = &addLogRegisters,
-    // });
-    // errdefer command.registry.orderedRemove("ADD_LOG_REGISTERS");
-    // try command.registry.put(.{
-    //     .name = "REMOVE_LOG_REGISTERS",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "line name" },
-    //     },
-    //     .short_description = "Remove the logging configuration for the specified line.",
-    //     .long_description =
-    //     \\Remove logging configuration for logging registers on the specified
-    //     \\line.
-    //     ,
-    //     .execute = &removeLogRegisters,
-    // });
-    // errdefer command.registry.orderedRemove("REMOVE_LOG_REGISTERS");
-    // try command.registry.put(.{
-    //     .name = "RESET_LOG_REGISTERS",
-    //     .short_description = "Remove all logging configurations.",
-    //     .long_description =
-    //     \\Remove all logging configurations for logging registers for every
-    //     \\line.
-    //     ,
-    //     .execute = &resetLogRegisters,
-    // });
-    // errdefer command.registry.orderedRemove("RESET_LOG_REGISTERS");
-    // try command.registry.put(.{
-    //     .name = "STATUS_LOG_REGISTERS",
-    //     .short_description = "Print the logging configurations entry.",
-    //     .long_description =
-    //     \\Print the logging configuration for each line (if any). The status is
-    //     \\given by "line_name:station_id:registers" with stations and registers
-    //     \\are a comma-separated string.
-    //     ,
-    //     .execute = &statusLogRegisters,
-    // });
-    // errdefer _ = command.registry.orderedRemove("STATUS_LOG_REGISTERS");
-    // try command.registry.put(.{
-    //     .name = "START_LOG_REGISTERS",
-    //     .parameters = &[_]command.Command.Parameter{
-    //         .{ .name = "duration", .optional = true },
-    //         .{ .name = "path", .optional = true },
-    //     },
-    //     .short_description = "Start the logging and save the file upon cancellation.",
-    //     .long_description =
-    //     \\Start the registers logging process. The log file will always contain
-    //     \\only the most recent data covering the specified duration (in seconds).
-    //     \\The default duration is 100 s if no duration is specified. The Logging
-    //     \\runs until cancelled manually (Ctrl+C). This command returns an error
-    //     \\if no lines have been configured to be logged. If no path is provided,
-    //     \\a default log file containing all register values will be created in
-    //     \\the current working directory as:
-    //     \\    "mmc-register-YYYY.MM.DD-HH.MM.SS.csv".
-    //     ,
-    //     .execute = &startLogRegisters,
-    // });
-    // errdefer _ = command.registry.orderedRemove("START_LOG_REGISTERS");
+    try command.registry.put(.{
+        .name = "ADD_LOG_REGISTERS",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axes" },
+            .{ .name = "registers" },
+        },
+        .short_description = "Add registers logging configuration.",
+        .long_description =
+        \\Setup the logging configuration for the specified line. This will
+        \\overwrite the existing configuration for the specified line if any.
+        \\It will log registers based on the given "registers" parameter on the
+        \\station depending on the provided axes. Both "registers" and "axes"
+        \\shall be provided as comma-separated values:
+        \\
+        \\"ADD_LOG_REGISTERS line_name 1,4,7 x,y"
+        \\
+        \\Both "registers" and "axes" accept "all" as the parameter to log every
+        \\register and axes. The line configured for logging registers can be
+        \\evaluated by "STATUS_LOG_REGISTERS" command.
+        ,
+        .execute = &addLogRegisters,
+    });
+    errdefer command.registry.orderedRemove("ADD_LOG_REGISTERS");
+    try command.registry.put(.{
+        .name = "REMOVE_LOG_REGISTERS",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+        },
+        .short_description = "Remove the logging configuration for the specified line.",
+        .long_description =
+        \\Remove logging configuration for logging registers on the specified
+        \\line.
+        ,
+        .execute = &removeLogRegisters,
+    });
+    errdefer command.registry.orderedRemove("REMOVE_LOG_REGISTERS");
+    try command.registry.put(.{
+        .name = "RESET_LOG_REGISTERS",
+        .short_description = "Remove all logging configurations.",
+        .long_description =
+        \\Remove all logging configurations for logging registers for every
+        \\line.
+        ,
+        .execute = &resetLogRegisters,
+    });
+    errdefer command.registry.orderedRemove("RESET_LOG_REGISTERS");
+    try command.registry.put(.{
+        .name = "STATUS_LOG_REGISTERS",
+        .short_description = "Print the logging configurations entry.",
+        .long_description =
+        \\Print the logging configuration for each line (if any). The status is
+        \\given by "line_name:station_id:registers" with stations and registers
+        \\are a comma-separated string.
+        ,
+        .execute = &statusLogRegisters,
+    });
+    errdefer _ = command.registry.orderedRemove("STATUS_LOG_REGISTERS");
+    try command.registry.put(.{
+        .name = "START_LOG_REGISTERS",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "duration", .optional = true },
+            .{ .name = "path", .optional = true },
+        },
+        .short_description = "Start the logging and save the file upon cancellation.",
+        .long_description =
+        \\Start the registers logging process. The log file will always contain
+        \\only the most recent data covering the specified duration (in seconds).
+        \\The default duration is 100 s if no duration is specified. The Logging
+        \\runs until cancelled manually (Ctrl+C). This command returns an error
+        \\if no lines have been configured to be logged. If no path is provided,
+        \\a default log file containing all register values will be created in
+        \\the current working directory as:
+        \\    "mmc-register-YYYY.MM.DD-HH.MM.SS.csv".
+        ,
+        .execute = &startLogRegisters,
+    });
+    errdefer _ = command.registry.orderedRemove("START_LOG_REGISTERS");
 }
 
 pub fn deinit() void {
@@ -895,7 +895,10 @@ fn clientConnect(params: [][]const u8) !void {
         try mcl.init(allocator, .{ .lines = lines });
         line_speeds = try allocator.alloc(u5, line_numbers);
         line_accelerations = try allocator.alloc(u8, line_numbers);
+        log_lines = try allocator.alloc(LogLine, lines.len);
         for (0..line_numbers) |i| {
+            log_lines[i].stations = .{false} ** 256;
+            log_lines[i].status = false;
             line_speeds[i] = 12;
             line_accelerations[i] = 78;
             std.log.debug(
@@ -1062,19 +1065,13 @@ fn getRegister(
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
         s.writer().writeAll(encoded) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearence();
-            return error.ConnectionClosed;
+            try disconnect();
+            return e;
         };
         var buffer: [128]u8 = undefined;
         const msg_len = s.receive(&buffer) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearence();
-            return error.ConnectionClosed;
+            try disconnect();
+            return e;
         };
         return switch (reg_type) {
             .X => try parseRegisterX(
@@ -3038,482 +3035,503 @@ fn clientWaitAxisEmpty(params: [][]const u8) !void {
     }
 }
 
-// /// Add logging configuration for registers logging in the specified line
-// fn addLogRegisters(params: [][]const u8) !void {
-//     const line_name = params[0];
-//     const line_idx = try matchLine(line_names, line_name);
-//     const line = mcl.lines[line_idx];
+/// Add logging configuration for registers logging in the specified line
+fn addLogRegisters(params: [][]const u8) !void {
+    const line_name = params[0];
+    const line_idx = try matchLine(line_names, line_name);
+    const line = mcl.lines[line_idx];
 
-//     var log: LogLine = std.mem.zeroInit(LogLine, .{});
+    var log: LogLine = std.mem.zeroInit(LogLine, .{});
 
-//     // Validate "axes" parameter
-//     var axis_input_iterator = std.mem.tokenizeSequence(u8, params[1], ",");
-//     while (axis_input_iterator.next()) |token| {
-//         if (std.ascii.eqlIgnoreCase("all", token)) {
-//             for (0..line.stations.len) |i| {
-//                 log.stations[i] = true;
-//             }
-//             break;
-//         }
-//         const axis_id = try std.fmt.parseInt(mcl.Axis.Id.Line, token, 0);
+    // Validate "axes" parameter
+    var axis_input_iterator = std.mem.tokenizeSequence(u8, params[1], ",");
+    while (axis_input_iterator.next()) |token| {
+        if (std.ascii.eqlIgnoreCase("all", token)) {
+            for (0..line.stations.len) |i| {
+                log.stations[i] = true;
+            }
+            break;
+        }
+        const axis_id = try std.fmt.parseInt(mcl.Axis.Id.Line, token, 0);
 
-//         if (axis_id < 1 or axis_id > line.axes.len) {
-//             return error.InvalidAxis;
-//         }
-//         const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
-//         const station_index: mcl.Station.Index = @intCast(axis_index / 3);
-//         log.stations[station_index] = true;
-//     }
+        if (axis_id < 1 or axis_id > line.axes.len) {
+            return error.InvalidAxis;
+        }
+        const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
+        const station_index: mcl.Station.Index = @intCast(axis_index / 3);
+        log.stations[station_index] = true;
+    }
 
-//     // Validate "registers" parameter
-//     var reg_input_iterator = std.mem.tokenizeSequence(u8, params[2], ",");
-//     outer: while (reg_input_iterator.next()) |token| {
-//         if (std.ascii.eqlIgnoreCase("all", token)) {
-//             inline for (@typeInfo(LogLine.RegisterType).@"enum".fields) |field| {
-//                 log.registers.set(@enumFromInt(field.value), true);
-//             }
-//             break;
-//         }
-//         inline for (@typeInfo(LogLine.RegisterType).@"enum".fields) |field| {
-//             if (std.ascii.eqlIgnoreCase(field.name, token)) {
-//                 log.registers.set(@enumFromInt(field.value), true);
-//                 continue :outer;
-//             }
-//         }
-//         return error.InvalidRegister;
-//     }
-//     var info_buffer: [64]u8 = undefined;
-//     const prefix = "Ready to log registers: ";
-//     @memcpy(info_buffer[0..prefix.len], prefix);
-//     var buf_len = prefix.len;
+    // Validate "registers" parameter
+    var reg_input_iterator = std.mem.tokenizeSequence(u8, params[2], ",");
+    outer: while (reg_input_iterator.next()) |token| {
+        if (std.ascii.eqlIgnoreCase("all", token)) {
+            inline for (@typeInfo(RegisterType).@"enum".fields) |field| {
+                log.registers.set(@enumFromInt(field.value), true);
+            }
+            break;
+        }
+        inline for (@typeInfo(RegisterType).@"enum".fields) |field| {
+            if (std.ascii.eqlIgnoreCase(field.name, token)) {
+                log.registers.set(@enumFromInt(field.value), true);
+                continue :outer;
+            }
+        }
+        return error.InvalidRegister;
+    }
+    var info_buffer: [64]u8 = undefined;
+    const prefix = "Ready to log registers: ";
+    @memcpy(info_buffer[0..prefix.len], prefix);
+    var buf_len = prefix.len;
 
-//     var register_iterator = log.registers.iterator();
-//     while (register_iterator.next()) |reg_entry| {
-//         if (!log.registers.get(reg_entry.key)) continue;
-//         const reg_tag: []const u8 = @tagName(reg_entry.key);
-//         @memcpy(
-//             info_buffer[buf_len .. buf_len + reg_tag.len],
-//             @tagName(reg_entry.key),
-//         );
-//         @memcpy(
-//             info_buffer[buf_len + reg_tag.len .. buf_len + reg_tag.len + 1],
-//             ",",
-//         );
-//         buf_len += reg_tag.len + 1;
-//     }
-//     std.log.info("{s}", .{info_buffer[0 .. buf_len - 1]});
-//     log.status = true;
-//     log_lines[line_idx] = log;
-// }
+    var register_iterator = log.registers.iterator();
+    while (register_iterator.next()) |reg_entry| {
+        if (!log.registers.get(reg_entry.key)) continue;
+        const reg_tag: []const u8 = @tagName(reg_entry.key);
+        @memcpy(
+            info_buffer[buf_len .. buf_len + reg_tag.len],
+            @tagName(reg_entry.key),
+        );
+        @memcpy(
+            info_buffer[buf_len + reg_tag.len .. buf_len + reg_tag.len + 1],
+            ",",
+        );
+        buf_len += reg_tag.len + 1;
+    }
+    std.log.info("{s}", .{info_buffer[0 .. buf_len - 1]});
+    log.status = true;
+    log_lines[line_idx] = log;
+}
 
-// fn removeLogRegisters(params: [][]const u8) !void {
-//     const line_name = params[0];
-//     const line_idx = try matchLine(line_names, line_name);
+fn removeLogRegisters(params: [][]const u8) !void {
+    const line_name = params[0];
+    const line_idx = try matchLine(line_names, line_name);
 
-//     if (log_lines[line_idx].status == false) {
-//         std.log.err("Line is not configured for logging yet", .{});
-//         return;
-//     }
+    if (log_lines[line_idx].status == false) {
+        std.log.err("Line is not configured for logging yet", .{});
+        return;
+    }
 
-//     log_lines[line_idx].status = false;
-// }
+    log_lines[line_idx].status = false;
+}
 
-// fn resetLogRegisters(_: [][]const u8) !void {
-//     for (0..line_names.len) |i| {
-//         log_lines[i].status = false;
-//     }
-// }
+fn resetLogRegisters(_: [][]const u8) !void {
+    for (0..line_names.len) |i| {
+        log_lines[i].status = false;
+    }
+}
 
-// fn statusLogRegisters(_: [][]const u8) !void {
-//     var buffer: [8192]u8 = undefined;
-//     var buf_len: usize = 0;
-//     // flag to indicate printing ","
-//     var first = true;
-//     for (0..line_names.len) |line_idx| {
-//         // Section to print line name
-//         if (log_lines[line_idx].status == false) continue;
-//         buf_len += (try std.fmt.bufPrint(
-//             buffer[buf_len..],
-//             "{s}:",
-//             .{line_names[line_idx]},
-//         )).len;
-//         // Section to print station index
-//         first = true;
-//         for (0..log_lines[line_idx].stations.len) |station_idx| {
-//             if (log_lines[line_idx].stations[station_idx] == false) continue;
-//             if (!first) {
-//                 buf_len += (try std.fmt.bufPrint(
-//                     buffer[buf_len..],
-//                     "{s}",
-//                     .{","},
-//                 )).len;
-//             }
-//             buf_len += std.fmt.formatIntBuf(
-//                 buffer[buf_len..],
-//                 station_idx + 1,
-//                 10,
-//                 .lower,
-//                 .{},
-//             );
-//             first = false;
-//         }
-//         buf_len += (try std.fmt.bufPrint(
-//             buffer[buf_len..],
-//             "{s}",
-//             .{":"},
-//         )).len;
-//         // Section to print register
-//         first = true;
-//         var reg_iterator = log_lines[line_idx].registers.iterator();
-//         while (reg_iterator.next()) |reg_entry| {
-//             if (reg_entry.value.* == false) continue;
-//             if (!first) {
-//                 buf_len += (try std.fmt.bufPrint(
-//                     buffer[buf_len..],
-//                     "{s}",
-//                     .{","},
-//                 )).len;
-//             }
-//             buf_len += (try std.fmt.bufPrint(
-//                 buffer[buf_len..],
-//                 "{s}",
-//                 .{@tagName(reg_entry.key)},
-//             )).len;
-//             first = false;
-//         }
-//         buf_len += (try std.fmt.bufPrint(
-//             buffer[buf_len..],
-//             "{s}",
-//             .{"\n"},
-//         )).len;
-//     }
-//     std.log.info("{s}", .{buffer[0..buf_len]});
-// }
+fn statusLogRegisters(_: [][]const u8) !void {
+    var buffer: [8192]u8 = undefined;
+    var buf_len: usize = 0;
+    // flag to indicate printing ","
+    var first = true;
+    for (0..line_names.len) |line_idx| {
+        // Section to print line name
+        if (log_lines[line_idx].status == false) continue;
+        buf_len += (try std.fmt.bufPrint(
+            buffer[buf_len..],
+            "{s}:",
+            .{line_names[line_idx]},
+        )).len;
+        // Section to print station index
+        first = true;
+        for (0..log_lines[line_idx].stations.len) |station_idx| {
+            if (log_lines[line_idx].stations[station_idx] == false) continue;
+            if (!first) {
+                buf_len += (try std.fmt.bufPrint(
+                    buffer[buf_len..],
+                    "{s}",
+                    .{","},
+                )).len;
+            }
+            buf_len += std.fmt.formatIntBuf(
+                buffer[buf_len..],
+                station_idx + 1,
+                10,
+                .lower,
+                .{},
+            );
+            first = false;
+        }
+        buf_len += (try std.fmt.bufPrint(
+            buffer[buf_len..],
+            "{s}",
+            .{":"},
+        )).len;
+        // Section to print register
+        first = true;
+        var reg_iterator = log_lines[line_idx].registers.iterator();
+        while (reg_iterator.next()) |reg_entry| {
+            if (reg_entry.value.* == false) continue;
+            if (!first) {
+                buf_len += (try std.fmt.bufPrint(
+                    buffer[buf_len..],
+                    "{s}",
+                    .{","},
+                )).len;
+            }
+            buf_len += (try std.fmt.bufPrint(
+                buffer[buf_len..],
+                "{s}",
+                .{@tagName(reg_entry.key)},
+            )).len;
+            first = false;
+        }
+        buf_len += (try std.fmt.bufPrint(
+            buffer[buf_len..],
+            "{s}",
+            .{"\n"},
+        )).len;
+    }
+    std.log.info("{s}", .{buffer[0..buf_len]});
+}
 
-// fn startLogRegisters(params: [][]const u8) !void {
-//     const log_duration = if (params[0].len > 0) try std.fmt.parseFloat(
-//         f64,
-//         params[0],
-//     ) else 100;
-//     // Assumption: The registers value is updated every 3 ms
-//     const logging_size_float =
-//         log_duration * @as(f64, @floatFromInt(std.time.ms_per_s)) / 3.0;
-//     if (std.math.isNan(logging_size_float) or
-//         std.math.isInf(logging_size_float) or
-//         !std.math.isFinite(logging_size_float)) return error.InvalidDuration;
+fn startLogRegisters(params: [][]const u8) !void {
+    const log_duration = if (params[0].len > 0) try std.fmt.parseFloat(
+        f64,
+        params[0],
+    ) else 100;
+    // Assumption: The registers value is updated every 3 ms
+    const logging_size_float =
+        log_duration * @as(f64, @floatFromInt(std.time.ms_per_s)) / 3.0;
+    if (std.math.isNan(logging_size_float) or
+        std.math.isInf(logging_size_float) or
+        !std.math.isFinite(logging_size_float)) return error.InvalidDuration;
 
-//     const logging_size =
-//         @as(usize, @intFromFloat(@round(logging_size_float)));
+    const logging_size =
+        @as(usize, @intFromFloat(@round(logging_size_float)));
 
-//     var log_registers_initialized = false;
-//     for (0..line_names.len) |line_idx| {
-//         if (log_lines[line_idx].status == true) {
-//             log_registers_initialized = true;
-//             break;
-//         }
-//     }
-//     if (!log_registers_initialized) {
-//         std.log.err("Logging is not configured for any line", .{});
-//         return;
-//     }
-//     const path = params[1];
-//     var path_buffer: [512]u8 = undefined;
-//     const file_path = if (path.len > 0) path else p: {
-//         var timestamp: u64 = @intCast(std.time.timestamp());
-//         timestamp += std.time.s_per_hour * 9;
-//         const days_since_epoch: i32 = @intCast(timestamp / std.time.s_per_day);
-//         const ymd =
-//             chrono.date.YearMonthDay.fromDaysSinceUnixEpoch(days_since_epoch);
-//         const time_day: u32 = @intCast(timestamp % std.time.s_per_day);
-//         const time = try chrono.Time.fromNumSecondsFromMidnight(time_day, 0);
+    var log_registers_initialized = false;
+    for (0..line_names.len) |line_idx| {
+        if (log_lines[line_idx].status == true) {
+            log_registers_initialized = true;
+            break;
+        }
+    }
+    if (!log_registers_initialized) {
+        std.log.err("Logging is not configured for any line", .{});
+        return;
+    }
+    const path = params[1];
+    var path_buffer: [512]u8 = undefined;
+    const file_path = if (path.len > 0) path else p: {
+        var timestamp: u64 = @intCast(std.time.timestamp());
+        timestamp += std.time.s_per_hour * 9;
+        const days_since_epoch: i32 = @intCast(timestamp / std.time.s_per_day);
+        const ymd =
+            chrono.date.YearMonthDay.fromDaysSinceUnixEpoch(days_since_epoch);
+        const time_day: u32 = @intCast(timestamp % std.time.s_per_day);
+        const time = try chrono.Time.fromNumSecondsFromMidnight(time_day, 0);
 
-//         break :p try std.fmt.bufPrint(
-//             &path_buffer,
-//             "mmc-register-{}.{:0>2}.{:0>2}-{:0>2}.{:0>2}.{:0>2}.csv",
-//             .{
-//                 ymd.year,
-//                 ymd.month.number(),
-//                 ymd.day,
-//                 time.hour(),
-//                 time.minute(),
-//                 time.second(),
-//             },
-//         );
-//     };
-//     std.log.info("The registers will be logged to {s}", .{file_path});
-//     const log_file = try std.fs.cwd().createFile(file_path, .{});
-//     // _buf is used to print the title prefix with std.fmt.bufPrint()
-//     var _buf: [1_024]u8 = undefined;
+        break :p try std.fmt.bufPrint(
+            &path_buffer,
+            "mmc-register-{}.{:0>2}.{:0>2}-{:0>2}.{:0>2}.{:0>2}.csv",
+            .{
+                ymd.year,
+                ymd.month.number(),
+                ymd.day,
+                time.hour(),
+                time.minute(),
+                time.second(),
+            },
+        );
+    };
+    std.log.info("The registers will be logged to {s}", .{file_path});
+    const log_file = try std.fs.cwd().createFile(file_path, .{});
+    // _buf is used to print the title prefix with std.fmt.bufPrint()
+    var _buf: [1_024]u8 = undefined;
 
-//     const log_writer = log_file.writer();
-//     try log_writer.print("timestamp,", .{});
+    const log_writer = log_file.writer();
+    try log_writer.print("timestamp,", .{});
 
-//     for (line_names) |line_name| {
-//         const line_idx = try matchLine(line_names, line_name);
-//         if (log_lines[line_idx].status == false) continue;
-//         for (0..256) |station_idx| {
-//             if (log_lines[line_idx].stations[station_idx] == false) continue;
-//             var reg_iterator = log_lines[line_idx].registers.iterator();
-//             while (reg_iterator.next()) |reg_entry| {
-//                 const reg_type = @TypeOf(reg_entry.key);
-//                 inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
-//                     if (@intFromEnum(reg_entry.key) == reg_enum.value and
-//                         reg_entry.value.* == true)
-//                     {
-//                         try writeLoggingHeaders(
-//                             log_writer,
-//                             try std.fmt.bufPrint(
-//                                 &_buf,
-//                                 "{s}_station{d}_{s}",
-//                                 .{ line_name, station_idx + 1, reg_enum.name },
-//                             ),
-//                             "",
-//                             @FieldType(
-//                                 Registers,
-//                                 reg_enum.name,
-//                             ),
-//                         );
-//                         break;
-//                     }
-//                 }
-//             }
-//         }
-//     }
+    for (line_names) |line_name| {
+        const line_idx = try matchLine(line_names, line_name);
+        if (log_lines[line_idx].status == false) continue;
+        for (0..256) |station_idx| {
+            if (log_lines[line_idx].stations[station_idx] == false) continue;
+            var reg_iterator = log_lines[line_idx].registers.iterator();
+            while (reg_iterator.next()) |reg_entry| {
+                const reg_type = @TypeOf(reg_entry.key);
+                inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
+                    if (@intFromEnum(reg_entry.key) == reg_enum.value and
+                        reg_entry.value.* == true)
+                    {
+                        try writeLoggingHeaders(
+                            log_writer,
+                            try std.fmt.bufPrint(
+                                &_buf,
+                                "{s}_station{d}_{s}",
+                                .{ line_name, station_idx + 1, reg_enum.name },
+                            ),
+                            "",
+                            @FieldType(
+                                Registers,
+                                reg_enum.name,
+                            ),
+                        );
+                        break;
+                    }
+                }
+            }
+        }
+    }
 
-//     var logging_data =
-//         try CircularBuffer(LoggingRegisters).initCapacity(
-//             allocator,
-//             logging_size,
-//         );
-//     const log_time_start = std.time.microTimestamp();
-//     std.log.info("logging registers data..", .{});
-//     var timer = try std.time.Timer.start();
-//     while (true) {
-//         command.checkCommandInterrupt() catch {
-//             std.log.info("saving logging data..", .{});
-//             break;
-//         };
-//         logging_data.writeItemOverwrite(try logRegisters(
-//             log_time_start,
-//             &timer,
-//         ));
-//     }
-//     try logToString(
-//         &logging_data,
-//         log_writer,
-//     );
-//     defer logging_data.deinit();
-// }
+    var logging_data =
+        try CircularBuffer(LoggingRegisters).initCapacity(
+            allocator,
+            logging_size,
+        );
+    const log_time_start = std.time.microTimestamp();
+    std.log.info("logging registers data..", .{});
+    var timer = try std.time.Timer.start();
+    while (true) {
+        command.checkCommandInterrupt() catch {
+            std.log.info("saving logging data..", .{});
+            break;
+        };
+        logging_data.writeItemOverwrite(try logRegisters(
+            log_time_start,
+            &timer,
+        ));
+    }
+    try logToString(
+        &logging_data,
+        log_writer,
+    );
+    defer logging_data.deinit();
+}
 
-// /// Convert the logged binary data to string and save it to the logging file
-// fn logToString(logging_data: *CircularBuffer(LoggingRegisters), writer: std.fs.File.Writer) !void {
-//     while (logging_data.readItem()) |item| {
-//         // Copy a newline in every logging data entry
-//         try writer.writeByte('\n');
-//         // write timestamp to the buffer
-//         try writer.print("{d},", .{item.timestamp});
+/// Convert the logged binary data to string and save it to the logging file
+fn logToString(logging_data: *CircularBuffer(LoggingRegisters), writer: std.fs.File.Writer) !void {
+    while (logging_data.readItem()) |item| {
+        // Copy a newline in every logging data entry
+        try writer.writeByte('\n');
+        // write timestamp to the buffer
+        try writer.print("{d},", .{item.timestamp});
 
-//         var reg_idx: usize = 0;
-//         for (line_names) |line_name| {
-//             const line_idx = try matchLine(line_names, line_name);
-//             if (log_lines[line_idx].status == false) continue;
-//             for (0..256) |station_idx| {
-//                 if (log_lines[line_idx].stations[station_idx] == false) continue;
-//                 var reg_iterator = log_lines[line_idx].registers.iterator();
-//                 var command_code: mcl.registers.Ww.Command = .None;
-//                 while (reg_iterator.next()) |reg_entry| {
-//                     const reg_type = @TypeOf(reg_entry.key);
-//                     inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
-//                         if (@intFromEnum(reg_entry.key) == reg_enum.value and
-//                             reg_entry.value.* == true)
-//                         {
-//                             try registerValueToString(
-//                                 @field(
-//                                     item.registers[reg_idx],
-//                                     reg_enum.name,
-//                                 ),
-//                                 writer,
-//                                 &command_code,
-//                             );
-//                             reg_idx += 1;
-//                             break;
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-//     }
-// }
+        var reg_idx: usize = 0;
+        for (line_names) |line_name| {
+            const line_idx = try matchLine(line_names, line_name);
+            if (log_lines[line_idx].status == false) continue;
+            for (0..256) |station_idx| {
+                if (log_lines[line_idx].stations[station_idx] == false) continue;
+                var reg_iterator = log_lines[line_idx].registers.iterator();
+                var command_code: mcl.registers.Ww.Command = .None;
+                while (reg_iterator.next()) |reg_entry| {
+                    const reg_type = @TypeOf(reg_entry.key);
+                    inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
+                        if (@intFromEnum(reg_entry.key) == reg_enum.value and
+                            reg_entry.value.* == true)
+                        {
+                            try registerValueToString(
+                                @field(
+                                    item.registers[reg_idx],
+                                    reg_enum.name,
+                                ),
+                                writer,
+                                &command_code,
+                            );
+                            reg_idx += 1;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
-// // Write register values into the string
-// fn registerValueToString(
-//     parent: anytype,
-//     writer: std.fs.File.Writer,
-//     command_code: *mcl.registers.Ww.Command,
-// ) !void {
-//     var binary_buf_idx: usize = 0;
-//     const parent_ti = @typeInfo(@TypeOf(parent)).@"struct";
-//     inline for (parent_ti.fields) |child_field| {
-//         if (child_field.name[0] == '_') {
-//             binary_buf_idx += @bitSizeOf(child_field.type);
-//             continue;
-//         }
-//         if (comptime @typeInfo(child_field.type) == .@"struct") {
-//             try registerValueToString(
-//                 @field(parent, child_field.name),
-//                 writer,
-//                 command_code,
-//             );
-//         } else {
-//             if (comptime @typeInfo(child_field.type) == .@"enum") {
-//                 const child_value = @field(parent, child_field.name);
-//                 if (child_field.type == mcl.registers.Ww.Command) {
-//                     command_code.* = child_value;
-//                 }
-//                 try writer.print("{d},", .{@intFromEnum(child_value)});
-//             } else if (comptime @typeInfo(child_field.type) == .@"union") {
-//                 const child_value = @field(parent, child_field.name);
-//                 const ti = @typeInfo(child_field.type).@"union";
-//                 inline for (ti.fields) |union_field| {
-//                     const union_val = @field(child_value, union_field.name);
-//                     switch (command_code.*) {
-//                         .SpeedMoveCarrierAxis,
-//                         .PositionMoveCarrierAxis,
-//                         => {
-//                             if (@typeInfo(@TypeOf(union_val)) == .int) {
-//                                 try writer.print("{},", .{union_val});
-//                             } else {
-//                                 try writer.print("0,", .{});
-//                             }
-//                         },
-//                         .SpeedMoveCarrierDistance,
-//                         .SpeedMoveCarrierLocation,
-//                         .PositionMoveCarrierDistance,
-//                         .PositionMoveCarrierLocation,
-//                         .PullTransitionLocationBackward,
-//                         .PullTransitionLocationForward,
-//                         => {
-//                             if (@typeInfo(@TypeOf(union_val)) == .float) {
-//                                 try writer.print("{d},", .{union_val});
-//                             } else {
-//                                 try writer.print("0,", .{});
-//                             }
-//                         },
-//                         else => try writer.print("0,", .{}),
-//                     }
-//                 }
-//             } else {
-//                 const child_value = @field(parent, child_field.name);
-//                 if (@typeInfo(@TypeOf(child_value)) == .float) {
-//                     try writer.print("{d},", .{child_value});
-//                 } else try writer.print("{},", .{child_value});
-//             }
-//         }
-//     }
-// }
+// Write register values into the string
+fn registerValueToString(
+    parent: anytype,
+    writer: std.fs.File.Writer,
+    command_code: *mcl.registers.Ww.Command,
+) !void {
+    var binary_buf_idx: usize = 0;
+    const parent_ti = @typeInfo(@TypeOf(parent)).@"struct";
+    inline for (parent_ti.fields) |child_field| {
+        if (child_field.name[0] == '_') {
+            binary_buf_idx += @bitSizeOf(child_field.type);
+            continue;
+        }
+        if (comptime @typeInfo(child_field.type) == .@"struct") {
+            try registerValueToString(
+                @field(parent, child_field.name),
+                writer,
+                command_code,
+            );
+        } else {
+            if (comptime @typeInfo(child_field.type) == .@"enum") {
+                const child_value = @field(parent, child_field.name);
+                if (child_field.type == mcl.registers.Ww.Command) {
+                    command_code.* = child_value;
+                }
+                try writer.print("{d},", .{@intFromEnum(child_value)});
+            } else if (comptime @typeInfo(child_field.type) == .@"union") {
+                const child_value = @field(parent, child_field.name);
+                const ti = @typeInfo(child_field.type).@"union";
+                inline for (ti.fields) |union_field| {
+                    const union_val = @field(child_value, union_field.name);
+                    switch (command_code.*) {
+                        .SpeedMoveCarrierAxis,
+                        .PositionMoveCarrierAxis,
+                        => {
+                            if (@typeInfo(@TypeOf(union_val)) == .int) {
+                                try writer.print("{},", .{union_val});
+                            } else {
+                                try writer.print("0,", .{});
+                            }
+                        },
+                        .SpeedMoveCarrierDistance,
+                        .SpeedMoveCarrierLocation,
+                        .PositionMoveCarrierDistance,
+                        .PositionMoveCarrierLocation,
+                        .PullTransitionLocationBackward,
+                        .PullTransitionLocationForward,
+                        => {
+                            if (@typeInfo(@TypeOf(union_val)) == .float) {
+                                try writer.print("{d},", .{union_val});
+                            } else {
+                                try writer.print("0,", .{});
+                            }
+                        },
+                        else => try writer.print("0,", .{}),
+                    }
+                }
+            } else {
+                const child_value = @field(parent, child_field.name);
+                if (@typeInfo(@TypeOf(child_value)) == .float) {
+                    try writer.print("{d},", .{child_value});
+                } else try writer.print("{},", .{child_value});
+            }
+        }
+    }
+}
 
-// /// Log the registers value. The registers value is logged in binary data, but
-// /// saved into slice of bytes
-// fn logRegisters(log_time_start: i64, timer: *std.time.Timer) !LoggingRegisters {
-//     while (timer.read() < 3 * std.time.ns_per_ms) {}
-//     const timestamp = @as(f64, @floatFromInt(std.time.microTimestamp() - log_time_start)) / 1_000_000;
-//     timer.reset();
-//     var result: LoggingRegisters = undefined;
-//     result.timestamp = timestamp;
+/// Log the registers value. The registers value is logged in binary data, but
+/// saved into slice of bytes
+fn logRegisters(log_time_start: i64, timer: *std.time.Timer) !LoggingRegisters {
+    while (timer.read() < 3 * std.time.ns_per_ms) {}
+    const timestamp = @as(f64, @floatFromInt(std.time.microTimestamp() - log_time_start)) / 1_000_000;
+    timer.reset();
+    var result: LoggingRegisters = undefined;
+    result.timestamp = timestamp;
 
-//     var reg_idx: usize = 0;
-//     for (line_names) |line_name| {
-//         const line_idx = try matchLine(line_names, line_name);
-//         if (log_lines[line_idx].status == false) continue;
-//         // const line = mcl.lines[line_idx];
-//         for (0..256) |station_idx| {
-//             if (log_lines[line_idx].stations[station_idx] == false) continue;
-//             // const station = line.stations[station_idx];
-//             var reg_iterator = log_lines[line_idx].registers.iterator();
-//             while (reg_iterator.next()) |reg_entry| {
-//                 const reg_type = @TypeOf(reg_entry.key);
-//                 inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
-//                     if (@intFromEnum(reg_entry.key) == reg_enum.value and
-//                         reg_entry.value.* == true)
-//                     {
-//                         switch (reg_entry.key) {
-//                             .x => {
-//                                 // try mcl.lines[line_idx].stations[station_idx].pollX();
-//                                 // result.registers[reg_idx].x = station.x.*;
-//                             },
-//                             .y => {
-//                                 // try mcl.lines[line_idx].stations[station_idx].pollY();
-//                                 // result.registers[reg_idx].y = station.y.*;
-//                             },
-//                             .wr => {
-//                                 // try mcl.lines[line_idx].stations[station_idx].pollWr();
-//                                 // result.registers[reg_idx].wr = station.wr.*;
-//                             },
-//                             .ww => {
-//                                 // try mcl.lines[line_idx].stations[station_idx].pollWw();
-//                                 // result.registers[reg_idx].ww = station.ww.*;
-//                             },
-//                         }
-//                         reg_idx += 1;
-//                         break;
-//                     }
-//                 }
-//             }
-//         }
-//     }
-//     return result;
-// }
+    var reg_idx: usize = 0;
+    for (line_names) |line_name| {
+        const line_idx: mcl.Line.Index = @intCast(try matchLine(
+            line_names,
+            line_name,
+        ));
+        if (log_lines[line_idx].status == false) continue;
+        const line = mcl.lines[line_idx];
+        for (line.stations) |station| {
+            const station_idx = station.index;
+            const axis_idx = station.axes[0].index.line;
+            if (log_lines[line_idx].stations[station_idx] == false) continue;
+            // const station = line.stations[station_idx];
+            var reg_iterator = log_lines[line_idx].registers.iterator();
+            while (reg_iterator.next()) |reg_entry| {
+                const reg_type = @TypeOf(reg_entry.key);
+                inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
+                    if (@intFromEnum(reg_entry.key) == reg_enum.value and
+                        reg_entry.value.* == true)
+                    {
+                        switch (reg_entry.key) {
+                            .x => {
+                                const x = try getRegister(
+                                    line_idx,
+                                    axis_idx,
+                                    .X,
+                                );
+                                result.registers[reg_idx].x = x;
+                            },
+                            .y => {
+                                const y = try getRegister(
+                                    line_idx,
+                                    axis_idx,
+                                    .Y,
+                                );
+                                result.registers[reg_idx].y = y;
+                            },
+                            .wr => {
+                                const wr = try getRegister(
+                                    line_idx,
+                                    axis_idx,
+                                    .Wr,
+                                );
+                                result.registers[reg_idx].wr = wr;
+                            },
+                            .ww => {
+                                const ww = try getRegister(
+                                    line_idx,
+                                    axis_idx,
+                                    .Ww,
+                                );
+                                result.registers[reg_idx].ww = ww;
+                            },
+                        }
+                        reg_idx += 1;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    return result;
+}
 
-// /// Write the register field to a buffer. Return the number of bytes used.
-// fn writeLoggingHeaders(
-//     writer: anytype,
-//     prefix: []const u8,
-//     comptime parent: []const u8,
-//     comptime ParentType: type,
-// ) !void {
-//     inline for (@typeInfo(ParentType).@"struct".fields) |child_field| {
-//         if (child_field.name[0] == '_') continue;
-//         if (@typeInfo(child_field.type) == .@"struct") {
-//             if (parent.len == 0) {
-//                 try writeLoggingHeaders(
-//                     writer,
-//                     prefix,
-//                     child_field.name,
-//                     child_field.type,
-//                 );
-//             } else {
-//                 try writeLoggingHeaders(
-//                     writer,
-//                     prefix,
-//                     parent ++ "." ++ child_field.name,
-//                     child_field.type,
-//                 );
-//             }
-//         } else {
-//             if (parent.len == 0) {
-//                 try writer.print(
-//                     "{s}_{s},",
-//                     .{ prefix, child_field.name },
-//                 );
-//             } else {
-//                 if (@typeInfo(child_field.type) == .@"union") {
-//                     const ti = @typeInfo(child_field.type).@"union";
-//                     inline for (ti.fields) |union_field| {
-//                         try writer.print(
-//                             "{s}_{s},",
-//                             .{ prefix, parent ++ "." ++ child_field.name ++ "." ++ union_field.name },
-//                         );
-//                     }
-//                 } else {
-//                     try writer.print(
-//                         "{s}_{s},",
-//                         .{ prefix, parent ++ "." ++ child_field.name },
-//                     );
-//                 }
-//             }
-//         }
-//     }
-// }
+/// Write the register field to a buffer. Return the number of bytes used.
+fn writeLoggingHeaders(
+    writer: anytype,
+    prefix: []const u8,
+    comptime parent: []const u8,
+    comptime ParentType: type,
+) !void {
+    inline for (@typeInfo(ParentType).@"struct".fields) |child_field| {
+        if (child_field.name[0] == '_') continue;
+        if (@typeInfo(child_field.type) == .@"struct") {
+            if (parent.len == 0) {
+                try writeLoggingHeaders(
+                    writer,
+                    prefix,
+                    child_field.name,
+                    child_field.type,
+                );
+            } else {
+                try writeLoggingHeaders(
+                    writer,
+                    prefix,
+                    parent ++ "." ++ child_field.name,
+                    child_field.type,
+                );
+            }
+        } else {
+            if (parent.len == 0) {
+                try writer.print(
+                    "{s}_{s},",
+                    .{ prefix, child_field.name },
+                );
+            } else {
+                if (@typeInfo(child_field.type) == .@"union") {
+                    const ti = @typeInfo(child_field.type).@"union";
+                    inline for (ti.fields) |union_field| {
+                        try writer.print(
+                            "{s}_{s},",
+                            .{ prefix, parent ++ "." ++ child_field.name ++ "." ++ union_field.name },
+                        );
+                    }
+                } else {
+                    try writer.print(
+                        "{s}_{s},",
+                        .{ prefix, parent ++ "." ++ child_field.name },
+                    );
+                }
+            }
+        }
+    }
+}
 
 fn matchLine(names: [][]u8, name: []const u8) !usize {
     for (names, 0..) |n, i| {
@@ -3570,6 +3588,13 @@ fn sendMessageAndWaitReceived(
             const command_status = try parseCommandStatus(
                 buffer[0..msg_len],
                 fba_allocator,
+            );
+            std.log.debug(
+                "received: {}, response: {s}",
+                .{
+                    command_status.command_received,
+                    @tagName(command_status.command_response),
+                },
             );
             if (command_status.command_received) {
                 return switch (command_status.command_response) {
