@@ -662,6 +662,7 @@ pub fn init(c: Config) !void {
 
 pub fn deinit() void {
     if (main_socket) |s| {
+        s.close();
         disconnectedClearence(s) catch {};
     }
     line_names = undefined;
@@ -835,7 +836,6 @@ fn clientConnect(params: [][]const u8) !void {
 }
 
 fn disconnectedClearence(s: network.Socket) !void {
-    s.close();
     for (line_names) |name| {
         allocator.free(name);
     }
@@ -844,7 +844,7 @@ fn disconnectedClearence(s: network.Socket) !void {
     allocator.free(line_speeds);
     std.log.info(
         "Disconnected from server {}",
-        .{try main_socket.?.getRemoteEndPoint()},
+        .{try s.getRemoteEndPoint()},
     );
     main_socket = null;
 }
