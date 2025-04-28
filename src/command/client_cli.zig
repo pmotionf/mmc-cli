@@ -766,6 +766,28 @@ pub fn init(c: Config) !void {
     errdefer _ = command.registry.orderedRemove("START_LOG_REGISTERS");
 }
 
+fn disconnect() !void {
+    if (main_socket) |s| {
+        s.close();
+        for (line_names) |name| {
+            allocator.free(name);
+        }
+        allocator.free(line_names);
+        allocator.free(line_accelerations);
+        allocator.free(line_speeds);
+        allocator.free(log_lines);
+        std.log.info(
+            "Disconnected from server {}",
+            .{try s.getRemoteEndPoint()},
+        );
+        main_socket = null;
+        line_names = undefined;
+        line_accelerations = undefined;
+        line_speeds = undefined;
+        log_lines = undefined;
+    } else return error.ServerNotConnected;
+}
+
 pub fn deinit() void {
     disconnect() catch {};
     arena.deinit();
@@ -773,7 +795,6 @@ pub fn deinit() void {
 }
 
 fn serverVersion(_: [][]const u8) !void {
-    var buffer: [8192]u8 = undefined;
     if (main_socket) |s| {
         const SendCommand = protobuf_msg.SendCommand;
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
@@ -787,17 +808,16 @@ fn serverVersion(_: [][]const u8) !void {
         };
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        s.writer().writeAll(encoded) catch |e| {
-            try disconnect();
-            return e;
-        };
-        const msg_len = s.receive(&buffer) catch |e| {
-            try disconnect();
-            return e;
-        };
+        errdefer fba_allocator.free(encoded);
+        std.log.debug(
+            "message: {s}",
+            .{@tagName(command_msg.command_kind.?)},
+        );
+        try send(s, encoded);
+        const msg = try receive(s);
         const ServerVersion = protobuf_msg.ServerVersion;
         const response: ServerVersion = try ServerVersion.decode(
-            buffer[0..msg_len],
+            msg,
             fba_allocator,
         );
         defer response.deinit();
@@ -835,14 +855,10 @@ fn clientConnect(params: [][]const u8) !void {
             .{try s.getRemoteEndPoint()},
         );
         std.log.info("Receiving line information...", .{});
-        var buffer: [1024]u8 = undefined;
-        const msg_len = s.receive(&buffer) catch |e| {
-            try disconnect();
-            return e;
-        };
+        const msg = try receive(s);
         const LineConfig = protobuf_msg.LineConfig;
         const response: LineConfig = try LineConfig.decode(
-            buffer[0..msg_len],
+            msg,
             fba_allocator,
         );
         defer response.deinit();
@@ -929,27 +945,6 @@ fn clientConnect(params: [][]const u8) !void {
     }
 }
 
-/// Disconnect from server
-fn disconnect() !void {
-    if (main_socket) |s| {
-        s.close();
-        for (line_names) |name| {
-            allocator.free(name);
-        }
-        allocator.free(line_names);
-        allocator.free(line_accelerations);
-        allocator.free(line_speeds);
-        std.log.info(
-            "Disconnected from server {}",
-            .{try main_socket.?.getRemoteEndPoint()},
-        );
-        main_socket = null;
-        line_names = undefined;
-        line_accelerations = undefined;
-        line_speeds = undefined;
-    } else return error.ServerNotConnected;
-}
-
 /// Serve as a callback of a `DISCONNECT` command, requires parameter.
 fn clientDisconnect(_: [][]const u8) !void {
     try disconnect();
@@ -979,10 +974,12 @@ fn clientAutoInitialize(params: [][]const u8) !void {
         };
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        s.writer().writeAll(encoded) catch |e| {
-            try disconnect();
-            return e;
-        };
+        errdefer fba_allocator.free(encoded);
+        std.log.debug(
+            "message: {s}",
+            .{@tagName(command_msg.command_kind.?)},
+        );
+        try send(s, encoded);
     } else return error.ServerNotConnected;
 }
 
@@ -1066,32 +1063,18 @@ fn getRegister(
         command_msg.message_type = .SEND_COMMAND;
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        s.writer().writeAll(encoded) catch |e| {
-            try disconnect();
-            return e;
-        };
-        var buffer: [128]u8 = undefined;
-        const msg_len = s.receive(&buffer) catch |e| {
-            try disconnect();
-            return e;
-        };
+        errdefer fba_allocator.free(encoded);
+        std.log.debug(
+            "message: {s}",
+            .{@tagName(command_msg.command_kind.?)},
+        );
+        try send(s, encoded);
+        const msg = try receive(s);
         return switch (reg_type) {
-            .X => try parseRegisterX(
-                buffer[0..msg_len],
-                fba_allocator,
-            ),
-            .Y => try parseRegisterY(
-                buffer[0..msg_len],
-                fba_allocator,
-            ),
-            .Wr => try parseRegisterWr(
-                buffer[0..msg_len],
-                fba_allocator,
-            ),
-            .Ww => try parseRegisterWw(
-                buffer[0..msg_len],
-                fba_allocator,
-            ),
+            .X => try parseRegisterX(msg, fba_allocator),
+            .Y => try parseRegisterY(msg, fba_allocator),
+            .Wr => try parseRegisterWr(msg, fba_allocator),
+            .Ww => try parseRegisterWw(msg, fba_allocator),
         };
     } else return error.ServerNotConnected;
 }
@@ -1843,17 +1826,15 @@ fn clientAxisCarrier(params: [][]const u8) !void {
         };
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        s.writer().writeAll(encoded) catch |e| {
-            try disconnect();
-            return e;
-        };
-        var buffer: [128]u8 = undefined;
-        const msg_len = s.receive(&buffer) catch |e| {
-            try disconnect();
-            return e;
-        };
+        errdefer fba_allocator.free(encoded);
+        std.log.debug(
+            "message: {s}",
+            .{@tagName(command_msg.command_kind.?)},
+        );
+        try send(s, encoded);
+        const msg = try receive(s);
         const carrier = try parseCarrierStatus(
-            buffer[0..msg_len],
+            msg,
             fba_allocator,
         );
         if (carrier.id == 0) {
@@ -1902,17 +1883,15 @@ fn clientAssertLocation(params: [][]const u8) !void {
         };
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        s.writer().writeAll(encoded) catch |e| {
-            try disconnect();
-            return e;
-        };
-        var buffer: [128]u8 = undefined;
-        const msg_len = s.receive(&buffer) catch |e| {
-            try disconnect();
-            return e;
-        };
+        errdefer fba_allocator.free(encoded);
+        std.log.debug(
+            "message: {s}",
+            .{@tagName(command_msg.command_kind.?)},
+        );
+        try send(s, encoded);
+        const msg = try receive(s);
         const carrier = try parseCarrierStatus(
-            buffer[0..msg_len],
+            msg,
             fba_allocator,
         );
         const location: f32 = carrier.location;
@@ -1949,10 +1928,12 @@ fn clientAxisReleaseServo(params: [][]const u8) !void {
         };
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        s.writer().writeAll(encoded) catch |e| {
-            try disconnect();
-            return e;
-        };
+        errdefer fba_allocator.free(encoded);
+        std.log.debug(
+            "message: {s}",
+            .{@tagName(command_msg.command_kind.?)},
+        );
+        try send(s, encoded);
     } else return error.ServerNotConnected;
 }
 
@@ -1996,10 +1977,12 @@ fn clientClearErrors(params: [][]const u8) !void {
         };
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        s.writer().writeAll(encoded) catch |e| {
-            try disconnect();
-            return e;
-        };
+        errdefer fba_allocator.free(encoded);
+        std.log.debug(
+            "message: {s}",
+            .{@tagName(command_msg.command_kind.?)},
+        );
+        try send(s, encoded);
         try waitReceived(@intCast(line_id - 1));
     } else return error.ServerNotConnected;
 }
@@ -2044,10 +2027,12 @@ fn clientClearCarrierInfo(params: [][]const u8) !void {
         };
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        s.writer().writeAll(encoded) catch |e| {
-            try disconnect();
-            return e;
-        };
+        errdefer fba_allocator.free(encoded);
+        std.log.debug(
+            "message: {s}",
+            .{@tagName(command_msg.command_kind.?)},
+        );
+        try send(s, encoded);
         try waitReceived(@intCast(line_id - 1));
     } else return error.ServerNotConnected;
 }
@@ -2080,17 +2065,15 @@ fn clientCarrierLocation(params: [][]const u8) !void {
         };
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        s.writer().writeAll(encoded) catch |e| {
-            try disconnect();
-            return e;
-        };
-        var buffer: [128]u8 = undefined;
-        const msg_len = s.receive(&buffer) catch |e| {
-            try disconnect();
-            return e;
-        };
+        errdefer fba_allocator.free(encoded);
+        std.log.debug(
+            "message: {s}",
+            .{@tagName(command_msg.command_kind.?)},
+        );
+        try send(s, encoded);
+        const msg = try receive(s);
         const carrier = try parseCarrierStatus(
-            buffer[0..msg_len],
+            msg,
             fba_allocator,
         );
         if (carrier.id == 0) {
@@ -2134,17 +2117,15 @@ fn clientCarrierAxis(params: [][]const u8) !void {
         };
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        s.writer().writeAll(encoded) catch |e| {
-            try disconnect();
-            return e;
-        };
-        var buffer: [128]u8 = undefined;
-        const msg_len = s.receive(&buffer) catch |e| {
-            try disconnect();
-            return e;
-        };
+        errdefer fba_allocator.free(encoded);
+        std.log.debug(
+            "message: {s}",
+            .{@tagName(command_msg.command_kind.?)},
+        );
+        try send(s, encoded);
+        const msg = try receive(s);
         const carrier = try parseCarrierStatus(
-            buffer[0..msg_len],
+            msg,
             fba_allocator,
         );
         if (carrier.id == 0) {
@@ -2211,17 +2192,15 @@ fn clientHallStatus(params: [][]const u8) !void {
             };
             const encoded = try command_msg.encode(fba_allocator);
             defer fba_allocator.free(encoded);
-            s.writer().writeAll(encoded) catch |e| {
-                try disconnect();
-                return e;
-            };
-            var buffer: [128]u8 = undefined;
-            const msg_len = s.receive(&buffer) catch |e| {
-                try disconnect();
-                return e;
-            };
+            errdefer fba_allocator.free(encoded);
+            std.log.debug(
+                "message: {s}",
+                .{@tagName(command_msg.command_kind.?)},
+            );
+            try send(s, encoded);
+            const msg = try receive(s);
             const hall_sensor = try parseHallStatus(
-                buffer[0..msg_len],
+                msg,
                 fba_allocator,
             );
             std.log.info(
@@ -2256,17 +2235,15 @@ fn clientHallStatus(params: [][]const u8) !void {
             };
             const encoded = try command_msg.encode(fba_allocator);
             defer fba_allocator.free(encoded);
-            s.writer().writeAll(encoded) catch |e| {
-                try disconnect();
-                return e;
-            };
-            var buffer: [128]u8 = undefined;
-            const msg_len = s.receive(&buffer) catch |e| {
-                try disconnect();
-                return e;
-            };
+            errdefer fba_allocator.free(encoded);
+            std.log.debug(
+                "message: {s}",
+                .{@tagName(command_msg.command_kind.?)},
+            );
+            try send(s, encoded);
+            const msg = try receive(s);
             const hall_sensor = try parseHallStatus(
-                buffer[0..msg_len],
+                msg,
                 fba_allocator,
             );
             std.log.info(
@@ -2334,17 +2311,15 @@ fn clientAssertHall(params: [][]const u8) !void {
         };
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        s.writer().writeAll(encoded) catch |e| {
-            try disconnect();
-            return e;
-        };
-        var buffer: [128]u8 = undefined;
-        const msg_len = s.receive(&buffer) catch |e| {
-            try disconnect();
-            return e;
-        };
+        errdefer fba_allocator.free(encoded);
+        std.log.debug(
+            "message: {s}",
+            .{@tagName(command_msg.command_kind.?)},
+        );
+        try send(s, encoded);
+        const msg = try receive(s);
         const hall_sensor = try parseHallStatus(
-            buffer[0..msg_len],
+            msg,
             fba_allocator,
         );
         switch (side) {
@@ -2376,10 +2351,12 @@ fn clientMclReset(_: [][]const u8) !void {
         };
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        s.writer().writeAll(encoded) catch |e| {
-            try disconnect();
-            return e;
-        };
+        errdefer fba_allocator.free(encoded);
+        std.log.debug(
+            "message: {s}",
+            .{@tagName(command_msg.command_kind.?)},
+        );
+        try send(s, encoded);
     } else return error.ServerNotConnected;
 }
 
@@ -2517,17 +2494,15 @@ fn clientWaitIsolate(params: [][]const u8) !void {
             };
             const encoded = try command_msg.encode(fba_allocator);
             defer fba_allocator.free(encoded);
-            s.writer().writeAll(encoded) catch |e| {
-                try disconnect();
-                return e;
-            };
-            var buffer: [128]u8 = undefined;
-            const msg_len = s.receive(&buffer) catch |e| {
-                try disconnect();
-                return e;
-            };
+            errdefer fba_allocator.free(encoded);
+            std.log.debug(
+                "message: {s}",
+                .{@tagName(command_msg.command_kind.?)},
+            );
+            try send(s, encoded);
+            const msg = try receive(s);
             const carrier = try parseCarrierStatus(
-                buffer[0..msg_len],
+                msg,
                 fba_allocator,
             );
             std.log.debug(
@@ -2577,17 +2552,15 @@ fn clientWaitMoveCarrier(params: [][]const u8) !void {
             };
             const encoded = try command_msg.encode(fba_allocator);
             defer fba_allocator.free(encoded);
-            s.writer().writeAll(encoded) catch |e| {
-                try disconnect();
-                return e;
-            };
-            var buffer: [128]u8 = undefined;
-            const msg_len = s.receive(&buffer) catch |e| {
-                try disconnect();
-                return e;
-            };
+            errdefer fba_allocator.free(encoded);
+            std.log.debug(
+                "message: {s}",
+                .{@tagName(command_msg.command_kind.?)},
+            );
+            try send(s, encoded);
+            const msg = try receive(s);
             const carrier = try parseCarrierStatus(
-                buffer[0..msg_len],
+                msg,
                 fba_allocator,
             );
             std.log.debug(
@@ -2958,17 +2931,15 @@ fn clientCarrierWaitPull(params: [][]const u8) !void {
             };
             const encoded = try command_msg.encode(fba_allocator);
             defer fba_allocator.free(encoded);
-            s.writer().writeAll(encoded) catch |e| {
-                try disconnect();
-                return e;
-            };
-            var buffer: [128]u8 = undefined;
-            const msg_len = s.receive(&buffer) catch |e| {
-                try disconnect();
-                return e;
-            };
+            errdefer fba_allocator.free(encoded);
+            std.log.debug(
+                "message: {s}",
+                .{@tagName(command_msg.command_kind.?)},
+            );
+            try send(s, encoded);
+            const msg = try receive(s);
             const carrier = try parseCarrierStatus(
-                buffer[0..msg_len],
+                msg,
                 fba_allocator,
             );
             if (carrier.state == .PullForwardCompleted or
@@ -3001,10 +2972,12 @@ fn clientCarrierStopPull(params: [][]const u8) !void {
         };
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        s.writer().writeAll(encoded) catch |e| {
-            try disconnect();
-            return e;
-        };
+        errdefer fba_allocator.free(encoded);
+        std.log.debug(
+            "message: {s}",
+            .{@tagName(command_msg.command_kind.?)},
+        );
+        try send(s, encoded);
     } else return error.ServerNotConnected;
 }
 
@@ -3253,6 +3226,8 @@ fn startLogRegisters(params: [][]const u8) !void {
     };
     std.log.info("The registers will be logged to {s}", .{file_path});
     const log_file = try std.fs.cwd().createFile(file_path, .{});
+    defer log_file.close();
+    errdefer log_file.close();
     // _buf is used to print the title prefix with std.fmt.bufPrint()
     var _buf: [1_024]u8 = undefined;
 
@@ -3304,10 +3279,13 @@ fn startLogRegisters(params: [][]const u8) !void {
             std.log.info("saving logging data..", .{});
             break;
         };
-        logging_data.writeItemOverwrite(try logRegisters(
+        logging_data.writeItemOverwrite(logRegisters(
             log_time_start,
             &timer,
-        ));
+        ) catch {
+            std.log.info("saving logging data..", .{});
+            break;
+        });
     }
     try logToString(
         &logging_data,
@@ -3572,10 +3550,12 @@ fn sendMessageAndWaitReceived(
         };
         var encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        s.writer().writeAll(encoded) catch |e| {
-            try disconnect();
-            return e;
-        };
+        errdefer fba_allocator.free(encoded);
+        std.log.debug(
+            "message: {s}",
+            .{@tagName(command_msg.command_kind.?)},
+        );
+        try send(s, encoded);
 
         while (true) {
             try command.checkCommandInterrupt();
@@ -3592,17 +3572,14 @@ fn sendMessageAndWaitReceived(
                 },
             };
             encoded = try command_msg.encode(fba_allocator);
-            s.writer().writeAll(encoded) catch |e| {
-                try disconnect();
-                return e;
-            };
-            var buffer: [128]u8 = undefined;
-            const msg_len = s.receive(&buffer) catch |e| {
-                try disconnect();
-                return e;
-            };
+            std.log.debug(
+                "message: {s}",
+                .{@tagName(command_msg.command_kind.?)},
+            );
+            try send(s, encoded);
+            const msg = try receive(s);
             const command_status = try parseCommandStatus(
-                buffer[0..msg_len],
+                msg,
                 fba_allocator,
             );
             std.log.debug(
@@ -3650,17 +3627,15 @@ fn waitReceived(line_idx: mcl.Line.Index) !void {
             };
             const encoded = try command_msg.encode(fba_allocator);
             defer fba_allocator.free(encoded);
-            s.writer().writeAll(encoded) catch |e| {
-                try disconnect();
-                return e;
-            };
-            var buffer: [128]u8 = undefined;
-            const msg_len = s.receive(&buffer) catch |e| {
-                try disconnect();
-                return e;
-            };
+            errdefer fba_allocator.free(encoded);
+            std.log.debug(
+                "message: {s}",
+                .{@tagName(command_msg.command_kind.?)},
+            );
+            try send(s, encoded);
+            const msg = try receive(s);
             const command_status = try parseCommandStatus(
-                buffer[0..msg_len],
+                msg,
                 fba_allocator,
             );
             if (command_status.command_received) return;
@@ -3831,5 +3806,88 @@ test parseCommandStatus {
             encoded,
             std.testing.allocator,
         ),
+    );
+}
+
+/// Check whether the socket has event flag occurred. Timeout is in milliseconds
+/// unit.
+fn isSocketEventOccured(socket: network.Socket, event: i16, timeout: i32) !bool {
+    const fd: std.posix.pollfd = .{
+        .fd = socket.internal,
+        .events = event,
+        .revents = 0,
+    };
+    var poll_fd: [1]std.posix.pollfd = .{fd};
+    // check whether the socket has a socket event happened
+    const status = std.posix.poll(
+        &poll_fd,
+        timeout,
+    ) catch |e| {
+        try disconnect();
+        return e;
+    };
+    // There is no expected socket event if status is zero
+    if (status == 0) return false else return true;
+}
+
+/// Non-blocking receive from socket
+fn receive(socket: network.Socket) ![]const u8 {
+    // Check if the socket can read without blocking.
+    var buffer: [8192]u8 = undefined;
+    while (try isSocketEventOccured(
+        socket,
+        std.posix.POLL.RDNORM,
+        0,
+    ) == false) {
+        command.checkCommandInterrupt() catch |e| {
+            if (try isSocketEventOccured(
+                socket,
+                std.posix.POLL.RDNORM,
+                5000,
+            )) {
+                // Remove any incoming messages, if any.
+                _ = socket.receive(&buffer) catch {
+                    try disconnect();
+                };
+                return e;
+            } else {
+                try disconnect();
+                std.log.err("ConnectionResetByPeer", .{});
+                return e;
+            }
+        };
+    }
+    const msg_size = socket.receive(&buffer) catch |e| {
+        try disconnect();
+        return e;
+    };
+    // msg_size value 0 means the connection is gracefully closed
+    if (msg_size == 0) {
+        try disconnect();
+        return error.ConnectionClosed;
+    }
+    std.log.debug(
+        "received msg: {any}, length: {}",
+        .{ buffer[0..msg_size], msg_size },
+    );
+    return buffer[0..msg_size];
+}
+
+fn send(socket: network.Socket, msg: []const u8) !void {
+    // check if the socket can write without blocking
+    while (try isSocketEventOccured(
+        socket,
+        std.posix.POLL.WRNORM,
+        0,
+    ) == false) {
+        try command.checkCommandInterrupt();
+    }
+    socket.writer().writeAll(msg) catch |e| {
+        try disconnect();
+        return e;
+    };
+    std.log.debug(
+        "sent msg: {any}, length: {}",
+        .{ msg, msg.len },
     );
 }
