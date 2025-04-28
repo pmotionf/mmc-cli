@@ -780,6 +780,7 @@ fn serverVersion(_: [][]const u8) !void {
         defer command_msg.deinit();
         errdefer command_msg.deinit();
         command_msg = .{
+            .message_type = .SEND_COMMAND,
             .command_kind = .{
                 .get_version = .{},
             },
@@ -966,6 +967,7 @@ fn clientAutoInitialize(params: [][]const u8) !void {
         defer command_msg.deinit();
         errdefer command_msg.deinit();
         command_msg = .{
+            .message_type = .SEND_COMMAND,
             .command_kind = .{
                 .auto_initialize = .{
                     .line_id = if (line_id != 0)
@@ -1061,6 +1063,7 @@ fn getRegister(
             },
         );
         command_msg.command_kind = command_kind;
+        command_msg.message_type = .SEND_COMMAND;
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
         s.writer().writeAll(encoded) catch |e| {
@@ -1826,6 +1829,7 @@ fn clientAxisCarrier(params: [][]const u8) !void {
         defer command_msg.deinit();
         errdefer command_msg.deinit();
         command_msg = .{
+            .message_type = .SEND_COMMAND,
             .command_kind = .{
                 .get_status = .{
                     .status_kind = .{
@@ -1884,6 +1888,7 @@ fn clientAssertLocation(params: [][]const u8) !void {
         defer command_msg.deinit();
         errdefer command_msg.deinit();
         command_msg = .{
+            .message_type = .SEND_COMMAND,
             .command_kind = .{
                 .get_status = .{
                     .status_kind = .{
@@ -1934,6 +1939,7 @@ fn clientAxisReleaseServo(params: [][]const u8) !void {
         defer command_msg.deinit();
         errdefer command_msg.deinit();
         command_msg = .{
+            .message_type = .SEND_COMMAND,
             .command_kind = .{
                 .release_axis_servo = .{
                     .line_idx = @intCast(line_idx),
@@ -1977,6 +1983,7 @@ fn clientClearErrors(params: [][]const u8) !void {
         defer command_msg.deinit();
         errdefer command_msg.deinit();
         command_msg = .{
+            .message_type = .SEND_COMMAND,
             .command_kind = .{
                 .clear_errors = .{
                     .line_idx = @intCast(line_idx),
@@ -2024,6 +2031,7 @@ fn clientClearCarrierInfo(params: [][]const u8) !void {
         defer command_msg.deinit();
         errdefer command_msg.deinit();
         command_msg = .{
+            .message_type = .SEND_COMMAND,
             .command_kind = .{
                 .clear_carrier_info = .{
                     .line_idx = @intCast(line_idx),
@@ -2058,6 +2066,7 @@ fn clientCarrierLocation(params: [][]const u8) !void {
         defer command_msg.deinit();
         errdefer command_msg.deinit();
         command_msg = .{
+            .message_type = .SEND_COMMAND,
             .command_kind = .{
                 .get_status = .{
                     .status_kind = .{
@@ -2111,6 +2120,7 @@ fn clientCarrierAxis(params: [][]const u8) !void {
         defer command_msg.deinit();
         errdefer command_msg.deinit();
         command_msg = .{
+            .message_type = .SEND_COMMAND,
             .command_kind = .{
                 .get_status = .{
                     .status_kind = .{
@@ -2184,6 +2194,7 @@ fn clientHallStatus(params: [][]const u8) !void {
             defer command_msg.deinit();
             errdefer command_msg.deinit();
             command_msg = .{
+                .message_type = .SEND_COMMAND,
                 .command_kind = .{
                     .get_status = .{
                         .status_kind = .{
@@ -2231,6 +2242,7 @@ fn clientHallStatus(params: [][]const u8) !void {
             defer command_msg.deinit();
             errdefer command_msg.deinit();
             command_msg = .{
+                .message_type = .SEND_COMMAND,
                 .command_kind = .{
                     .get_status = .{
                         .status_kind = .{
@@ -2308,6 +2320,7 @@ fn clientAssertHall(params: [][]const u8) !void {
         defer command_msg.deinit();
         errdefer command_msg.deinit();
         command_msg = .{
+            .message_type = .SEND_COMMAND,
             .command_kind = .{
                 .get_status = .{
                     .status_kind = .{
@@ -2356,6 +2369,7 @@ fn clientMclReset(_: [][]const u8) !void {
         defer command_msg.deinit();
         errdefer command_msg.deinit();
         command_msg = .{
+            .message_type = .SEND_COMMAND,
             .command_kind = .{
                 .reset_mcl = .{},
             },
@@ -2489,6 +2503,7 @@ fn clientWaitIsolate(params: [][]const u8) !void {
             defer command_msg.deinit();
             errdefer command_msg.deinit();
             command_msg = .{
+                .message_type = .SEND_COMMAND,
                 .command_kind = .{
                     .get_status = .{
                         .status_kind = .{
@@ -2548,6 +2563,7 @@ fn clientWaitMoveCarrier(params: [][]const u8) !void {
             defer command_msg.deinit();
             errdefer command_msg.deinit();
             command_msg = .{
+                .message_type = .SEND_COMMAND,
                 .command_kind = .{
                     .get_status = .{
                         .status_kind = .{
@@ -2928,6 +2944,7 @@ fn clientCarrierWaitPull(params: [][]const u8) !void {
             defer command_msg.deinit();
             errdefer command_msg.deinit();
             command_msg = .{
+                .message_type = .SEND_COMMAND,
                 .command_kind = .{
                     .get_status = .{
                         .status_kind = .{
@@ -2974,6 +2991,7 @@ fn clientCarrierStopPull(params: [][]const u8) !void {
         defer command_msg.deinit();
         errdefer command_msg.deinit();
         command_msg = .{
+            .message_type = .SEND_COMMAND,
             .command_kind = .{
                 .stop_pull_carrier = .{
                     .line_idx = @intCast(line_idx),
@@ -3547,6 +3565,7 @@ fn sendMessageAndWaitReceived(
         defer command_msg.deinit();
         errdefer command_msg.deinit();
         command_msg = .{
+            .message_type = .SEND_COMMAND,
             .command_kind = .{
                 .set_command = set_command_param,
             },
@@ -3561,6 +3580,7 @@ fn sendMessageAndWaitReceived(
         while (true) {
             try command.checkCommandInterrupt();
             command_msg = .{
+                .message_type = .SEND_COMMAND,
                 .command_kind = .{
                     .get_status = .{
                         .status_kind = .{
@@ -3617,6 +3637,7 @@ fn waitReceived(line_idx: mcl.Line.Index) !void {
             defer command_msg.deinit();
             errdefer command_msg.deinit();
             command_msg = .{
+                .message_type = .SEND_COMMAND,
                 .command_kind = .{
                     .get_status = .{
                         .status_kind = .{
