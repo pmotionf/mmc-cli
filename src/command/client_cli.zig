@@ -665,6 +665,9 @@ pub fn deinit() void {
         s.close();
         disconnectedClearance(s) catch {};
     }
+    line_names = undefined;
+    line_accelerations = undefined;
+    line_speeds = undefined;
     arena.deinit();
     network.deinit();
     std.log.debug("mmc-client de-initialized", .{});
@@ -844,9 +847,6 @@ fn disconnectedClearance(s: network.Socket) !void {
         .{try s.getRemoteEndPoint()},
     );
     main_socket = null;
-    line_names = undefined;
-    line_accelerations = undefined;
-    line_speeds = undefined;
 }
 
 fn clientDisconnect(_: [][]const u8) !void {
