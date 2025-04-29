@@ -2324,13 +2324,14 @@ fn startLogRegisters(params: [][]const u8) !void {
     std.log.info("logging registers data..", .{});
     var timer = try std.time.Timer.start();
     while (true) {
-        logging_data.writeItemOverwrite(logRegisters(
-            log_time_start,
-            &timer,
-        ) catch {
+        command.checkCommandInterrupt() catch {
             std.log.info("saving logging data..", .{});
             break;
-        });
+        };
+        logging_data.writeItemOverwrite(try logRegisters(
+            log_time_start,
+            &timer,
+        ));
     }
     try logToString(
         &logging_data,
