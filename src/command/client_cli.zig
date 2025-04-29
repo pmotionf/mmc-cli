@@ -670,6 +670,19 @@ pub fn init(c: Config) !void {
     });
     errdefer command.registry.orderedRemove("STOP_PULL_CARRIER");
     try command.registry.put(.{
+        .name = "STOP_PUSH_CARRIER",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+        },
+        .short_description = "Stop active carrier push at axis.",
+        .long_description =
+        \\Stop active carrier push at axis.
+        ,
+        .execute = &clientCarrierStopPush,
+    });
+    errdefer command.registry.orderedRemove("STOP_PUSH_CARRIER");
+    try command.registry.put(.{
         .name = "WAIT_AXIS_EMPTY",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -2979,6 +2992,39 @@ fn clientCarrierStopPull(params: [][]const u8) !void {
             .message_type = .SEND_COMMAND,
             .command_kind = .{
                 .stop_pull_carrier = .{
+                    .line_idx = @intCast(line_idx),
+                    .axis_idx = @intCast(axis_index),
+                },
+            },
+        };
+        const encoded = try command_msg.encode(fba_allocator);
+        defer fba_allocator.free(encoded);
+        errdefer fba_allocator.free(encoded);
+        std.log.debug(
+            "message: {s}",
+            .{@tagName(command_msg.command_kind.?)},
+        );
+        try send(s, encoded);
+    } else return error.ServerNotConnected;
+}
+
+fn clientCarrierStopPush(params: [][]const u8) !void {
+    const line_name = params[0];
+    const axis = try std.fmt.parseInt(u16, params[1], 0);
+    const line_idx: usize = try matchLine(line_names, line_name);
+    const line = mcl.lines[line_idx];
+    if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
+    const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
+
+    if (main_socket) |s| {
+        const SendCommand = protobuf_msg.SendCommand;
+        var command_msg: SendCommand = SendCommand.init(fba_allocator);
+        defer command_msg.deinit();
+        errdefer command_msg.deinit();
+        command_msg = .{
+            .message_type = .SEND_COMMAND,
+            .command_kind = .{
+                .stop_push_carrier = .{
                     .line_idx = @intCast(line_idx),
                     .axis_idx = @intCast(axis_index),
                 },
