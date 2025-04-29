@@ -661,12 +661,8 @@ pub fn init(c: Config) !void {
 }
 
 pub fn deinit() void {
+    disconnect() catch {};
     arena.deinit();
-    line_names = undefined;
-    if (main_socket) |s| {
-        s.close();
-        main_socket = null;
-    }
     network.deinit();
 }
 
@@ -685,18 +681,12 @@ fn serverVersion(_: [][]const u8) !void {
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
         s.writer().writeAll(encoded) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
         const msg_len = s.receive(&buffer) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
         const ServerVersion = protobuf_msg.ServerVersion;
         const response: ServerVersion = try ServerVersion.decode(
@@ -740,11 +730,8 @@ fn clientConnect(params: [][]const u8) !void {
         std.log.info("Receiving line information...", .{});
         var buffer: [1024]u8 = undefined;
         const msg_len = s.receive(&buffer) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
         const LineConfig = protobuf_msg.LineConfig;
         const response: LineConfig = try LineConfig.decode(
@@ -832,25 +819,30 @@ fn clientConnect(params: [][]const u8) !void {
     }
 }
 
-fn disconnectedClearance() !void {
-    for (line_names) |name| {
-        allocator.free(name);
-    }
-    allocator.free(line_names);
-    allocator.free(line_accelerations);
-    allocator.free(line_speeds);
-    std.log.info(
-        "Disconnected from server {}",
-        .{try main_socket.?.getRemoteEndPoint()},
-    );
-    main_socket = null;
-}
-
-fn clientDisconnect(_: [][]const u8) !void {
+/// Disconnect from server
+fn disconnect() !void {
     if (main_socket) |s| {
         s.close();
-        try disconnectedClearance();
+        for (line_names) |name| {
+            allocator.free(name);
+        }
+        allocator.free(line_names);
+        allocator.free(line_accelerations);
+        allocator.free(line_speeds);
+        std.log.info(
+            "Disconnected from server {}",
+            .{try main_socket.?.getRemoteEndPoint()},
+        );
+        main_socket = null;
+        line_names = undefined;
+        line_accelerations = undefined;
+        line_speeds = undefined;
     } else return error.ServerNotConnected;
+}
+
+/// Serve as a callback of a `DISCONNECT` command, requires parameter.
+fn clientDisconnect(_: [][]const u8) !void {
+    try disconnect();
 }
 
 fn clientAutoInitialize(params: [][]const u8) !void {
@@ -877,11 +869,8 @@ fn clientAutoInitialize(params: [][]const u8) !void {
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
         s.writer().writeAll(encoded) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
     } else return error.ServerNotConnected;
 }
@@ -1169,19 +1158,13 @@ fn clientStationX(params: [][]const u8) !void {
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
         s.writer().writeAll(encoded) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
         var buffer: [128]u8 = undefined;
         const msg_len = s.receive(&buffer) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
         const x = try parseRegisterX(
             buffer[0..msg_len],
@@ -1315,19 +1298,13 @@ fn clientStationY(params: [][]const u8) !void {
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
         s.writer().writeAll(encoded) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
         var buffer: [128]u8 = undefined;
         const msg_len = s.receive(&buffer) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
         const y = try parseRegisterY(
             buffer[0..msg_len],
@@ -1597,19 +1574,13 @@ fn clientStationWr(params: [][]const u8) !void {
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
         s.writer().writeAll(encoded) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
         var buffer: [128]u8 = undefined;
         const msg_len = s.receive(&buffer) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
         const wr = try parseRegisterWr(
             buffer[0..msg_len],
@@ -1741,19 +1712,13 @@ fn clientStationWw(params: [][]const u8) !void {
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
         s.writer().writeAll(encoded) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
         var buffer: [128]u8 = undefined;
         const msg_len = s.receive(&buffer) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
         const ww = try parseRegisterWw(
             buffer[0..msg_len],
@@ -1795,19 +1760,13 @@ fn clientAxisCarrier(params: [][]const u8) !void {
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
         s.writer().writeAll(encoded) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
         var buffer: [128]u8 = undefined;
         const msg_len = s.receive(&buffer) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
         const carrier = try parseCarrierStatus(
             buffer[0..msg_len],
@@ -1859,19 +1818,13 @@ fn clientAssertLocation(params: [][]const u8) !void {
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
         s.writer().writeAll(encoded) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
         var buffer: [128]u8 = undefined;
         const msg_len = s.receive(&buffer) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
         const carrier = try parseCarrierStatus(
             buffer[0..msg_len],
@@ -1911,11 +1864,8 @@ fn clientAxisReleaseServo(params: [][]const u8) !void {
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
         s.writer().writeAll(encoded) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
     } else return error.ServerNotConnected;
 }
@@ -1960,11 +1910,8 @@ fn clientClearErrors(params: [][]const u8) !void {
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
         s.writer().writeAll(encoded) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
         try waitReceived(@intCast(line_id - 1));
     } else return error.ServerNotConnected;
@@ -2010,11 +1957,8 @@ fn clientClearCarrierInfo(params: [][]const u8) !void {
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
         s.writer().writeAll(encoded) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
         try waitReceived(@intCast(line_id - 1));
     } else return error.ServerNotConnected;
@@ -2048,19 +1992,13 @@ fn clientCarrierLocation(params: [][]const u8) !void {
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
         s.writer().writeAll(encoded) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
         var buffer: [128]u8 = undefined;
         const msg_len = s.receive(&buffer) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
         const carrier = try parseCarrierStatus(
             buffer[0..msg_len],
@@ -2107,19 +2045,13 @@ fn clientCarrierAxis(params: [][]const u8) !void {
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
         s.writer().writeAll(encoded) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
         var buffer: [128]u8 = undefined;
         const msg_len = s.receive(&buffer) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
         const carrier = try parseCarrierStatus(
             buffer[0..msg_len],
@@ -2189,19 +2121,13 @@ fn clientHallStatus(params: [][]const u8) !void {
             const encoded = try command_msg.encode(fba_allocator);
             defer fba_allocator.free(encoded);
             s.writer().writeAll(encoded) catch |e| {
-                std.log.debug("{s}", .{@errorName(e)});
-                std.log.err("ConnectionClosedByServer", .{});
-                s.close();
-                try disconnectedClearance();
-                return;
+                try disconnect();
+                return e;
             };
             var buffer: [128]u8 = undefined;
             const msg_len = s.receive(&buffer) catch |e| {
-                std.log.debug("{s}", .{@errorName(e)});
-                std.log.err("ConnectionClosedByServer", .{});
-                s.close();
-                try disconnectedClearance();
-                return;
+                try disconnect();
+                return e;
             };
             const hall_sensor = try parseHallStatus(
                 buffer[0..msg_len],
@@ -2239,19 +2165,13 @@ fn clientHallStatus(params: [][]const u8) !void {
             const encoded = try command_msg.encode(fba_allocator);
             defer fba_allocator.free(encoded);
             s.writer().writeAll(encoded) catch |e| {
-                std.log.debug("{s}", .{@errorName(e)});
-                std.log.err("ConnectionClosedByServer", .{});
-                s.close();
-                try disconnectedClearance();
-                return;
+                try disconnect();
+                return e;
             };
             var buffer: [128]u8 = undefined;
             const msg_len = s.receive(&buffer) catch |e| {
-                std.log.debug("{s}", .{@errorName(e)});
-                std.log.err("ConnectionClosedByServer", .{});
-                s.close();
-                try disconnectedClearance();
-                return;
+                try disconnect();
+                return e;
             };
             const hall_sensor = try parseHallStatus(
                 buffer[0..msg_len],
@@ -2322,19 +2242,13 @@ fn clientAssertHall(params: [][]const u8) !void {
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
         s.writer().writeAll(encoded) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
         var buffer: [128]u8 = undefined;
         const msg_len = s.receive(&buffer) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
         const hall_sensor = try parseHallStatus(
             buffer[0..msg_len],
@@ -2369,11 +2283,8 @@ fn clientMclReset(_: [][]const u8) !void {
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
         s.writer().writeAll(encoded) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
     } else return error.ServerNotConnected;
 }
@@ -2512,19 +2423,13 @@ fn clientWaitIsolate(params: [][]const u8) !void {
             const encoded = try command_msg.encode(fba_allocator);
             defer fba_allocator.free(encoded);
             s.writer().writeAll(encoded) catch |e| {
-                std.log.debug("{s}", .{@errorName(e)});
-                std.log.err("ConnectionClosedByServer", .{});
-                s.close();
-                try disconnectedClearance();
-                return;
+                try disconnect();
+                return e;
             };
             var buffer: [128]u8 = undefined;
             const msg_len = s.receive(&buffer) catch |e| {
-                std.log.debug("{s}", .{@errorName(e)});
-                std.log.err("ConnectionClosedByServer", .{});
-                s.close();
-                try disconnectedClearance();
-                return;
+                try disconnect();
+                return e;
             };
             const carrier = try parseCarrierStatus(
                 buffer[0..msg_len],
@@ -2577,19 +2482,13 @@ fn clientWaitMoveCarrier(params: [][]const u8) !void {
             const encoded = try command_msg.encode(fba_allocator);
             defer fba_allocator.free(encoded);
             s.writer().writeAll(encoded) catch |e| {
-                std.log.debug("{s}", .{@errorName(e)});
-                std.log.err("ConnectionClosedByServer", .{});
-                s.close();
-                try disconnectedClearance();
-                return;
+                try disconnect();
+                return e;
             };
             var buffer: [128]u8 = undefined;
             const msg_len = s.receive(&buffer) catch |e| {
-                std.log.debug("{s}", .{@errorName(e)});
-                std.log.err("ConnectionClosedByServer", .{});
-                s.close();
-                try disconnectedClearance();
-                return;
+                try disconnect();
+                return e;
             };
             const carrier = try parseCarrierStatus(
                 buffer[0..msg_len],
@@ -2963,19 +2862,13 @@ fn clientCarrierWaitPull(params: [][]const u8) !void {
             const encoded = try command_msg.encode(fba_allocator);
             defer fba_allocator.free(encoded);
             s.writer().writeAll(encoded) catch |e| {
-                std.log.debug("{s}", .{@errorName(e)});
-                std.log.err("ConnectionClosedByServer", .{});
-                s.close();
-                try disconnectedClearance();
-                return;
+                try disconnect();
+                return e;
             };
             var buffer: [128]u8 = undefined;
             const msg_len = s.receive(&buffer) catch |e| {
-                std.log.debug("{s}", .{@errorName(e)});
-                std.log.err("ConnectionClosedByServer", .{});
-                s.close();
-                try disconnectedClearance();
-                return;
+                try disconnect();
+                return e;
             };
             const carrier = try parseCarrierStatus(
                 buffer[0..msg_len],
@@ -3011,11 +2904,8 @@ fn clientCarrierStopPull(params: [][]const u8) !void {
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
         s.writer().writeAll(encoded) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
     } else return error.ServerNotConnected;
 }
@@ -3056,19 +2946,13 @@ fn clientWaitAxisEmpty(params: [][]const u8) !void {
             var encoded = try command_msg.encode(fba_allocator);
             defer fba_allocator.free(encoded);
             s.writer().writeAll(encoded) catch |e| {
-                std.log.debug("{s}", .{@errorName(e)});
-                std.log.err("ConnectionClosedByServer", .{});
-                s.close();
-                try disconnectedClearance();
-                return;
+                try disconnect();
+                return e;
             };
             var buffer: [128]u8 = undefined;
             const wr_msg_len = s.receive(&buffer) catch |e| {
-                std.log.debug("{s}", .{@errorName(e)});
-                std.log.err("ConnectionClosedByServer", .{});
-                s.close();
-                try disconnectedClearance();
-                return;
+                try disconnect();
+                return e;
             };
             const wr = try parseRegisterWr(
                 buffer[0..wr_msg_len],
@@ -3084,18 +2968,12 @@ fn clientWaitAxisEmpty(params: [][]const u8) !void {
             };
             encoded = try command_msg.encode(fba_allocator);
             s.writer().writeAll(encoded) catch |e| {
-                std.log.debug("{s}", .{@errorName(e)});
-                std.log.err("ConnectionClosedByServer", .{});
-                s.close();
-                try disconnectedClearance();
-                return;
+                try disconnect();
+                return e;
             };
             const x_msg_len = s.receive(&buffer) catch |e| {
-                std.log.debug("{s}", .{@errorName(e)});
-                std.log.err("ConnectionClosedByServer", .{});
-                s.close();
-                try disconnectedClearance();
-                return;
+                try disconnect();
+                return e;
             };
             const x = try parseRegisterX(
                 buffer[0..x_msg_len],
@@ -3138,11 +3016,8 @@ fn sendMessageAndWaitReceived(
         var encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
         s.writer().writeAll(encoded) catch |e| {
-            std.log.debug("{s}", .{@errorName(e)});
-            std.log.err("ConnectionClosedByServer", .{});
-            s.close();
-            try disconnectedClearance();
-            return;
+            try disconnect();
+            return e;
         };
 
         while (true) {
@@ -3160,19 +3035,13 @@ fn sendMessageAndWaitReceived(
             };
             encoded = try command_msg.encode(fba_allocator);
             s.writer().writeAll(encoded) catch |e| {
-                std.log.debug("{s}", .{@errorName(e)});
-                std.log.err("ConnectionClosedByServer", .{});
-                s.close();
-                try disconnectedClearance();
-                return;
+                try disconnect();
+                return e;
             };
             var buffer: [128]u8 = undefined;
             const msg_len = s.receive(&buffer) catch |e| {
-                std.log.debug("{s}", .{@errorName(e)});
-                std.log.err("ConnectionClosedByServer", .{});
-                s.close();
-                try disconnectedClearance();
-                return;
+                try disconnect();
+                return e;
             };
             const command_status = try parseCommandStatus(
                 buffer[0..msg_len],
@@ -3216,19 +3085,13 @@ fn waitReceived(line_idx: mcl.Line.Index) !void {
             const encoded = try command_msg.encode(fba_allocator);
             defer fba_allocator.free(encoded);
             s.writer().writeAll(encoded) catch |e| {
-                std.log.debug("{s}", .{@errorName(e)});
-                std.log.err("ConnectionClosedByServer", .{});
-                s.close();
-                try disconnectedClearance();
-                return;
+                try disconnect();
+                return e;
             };
             var buffer: [128]u8 = undefined;
             const msg_len = s.receive(&buffer) catch |e| {
-                std.log.debug("{s}", .{@errorName(e)});
-                std.log.err("ConnectionClosedByServer", .{});
-                s.close();
-                try disconnectedClearance();
-                return;
+                try disconnect();
+                return e;
             };
             const command_status = try parseCommandStatus(
                 buffer[0..msg_len],
