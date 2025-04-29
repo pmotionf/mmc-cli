@@ -665,7 +665,7 @@ pub fn init(c: Config) !void {
         ,
         .execute = &mclCarrierStopPush,
     });
-    errdefer command.registry.orderedRemove("STOP_PULL_CARRIER");
+    errdefer command.registry.orderedRemove("STOP_PUSH_CARRIER");
     try command.registry.put(.{
         .name = "WAIT_AXIS_EMPTY",
         .parameters = &[_]command.Command.Parameter{
