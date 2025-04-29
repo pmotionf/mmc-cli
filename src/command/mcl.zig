@@ -745,18 +745,17 @@ pub fn init(c: Config) !void {
     try command.registry.put(.{
         .name = "START_LOG_REGISTERS",
         .parameters = &[_]command.Command.Parameter{
-            .{ .name = "duration", .optional = true },
+            .{ .name = "duration" },
             .{ .name = "path", .optional = true },
         },
         .short_description = "Start the logging and save the file upon cancellation.",
         .long_description =
         \\Start the registers logging process. The log file will always contain
-        \\only the most recent data covering the specified duration (in seconds).
-        \\The default duration is 100 s if no duration is specified. The Logging
-        \\runs until cancelled manually (Ctrl+C). This command returns an error
-        \\if no lines have been configured to be logged. If no path is provided,
-        \\a default log file containing all register values will be created in
-        \\the current working directory as:
+        \\only the most recent data covering the specified duration (in seconds). 
+        \\The Logging runs until cancelled manually (Ctrl+C). This command returns 
+        \\an error if no lines have been configured to be logged. If no path is 
+        \\provided, a default log file containing all register values will be 
+        \\created in the current working directory as:
         \\    "mmc-register-YYYY.MM.DD-HH.MM.SS.csv".
         ,
         .execute = &startLogRegisters,
@@ -2230,10 +2229,7 @@ fn statusLogRegisters(_: [][]const u8) !void {
 }
 
 fn startLogRegisters(params: [][]const u8) !void {
-    const log_duration = if (params[0].len > 0) try std.fmt.parseFloat(
-        f64,
-        params[0],
-    ) else 100;
+    const log_duration = try std.fmt.parseFloat(f64, params[0]);
     // Assumption: The registers value is updated every 3 ms
     const logging_size_float =
         log_duration * @as(f64, @floatFromInt(std.time.ms_per_s)) / 3.0;
