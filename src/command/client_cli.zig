@@ -766,28 +766,6 @@ pub fn init(c: Config) !void {
     errdefer _ = command.registry.orderedRemove("START_LOG_REGISTERS");
 }
 
-fn disconnect() !void {
-    if (main_socket) |s| {
-        s.close();
-        for (line_names) |name| {
-            allocator.free(name);
-        }
-        allocator.free(line_names);
-        allocator.free(line_accelerations);
-        allocator.free(line_speeds);
-        allocator.free(log_lines);
-        std.log.info(
-            "Disconnected from server {}",
-            .{try s.getRemoteEndPoint()},
-        );
-        main_socket = null;
-        line_names = undefined;
-        line_accelerations = undefined;
-        line_speeds = undefined;
-        log_lines = undefined;
-    } else return error.ServerNotConnected;
-}
-
 pub fn deinit() void {
     disconnect() catch {};
     arena.deinit();
@@ -833,7 +811,21 @@ fn serverVersion(_: [][]const u8) !void {
 
 fn clientConnect(params: [][]const u8) !void {
     std.log.debug("{}", .{params.len});
-    if (main_socket != null) return error.ConnectionIsAlreadyEstablished;
+    if (main_socket) |socket| {
+        if (isSocketEventOccured(
+            socket,
+            std.posix.POLL.IN | std.posix.POLL.OUT,
+            0,
+        )) |socket_status| {
+            if (socket_status)
+                return error.ConnectionIsAlreadyEstablished
+            else
+                try disconnect();
+        } else |e| {
+            std.log.err("{s}", .{@errorName(e)});
+            try disconnect();
+        }
+    }
     if (params[0].len != 0 and params[1].len == 0) return error.MissingParameter;
     if (params[1].len > 0) {
         port = try std.fmt.parseInt(u16, params[0], 0);
@@ -943,6 +935,28 @@ fn clientConnect(params: [][]const u8) !void {
     } else {
         std.log.err("Failed to connect to server", .{});
     }
+}
+
+fn disconnect() !void {
+    if (main_socket) |s| {
+        s.close();
+        for (line_names) |name| {
+            allocator.free(name);
+        }
+        allocator.free(line_names);
+        allocator.free(line_accelerations);
+        allocator.free(line_speeds);
+        allocator.free(log_lines);
+        std.log.info(
+            "Disconnected from server {}",
+            .{try s.getRemoteEndPoint()},
+        );
+        main_socket = null;
+        line_names = undefined;
+        line_accelerations = undefined;
+        line_speeds = undefined;
+        log_lines = undefined;
+    } else return error.ServerNotConnected;
 }
 
 /// Serve as a callback of a `DISCONNECT` command, requires parameter.
@@ -3818,7 +3832,7 @@ fn isSocketEventOccured(socket: network.Socket, event: i16, timeout: i32) !bool 
         .revents = 0,
     };
     var poll_fd: [1]std.posix.pollfd = .{fd};
-    // check whether the socket has a socket event happened
+    // check whether the expected socket event happen
     const status = std.posix.poll(
         &poll_fd,
         timeout,
@@ -3826,36 +3840,55 @@ fn isSocketEventOccured(socket: network.Socket, event: i16, timeout: i32) !bool 
         try disconnect();
         return e;
     };
-    // There is no expected socket event if status is zero
-    if (status == 0) return false else return true;
+    if (status == 0)
+        return false
+    else {
+        std.log.debug("revents: {}", .{poll_fd[0].revents});
+        // POLL.HUP: the peer gracefully close the socket
+        if (poll_fd[0].revents & std.posix.POLL.HUP == std.posix.POLL.HUP)
+            return error.ConnectionResetByPeer
+        else if (poll_fd[0].revents & std.posix.POLL.ERR == std.posix.POLL.ERR)
+            return error.ConnectionError
+        else if (poll_fd[0].revents & std.posix.POLL.NVAL == std.posix.POLL.NVAL)
+            return error.InvalidSocket
+        else
+            return true;
+    }
 }
 
 /// Non-blocking receive from socket
 fn receive(socket: network.Socket) ![]const u8 {
     // Check if the socket can read without blocking.
     var buffer: [8192]u8 = undefined;
-    while (try isSocketEventOccured(
+    while (isSocketEventOccured(
         socket,
-        std.posix.POLL.RDNORM,
+        std.posix.POLL.IN,
         0,
-    ) == false) {
+    )) |socket_status| {
+        if (socket_status) break;
+        // This step is required for reading from socket as the socket
+        // may still receive some message from server. This message is no
+        // longer valuable, thus ignored in the catch.
         command.checkCommandInterrupt() catch |e| {
-            if (try isSocketEventOccured(
+            if (isSocketEventOccured(
                 socket,
-                std.posix.POLL.RDNORM,
+                std.posix.POLL.IN,
                 5000,
-            )) {
-                // Remove any incoming messages, if any.
-                _ = socket.receive(&buffer) catch {
-                    try disconnect();
-                };
+            )) |_socket_status| {
+                if (_socket_status)
+                    // Remove any incoming messages, if any.
+                    _ = socket.receive(&buffer) catch {
+                        try disconnect();
+                    };
                 return e;
-            } else {
+            } else |sock_err| {
                 try disconnect();
-                std.log.err("ConnectionResetByPeer", .{});
-                return e;
+                return sock_err;
             }
         };
+    } else |sock_err| {
+        try disconnect();
+        return sock_err;
     }
     const msg_size = socket.receive(&buffer) catch |e| {
         try disconnect();
@@ -3875,12 +3908,16 @@ fn receive(socket: network.Socket) ![]const u8 {
 
 fn send(socket: network.Socket, msg: []const u8) !void {
     // check if the socket can write without blocking
-    while (try isSocketEventOccured(
+    while (isSocketEventOccured(
         socket,
-        std.posix.POLL.WRNORM,
+        std.posix.POLL.OUT,
         0,
-    ) == false) {
+    )) |socket_status| {
+        if (socket_status) break;
         try command.checkCommandInterrupt();
+    } else |sock_err| {
+        try disconnect();
+        return sock_err;
     }
     socket.writer().writeAll(msg) catch |e| {
         try disconnect();
