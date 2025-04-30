@@ -227,10 +227,17 @@ pub fn init(c: Config) !void {
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
             .{ .name = "axis" },
+            .{
+                .name = "result variable",
+                .optional = true,
+                .resolve = false,
+            },
         },
         .short_description = "Display carrier on given axis, if exists.",
         .long_description =
-        \\If a carrier is recognized on the provided axis, print its carrier ID.
+        \\If a carrier is recognized on the provided axis, print its ID.
+        \\If a result variable name was provided, also store the carrier ID in
+        \\the variable.
         ,
         .execute = &clientAxisCarrier,
     });
@@ -257,11 +264,17 @@ pub fn init(c: Config) !void {
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
             .{ .name = "carrier" },
+            .{
+                .name = "result variable",
+                .resolve = false,
+                .optional = true,
+            },
         },
         .short_description = "Display a carrier's location.",
         .long_description =
-        \\Print a given carrier's location if it is currently recognized in the
-        \\provided line.
+        \\Print a given carrier's location if it is currently recognized in
+        \\the provided line. If a result variable name is provided, then store
+        \\the carrier's location in the variable.
         ,
         .execute = &clientCarrierLocation,
     });
@@ -1825,6 +1838,7 @@ fn clientStationWw(params: [][]const u8) !void {
 fn clientAxisCarrier(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(i16, params[1], 0);
+    const result_var: []const u8 = params[2];
 
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
@@ -1875,6 +1889,17 @@ fn clientAxisCarrier(params: [][]const u8) !void {
                 "Carrier {d} on axis {d}.\n",
                 .{ carrier.id, axis_id },
             );
+            if (result_var.len > 0) {
+                var int_buf: [8]u8 = undefined;
+                try command.variables.put(
+                    result_var,
+                    try std.fmt.bufPrint(
+                        &int_buf,
+                        "{d}",
+                        .{carrier.id},
+                    ),
+                );
+            }
         }
     } else return error.ServerNotConnected;
 }
@@ -2069,6 +2094,7 @@ fn clientCarrierLocation(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
+    const result_var: []const u8 = params[2];
 
     const line_idx: usize = try matchLine(line_names, line_name);
 
@@ -2114,6 +2140,14 @@ fn clientCarrierLocation(params: [][]const u8) !void {
                 "Carrier {d} location: {d} mm",
                 .{ carrier.id, carrier.location },
             );
+            if (result_var.len > 0) {
+                var float_buf: [12]u8 = undefined;
+                try command.variables.put(result_var, try std.fmt.bufPrint(
+                    &float_buf,
+                    "{d}",
+                    .{carrier.location},
+                ));
+            }
         }
     } else return error.ServerNotConnected;
 }
