@@ -245,6 +245,29 @@ pub fn init(c: Config) !void {
     });
     errdefer _ = command.registry.orderedRemove("AXIS_CARRIER");
     try command.registry.put(.{
+        .name = "CARRIER_ID",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name(s)" },
+            .{
+                .name = "result variable prefix",
+                .optional = true,
+                .resolve = false,
+            },
+        },
+        .short_description = "Display all carrier IDs on specified line(s).",
+        .long_description =
+        \\Scan the line, starting from the first axis, and print all recognized 
+        \\carrier IDs on the given line in the order of their first appearance.
+        \\This command support to scan multiple lines at once by providing line
+        \\parameter with comma separator, e.g., "front,back,tr". If a result variable 
+        \\prefix is provided, store all carrier IDs in the variable with the 
+        \\variable name: prefix_[num], e.g., prefix_1 and prefix_2 if two carriers 
+        \\exist on the provided line(s).
+        ,
+        .execute = &clientCarrierID,
+    });
+    errdefer command.registry.orderedRemove("CARRIER_ID");
+    try command.registry.put(.{
         .name = "ASSERT_CARRIER_LOCATION",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -1908,6 +1931,89 @@ fn clientAxisCarrier(params: [][]const u8) !void {
             }
         }
     } else return error.ServerNotConnected;
+}
+
+fn clientCarrierID(params: [][]const u8) !void {
+    // const line_name: []const u8 = params[0];
+    var line_name_iterator = std.mem.tokenizeSequence(
+        u8,
+        params[0],
+        ",",
+    );
+    const result_var: []const u8 = params[1];
+
+    // Validate line names, avoid heap allocation
+    var line_counter: usize = 0;
+    while (line_name_iterator.next()) |line_name| {
+        if (matchLine(line_names, line_name)) |_| {
+            line_counter += 1;
+        } else |e| {
+            std.log.info("Line {s} not found", .{line_name});
+            return e;
+        }
+    }
+
+    var line_idxs =
+        std.ArrayList(mcl.Line.Index).init(fba_allocator);
+    defer line_idxs.deinit();
+    line_name_iterator.reset();
+    while (line_name_iterator.next()) |line_name| {
+        try line_idxs.append(@intCast(try matchLine(
+            line_names,
+            line_name,
+        )));
+    }
+
+    var variable_count: usize = 1;
+    for (line_idxs.items) |line_idx| {
+        const line = mcl.lines[line_idx];
+        for (line.stations) |station| {
+            const wr: mcl.registers.Wr = try getRegister(
+                line_idx,
+                station.index * 3,
+                .Wr,
+            );
+            for (station.axes) |axis| {
+                const carrier = wr.carrier.axis(axis.index.station);
+                if (carrier.id != 0) {
+                    std.log.info(
+                        "Carrier {d} on line {s} axis {d}",
+                        .{ carrier.id, line_names[line_idx], axis.id.line },
+                    );
+                    if (result_var.len > 0) {
+                        var int_buf: [8]u8 = undefined;
+                        // will fail if clients put ridiculously long prefix
+                        var var_buf: [64]u8 = undefined;
+                        const variable_key = try std.fmt.bufPrint(
+                            &var_buf,
+                            "{s}_{d}",
+                            .{ result_var, variable_count },
+                        );
+                        const variable_value = try std.fmt.bufPrint(
+                            &int_buf,
+                            "{d}",
+                            .{carrier.id},
+                        );
+                        var iterator = command.variables.iterator();
+                        var isValueExists: bool = false;
+                        while (iterator.next()) |entry| {
+                            if (std.mem.eql(u8, variable_value, entry.value_ptr.*)) {
+                                isValueExists = true;
+                                break;
+                            }
+                        }
+                        if (!isValueExists) {
+                            try command.variables.put(
+                                variable_key,
+                                variable_value,
+                            );
+                            variable_count += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn clientAssertLocation(params: [][]const u8) !void {
