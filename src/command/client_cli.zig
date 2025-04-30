@@ -229,10 +229,17 @@ pub fn init(c: Config) !void {
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
             .{ .name = "axis" },
+            .{
+                .name = "result variable",
+                .optional = true,
+                .resolve = false,
+            },
         },
         .short_description = "Display carrier on given axis, if exists.",
         .long_description =
-        \\If a carrier is recognized on the provided axis, print its carrier ID.
+        \\If a carrier is recognized on the provided axis, print its ID.
+        \\If a result variable name was provided, also store the carrier ID in
+        \\the variable.
         ,
         .execute = &clientAxisCarrier,
     });
@@ -253,16 +260,23 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientAssertLocation,
     });
+    errdefer command.registry.orderedRemove("ASSERT_CARRIER_LOCATION");
     try command.registry.put(.{
         .name = "CARRIER_LOCATION",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
             .{ .name = "carrier" },
+            .{
+                .name = "result variable",
+                .resolve = false,
+                .optional = true,
+            },
         },
         .short_description = "Display a carrier's location.",
         .long_description =
-        \\Print a given carrier's location if it is currently recognized in the
-        \\provided line.
+        \\Print a given carrier's location if it is currently recognized in
+        \\the provided line. If a result variable name is provided, then store
+        \\the carrier's location in the variable.
         ,
         .execute = &clientCarrierLocation,
     });
@@ -983,7 +997,7 @@ fn clientAutoInitialize(params: [][]const u8) !void {
     var line_id: ?usize = null;
     if (params[0].len != 0) {
         const line_name: []const u8 = params[0];
-        line_id = try matchLine(line_names, line_name) + 1;
+        line_id = @intCast(try matchLine(line_names, line_name) + 1);
     }
     // Line idx is used to determine the speed and acceleration
     // Use the first line's speed and acceleration if line_id is not specified
@@ -1009,7 +1023,10 @@ fn clientSetSpeed(params: [][]const u8) !void {
     const carrier_speed = try std.fmt.parseFloat(f32, params[1]);
     if (carrier_speed <= 0.0 or carrier_speed > 3.0) return error.InvalidSpeed;
 
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
     line_speeds[line_idx] = @intFromFloat(carrier_speed * 10.0);
 
     std.log.info("Set speed to {d}m/s.", .{
@@ -1023,7 +1040,10 @@ fn clientSetAcceleration(params: [][]const u8) !void {
     if (carrier_acceleration <= 0.0 or carrier_acceleration > 19.6)
         return error.InvalidAcceleration;
 
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
     line_accelerations[line_idx] = @intFromFloat(carrier_acceleration * 10.0);
 
     std.log.info("Set acceleration to {d}m/s^2.", .{
@@ -1034,7 +1054,10 @@ fn clientSetAcceleration(params: [][]const u8) !void {
 fn clientGetSpeed(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
 
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
     std.log.info(
         "Line {s} speed: {d}m/s",
         .{
@@ -1047,7 +1070,10 @@ fn clientGetSpeed(params: [][]const u8) !void {
 fn clientGetAcceleration(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
 
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
     std.log.info(
         "Line {s} acceleration: {d}m/s",
         .{
@@ -1817,8 +1843,12 @@ fn clientStationWw(params: [][]const u8) !void {
 fn clientAxisCarrier(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(i16, params[1], 0);
+    const result_var: []const u8 = params[2];
 
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
     const line: mcl.Line = mcl.lines[line_idx];
 
     if (axis_id < 1 or axis_id > line.axes.len) {
@@ -1865,6 +1895,17 @@ fn clientAxisCarrier(params: [][]const u8) !void {
                 "Carrier {d} on axis {d}.\n",
                 .{ carrier.id, axis_id },
             );
+            if (result_var.len > 0) {
+                var int_buf: [8]u8 = undefined;
+                try command.variables.put(
+                    result_var,
+                    try std.fmt.bufPrint(
+                        &int_buf,
+                        "{d}",
+                        .{carrier.id},
+                    ),
+                );
+            }
         }
     } else return error.ServerNotConnected;
 }
@@ -1878,7 +1919,10 @@ fn clientAssertLocation(params: [][]const u8) !void {
         try std.fmt.parseFloat(f32, params[3])
     else
         1.0;
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
 
     if (main_socket) |s| {
         // Get carrier status from the server
@@ -1922,7 +1966,10 @@ fn clientAxisReleaseServo(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
 
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
     const line: mcl.Line = mcl.lines[line_idx];
     if (axis_id < 1 or axis_id > line.axes.len) {
         return error.InvalidAxis;
@@ -2020,8 +2067,12 @@ fn clientCarrierLocation(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
+    const result_var: []const u8 = params[2];
 
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
 
     if (main_socket) |s| {
         // Get carrier status from the server
@@ -2066,6 +2117,14 @@ fn clientCarrierLocation(params: [][]const u8) !void {
                 "Carrier {d} location: {d} mm",
                 .{ carrier.id, carrier.location },
             );
+            if (result_var.len > 0) {
+                var float_buf: [12]u8 = undefined;
+                try command.variables.put(result_var, try std.fmt.bufPrint(
+                    &float_buf,
+                    "{d}",
+                    .{carrier.location},
+                ));
+            }
         }
     } else return error.ServerNotConnected;
 }
@@ -2075,7 +2134,10 @@ fn clientCarrierAxis(params: [][]const u8) !void {
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
     if (main_socket) |s| {
         // Get carrier status from the server
 
@@ -2131,7 +2193,10 @@ fn clientCarrierAxis(params: [][]const u8) !void {
 fn clientHallStatus(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     var axis_id: ?mcl.Axis.Id.Line = null;
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
     const line: mcl.Line = mcl.lines[line_idx];
     if (params[1].len > 0) {
         axis_id = try std.fmt.parseInt(
@@ -2248,7 +2313,10 @@ fn clientAssertHall(params: [][]const u8) !void {
             .forward
         else
             return error.InvalidHallAlarmSide;
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
     const line: mcl.Line = mcl.lines[line_idx];
     if (axis_id == 0 or axis_id > line.axes.len) {
         return error.InvalidAxis;
@@ -2325,7 +2393,10 @@ fn clientMclReset(_: [][]const u8) !void {
 
 fn clientCalibrate(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
 
     var command_msg: SendCommand = SendCommand.init(fba_allocator);
     defer command_msg.deinit();
@@ -2360,7 +2431,10 @@ fn clientIsolate(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
 
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
     const line: mcl.Line = mcl.lines[line_idx];
     if (axis_id == 0 or axis_id > line.axes.len) {
         return error.InvalidAxis;
@@ -2425,7 +2499,10 @@ fn clientWaitIsolate(params: [][]const u8) !void {
         0;
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
 
     if (main_socket) |s| {
         var wait_timer = try std.time.Timer.start();
@@ -2484,7 +2561,10 @@ fn clientWaitMoveCarrier(params: [][]const u8) !void {
         0;
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
 
     if (main_socket) |s| {
         var wait_timer = try std.time.Timer.start();
@@ -2540,7 +2620,10 @@ fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
     const axis_id: u16 = try std.fmt.parseInt(u16, params[2], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
     const line: mcl.Line = mcl.lines[line_idx];
     if (axis_id == 0 or axis_id > line.axes.len) {
         return error.InvalidAxis;
@@ -2569,7 +2652,10 @@ fn clientCarrierPosMoveLocation(params: [][]const u8) !void {
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
 
     var command_msg: SendCommand = SendCommand.init(fba_allocator);
     defer command_msg.deinit();
@@ -2597,7 +2683,10 @@ fn clientCarrierPosMoveDistance(params: [][]const u8) !void {
         return;
     }
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
 
     var command_msg: SendCommand = SendCommand.init(fba_allocator);
     defer command_msg.deinit();
@@ -2620,7 +2709,10 @@ fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
     const axis_id: u16 = try std.fmt.parseInt(u16, params[2], 0);
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
     const line: mcl.Line = mcl.lines[line_idx];
     if (axis_id == 0 or axis_id > line.axes.len) {
         return error.InvalidAxis;
@@ -2650,7 +2742,10 @@ fn clientCarrierSpdMoveLocation(params: [][]const u8) !void {
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
 
     var command_msg: SendCommand = SendCommand.init(fba_allocator);
     defer command_msg.deinit();
@@ -2673,7 +2768,10 @@ fn clientCarrierSpdMoveDistance(params: [][]const u8) !void {
     const line_name = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     const distance = try std.fmt.parseFloat(f32, params[2]);
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
     if (distance == 0) {
         std.log.err("Zero distance detected", .{});
         return;
@@ -2707,7 +2805,10 @@ fn clientCarrierPushForward(params: [][]const u8) !void {
     else
         null;
 
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
 
     var command_msg: SendCommand = SendCommand.init(fba_allocator);
     defer command_msg.deinit();
@@ -2748,7 +2849,10 @@ fn clientCarrierPushBackward(params: [][]const u8) !void {
     else
         null;
 
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
 
     var command_msg: SendCommand = SendCommand.init(fba_allocator);
     defer command_msg.deinit();
@@ -2788,7 +2892,10 @@ fn clientCarrierPullForward(params: [][]const u8) !void {
         try std.fmt.parseFloat(f32, params[3])
     else
         null;
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
     const line = mcl.lines[line_idx];
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
@@ -2831,7 +2938,10 @@ fn clientCarrierPullBackward(params: [][]const u8) !void {
     else
         null;
 
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
     const line = mcl.lines[line_idx];
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
@@ -2873,7 +2983,10 @@ fn clientCarrierWaitPull(params: [][]const u8) !void {
         0;
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
 
     if (main_socket) |s| {
         var wait_timer = try std.time.Timer.start();
@@ -2922,7 +3035,10 @@ fn clientCarrierWaitPull(params: [][]const u8) !void {
 fn clientCarrierStopPull(params: [][]const u8) !void {
     const line_name = params[0];
     const axis = try std.fmt.parseInt(u16, params[1], 0);
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
     const line = mcl.lines[line_idx];
     if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
@@ -2944,7 +3060,10 @@ fn clientCarrierStopPull(params: [][]const u8) !void {
 fn clientCarrierStopPush(params: [][]const u8) !void {
     const line_name = params[0];
     const axis = try std.fmt.parseInt(u16, params[1], 0);
-    const line_idx: usize = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
     const line = mcl.lines[line_idx];
     if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
@@ -3009,7 +3128,10 @@ fn clientWaitAxisEmpty(params: [][]const u8) !void {
 /// Add logging configuration for registers logging in the specified line
 fn addLogRegisters(params: [][]const u8) !void {
     const line_name = params[0];
-    const line_idx = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
     const line = mcl.lines[line_idx];
 
     var log: LogLine = std.mem.zeroInit(LogLine, .{});
@@ -3076,7 +3198,10 @@ fn addLogRegisters(params: [][]const u8) !void {
 
 fn removeLogRegisters(params: [][]const u8) !void {
     const line_name = params[0];
-    const line_idx = try matchLine(line_names, line_name);
+    const line_idx: mcl.Line.Index = @intCast(try matchLine(
+        line_names,
+        line_name,
+    ));
 
     if (log_lines[line_idx].status == false) {
         std.log.err("Line is not configured for logging yet", .{});
@@ -3216,7 +3341,10 @@ fn startLogRegisters(params: [][]const u8) !void {
     try log_writer.print("timestamp,", .{});
 
     for (line_names) |line_name| {
-        const line_idx = try matchLine(line_names, line_name);
+        const line_idx: mcl.Line.Index = @intCast(try matchLine(
+            line_names,
+            line_name,
+        ));
         if (log_lines[line_idx].status == false) continue;
         for (0..256) |station_idx| {
             if (log_lines[line_idx].stations[station_idx] == false) continue;
@@ -3289,7 +3417,10 @@ fn logToString(
 
         var reg_idx: usize = 0;
         for (line_names) |line_name| {
-            const line_idx = try matchLine(line_names, line_name);
+            const line_idx: mcl.Line.Index = @intCast(try matchLine(
+                line_names,
+                line_name,
+            ));
             if (log_lines[line_idx].status == false) continue;
             for (0..256) |station_idx| {
                 if (log_lines[line_idx].stations[station_idx] == false) continue;
