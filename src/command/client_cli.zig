@@ -251,6 +251,7 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientAssertLocation,
     });
+    errdefer command.registry.orderedRemove("ASSERT_CARRIER_LOCATION");
     try command.registry.put(.{
         .name = "CARRIER_LOCATION",
         .parameters = &[_]command.Command.Parameter{
