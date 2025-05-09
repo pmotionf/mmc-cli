@@ -56,7 +56,7 @@ pub fn main() !void {
             const linux = std.os.linux;
             const action: linux.Sigaction = .{
                 .handler = .{ .handler = &stopCommandLinux },
-                .mask = linux.empty_sigset,
+                .mask = linux.sigemptyset(),
                 .flags = 0,
             };
 
