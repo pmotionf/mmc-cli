@@ -201,6 +201,7 @@ fn process() void {
     }
     var wkc: i32 = 0;
     while (!stop_processing.load(.monotonic)) {
+        processing.store(true, .monotonic);
         _ = c.ec_send_processdata();
         wkc = c.ec_receive_processdata(c.EC_TIMEOUTRET);
         while (wkc < expected_WKC) {
