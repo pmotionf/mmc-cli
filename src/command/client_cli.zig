@@ -767,10 +767,10 @@ pub fn init(c: Config) !void {
         .short_description = "Start the logging and save the file upon cancellation.",
         .long_description =
         \\Start the registers logging process. The log file will always contain
-        \\only the most recent data covering the specified duration (in seconds). 
-        \\The Logging runs until cancelled manually (Ctrl+C). This command returns 
-        \\an error if no lines have been configured to be logged. If no path is 
-        \\provided, a default log file containing all register values will be 
+        \\only the most recent data covering the specified duration (in seconds).
+        \\The Logging runs until cancelled manually (Ctrl+C). This command returns
+        \\an error if no lines have been configured to be logged. If no path is
+        \\provided, a default log file containing all register values will be
         \\created in the current working directory as:
         \\    "mmc-register-YYYY.MM.DD-HH.MM.SS.csv".
         ,
@@ -952,6 +952,10 @@ fn clientConnect(params: [][]const u8) !void {
 
 fn disconnect() !void {
     if (main_socket) |s| {
+        std.log.info(
+            "Disconnecting from server {}",
+            .{try s.getRemoteEndPoint()},
+        );
         s.close();
         for (line_names) |name| {
             allocator.free(name);
@@ -960,10 +964,6 @@ fn disconnect() !void {
         allocator.free(line_accelerations);
         allocator.free(line_speeds);
         allocator.free(log_lines);
-        std.log.info(
-            "Disconnected from server {}",
-            .{try s.getRemoteEndPoint()},
-        );
         main_socket = null;
         line_names = undefined;
         line_accelerations = undefined;
