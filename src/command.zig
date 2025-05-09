@@ -42,6 +42,92 @@ pub const Registry = struct {
     }
 };
 
+pub const Table = struct {
+    allocator: std.mem.Allocator,
+
+    /// Header of pointers to variable names. Each variable name is not
+    /// owned by the table.
+    header: []*[]const u8 = &.{},
+    rows: std.ArrayList([][]const u8),
+
+    pub fn init(gpa: std.mem.Allocator) Table {
+        return .{
+            .allocator = gpa,
+            .header = &.{},
+            .rows = std.ArrayList([][]const u8).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *Table) void {
+        if (self.header.len > 0) {
+            self.allocator.free(self.header);
+        }
+        self.header = &.{};
+        for (self.rows.items) |row| {
+            for (row) |val| {
+                if (val.len > 0) {
+                    self.allocator.free(val);
+                }
+            }
+        }
+        self.rows.deinit();
+    }
+
+    fn clearRows(self: *Table) void {
+        for (self.rows.items) |row| {
+            for (row) |val| {
+                if (val.len > 0) {
+                    self.allocator.free(val);
+                }
+            }
+        }
+        self.rows.clearRetainingCapacity();
+    }
+
+    pub fn setHeader(self: *Table, columns: []const []const u8) !void {
+        for (columns) |col| {
+            if (variables.get(col) == null) return error.InvalidColumn;
+        }
+
+        self.clearRows();
+
+        if (self.header.len > 0) {
+            self.allocator.free(self.header);
+        }
+
+        if (columns.len == 0) return;
+
+        self.header = try self.allocator.alloc(*[]const u8, columns.len);
+        for (columns, 0..) |col, i| {
+            self.header[i] = variables.hash_map.getKeyPtr(col).?;
+        }
+    }
+
+    /// Add a filled row to the end of the table, looking up variable values
+    /// at time of call.
+    pub fn addRow(self: *Table) !void {
+        const new_row = try self.rows.addOne();
+        errdefer self.rows.shrinkRetainingCapacity(self.rows.items.len - 1);
+        new_row.* = try self.allocator.alloc([]const u8, self.header.len);
+        errdefer self.allocator.free(new_row.*);
+        for (new_row.*) |*val| {
+            val.* = &.{};
+        }
+        errdefer {
+            for (new_row.*) |*val| {
+                if (val.len > 0) {
+                    self.allocator.free(val.*);
+                }
+            }
+        }
+        for (new_row.*, 0..) |*val, i| {
+            if (variables.get(self.header[i].*)) |lookup_val| {
+                val.* = try self.allocator.dupe(u8, lookup_val);
+            }
+        }
+    }
+};
+
 // Global registry of all commands, including from other command modules.
 pub var registry: Registry = undefined;
 
@@ -53,6 +139,8 @@ pub var stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false);
 
 // Global registry of all variables.
 pub var variables: std.BufMap = undefined;
+
+pub var table: Table = undefined;
 
 // Flags to keep track of currently initialized modules, so that only
 // initialized will be deinitialized.
@@ -123,6 +211,7 @@ pub fn init() !void {
     initialized_modules = std.EnumArray(Config.Module, bool).initFill(false);
     registry = Registry.init(allocator);
     variables = std.BufMap.init(allocator);
+    table = Table.init(std.heap.smp_allocator);
     command_queue = std.ArrayList(CommandString).init(allocator);
     stop.store(false, .monotonic);
     timer = try std.time.Timer.start();
@@ -213,6 +302,53 @@ pub fn init() !void {
         \\Print all currently set variable names along with their values.
         ,
         .execute = &printVariables,
+    });
+    try registry.put(.{
+        .name = "TABLE_RESET",
+        .short_description = "Fully reset global table to be empty.",
+        .long_description =
+        \\Reset all table rows and columns to be empty. An empty table after
+        \\reset cannot be saved to file, as a zero-column table is considered
+        \\invalid.
+        ,
+        .execute = &tableReset,
+    });
+    try registry.put(.{
+        .name = "TABLE_SET_COLUMNS",
+        .parameters = &.{
+            .{
+                .name = "variables",
+            },
+        },
+        .short_description = "Set variables to table columns.",
+        .long_description =
+        \\Set the global table's columns to represent the provided variables.
+        \\The variables must already exist, and must be provided by name with
+        \\each variable name separated by a comma (,).
+        \\Each variable will be set to its own column, in the provided order.
+        \\Each time a row is added to the table, the columns' variable values
+        \\will be saved.
+        ,
+        .execute = &tableSetColumns,
+    });
+    try registry.put(.{
+        .name = "TABLE_ADD_ROW",
+        .short_description = "Add row of current variable values to table.",
+        .long_description =
+        \\
+        ,
+        .execute = &tableAddRow,
+    });
+    try registry.put(.{
+        .name = "TABLE_SAVE",
+        .parameters = &.{
+            .{ .name = "file path" },
+        },
+        .short_description = "Save table to provided file path.",
+        .long_description =
+        \\Save table to provided file path in CSV format.
+        ,
+        .execute = &tableSave,
     });
     try registry.put(.{
         .name = "TIMER_START",
@@ -478,6 +614,49 @@ fn printVariables(_: [][]const u8) !void {
     while (variables_it.next()) |entry| {
         try checkCommandInterrupt();
         std.log.info("\t{s}: {s}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
+    }
+}
+
+fn tableReset(_: [][]const u8) !void {
+    table.clearRows();
+    // Should be impossible to fail with an empty header.
+    table.setHeader(&.{}) catch unreachable;
+}
+
+fn tableSetColumns(params: [][]const u8) !void {
+    const all_variables = params[0];
+    var names = std.mem.splitScalar(u8, all_variables, ',');
+    var names_count: usize = 0;
+    var names_buf: [2048][]const u8 = undefined;
+    while (names.next()) |name| {
+        names_buf[names_count] = name;
+        names_count += 1;
+    }
+    try table.setHeader(names_buf[0..names_count]);
+}
+
+fn tableAddRow(_: [][]const u8) !void {
+    try table.addRow();
+}
+
+fn tableSave(params: [][]const u8) !void {
+    const path = params[0];
+
+    var f = try std.fs.cwd().createFile(path, .{ .truncate = true });
+    defer f.close();
+
+    for (table.header) |col| {
+        try f.writeAll(col.*);
+        try f.writeAll(",");
+    }
+    try f.writeAll("\n");
+
+    for (table.rows.items) |row| {
+        for (row) |val| {
+            try f.writeAll(val);
+            try f.writeAll(",");
+        }
+        try f.writeAll("\n");
     }
 }
 
