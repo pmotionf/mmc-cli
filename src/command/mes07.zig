@@ -47,6 +47,9 @@ pub fn init(_: Config) !void {
 
     try command.registry.put(.{
         .name = "MES07_READ",
+        .parameters = &.{
+            .{ .name = "variable", .optional = true },
+        },
         .short_description = "Read laser device measurement value.",
         .long_description =
         \\Read laser device measurement value, and print to output.
@@ -228,7 +231,9 @@ fn process() void {
     }
 }
 
-fn read(_: [][]const u8) !void {
+fn read(params: [][]const u8) !void {
+    const save_var = params[0];
+
     if (read_laser_value.load(.monotonic) or !processing.load(.monotonic)) {
         std.log.err(
             "MES07 Communication Processing Failed. Please reconnect.",
@@ -246,4 +251,17 @@ fn read(_: [][]const u8) !void {
         abs_val / 1000,
         abs_val % 1000,
     });
+
+    if (save_var.len > 0) {
+        var float_buf: [12]u8 = undefined;
+        try command.variables.put(save_var, try std.fmt.bufPrint(
+            &float_buf,
+            "{c}{d}.{d:0>3.0}",
+            .{
+                @as(u8, if (reading_fixed > 0) '+' else '-'),
+                abs_val / 1000,
+                abs_val % 1000,
+            },
+        ));
+    }
 }
