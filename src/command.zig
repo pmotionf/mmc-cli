@@ -47,7 +47,7 @@ pub const Table = struct {
 
     /// Header of pointers to variable names. Each variable name is not
     /// owned by the table.
-    header: []*[]const u8 = &.{},
+    header: [][]const u8 = &.{},
     rows: std.ArrayList([][]const u8),
 
     pub fn init(gpa: std.mem.Allocator) Table {
@@ -60,6 +60,9 @@ pub const Table = struct {
 
     pub fn deinit(self: *Table) void {
         if (self.header.len > 0) {
+            for (self.header) |*header| {
+                self.allocator.free(header.*);
+            }
             self.allocator.free(self.header);
         }
         self.header = &.{};
@@ -97,9 +100,25 @@ pub const Table = struct {
 
         if (columns.len == 0) return;
 
-        self.header = try self.allocator.alloc(*[]const u8, columns.len);
+        self.header = try self.allocator.alloc([]const u8, columns.len);
+        for (self.header) |*header| {
+            header.* = &.{};
+        }
+        errdefer {
+            for (self.header) |*header| {
+                if (header.len > 0) {
+                    self.allocator.free(header.*);
+                }
+            }
+
+            self.allocator.free(self.header);
+            self.header = &.{};
+        }
         for (columns, 0..) |col, i| {
-            self.header[i] = variables.hash_map.getKeyPtr(col).?;
+            self.header[i] = try self.allocator.dupe(
+                u8,
+                variables.hash_map.getKey(col).?,
+            );
         }
     }
 
@@ -121,7 +140,7 @@ pub const Table = struct {
             }
         }
         for (new_row.*, 0..) |*val, i| {
-            if (variables.get(self.header[i].*)) |lookup_val| {
+            if (variables.get(self.header[i])) |lookup_val| {
                 val.* = try self.allocator.dupe(u8, lookup_val);
             }
         }
@@ -646,7 +665,7 @@ fn tableSave(params: [][]const u8) !void {
     defer f.close();
 
     for (table.header) |col| {
-        try f.writeAll(col.*);
+        try f.writeAll(col);
         try f.writeAll(",");
     }
     try f.writeAll("\n");
