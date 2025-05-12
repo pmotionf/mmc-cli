@@ -48,7 +48,7 @@ pub fn init(_: Config) !void {
     try command.registry.put(.{
         .name = "MES07_READ",
         .parameters = &.{
-            .{ .name = "variable", .optional = true },
+            .{ .name = "variable", .optional = true, .resolve = false },
         },
         .short_description = "Read laser device measurement value.",
         .long_description =
@@ -246,22 +246,16 @@ fn read(params: [][]const u8) !void {
     read_laser_value.store(true, .monotonic);
 
     const abs_val: u32 = @abs(reading_fixed);
-    std.log.info("Laser reading: {c}{d}.{d:0>3.0}", .{
+    var print_buf: [8]u8 = undefined;
+    const print_str = try std.fmt.bufPrint(&print_buf, "{c}{d}.{d:0>3.0}", .{
         @as(u8, if (reading_fixed > 0) '+' else '-'),
         abs_val / 1000,
         abs_val % 1000,
     });
 
+    std.log.info("Laser reading: {s}", .{print_str});
+
     if (save_var.len > 0) {
-        var float_buf: [12]u8 = undefined;
-        try command.variables.put(save_var, try std.fmt.bufPrint(
-            &float_buf,
-            "{c}{d}.{d:0>3.0}",
-            .{
-                @as(u8, if (reading_fixed > 0) '+' else '-'),
-                abs_val / 1000,
-                abs_val % 1000,
-            },
-        ));
+        try command.variables.put(save_var, print_str);
     }
 }
