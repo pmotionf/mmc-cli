@@ -3601,21 +3601,21 @@ fn sendMessageAndWaitReceived(
         const SendCommand = protobuf_msg.SendCommand;
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
-        errdefer command_msg.deinit();
         command_msg = .{
             .message_type = .SEND_COMMAND,
             .command_kind = .{
                 .set_command = set_command_param,
             },
         };
-        var encoded = try command_msg.encode(fba_allocator);
-        defer fba_allocator.free(encoded);
-        errdefer fba_allocator.free(encoded);
-        std.log.debug(
-            "message: {s}",
-            .{@tagName(command_msg.command_kind.?)},
-        );
-        try send(s, encoded);
+        {
+            const encoded = try command_msg.encode(fba_allocator);
+            defer fba_allocator.free(encoded);
+            std.log.debug(
+                "message: {s}",
+                .{@tagName(command_msg.command_kind.?)},
+            );
+            try send(s, encoded);
+        }
 
         while (true) {
             try command.checkCommandInterrupt();
@@ -3631,7 +3631,8 @@ fn sendMessageAndWaitReceived(
                     },
                 },
             };
-            encoded = try command_msg.encode(fba_allocator);
+            const encoded = try command_msg.encode(fba_allocator);
+            defer fba_allocator.free(encoded);
             std.log.debug(
                 "message: {s}",
                 .{@tagName(command_msg.command_kind.?)},
