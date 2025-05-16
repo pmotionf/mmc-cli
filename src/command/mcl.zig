@@ -219,7 +219,11 @@ pub fn init(c: Config) !void {
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
             .{ .name = "axis" },
-            .{ .name = "result variable", .optional = true, .resolve = false },
+            .{
+                .name = "result variable",
+                .optional = true,
+                .resolve = false,
+            },
         },
         .short_description = "Display carrier on given axis, if exists.",
         .long_description =
@@ -251,7 +255,11 @@ pub fn init(c: Config) !void {
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
             .{ .name = "carrier" },
-            .{ .name = "result variable", .resolve = false, .optional = true },
+            .{
+                .name = "result variable",
+                .resolve = false,
+                .optional = true,
+            },
         },
         .short_description = "Display a carrier's location.",
         .long_description =
