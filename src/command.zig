@@ -2,6 +2,7 @@
 //! and execute commands. Furthermore, it includes the implementations of a few
 //! general purpose commands that facilitate easier use of the MMC CLI utility.
 
+const builtin = @import("builtin");
 const std = @import("std");
 const chrono = @import("chrono");
 const build = @import("build.zig.zon");
@@ -736,8 +737,59 @@ fn loadConfig(params: [][]const u8) !void {
     deinitModules();
 
     // Load config file.
-    const file_path = if (params[0].len > 0) params[0] else "config.json";
-    const config_file = try std.fs.cwd().openFile(file_path, .{});
+    const config_file = if (params[0].len > 0)
+        try std.fs.cwd().openFile(params[0], .{})
+    else
+        std.fs.cwd().openFile("config.json", .{}) catch exe_local: {
+            var exe_dir_buf: [std.fs.max_path_bytes]u8 = undefined;
+            const exe_dir_path = std.fs.selfExeDirPath(&exe_dir_buf) catch
+                break :exe_local error.FileNotFound;
+            var exe_dir = std.fs.cwd().openDir(exe_dir_path, .{}) catch
+                break :exe_local error.FileNotFound;
+            defer exe_dir.close();
+            break :exe_local exe_dir.openFile("config.json", .{});
+        } catch config_local: {
+            var config_dir = switch (comptime builtin.os.tag) {
+                .windows => b: {
+                    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+                    var fba = std.heap.FixedBufferAllocator.init(&path_buf);
+                    const fba_alloc = fba.allocator();
+                    const home_path = try std.process.getEnvVarOwned(
+                        fba_alloc,
+                        "USERPROFILE",
+                    );
+
+                    var home_dir = try std.fs.cwd().openDir(home_path, .{});
+                    defer home_dir.close();
+                    break :b try home_dir.openDir(".config", .{});
+                },
+                .linux => b: {
+                    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+                    var fba = std.heap.FixedBufferAllocator.init(&path_buf);
+                    const fba_alloc = fba.allocator();
+                    const config_path = std.process.getEnvVarOwned(
+                        fba_alloc,
+                        "XDG_CONFIG_HOME",
+                    ) catch "";
+                    if (config_path.len > 0) {
+                        break :b try std.fs.cwd().openDir(config_path, .{});
+                    }
+                    const home_path = try std.process.getEnvVarOwned(
+                        fba_alloc,
+                        "HOME",
+                    );
+                    var home_dir = try std.fs.cwd().openDir(home_path, .{});
+                    defer home_dir.close();
+                    break :b try home_dir.openDir(".config", .{});
+                },
+                else => return error.UnsupportedOs,
+            };
+
+            break :config_local try config_dir.openFile(
+                "mmc_cli_config.json",
+                .{},
+            );
+        };
     var m_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     const m_allocator = m_arena.allocator();
     var config = try Config.parse(m_allocator, config_file);
