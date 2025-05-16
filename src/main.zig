@@ -16,7 +16,7 @@ fn nextLine(reader: anytype, buffer: []u8) !?[]const u8 {
     return result;
 }
 
-fn stopCommand(
+fn stopCommandWindows(
     dwCtrlType: std.os.windows.DWORD,
 ) callconv(std.os.windows.WINAPI) std.os.windows.BOOL {
     if (dwCtrlType == std.os.windows.CTRL_C_EVENT) {
@@ -26,19 +26,45 @@ fn stopCommand(
     return 1;
 }
 
+fn stopCommandLinux(_: c_int) callconv(.C) void {
+    command.stop.store(true, .monotonic);
+}
+
 pub fn main() !void {
-    if (builtin.os.tag == .windows) {
-        const windows = std.os.windows;
-        try windows.SetConsoleCtrlHandler(&stopCommand, true);
-        const handle = try windows.GetStdHandle(windows.STD_OUTPUT_HANDLE);
-        var mode: windows.DWORD = 0;
-        if (windows.kernel32.GetConsoleMode(handle, &mode) != windows.TRUE) {
-            return error.WindowsConsoleModeRetrievalFailure;
-        }
-        mode |= windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-        if (windows.kernel32.SetConsoleMode(handle, mode) != windows.TRUE) {
-            return error.WindowsConsoleModeSetFailure;
-        }
+    switch (builtin.os.tag) {
+        .windows => {
+            const windows = std.os.windows;
+            try windows.SetConsoleCtrlHandler(&stopCommandWindows, true);
+            const handle =
+                try windows.GetStdHandle(windows.STD_OUTPUT_HANDLE);
+            var mode: windows.DWORD = 0;
+            if (windows.kernel32.GetConsoleMode(
+                handle,
+                &mode,
+            ) != windows.TRUE) {
+                return error.WindowsConsoleModeRetrievalFailure;
+            }
+            mode |= windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+            if (windows.kernel32.SetConsoleMode(
+                handle,
+                mode,
+            ) != windows.TRUE) {
+                return error.WindowsConsoleModeSetFailure;
+            }
+        },
+        .linux => {
+            const linux = std.os.linux;
+            const action: linux.Sigaction = .{
+                .handler = .{ .handler = &stopCommandLinux },
+                .mask = linux.sigemptyset(),
+                .flags = 0,
+            };
+
+            if (linux.sigaction(linux.SIG.INT, &action, null) != 0) {
+                return error.LinuxSignalHandlerSetFailure;
+            }
+        },
+        else => {},
     }
 
     try command.init();
