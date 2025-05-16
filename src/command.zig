@@ -701,6 +701,7 @@ fn timerRead(_: [][]const u8) !void {
 
 fn file(params: [][]const u8) !void {
     var f = try std.fs.cwd().openFile(params[0], .{});
+    defer f.close();
     var reader = f.reader();
     const current_len: usize = command_queue.items.len;
     var new_line: CommandString = .{ .buffer = undefined, .len = 0 };
