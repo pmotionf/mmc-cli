@@ -46,6 +46,7 @@ pub fn handler() void {
 
         // Print prompt once on enable.
         if (prev_disable) {
+            std.time.sleep(std.time.ns_per_ms * 10);
             stdout.print(
                 "Please enter a command (HELP for info):\n",
                 .{},
