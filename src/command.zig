@@ -468,9 +468,7 @@ pub fn queueClear() void {
 pub fn checkCommandInterrupt() !void {
     if (stop.load(.monotonic)) {
         defer stop.store(false, .monotonic);
-        command_queue_lock.lock();
         queueClear();
-        command_queue_lock.unlock();
         return error.CommandStopped;
     }
 }

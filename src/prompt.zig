@@ -63,8 +63,30 @@ pub fn handler() void {
                     break :b null;
                 }
             },
-            .windows => {
-                // TODO
+            .windows => b: {
+                const threading = @import("win32").system.threading;
+                const stdin_handle = std.io.getStdIn().handle;
+                if (threading.WaitForSingleObject(
+                    stdin_handle,
+                    0,
+                ) == std.os.windows.WAIT_OBJECT_0) {
+                    const console = @import("win32").system.console;
+                    var buf: [1]u8 = undefined;
+                    var chars_read: u32 = 0;
+                    if (console.ReadConsoleA(
+                        stdin_handle,
+                        &buf,
+                        1,
+                        &chars_read,
+                        null,
+                    ) == 0) {
+                        continue :main;
+                    }
+                    if (chars_read == 0) continue :main;
+                    break :b buf[0];
+                } else {
+                    break :b null;
+                }
             },
             else => @compileError("unsupported OS"),
         };
@@ -131,6 +153,9 @@ pub fn handler() void {
             },
             '\r' => {
                 sequence = &.{};
+                if (comptime builtin.target.os.tag == .windows) {
+                    continue :parse '\n';
+                }
             },
             '\t' => {
                 if (history_offset) |offset| {
