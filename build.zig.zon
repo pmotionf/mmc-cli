@@ -2,14 +2,14 @@
     .name = .mmc_cli,
     .version = "0.7.1",
     .fingerprint = 0x392c74984291bf14,
-    .minimum_zig_version = "0.15.0-dev.386+2e35fdd03",
+    .minimum_zig_version = "0.15.0-dev.579+07a5efd07",
     .dependencies = .{
         .network = .{
             .url = "https://github.com/mochalins/network/archive/dd8f929.tar.gz",
             .hash = "network-0.1.0-wh14CEr9AACUyPafTRpVsJYRP13gpw5a7a6wvN8dYtAD",
         },
         .mcl = .{
-            .url = "https://github.com/pmotionf/mcl/archive/8d348f5.tar.gz",
+            .url = "https://github.com/pmotionf/mcl/archive/9ef10f5.tar.gz",
             .hash = "mcl-0.7.0-bTecRt6_AADvxJK_exUoWWXi11_2qz9Jzu9i1UhGB6ak",
         },
         .chrono = .{
@@ -26,5 +26,10 @@
             .lazy = true,
         },
     },
-    .paths = .{""},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "LICENSE-MIT",
+    },
 }
