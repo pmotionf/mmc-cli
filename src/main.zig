@@ -1,20 +1,14 @@
 const builtin = @import("builtin");
 const std = @import("std");
 const network = @import("network");
+
+const io = @import("io.zig");
 const command = @import("command.zig");
+const prompt = @import("prompt.zig");
 
 pub const std_options: std.Options = .{
     .logFn = command.logFn,
 };
-
-fn nextLine(reader: anytype, buffer: []u8) !?[]const u8 {
-    const line = (try reader.readUntilDelimiterOrEof(
-        buffer,
-        '\n',
-    )) orelse return null;
-    const result = std.mem.trimRight(u8, line, "\r");
-    return result;
-}
 
 fn stopCommandWindows(
     dwCtrlType: std.os.windows.DWORD,
@@ -31,6 +25,13 @@ fn stopCommandLinux(_: c_int) callconv(.C) void {
 }
 
 pub fn main() !void {
+    try io.init();
+    defer io.deinit();
+
+    var prompter = try std.Thread.spawn(.{}, prompt.handler, .{});
+    prompter.detach();
+    defer prompt.close.store(true, .monotonic);
+
     switch (builtin.os.tag) {
         .windows => {
             const windows = std.os.windows;
@@ -70,23 +71,18 @@ pub fn main() !void {
     try command.init();
     defer command.deinit();
 
-    const stdin = std.io.getStdIn();
-    var buffered_reader = std.io.bufferedReader(stdin.reader());
-    const reader = buffered_reader.reader();
-
     command_loop: while (true) {
         if (command.stop.load(.monotonic)) {
             command.queueClear();
             command.stop.store(false, .monotonic);
         }
         if (command.queueEmpty()) {
-            var input_buffer: [1024]u8 = .{0} ** 1024;
-            std.log.info("Please enter a command (HELP for info): ", .{});
-
-            if (try nextLine(reader, &input_buffer)) |line| {
-                try command.enqueue(line);
-            } else continue :command_loop;
+            prompt.disable.store(false, .monotonic);
+            continue :command_loop;
+        } else {
+            prompt.disable.store(true, .monotonic);
         }
+
         command.execute() catch |e| {
             std.log.err("{s}", .{@errorName(e)});
             std.log.debug("{any}", .{@errorReturnTrace()});

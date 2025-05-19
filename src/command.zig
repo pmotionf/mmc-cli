@@ -7,6 +7,8 @@ const std = @import("std");
 const chrono = @import("chrono");
 const build = @import("build.zig.zon");
 
+const prompt = @import("prompt.zig");
+
 // Command modules.
 const mcl = @import("command/mcl.zig");
 const return_demo2 = @import("command/return_demo2.zig");
@@ -166,6 +168,7 @@ pub var table: Table = undefined;
 // initialized will be deinitialized.
 var initialized_modules: std.EnumArray(Config.Module, bool) = undefined;
 
+var command_queue_lock: std.Thread.RwLock = undefined;
 var command_queue: std.ArrayList(CommandString) = undefined;
 
 var timer: ?std.time.Timer = null;
@@ -233,6 +236,7 @@ pub fn init() !void {
     variables = std.BufMap.init(allocator);
     table = Table.init(std.heap.smp_allocator);
     command_queue = std.ArrayList(CommandString).init(allocator);
+    command_queue_lock = .{};
     stop.store(false, .monotonic);
     timer = try std.time.Timer.start();
 
@@ -442,16 +446,21 @@ pub fn deinit() void {
     defer stop.store(false, .monotonic);
     variables.deinit();
     command_queue.deinit();
+    command_queue_lock = undefined;
     deinitModules();
     registry.deinit();
     arena.deinit();
 }
 
 pub fn queueEmpty() bool {
+    command_queue_lock.lockShared();
+    defer command_queue_lock.unlockShared();
     return command_queue.items.len == 0;
 }
 
 pub fn queueClear() void {
+    command_queue_lock.lock();
+    defer command_queue_lock.unlock();
     command_queue.clearRetainingCapacity();
 }
 
@@ -469,25 +478,31 @@ pub fn enqueue(input: []const u8) !void {
         .buffer = undefined,
         .len = undefined,
     };
-    @memcpy(buffer.buffer[0..input.len], input);
-    buffer.len = input.len;
+
+    const max_len = @min(buffer.buffer.len, input.len);
+    @memcpy(buffer.buffer[0..max_len], input[0..max_len]);
+    buffer.len = max_len;
+    command_queue_lock.lock();
+    defer command_queue_lock.unlock();
     try command_queue.insert(0, buffer);
 }
 
 pub fn execute() !void {
+    command_queue_lock.lock();
     const cb = command_queue.pop().?;
-    std.log.info("Running command: {s}\n", .{cb.buffer[0..cb.len]});
+    command_queue_lock.unlock();
     try parseAndRun(cb.buffer[0..cb.len]);
 }
 
 fn parseAndRun(input: []const u8) !void {
-    const trimmed = std.mem.trimLeft(u8, input, "\n\t ");
+    const trimmed = std.mem.trimLeft(u8, input, "\n\t \r");
+    std.log.info("Running command: {s}\n", .{trimmed});
     if (trimmed.len == 0 or trimmed[0] == '#') {
         return;
     }
     var token_iterator = std.mem.tokenizeSequence(u8, trimmed, " ");
     var command: *Command = undefined;
-    var command_buf: [32]u8 = undefined;
+    var command_buf: [256]u8 = undefined;
     if (token_iterator.next()) |token| {
         if (registry.getPtr(std.ascii.upperString(
             &command_buf,

@@ -4,8 +4,8 @@ const mcl = @import("mcl");
 const mmc = @import("mmc_config");
 const network = @import("network");
 const chrono = @import("chrono");
-const CircularBuffer =
-    @import("../circular_buffer.zig").CircularBuffer;
+const CircularBufferAlloc =
+    @import("../circular_buffer.zig").CircularBufferAlloc;
 const builtin = @import("builtin");
 
 const protobuf_msg = mmc.protobuf_msg;
@@ -3327,7 +3327,7 @@ fn startLogRegisters(params: [][]const u8) !void {
     }
 
     var logging_data =
-        try CircularBuffer(LoggingRegisters).initCapacity(
+        try CircularBufferAlloc(LoggingRegisters).initCapacity(
             allocator,
             logging_size,
         );
@@ -3355,7 +3355,10 @@ fn startLogRegisters(params: [][]const u8) !void {
 }
 
 /// Convert the logged binary data to string and save it to the logging file
-fn logToString(logging_data: *CircularBuffer(LoggingRegisters), writer: std.fs.File.Writer) !void {
+fn logToString(
+    logging_data: *CircularBufferAlloc(LoggingRegisters),
+    writer: std.fs.File.Writer,
+) !void {
     while (logging_data.readItem()) |item| {
         // Copy a newline in every logging data entry
         try writer.writeByte('\n');

@@ -20,6 +20,11 @@
             .url = "https://github.com/pmotionf/mmc-config/archive/08d4694.tar.gz",
             .hash = "mmc_config-0.1.0-DKyEyQu8AAAeNp4OdPQFZgC9v4tL7A7nJh1Jh8vNI-Aa",
         },
+        .zigwin32 = .{
+            .url = "https://github.com/marlersoft/zigwin32/archive/d21b419.tar.gz",
+            .hash = "zigwin32-25.0.28-preview-AAAAAI0J-wP-8_KKo4Yjr33XLhVhlJmeagGUedByaOnX",
+            .lazy = true,
+        },
     },
     .paths = .{""},
 }

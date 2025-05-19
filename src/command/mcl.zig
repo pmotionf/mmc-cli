@@ -2,8 +2,8 @@ const std = @import("std");
 const command = @import("../command.zig");
 const mcl = @import("mcl");
 const chrono = @import("chrono");
-const CircularBuffer =
-    @import("../circular_buffer.zig").CircularBuffer;
+const CircularBufferAlloc =
+    @import("../circular_buffer.zig").CircularBufferAlloc;
 
 var arena: std.heap.ArenaAllocator = undefined;
 var allocator: std.mem.Allocator = undefined;
@@ -751,10 +751,10 @@ pub fn init(c: Config) !void {
         .short_description = "Start the logging and save the file upon cancellation.",
         .long_description =
         \\Start the registers logging process. The log file will always contain
-        \\only the most recent data covering the specified duration (in seconds). 
-        \\The Logging runs until cancelled manually (Ctrl+C). This command returns 
-        \\an error if no lines have been configured to be logged. If no path is 
-        \\provided, a default log file containing all register values will be 
+        \\only the most recent data covering the specified duration (in seconds).
+        \\The Logging runs until cancelled manually (Ctrl+C). This command returns
+        \\an error if no lines have been configured to be logged. If no path is
+        \\provided, a default log file containing all register values will be
         \\created in the current working directory as:
         \\    "mmc-register-YYYY.MM.DD-HH.MM.SS.csv".
         ,
@@ -2316,7 +2316,7 @@ fn startLogRegisters(params: [][]const u8) !void {
     }
 
     var logging_data =
-        try CircularBuffer(LoggingRegisters).initCapacity(
+        try CircularBufferAlloc(LoggingRegisters).initCapacity(
             allocator,
             logging_size,
         );
@@ -2341,7 +2341,10 @@ fn startLogRegisters(params: [][]const u8) !void {
 }
 
 /// Convert the logged binary data to string and save it to the logging file
-fn logToString(logging_data: *CircularBuffer(LoggingRegisters), writer: std.fs.File.Writer) !void {
+fn logToString(
+    logging_data: *CircularBufferAlloc(LoggingRegisters),
+    writer: std.fs.File.Writer,
+) !void {
     while (logging_data.readItem()) |item| {
         // Copy a newline in every logging data entry
         try writer.writeByte('\n');
