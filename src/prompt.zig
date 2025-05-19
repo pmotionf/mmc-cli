@@ -18,12 +18,16 @@ var history: CircularBuffer([]u8, 1024) = .{};
 /// Currently displayed history item offset from tail.
 var history_offset: ?std.math.IntFittingRange(0, history_buf.len) = null;
 
+var input_buffer: [max_input_size]u8 = undefined;
+var input: []u8 = &.{};
+var selection: []u8 = &.{};
+
 /// Prompt handler thread callback. Input must be set to non-canonical mode
 /// prior to spawning this thread. Only one prompt handler thread may be
 /// running at a time.
 pub fn handler() void {
-    var input_buffer: [max_input_size]u8 = undefined;
-    var input: []u8 = &.{};
+    input = &.{};
+    selection = &.{};
 
     const stdin = std.io.getStdIn().reader();
     const stdout = std.io.getStdOut().writer();
@@ -126,6 +130,14 @@ pub fn handler() void {
                     history_offset = null;
                 }
                 sequence = &.{};
+            },
+            // Ctrl-A
+            0x01 => {},
+            // Ctrl-D
+            0x04 => {
+                sequence = &.{};
+                input = &.{};
+                history_offset = null;
             },
             '\n' => {
                 sequence = &.{};
@@ -286,7 +298,43 @@ pub fn handler() void {
             },
         }
 
-        stdout.print("\x1B[2K\r{s}", .{input}) catch continue :main;
+        stdout.writeAll("\x1B[2K\r") catch continue :main;
+        var last_non_space: ?usize = null;
+        for (input, 0..) |c, i| {
+            if (c == ' ') {
+                if (last_non_space) |start| {
+                    const fragment = input[start..i];
+                    for (command.registry.values()) |com| {
+                        if (std.ascii.eqlIgnoreCase(com.name, fragment)) {
+                            stdout.print(
+                                "\x1B[0;32m{s}\x1b[0m",
+                                .{fragment},
+                            ) catch continue :main;
+                            break;
+                        }
+                    } else {
+                        stdout.writeAll(fragment) catch continue :main;
+                    }
+                }
+                last_non_space = null;
+                stdout.writeByte(' ') catch continue :main;
+            } else if (last_non_space == null) {
+                last_non_space = i;
+            }
+        } else if (last_non_space) |start| {
+            const fragment = input[start..];
+            for (command.registry.values()) |com| {
+                if (std.ascii.eqlIgnoreCase(com.name, fragment)) {
+                    stdout.print(
+                        "\x1B[0;32m{s}\x1b[0m",
+                        .{fragment},
+                    ) catch continue :main;
+                    break;
+                }
+            } else {
+                stdout.writeAll(fragment) catch continue :main;
+            }
+        }
         if (history_offset) |offset| {
             const hist_item = history.buffer[
                 ((history.head) + offset - 1) % history.buffer.len
