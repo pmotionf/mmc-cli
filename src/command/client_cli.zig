@@ -1,15 +1,20 @@
 const std = @import("std");
-const command = @import("../command.zig");
-const mcl = @import("mcl");
-const mmc = @import("mmc_config");
-const network = @import("network");
-const chrono = @import("chrono");
-const CircularBufferAlloc =
-    @import("../circular_buffer.zig").CircularBufferAlloc;
 const builtin = @import("builtin");
 
+const chrono = @import("chrono");
+const mcl = @import("mcl");
+const mmc = @import("mmc_config");
 const protobuf_msg = mmc.protobuf_msg;
 const protobuf = mmc.protobuf;
+const SendCommand = protobuf_msg.SendCommand;
+const CarrierStatus = protobuf_msg.CarrierStatus;
+const HallStatus = protobuf_msg.HallStatus;
+const Direction = protobuf_msg.Direction;
+const network = @import("network");
+
+const CircularBufferAlloc =
+    @import("../circular_buffer.zig").CircularBufferAlloc;
+const command = @import("../command.zig");
 
 const LogLine = struct {
     /// Flag if line is configured for logging or not
@@ -49,8 +54,6 @@ var allocator: std.mem.Allocator = undefined;
 var line_names: [][]u8 = undefined;
 var line_speeds: []u5 = undefined;
 var line_accelerations: []u8 = undefined;
-const SystemState = mmc.SystemState;
-
 var IP_address: []u8 = undefined;
 var port: u16 = undefined;
 
@@ -787,7 +790,6 @@ pub fn deinit() void {
 
 fn serverVersion(_: [][]const u8) !void {
     if (main_socket) |s| {
-        const SendCommand = protobuf_msg.SendCommand;
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
         errdefer command_msg.deinit();
@@ -984,7 +986,6 @@ fn clientAutoInitialize(params: [][]const u8) !void {
         line_id = try matchLine(line_names, line_name) + 1;
     }
     if (main_socket) |s| {
-        const SendCommand = protobuf_msg.SendCommand;
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
         errdefer command_msg.deinit();
@@ -1069,7 +1070,6 @@ fn getRegister(
     comptime reg_type: RegisterTypeCap,
 ) !@field(mcl.registers, @tagName(reg_type)) {
     if (main_socket) |s| {
-        const SendCommand = protobuf_msg.SendCommand;
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
         errdefer command_msg.deinit();
@@ -1728,15 +1728,15 @@ fn parseRegisterWw(
             .speed = @intCast(response.carrier.?.speed),
             .acceleration = @intCast(response.carrier.?.acceleration),
             .target = switch (response.command) {
-                .SpeedMoveCarrierAxis,
-                .PositionMoveCarrierAxis,
+                .SPEED_MOVE_CARRIER_AXIS,
+                .POSITION_MOVE_CARRIER_AXIS,
                 => .{ .u32 = @intCast(response.carrier.?.target.?.u32) },
-                .SpeedMoveCarrierDistance,
-                .SpeedMoveCarrierLocation,
-                .PositionMoveCarrierDistance,
-                .PositionMoveCarrierLocation,
-                .PullTransitionLocationBackward,
-                .PullTransitionLocationForward,
+                .SPEED_MOVE_CARRIER_DISTANCE,
+                .SPEED_MOVE_CARRIER_LOCATION,
+                .POSITION_MOVE_CARRIER_DISTANCE,
+                .POSITION_MOVE_CARRIER_LOCATION,
+                .PULL_TRANSITION_LOCATION_BACKWARD,
+                .PULL_TRANSITION_LOCATION_FORWARD,
                 => .{ .f32 = response.carrier.?.target.?.f32 },
                 else => .{ .u32 = 0 },
             },
@@ -1834,19 +1834,16 @@ fn clientAxisCarrier(params: [][]const u8) !void {
     const axis_idx: mcl.Axis.Index.Line = @intCast(axis_id - 1);
 
     if (main_socket) |s| {
-        const SendCommand = protobuf_msg.SendCommand;
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
         errdefer command_msg.deinit();
         command_msg = .{
             .message_type = .SEND_COMMAND,
             .command_kind = .{
-                .get_status = .{
-                    .status_kind = .{
-                        .carrier = .{
-                            .line_idx = @intCast(line_idx),
-                            .axis_idx = @intCast(axis_idx),
-                        },
+                .get_carrier_status = .{
+                    .line_idx = @intCast(line_idx),
+                    .param = .{
+                        .axis_idx = @intCast(axis_idx),
                     },
                 },
             },
@@ -1860,10 +1857,8 @@ fn clientAxisCarrier(params: [][]const u8) !void {
         );
         try send(s, encoded);
         const msg = try receive(s);
-        const carrier = try parseCarrierStatus(
-            msg,
-            fba_allocator,
-        );
+        const carrier: CarrierStatus = try CarrierStatus.decode(msg, fba_allocator);
+        defer carrier.deinit();
         if (carrier.id == 0) {
             std.log.info(
                 "No carrier recognized on axis {d}.\n",
@@ -1891,19 +1886,17 @@ fn clientAssertLocation(params: [][]const u8) !void {
 
     if (main_socket) |s| {
         // Get carrier status from the server
-        const SendCommand = protobuf_msg.SendCommand;
+
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
         errdefer command_msg.deinit();
         command_msg = .{
             .message_type = .SEND_COMMAND,
             .command_kind = .{
-                .get_status = .{
-                    .status_kind = .{
-                        .carrier = .{
-                            .line_idx = @intCast(line_idx),
-                            .carrier_id = @intCast(carrier_id),
-                        },
+                .get_carrier_status = .{
+                    .line_idx = @intCast(line_idx),
+                    .param = .{
+                        .carrier_id = @intCast(carrier_id),
                     },
                 },
             },
@@ -1917,10 +1910,8 @@ fn clientAssertLocation(params: [][]const u8) !void {
         );
         try send(s, encoded);
         const msg = try receive(s);
-        const carrier = try parseCarrierStatus(
-            msg,
-            fba_allocator,
-        );
+        const carrier: CarrierStatus = try CarrierStatus.decode(msg, fba_allocator);
+        defer carrier.deinit();
         const location: f32 = carrier.location;
         if (location < expected_location - location_thr or
             location > expected_location + location_thr)
@@ -1940,7 +1931,6 @@ fn clientAxisReleaseServo(params: [][]const u8) !void {
 
     const axis_idx: mcl.Axis.Index.Line = @intCast(axis_id - 1);
     if (main_socket) |s| {
-        const SendCommand = protobuf_msg.SendCommand;
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
         errdefer command_msg.deinit();
@@ -1968,6 +1958,7 @@ fn clientClearErrors(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx: mcl.Line.Index = @intCast(try matchLine(line_names, line_name));
     const line_id: mcl.Line.Id = @intCast(line_idx + 1);
+    _ = line_id; // autofix
     const line = mcl.lines[line_idx];
 
     var axis_id: ?mcl.Axis.Id.Line = null;
@@ -1986,7 +1977,7 @@ fn clientClearErrors(params: [][]const u8) !void {
     else
         null;
     if (main_socket) |s| {
-        const SendCommand = protobuf_msg.SendCommand;
+        _ = s; // autofix
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
         errdefer command_msg.deinit();
@@ -2002,15 +1993,9 @@ fn clientClearErrors(params: [][]const u8) !void {
                 },
             },
         };
-        const encoded = try command_msg.encode(fba_allocator);
-        defer fba_allocator.free(encoded);
-        errdefer fba_allocator.free(encoded);
-        std.log.debug(
-            "message: {s}",
-            .{@tagName(command_msg.command_kind.?)},
+        try sendMessageAndWaitReceived(
+            command_msg,
         );
-        try send(s, encoded);
-        try waitReceived(@intCast(line_id - 1));
     } else return error.ServerNotConnected;
 }
 
@@ -2018,6 +2003,7 @@ fn clientClearCarrierInfo(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx: mcl.Line.Index = @intCast(try matchLine(line_names, line_name));
     const line_id: mcl.Line.Id = @intCast(line_idx + 1);
+    _ = line_id; // autofix
     const line = mcl.lines[line_idx];
 
     var axis_id: ?mcl.Axis.Id.Line = null;
@@ -2036,7 +2022,7 @@ fn clientClearCarrierInfo(params: [][]const u8) !void {
     else
         null;
     if (main_socket) |s| {
-        const SendCommand = protobuf_msg.SendCommand;
+        _ = s; // autofix
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
         errdefer command_msg.deinit();
@@ -2052,15 +2038,9 @@ fn clientClearCarrierInfo(params: [][]const u8) !void {
                 },
             },
         };
-        const encoded = try command_msg.encode(fba_allocator);
-        defer fba_allocator.free(encoded);
-        errdefer fba_allocator.free(encoded);
-        std.log.debug(
-            "message: {s}",
-            .{@tagName(command_msg.command_kind.?)},
+        try sendMessageAndWaitReceived(
+            command_msg,
         );
-        try send(s, encoded);
-        try waitReceived(@intCast(line_id - 1));
     } else return error.ServerNotConnected;
 }
 
@@ -2073,19 +2053,17 @@ fn clientCarrierLocation(params: [][]const u8) !void {
 
     if (main_socket) |s| {
         // Get carrier status from the server
-        const SendCommand = protobuf_msg.SendCommand;
+
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
         errdefer command_msg.deinit();
         command_msg = .{
             .message_type = .SEND_COMMAND,
             .command_kind = .{
-                .get_status = .{
-                    .status_kind = .{
-                        .carrier = .{
-                            .line_idx = @intCast(line_idx),
-                            .carrier_id = @intCast(carrier_id),
-                        },
+                .get_carrier_status = .{
+                    .line_idx = @intCast(line_idx),
+                    .param = .{
+                        .carrier_id = @intCast(carrier_id),
                     },
                 },
             },
@@ -2099,10 +2077,8 @@ fn clientCarrierLocation(params: [][]const u8) !void {
         );
         try send(s, encoded);
         const msg = try receive(s);
-        const carrier = try parseCarrierStatus(
-            msg,
-            fba_allocator,
-        );
+        const carrier: CarrierStatus = try CarrierStatus.decode(msg, fba_allocator);
+        defer carrier.deinit();
         if (carrier.id == 0) {
             std.log.err(
                 "Carrier not found",
@@ -2125,19 +2101,17 @@ fn clientCarrierAxis(params: [][]const u8) !void {
     const line_idx: usize = try matchLine(line_names, line_name);
     if (main_socket) |s| {
         // Get carrier status from the server
-        const SendCommand = protobuf_msg.SendCommand;
+
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
         errdefer command_msg.deinit();
         command_msg = .{
             .message_type = .SEND_COMMAND,
             .command_kind = .{
-                .get_status = .{
-                    .status_kind = .{
-                        .carrier = .{
-                            .line_idx = @intCast(line_idx),
-                            .carrier_id = @intCast(carrier_id),
-                        },
+                .get_carrier_status = .{
+                    .line_idx = @intCast(line_idx),
+                    .param = .{
+                        .carrier_id = @intCast(carrier_id),
                     },
                 },
             },
@@ -2151,10 +2125,8 @@ fn clientCarrierAxis(params: [][]const u8) !void {
         );
         try send(s, encoded);
         const msg = try receive(s);
-        const carrier = try parseCarrierStatus(
-            msg,
-            fba_allocator,
-        );
+        const carrier: CarrierStatus = try CarrierStatus.decode(msg, fba_allocator);
+        defer carrier.deinit();
         if (carrier.id == 0) {
             std.log.err(
                 "Carrier not found",
@@ -2163,12 +2135,12 @@ fn clientCarrierAxis(params: [][]const u8) !void {
         } else {
             std.log.info(
                 "Carrier {d} axis: {}",
-                .{ carrier.id, carrier.axis_idx.main_axis + 1 },
+                .{ carrier.id, carrier.main_axis + 1 },
             );
-            if (carrier.axis_idx.aux_axis == 0) return;
+            if (carrier.aux_axis == 0) return;
             std.log.info(
                 "Carrier {d} axis: {}",
-                .{ carrier.id, carrier.axis_idx.aux_axis + 1 },
+                .{ carrier.id, carrier.aux_axis + 1 },
             );
         }
     } else return error.ServerNotConnected;
@@ -2197,23 +2169,16 @@ fn clientHallStatus(params: [][]const u8) !void {
     if (main_socket) |s| {
         if (axis_idx) |idx| {
             // Get hall sensor status from the server
-            const SendCommand = protobuf_msg.SendCommand;
+
             var command_msg: SendCommand = SendCommand.init(fba_allocator);
             defer command_msg.deinit();
             errdefer command_msg.deinit();
             command_msg = .{
                 .message_type = .SEND_COMMAND,
                 .command_kind = .{
-                    .get_status = .{
-                        .status_kind = .{
-                            .hall = .{
-                                .line_idx = @intCast(line_idx),
-                                .axis_idx = if (axis_idx != null)
-                                    @intCast(idx)
-                                else
-                                    null,
-                            },
-                        },
+                    .get_hall_status = .{
+                        .line_idx = @intCast(line_idx),
+                        .axis_idx = @intCast(idx),
                     },
                 },
             };
@@ -2226,16 +2191,14 @@ fn clientHallStatus(params: [][]const u8) !void {
             );
             try send(s, encoded);
             const msg = try receive(s);
-            const hall_sensor = try parseHallStatus(
-                msg,
-                fba_allocator,
-            );
+            const hall: HallStatus = try HallStatus.decode(msg, fba_allocator);
+            defer hall.deinit();
             std.log.info(
                 "Axis {} Hall Sensor:\n\t FRONT - {s}\n\t BACK - {s}",
                 .{
                     axis_id.?,
-                    if (hall_sensor.front) "ON" else "OFF",
-                    if (hall_sensor.back) "ON" else "OFF",
+                    if (hall.front) "ON" else "OFF",
+                    if (hall.back) "ON" else "OFF",
                 },
             );
             return;
@@ -2243,42 +2206,34 @@ fn clientHallStatus(params: [][]const u8) !void {
 
         for (line.axes) |axis| {
             // Get carrier status from the server
-            const SendCommand = protobuf_msg.SendCommand;
+
             var command_msg: SendCommand = SendCommand.init(fba_allocator);
             defer command_msg.deinit();
-            errdefer command_msg.deinit();
             command_msg = .{
                 .message_type = .SEND_COMMAND,
                 .command_kind = .{
-                    .get_status = .{
-                        .status_kind = .{
-                            .hall = .{
-                                .line_idx = @intCast(line_idx),
-                                .axis_idx = @intCast(axis.index.line),
-                            },
-                        },
+                    .get_hall_status = .{
+                        .line_idx = @intCast(line_idx),
+                        .axis_idx = @intCast(axis.index.line),
                     },
                 },
             };
             const encoded = try command_msg.encode(fba_allocator);
             defer fba_allocator.free(encoded);
-            errdefer fba_allocator.free(encoded);
             std.log.debug(
                 "message: {s}",
                 .{@tagName(command_msg.command_kind.?)},
             );
             try send(s, encoded);
             const msg = try receive(s);
-            const hall_sensor = try parseHallStatus(
-                msg,
-                fba_allocator,
-            );
+            const hall: HallStatus = try HallStatus.decode(msg, fba_allocator);
+            defer hall.deinit();
             std.log.info(
                 "Axis {} Hall Sensor:\n\t FRONT - {s}\n\t BACK - {s}",
                 .{
                     axis.id.line,
-                    if (hall_sensor.front) "ON" else "OFF",
-                    if (hall_sensor.back) "ON" else "OFF",
+                    if (hall.front) "ON" else "OFF",
+                    if (hall.back) "ON" else "OFF",
                 },
             );
         }
@@ -2319,20 +2274,16 @@ fn clientAssertHall(params: [][]const u8) !void {
 
     if (main_socket) |s| {
         // Get hall status from the server
-        const SendCommand = protobuf_msg.SendCommand;
+
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
         errdefer command_msg.deinit();
         command_msg = .{
             .message_type = .SEND_COMMAND,
             .command_kind = .{
-                .get_status = .{
-                    .status_kind = .{
-                        .hall = .{
-                            .line_idx = @intCast(line_idx),
-                            .axis_idx = @intCast(axis_idx),
-                        },
-                    },
+                .get_hall_status = .{
+                    .line_idx = @intCast(line_idx),
+                    .axis_idx = @intCast(axis_idx),
                 },
             },
         };
@@ -2345,18 +2296,16 @@ fn clientAssertHall(params: [][]const u8) !void {
         );
         try send(s, encoded);
         const msg = try receive(s);
-        const hall_sensor = try parseHallStatus(
-            msg,
-            fba_allocator,
-        );
+        const hall: HallStatus = try HallStatus.decode(msg, fba_allocator);
+        defer hall.deinit();
         switch (side) {
             .backward => {
-                if (hall_sensor.back != alarm_on) {
+                if (hall.back != alarm_on) {
                     return error.UnexpectedHallAlarm;
                 }
             },
             .forward => {
-                if (hall_sensor.front != alarm_on) {
+                if (hall.front != alarm_on) {
                     return error.UnexpectedHallAlarm;
                 }
             },
@@ -2366,7 +2315,6 @@ fn clientAssertHall(params: [][]const u8) !void {
 
 fn clientMclReset(_: [][]const u8) !void {
     if (main_socket) |s| {
-        const SendCommand = protobuf_msg.SendCommand;
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
         errdefer command_msg.deinit();
@@ -2391,36 +2339,38 @@ fn clientCalibrate(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx: usize = try matchLine(line_names, line_name);
 
-    const SetCommand = protobuf_msg.SendCommand.SetCommand;
-    var param: SetCommand = SetCommand.init(fba_allocator);
-    defer param.deinit();
-    errdefer param.deinit();
-    param = .{
-        .command_code = .Calibration,
-        .line_idx = @intCast(line_idx),
-        .carrier_id = 1,
+    var command_msg: SendCommand = SendCommand.init(fba_allocator);
+    defer command_msg.deinit();
+    command_msg = .{
+        .message_type = .SEND_COMMAND,
+        .command_code = .CALIBRATION,
+        .command_kind = .{
+            .calibrate = .{
+                .line_idx = @intCast(line_idx),
+            },
+        },
     };
     try sendMessageAndWaitReceived(
-        param,
-        @truncate(line_idx),
+        command_msg,
     );
 }
 
 fn clientSetLineZero(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx: usize = try matchLine(line_names, line_name);
-    const SetCommand = protobuf_msg.SendCommand.SetCommand;
-    var param: SetCommand = SetCommand.init(fba_allocator);
-    defer param.deinit();
-    errdefer param.deinit();
-    param = .{
-        .command_code = .SetLineZero,
-        .line_idx = @intCast(line_idx),
-        .carrier_id = 1,
+    var command_msg: SendCommand = SendCommand.init(fba_allocator);
+    defer command_msg.deinit();
+    command_msg = .{
+        .message_type = .SEND_COMMAND,
+        .command_code = .SET_LINE_ZERO,
+        .command_kind = .{
+            .set_line_zero = .{
+                .line_idx = @intCast(line_idx),
+            },
+        },
     };
     try sendMessageAndWaitReceived(
-        param,
-        @truncate(line_idx),
+        command_msg,
     );
 }
 
@@ -2434,11 +2384,11 @@ fn clientIsolate(params: [][]const u8) !void {
         return error.InvalidAxis;
     }
 
-    const dir: mcl.Direction = dir_parse: {
+    const dir: Direction = dir_parse: {
         if (std.ascii.eqlIgnoreCase("forward", params[2])) {
-            break :dir_parse .forward;
+            break :dir_parse .FORWARD;
         } else if (std.ascii.eqlIgnoreCase("backward", params[2])) {
-            break :dir_parse .backward;
+            break :dir_parse .BACKWARD;
         } else {
             return error.InvalidDirection;
         }
@@ -2448,39 +2398,42 @@ fn clientIsolate(params: [][]const u8) !void {
         try std.fmt.parseInt(u10, params[3], 0)
     else
         0;
-    const SetCommand = protobuf_msg.SendCommand.SetCommand;
-    const link_axis: ?SetCommand.Direction = link: {
+    const link_axis: Direction = link: {
         if (params[4].len > 0) {
             if (std.ascii.eqlIgnoreCase("next", params[4]) or
                 std.ascii.eqlIgnoreCase("right", params[4]))
             {
-                break :link .Forward;
+                break :link .FORWARD;
             } else if (std.ascii.eqlIgnoreCase("prev", params[4]) or
                 std.ascii.eqlIgnoreCase("left", params[4]))
             {
-                break :link .Backward;
+                break :link .BACKWARD;
             } else return error.InvalidIsolateLinkAxis;
-        } else break :link null;
+        } else break :link .DIRECTION_UNSPECIFIED;
     };
 
     const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
 
-    var param: SetCommand = SetCommand.init(fba_allocator);
-    defer param.deinit();
-    errdefer param.deinit();
-    param = .{
-        .command_code = if (dir == .forward)
-            .IsolateForward
+    var command_msg: SendCommand = SendCommand.init(fba_allocator);
+    defer command_msg.deinit();
+    command_msg = .{
+        .message_type = .SEND_COMMAND,
+        .command_code = if (dir == .FORWARD)
+            .ISOLATE_FORWARD
         else
-            .IsolateBackward,
-        .line_idx = @intCast(line_idx),
-        .axis_idx = @intCast(axis_index),
-        .carrier_id = carrier_id,
-        .link_axis = link_axis,
+            .ISOLATE_BACKWARD,
+        .command_kind = .{
+            .isolate_carrier = .{
+                .line_idx = @intCast(line_idx),
+                .axis_idx = @intCast(axis_index),
+                .carrier_id = carrier_id,
+                .link_axis = link_axis,
+                .direction = dir,
+            },
+        },
     };
     try sendMessageAndWaitReceived(
-        param,
-        @truncate(line_idx),
+        command_msg,
     );
 }
 
@@ -2502,19 +2455,17 @@ fn clientWaitIsolate(params: [][]const u8) !void {
                 wait_timer.read() > timeout * std.time.ns_per_ms)
                 return error.WaitTimeout;
             try command.checkCommandInterrupt();
-            const SendCommand = protobuf_msg.SendCommand;
+
             var command_msg: SendCommand = SendCommand.init(fba_allocator);
             defer command_msg.deinit();
             errdefer command_msg.deinit();
             command_msg = .{
                 .message_type = .SEND_COMMAND,
                 .command_kind = .{
-                    .get_status = .{
-                        .status_kind = .{
-                            .carrier = .{
-                                .line_idx = @intCast(line_idx),
-                                .carrier_id = @intCast(carrier_id),
-                            },
+                    .get_carrier_status = .{
+                        .line_idx = @intCast(line_idx),
+                        .param = .{
+                            .carrier_id = @intCast(carrier_id),
                         },
                     },
                 },
@@ -2528,16 +2479,14 @@ fn clientWaitIsolate(params: [][]const u8) !void {
             );
             try send(s, encoded);
             const msg = try receive(s);
-            const carrier = try parseCarrierStatus(
-                msg,
-                fba_allocator,
-            );
+            const carrier: CarrierStatus = try CarrierStatus.decode(msg, fba_allocator);
+            defer carrier.deinit();
             std.log.debug(
                 "line: {s}, carrier id: {}, carrier state: {s}",
                 .{ line_name, carrier.id, @tagName(carrier.state) },
             );
-            if (carrier.state == .BackwardIsolationCompleted or
-                carrier.state == .ForwardIsolationCompleted) return;
+            if (carrier.state == .BACKWARD_ISOLATION_COMPLETED or
+                carrier.state == .FORWARD_ISOLATION_COMPLETED) return;
         }
     } else return error.ServerNotConnected;
 }
@@ -2560,19 +2509,17 @@ fn clientWaitMoveCarrier(params: [][]const u8) !void {
                 wait_timer.read() > timeout * std.time.ns_per_ms)
                 return error.WaitTimeout;
             try command.checkCommandInterrupt();
-            const SendCommand = protobuf_msg.SendCommand;
+
             var command_msg: SendCommand = SendCommand.init(fba_allocator);
             defer command_msg.deinit();
             errdefer command_msg.deinit();
             command_msg = .{
                 .message_type = .SEND_COMMAND,
                 .command_kind = .{
-                    .get_status = .{
-                        .status_kind = .{
-                            .carrier = .{
-                                .line_idx = @intCast(line_idx),
-                                .carrier_id = @intCast(carrier_id),
-                            },
+                    .get_carrier_status = .{
+                        .line_idx = @intCast(line_idx),
+                        .param = .{
+                            .carrier_id = @intCast(carrier_id),
                         },
                     },
                 },
@@ -2586,16 +2533,14 @@ fn clientWaitMoveCarrier(params: [][]const u8) !void {
             );
             try send(s, encoded);
             const msg = try receive(s);
-            const carrier = try parseCarrierStatus(
-                msg,
-                fba_allocator,
-            );
+            const carrier: CarrierStatus = try CarrierStatus.decode(msg, fba_allocator);
+            defer carrier.deinit();
             std.log.debug(
                 "line: {s}, carrier id: {}, carrier state: {s}",
                 .{ line_name, carrier.id, @tagName(carrier.state) },
             );
-            if (carrier.state == .PosMoveCompleted or
-                carrier.state == .SpdMoveCompleted) return;
+            if (carrier.state == .POS_MOVE_COMPLETED or
+                carrier.state == .SPD_MOVE_COMPLETED) return;
         }
     } else return error.ServerNotConnected;
 }
@@ -2611,23 +2556,24 @@ fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
     if (axis_id == 0 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
-    const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
 
-    const SetCommand = protobuf_msg.SendCommand.SetCommand;
-    var param: SetCommand = SetCommand.init(fba_allocator);
-    defer param.deinit();
-    errdefer param.deinit();
-    param = .{
-        .command_code = .PositionMoveCarrierAxis,
-        .line_idx = @intCast(line_idx),
-        .axis_idx = @intCast(axis_index),
-        .carrier_id = carrier_id,
-        .speed = @intCast(line_speeds[line_idx]),
-        .acceleration = @intCast(line_accelerations[line_idx]),
+    var command_msg: SendCommand = SendCommand.init(fba_allocator);
+    defer command_msg.deinit();
+    command_msg = .{
+        .message_type = .SEND_COMMAND,
+        .command_code = .POSITION_MOVE_CARRIER_AXIS,
+        .command_kind = .{
+            .move_carrier = .{
+                .line_idx = @intCast(line_idx),
+                .carrier_id = carrier_id,
+                .speed = @intCast(line_speeds[line_idx]),
+                .acceleration = @intCast(line_accelerations[line_idx]),
+                .target = .{ .axis_id = @intCast(axis_id) },
+            },
+        },
     };
     try sendMessageAndWaitReceived(
-        param,
-        @truncate(line_idx),
+        command_msg,
     );
 }
 
@@ -2639,21 +2585,23 @@ fn clientCarrierPosMoveLocation(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
 
-    const SetCommand = protobuf_msg.SendCommand.SetCommand;
-    var param: SetCommand = SetCommand.init(fba_allocator);
-    defer param.deinit();
-    errdefer param.deinit();
-    param = .{
-        .command_code = .PositionMoveCarrierLocation,
-        .line_idx = @intCast(line_idx),
-        .location_distance = location,
-        .carrier_id = carrier_id,
-        .speed = @intCast(line_speeds[line_idx]),
-        .acceleration = @intCast(line_accelerations[line_idx]),
+    var command_msg: SendCommand = SendCommand.init(fba_allocator);
+    defer command_msg.deinit();
+    command_msg = .{
+        .message_type = .SEND_COMMAND,
+        .command_code = .POSITION_MOVE_CARRIER_LOCATION,
+        .command_kind = .{
+            .move_carrier = .{
+                .line_idx = @intCast(line_idx),
+                .carrier_id = carrier_id,
+                .speed = @intCast(line_speeds[line_idx]),
+                .acceleration = @intCast(line_accelerations[line_idx]),
+                .target = .{ .location_distance = location },
+            },
+        },
     };
     try sendMessageAndWaitReceived(
-        param,
-        @truncate(line_idx),
+        command_msg,
     );
 }
 
@@ -2668,21 +2616,23 @@ fn clientCarrierPosMoveDistance(params: [][]const u8) !void {
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     const line_idx: usize = try matchLine(line_names, line_name);
 
-    const SetCommand = protobuf_msg.SendCommand.SetCommand;
-    var param: SetCommand = SetCommand.init(fba_allocator);
-    defer param.deinit();
-    errdefer param.deinit();
-    param = .{
-        .command_code = .PositionMoveCarrierDistance,
-        .line_idx = @intCast(line_idx),
-        .location_distance = distance,
-        .carrier_id = carrier_id,
-        .speed = @intCast(line_speeds[line_idx]),
-        .acceleration = @intCast(line_accelerations[line_idx]),
+    var command_msg: SendCommand = SendCommand.init(fba_allocator);
+    defer command_msg.deinit();
+    command_msg = .{
+        .message_type = .SEND_COMMAND,
+        .command_code = .POSITION_MOVE_CARRIER_DISTANCE,
+        .command_kind = .{
+            .move_carrier = .{
+                .line_idx = @intCast(line_idx),
+                .carrier_id = carrier_id,
+                .speed = @intCast(line_speeds[line_idx]),
+                .acceleration = @intCast(line_accelerations[line_idx]),
+                .target = .{ .location_distance = distance },
+            },
+        },
     };
     try sendMessageAndWaitReceived(
-        param,
-        @truncate(line_idx),
+        command_msg,
     );
 }
 
@@ -2697,23 +2647,23 @@ fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
     }
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
-    const axis_index: mcl.Axis.Index.Line = @intCast(axis_id - 1);
-
-    const SetCommand = protobuf_msg.SendCommand.SetCommand;
-    var param: SetCommand = SetCommand.init(fba_allocator);
-    defer param.deinit();
-    errdefer param.deinit();
-    param = .{
-        .command_code = .SpeedMoveCarrierAxis,
-        .line_idx = @intCast(line_idx),
-        .axis_idx = @intCast(axis_index),
-        .carrier_id = carrier_id,
-        .speed = @intCast(line_speeds[line_idx]),
-        .acceleration = @intCast(line_accelerations[line_idx]),
+    var command_msg: SendCommand = SendCommand.init(fba_allocator);
+    defer command_msg.deinit();
+    command_msg = .{
+        .message_type = .SEND_COMMAND,
+        .command_code = .SPEED_MOVE_CARRIER_AXIS,
+        .command_kind = .{
+            .move_carrier = .{
+                .line_idx = @intCast(line_idx),
+                .carrier_id = carrier_id,
+                .speed = @intCast(line_speeds[line_idx]),
+                .acceleration = @intCast(line_accelerations[line_idx]),
+                .target = .{ .axis_id = @intCast(axis_id) },
+            },
+        },
     };
     try sendMessageAndWaitReceived(
-        param,
-        @truncate(line_idx),
+        command_msg,
     );
 }
 
@@ -2725,21 +2675,23 @@ fn clientCarrierSpdMoveLocation(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
 
-    const SetCommand = protobuf_msg.SendCommand.SetCommand;
-    var param: SetCommand = SetCommand.init(fba_allocator);
-    defer param.deinit();
-    errdefer param.deinit();
-    param = .{
-        .command_code = .SpeedMoveCarrierLocation,
-        .line_idx = @intCast(line_idx),
-        .location_distance = location,
-        .carrier_id = carrier_id,
-        .speed = @intCast(line_speeds[line_idx]),
-        .acceleration = @intCast(line_accelerations[line_idx]),
+    var command_msg: SendCommand = SendCommand.init(fba_allocator);
+    defer command_msg.deinit();
+    command_msg = .{
+        .message_type = .SEND_COMMAND,
+        .command_code = .SPEED_MOVE_CARRIER_LOCATION,
+        .command_kind = .{
+            .move_carrier = .{
+                .line_idx = @intCast(line_idx),
+                .carrier_id = carrier_id,
+                .speed = @intCast(line_speeds[line_idx]),
+                .acceleration = @intCast(line_accelerations[line_idx]),
+                .target = .{ .location_distance = location },
+            },
+        },
     };
     try sendMessageAndWaitReceived(
-        param,
-        @truncate(line_idx),
+        command_msg,
     );
 }
 
@@ -2754,21 +2706,23 @@ fn clientCarrierSpdMoveDistance(params: [][]const u8) !void {
     }
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
-    const SetCommand = protobuf_msg.SendCommand.SetCommand;
-    var param: SetCommand = SetCommand.init(fba_allocator);
-    defer param.deinit();
-    errdefer param.deinit();
-    param = .{
-        .command_code = .SpeedMoveCarrierDistance,
-        .line_idx = @intCast(line_idx),
-        .location_distance = distance,
-        .carrier_id = carrier_id,
-        .speed = @intCast(line_speeds[line_idx]),
-        .acceleration = @intCast(line_accelerations[line_idx]),
+    var command_msg: SendCommand = SendCommand.init(fba_allocator);
+    defer command_msg.deinit();
+    command_msg = .{
+        .message_type = .SEND_COMMAND,
+        .command_code = .SPEED_MOVE_CARRIER_DISTANCE,
+        .command_kind = .{
+            .move_carrier = .{
+                .line_idx = @intCast(line_idx),
+                .carrier_id = carrier_id,
+                .speed = @intCast(line_speeds[line_idx]),
+                .acceleration = @intCast(line_accelerations[line_idx]),
+                .target = .{ .location_distance = distance },
+            },
+        },
     };
     try sendMessageAndWaitReceived(
-        param,
-        @truncate(line_idx),
+        command_msg,
     );
 }
 
@@ -2784,28 +2738,35 @@ fn clientCarrierPushForward(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
 
-    const SetCommand = protobuf_msg.SendCommand.SetCommand;
-    var param: SetCommand = SetCommand.init(fba_allocator);
-    defer param.deinit();
-    errdefer param.deinit();
-    param = .{
-        .line_idx = @intCast(line_idx),
-        .carrier_id = carrier_id,
-        .speed = @intCast(line_speeds[line_idx]),
-        .acceleration = @intCast(line_accelerations[line_idx]),
-    };
+    var command_msg: SendCommand = SendCommand.init(fba_allocator);
+    defer command_msg.deinit();
+    var command_code: protobuf_msg.RegisterWw.CommandCode = undefined;
+    var command_axis: ?i32 = null;
     if (axis_id) |id| {
         const line = mcl.lines[line_idx];
         if (id == 0 or id > line.axes.len) return error.InvalidAxis;
         const axis: mcl.Axis = line.axes[id - 1];
-        param.command_code = .PushTransitionForward;
-        param.axis_idx = @intCast(axis.index.line);
+        command_code = .PUSH_TRANSITION_FORWARD;
+        command_axis = @intCast(axis.index.line);
     } else {
-        param.command_code = .PushForward;
+        command_code = .PUSH_FORWARD;
     }
+    command_msg = .{
+        .message_type = .SEND_COMMAND,
+        .command_code = command_code,
+        .command_kind = .{
+            .push_carrier = .{
+                .line_idx = @intCast(line_idx),
+                .carrier_id = carrier_id,
+                .speed = @intCast(line_speeds[line_idx]),
+                .acceleration = @intCast(line_accelerations[line_idx]),
+                .direction = .FORWARD,
+                .axis_idx = command_axis,
+            },
+        },
+    };
     try sendMessageAndWaitReceived(
-        param,
-        @truncate(line_idx),
+        command_msg,
     );
 }
 
@@ -2821,28 +2782,36 @@ fn clientCarrierPushBackward(params: [][]const u8) !void {
 
     const line_idx: usize = try matchLine(line_names, line_name);
 
-    const SetCommand = protobuf_msg.SendCommand.SetCommand;
-    var param: SetCommand = SetCommand.init(fba_allocator);
-    defer param.deinit();
-    errdefer param.deinit();
-    param = .{
-        .line_idx = @intCast(line_idx),
-        .carrier_id = carrier_id,
-        .speed = @intCast(line_speeds[line_idx]),
-        .acceleration = @intCast(line_accelerations[line_idx]),
-    };
+    var command_msg: SendCommand = SendCommand.init(fba_allocator);
+    defer command_msg.deinit();
+    var command_code: protobuf_msg.RegisterWw.CommandCode = undefined;
+    var command_axis: ?i32 = null;
     if (axis_id) |id| {
         const line = mcl.lines[line_idx];
         if (id == 0 or id > line.axes.len) return error.InvalidAxis;
         const axis: mcl.Axis = line.axes[id - 1];
-        param.command_code = .PushTransitionBackward;
-        param.axis_idx = @intCast(axis.index.line);
+        command_code = .PUSH_TRANSITION_BACKWARD;
+        command_axis = @intCast(axis.index.line);
     } else {
-        param.command_code = .PushBackward;
+        command_code = .PUSH_BACKWARD;
     }
+    command_msg = .{
+        .message_type = .SEND_COMMAND,
+        .command_code = command_code,
+        .command_kind = .{
+            .push_carrier = .{
+                .line_idx = @intCast(line_idx),
+                .carrier_id = carrier_id,
+                .speed = @intCast(line_speeds[line_idx]),
+                .acceleration = @intCast(line_accelerations[line_idx]),
+                .direction = .BACKWARD,
+                .axis_idx = command_axis,
+            },
+        },
+    };
+
     try sendMessageAndWaitReceived(
-        param,
-        @truncate(line_idx),
+        command_msg,
     );
 }
 
@@ -2860,26 +2829,34 @@ fn clientCarrierPullForward(params: [][]const u8) !void {
     if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
 
-    const SetCommand = protobuf_msg.SendCommand.SetCommand;
-    var param: SetCommand = SetCommand.init(fba_allocator);
-    defer param.deinit();
-    errdefer param.deinit();
-    param = .{
-        .line_idx = @intCast(line_idx),
-        .axis_idx = @intCast(axis_index),
-        .carrier_id = carrier_id,
-        .speed = @intCast(line_speeds[line_idx]),
-        .acceleration = @intCast(line_accelerations[line_idx]),
-    };
+    var command_msg: SendCommand = SendCommand.init(fba_allocator);
+    defer command_msg.deinit();
+    var command_code: protobuf_msg.RegisterWw.CommandCode = undefined;
+    var command_destination: ?f32 = null;
     if (destination) |dest| {
-        param.command_code = .PullTransitionLocationForward;
-        param.location_distance = dest;
+        command_code = .PULL_TRANSITION_LOCATION_FORWARD;
+        command_destination = dest;
     } else {
-        param.command_code = .PullForward;
+        command_code = .PULL_FORWARD;
     }
+    command_msg = .{
+        .message_type = .SEND_COMMAND,
+        .command_code = command_code,
+        .command_kind = .{
+            .pull_carrier = .{
+                .line_idx = @intCast(line_idx),
+                .axis_idx = @intCast(axis_index),
+                .carrier_id = carrier_id,
+                .speed = @intCast(line_speeds[line_idx]),
+                .acceleration = @intCast(line_accelerations[line_idx]),
+                .direction = .FORWARD,
+                .destination = command_destination,
+            },
+        },
+    };
+
     try sendMessageAndWaitReceived(
-        param,
-        @truncate(line_idx),
+        command_msg,
     );
 }
 
@@ -2898,26 +2875,33 @@ fn clientCarrierPullBackward(params: [][]const u8) !void {
     if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
 
-    const SetCommand = protobuf_msg.SendCommand.SetCommand;
-    var param: SetCommand = SetCommand.init(fba_allocator);
-    defer param.deinit();
-    errdefer param.deinit();
-    param = .{
-        .line_idx = @intCast(line_idx),
-        .axis_idx = @intCast(axis_index),
-        .carrier_id = carrier_id,
-        .speed = @intCast(line_speeds[line_idx]),
-        .acceleration = @intCast(line_accelerations[line_idx]),
-    };
+    var command_msg: SendCommand = SendCommand.init(fba_allocator);
+    defer command_msg.deinit();
+    var command_code: protobuf_msg.RegisterWw.CommandCode = undefined;
+    var command_destination: ?f32 = null;
     if (destination) |dest| {
-        param.command_code = .PullTransitionLocationBackward;
-        param.location_distance = dest;
+        command_code = .PULL_TRANSITION_LOCATION_BACKWARD;
+        command_destination = dest;
     } else {
-        param.command_code = .PullBackward;
+        command_code = .PULL_BACKWARD;
     }
+    command_msg = .{
+        .message_type = .SEND_COMMAND,
+        .command_code = command_code,
+        .command_kind = .{
+            .pull_carrier = .{
+                .line_idx = @intCast(line_idx),
+                .axis_idx = @intCast(axis_index),
+                .carrier_id = carrier_id,
+                .speed = @intCast(line_speeds[line_idx]),
+                .acceleration = @intCast(line_accelerations[line_idx]),
+                .direction = .BACKWARD,
+                .destination = command_destination,
+            },
+        },
+    };
     try sendMessageAndWaitReceived(
-        param,
-        @truncate(line_idx),
+        command_msg,
     );
 }
 
@@ -2939,19 +2923,17 @@ fn clientCarrierWaitPull(params: [][]const u8) !void {
                 wait_timer.read() > timeout * std.time.ns_per_ms)
                 return error.WaitTimeout;
             try command.checkCommandInterrupt();
-            const SendCommand = protobuf_msg.SendCommand;
+
             var command_msg: SendCommand = SendCommand.init(fba_allocator);
             defer command_msg.deinit();
             errdefer command_msg.deinit();
             command_msg = .{
                 .message_type = .SEND_COMMAND,
                 .command_kind = .{
-                    .get_status = .{
-                        .status_kind = .{
-                            .carrier = .{
-                                .line_idx = @intCast(line_idx),
-                                .carrier_id = @intCast(carrier_id),
-                            },
+                    .get_carrier_status = .{
+                        .line_idx = @intCast(line_idx),
+                        .param = .{
+                            .carrier_id = @intCast(carrier_id),
                         },
                     },
                 },
@@ -2965,12 +2947,11 @@ fn clientCarrierWaitPull(params: [][]const u8) !void {
             );
             try send(s, encoded);
             const msg = try receive(s);
-            const carrier = try parseCarrierStatus(
-                msg,
-                fba_allocator,
-            );
-            if (carrier.state == .PullForwardCompleted or
-                carrier.state == .PullBackwardCompleted) return;
+            const carrier: CarrierStatus =
+                try CarrierStatus.decode(msg, fba_allocator);
+            defer carrier.deinit();
+            if (carrier.state == .PULL_FORWARD_COMPLETED or
+                carrier.state == .PULL_BACKWARD_COMPLETED) return;
         }
     } else return error.ServerNotConnected;
 }
@@ -2984,7 +2965,6 @@ fn clientCarrierStopPull(params: [][]const u8) !void {
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
 
     if (main_socket) |s| {
-        const SendCommand = protobuf_msg.SendCommand;
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
         errdefer command_msg.deinit();
@@ -3017,7 +2997,6 @@ fn clientCarrierStopPush(params: [][]const u8) !void {
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
 
     if (main_socket) |s| {
-        const SendCommand = protobuf_msg.SendCommand;
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
         errdefer command_msg.deinit();
@@ -3597,43 +3576,12 @@ fn matchLine(names: [][]u8, name: []const u8) !usize {
 }
 
 fn sendMessageAndWaitReceived(
-    set_command_param: protobuf_msg.SendCommand.SetCommand,
-    line_idx: mcl.Line.Index,
+    command_msg: SendCommand,
 ) !void {
     if (main_socket) |s| {
-        const SendCommand = protobuf_msg.SendCommand;
-        var command_msg: SendCommand = SendCommand.init(fba_allocator);
-        defer command_msg.deinit();
-        command_msg = .{
-            .message_type = .SEND_COMMAND,
-            .command_kind = .{
-                .set_command = set_command_param,
-            },
-        };
+        var command_id: i32 = undefined;
         {
-            const encoded = try command_msg.encode(fba_allocator);
-            defer fba_allocator.free(encoded);
-            std.log.debug(
-                "message: {s}",
-                .{@tagName(command_msg.command_kind.?)},
-            );
-            try send(s, encoded);
-        }
-
-        while (true) {
-            try command.checkCommandInterrupt();
-            command_msg = .{
-                .message_type = .SEND_COMMAND,
-                .command_kind = .{
-                    .get_status = .{
-                        .status_kind = .{
-                            .command = .{
-                                .line_idx = @intCast(line_idx),
-                            },
-                        },
-                    },
-                },
-            };
+            // Send command and wait for its response
             const encoded = try command_msg.encode(fba_allocator);
             defer fba_allocator.free(encoded);
             std.log.debug(
@@ -3642,236 +3590,224 @@ fn sendMessageAndWaitReceived(
             );
             try send(s, encoded);
             const msg = try receive(s);
-            const command_status = try parseCommandStatus(
-                msg,
-                fba_allocator,
-            );
-            std.log.debug(
-                "received: {}, response: {s}",
-                .{
-                    command_status.command_received,
-                    @tagName(command_status.command_response),
+            const CommandID = protobuf_msg.CommandID;
+            const response: CommandID = try CommandID.decode(msg, fba_allocator);
+            defer response.deinit();
+            command_id = response.command_id;
+        }
+        while (true) {
+            try command.checkCommandInterrupt();
+            var command_status_msg: SendCommand = SendCommand.init(fba_allocator);
+            defer command_status_msg.deinit();
+            command_status_msg = .{
+                .message_type = .SEND_COMMAND,
+                .command_kind = .{
+                    .get_command_status = .{ .command_id = command_id },
                 },
-            );
-            if (command_status.command_received) {
-                return switch (command_status.command_response) {
-                    .NoError => {},
-                    .InvalidCommand => error.InvalidCommand,
-                    .CarrierNotFound => error.CarrierNotFound,
-                    .HomingFailed => error.HomingFailed,
-                    .InvalidParameter => error.InvalidParameter,
-                    .InvalidSystemState => error.InvalidSystemState,
-                    .CarrierAlreadyExists => error.CarrierAlreadyExists,
-                    .InvalidAxis => error.InvalidAxis,
-                };
+            };
+            const encoded = try command_msg.encode(fba_allocator);
+            defer fba_allocator.free(encoded);
+            try send(s, encoded);
+            const msg = try receive(s);
+            const CommandStatus = protobuf_msg.CommandStatus;
+            const response: CommandStatus = try CommandStatus.decode(msg, fba_allocator);
+            defer response.deinit();
+            switch (response.status) {
+                .PROGRESSING => {}, // continue the loop
+                .COMPLETED => break,
+                .FAILED => {
+                    if (response.error_response) |err| {
+                        return switch (err) {
+                            .CC_LINK_DISCONNECTED => error.CCLinkDisconnected,
+                            .VDC_UNDERVOLTAGE_DETECTED => error.VDCUndervoltageDetected,
+                            .VDC_OVERVOLTAGE_DETECTED => error.VDCOvervoltageDetected,
+                            .COMMUNICATION_ERROR_DETECTED => error.CommunicationErrorDetected,
+                            .INVERTER_OVERHEAT_DETECTED => error.InverterOverheatDetected,
+                            .OVERCURRENT_DETECTED => error.OvercurrentDetected,
+                            .CONTROL_LOOP_MAX_TIME_EXCEEDED => error.ControlLoopMaxTimeExceeded,
+                            .INVALID_COMMAND => error.InvalidCommmand,
+                            .CARRIER_NOT_FOUND => error.CarrierNotFound,
+                            .HOMING_FAILED => error.HomingFailed,
+                            .INVALID_PARAMETER => error.InvalidParameter,
+                            .INVALID_SYSTEM_STATE => error.InvalidSystemState,
+                            .CARRIER_ALREADY_EXISTS => error.CarrierAlreadyExists,
+                            .INVALID_AXIS => error.InvalidAxis,
+                            else => error.UnexpectedResponse,
+                        };
+                    } else return error.UnexpectedResponse;
+                },
+                else => return error.UnexpectedResponse,
             }
         }
     } else return error.ServerNotConnected;
 }
 
-fn waitReceived(line_idx: mcl.Line.Index) !void {
-    if (main_socket) |s| {
-        while (true) {
-            try command.checkCommandInterrupt();
-            const SendCommand = protobuf_msg.SendCommand;
-            var command_msg: SendCommand = SendCommand.init(fba_allocator);
-            defer command_msg.deinit();
-            errdefer command_msg.deinit();
-            command_msg = .{
-                .message_type = .SEND_COMMAND,
-                .command_kind = .{
-                    .get_status = .{
-                        .status_kind = .{
-                            .command = .{
-                                .line_idx = @intCast(line_idx),
-                            },
-                        },
-                    },
-                },
-            };
-            const encoded = try command_msg.encode(fba_allocator);
-            defer fba_allocator.free(encoded);
-            errdefer fba_allocator.free(encoded);
-            std.log.debug(
-                "message: {s}",
-                .{@tagName(command_msg.command_kind.?)},
-            );
-            try send(s, encoded);
-            const msg = try receive(s);
-            const command_status = try parseCommandStatus(
-                msg,
-                fba_allocator,
-            );
-            if (command_status.command_received) return;
-        }
-    } else return error.ServerNotConnected;
-}
+// fn parseCarrierStatus(
+//     buffer: []const u8,
+//     a: std.mem.Allocator,
+// ) !protobuf_msg.CarrierStatus {
+//     const CarrierStatus = protobuf_msg.CarrierStatus;
+//     const response: CarrierStatus = try CarrierStatus.decode(
+//         buffer,
+//         a,
+//     );
+//     defer response.deinit();
+//     return response.decode(input: []const u8, allocator: Allocator)
+//     // TODO: Find out why state_type != mcl.registers.Wr.Carrier.State
+//     comptime var state_type: type = undefined;
+//     inline for (@typeInfo(SystemState.Carrier).@"struct".fields) |field| {
+//         if (comptime std.mem.eql(u8, "state", field.name)) {
+//             state_type = field.type;
+//             break;
+//         }
+//     }
+//     const carrier: SystemState.Carrier = .{
+//         .axis_idx = .{
+//             .aux_axis = @intCast(response.axis_idx.?.aux_axis),
+//             .main_axis = @intCast(response.axis_idx.?.main_axis),
+//         },
+//         .id = @intCast(response.id),
+//         .location = response.location,
+//         .state = std.meta.stringToEnum(
+//             state_type,
+//             @tagName(response.state),
+//         ).?,
+//     };
+//     return carrier;
+// }
 
-fn parseCarrierStatus(
-    buffer: []const u8,
-    a: std.mem.Allocator,
-) !SystemState.Carrier {
-    const CarrierStatus = protobuf_msg.CarrierStatus;
-    const response: CarrierStatus = try CarrierStatus.decode(
-        buffer,
-        a,
-    );
-    defer response.deinit();
-    // TODO: Find out why state_type != mcl.registers.Wr.Carrier.State
-    comptime var state_type: type = undefined;
-    inline for (@typeInfo(SystemState.Carrier).@"struct".fields) |field| {
-        if (comptime std.mem.eql(u8, "state", field.name)) {
-            state_type = field.type;
-            break;
-        }
-    }
-    const carrier: SystemState.Carrier = .{
-        .axis_idx = .{
-            .aux_axis = @intCast(response.axis_idx.?.aux_axis),
-            .main_axis = @intCast(response.axis_idx.?.main_axis),
-        },
-        .id = @intCast(response.id),
-        .location = response.location,
-        .state = std.meta.stringToEnum(
-            state_type,
-            @tagName(response.state),
-        ).?,
-    };
-    return carrier;
-}
+// test parseCarrierStatus {
+//     const carrier: SystemState.Carrier = .{
+//         .axis_idx = .{
+//             .aux_axis = 1,
+//             .main_axis = 2,
+//         },
+//         .id = 1,
+//         .location = 0.0,
+//         .state = .PosMoveCompleted,
+//     };
+//     const CarrierStatus = protobuf_msg.CarrierStatus;
+//     var response: CarrierStatus = CarrierStatus.init(std.testing.allocator);
+//     response = std.mem.zeroInit(CarrierStatus, .{});
+//     defer response.deinit();
+//     // Copy the value of y to the response
+//     response = .{
+//         .axis_idx = .{
+//             .aux_axis = 1,
+//             .main_axis = 2,
+//         },
+//         .id = 1,
+//         .location = 0.0,
+//         .state = .PosMoveCompleted,
+//     };
+//     const encoded = try response.encode(std.testing.allocator);
+//     defer std.testing.allocator.free(encoded);
+//     try std.testing.expectEqual(
+//         carrier,
+//         try parseCarrierStatus(
+//             encoded,
+//             std.testing.allocator,
+//         ),
+//     );
+// }
 
-test parseCarrierStatus {
-    const carrier: SystemState.Carrier = .{
-        .axis_idx = .{
-            .aux_axis = 1,
-            .main_axis = 2,
-        },
-        .id = 1,
-        .location = 0.0,
-        .state = .PosMoveCompleted,
-    };
-    const CarrierStatus = protobuf_msg.CarrierStatus;
-    var response: CarrierStatus = CarrierStatus.init(std.testing.allocator);
-    response = std.mem.zeroInit(CarrierStatus, .{});
-    defer response.deinit();
-    // Copy the value of y to the response
-    response = .{
-        .axis_idx = .{
-            .aux_axis = 1,
-            .main_axis = 2,
-        },
-        .id = 1,
-        .location = 0.0,
-        .state = .PosMoveCompleted,
-    };
-    const encoded = try response.encode(std.testing.allocator);
-    defer std.testing.allocator.free(encoded);
-    try std.testing.expectEqual(
-        carrier,
-        try parseCarrierStatus(
-            encoded,
-            std.testing.allocator,
-        ),
-    );
-}
+// fn parseHallStatus(
+//     buffer: []const u8,
+//     a: std.mem.Allocator,
+// ) !SystemState.Hall {
+//     const HallStatus = protobuf_msg.HallStatus;
+//     const response: HallStatus = try HallStatus.decode(
+//         buffer,
+//         a,
+//     );
+//     defer response.deinit();
+//     const hall: SystemState.Hall = .{
+//         .configured = response.configured,
+//         .back = response.back,
+//         .front = response.front,
+//     };
+//     return hall;
+// }
 
-fn parseHallStatus(
-    buffer: []const u8,
-    a: std.mem.Allocator,
-) !SystemState.Hall {
-    const HallStatus = protobuf_msg.HallStatus;
-    const response: HallStatus = try HallStatus.decode(
-        buffer,
-        a,
-    );
-    defer response.deinit();
-    const hall: SystemState.Hall = .{
-        .configured = response.configured,
-        .back = response.back,
-        .front = response.front,
-    };
-    return hall;
-}
+// test parseHallStatus {
+//     const hall: SystemState.Hall = .{
+//         .configured = true,
+//         .back = true,
+//         .front = false,
+//     };
+//     const HallStatus = protobuf_msg.HallStatus;
+//     var response: HallStatus = HallStatus.init(std.testing.allocator);
+//     response = std.mem.zeroInit(HallStatus, .{});
+//     defer response.deinit();
+//     // Copy the value of y to the response
+//     response = .{
+//         .configured = true,
+//         .back = true,
+//         .front = false,
+//     };
+//     const encoded = try response.encode(std.testing.allocator);
+//     defer std.testing.allocator.free(encoded);
+//     try std.testing.expectEqual(
+//         hall,
+//         try parseHallStatus(
+//             encoded,
+//             std.testing.allocator,
+//         ),
+//     );
+// }
 
-test parseHallStatus {
-    const hall: SystemState.Hall = .{
-        .configured = true,
-        .back = true,
-        .front = false,
-    };
-    const HallStatus = protobuf_msg.HallStatus;
-    var response: HallStatus = HallStatus.init(std.testing.allocator);
-    response = std.mem.zeroInit(HallStatus, .{});
-    defer response.deinit();
-    // Copy the value of y to the response
-    response = .{
-        .configured = true,
-        .back = true,
-        .front = false,
-    };
-    const encoded = try response.encode(std.testing.allocator);
-    defer std.testing.allocator.free(encoded);
-    try std.testing.expectEqual(
-        hall,
-        try parseHallStatus(
-            encoded,
-            std.testing.allocator,
-        ),
-    );
-}
+// fn parseCommandStatus(
+//     buffer: []const u8,
+//     a: std.mem.Allocator,
+// ) !SystemState.Command {
+//     const CommandStatus = protobuf_msg.CommandStatus;
+//     const response: CommandStatus = try CommandStatus.decode(
+//         buffer,
+//         a,
+//     );
+//     defer response.deinit();
+//     // TODO: Find out why response_type != mcl.registers.Wr.CommandResponseCode
+//     comptime var response_type: type = undefined;
+//     inline for (@typeInfo(SystemState.Command).@"struct".fields) |field| {
+//         if (comptime std.mem.eql(u8, "command_response", field.name)) {
+//             response_type = field.type;
+//             break;
+//         }
+//     }
+//     const command_status: SystemState.Command = .{
+//         .command_received = response.received,
+//         .command_response = std.meta.stringToEnum(
+//             response_type,
+//             @tagName(response.response),
+//         ).?,
+//     };
+//     return command_status;
+// }
 
-fn parseCommandStatus(
-    buffer: []const u8,
-    a: std.mem.Allocator,
-) !SystemState.Command {
-    const CommandStatus = protobuf_msg.CommandStatus;
-    const response: CommandStatus = try CommandStatus.decode(
-        buffer,
-        a,
-    );
-    defer response.deinit();
-    // TODO: Find out why response_type != mcl.registers.Wr.CommandResponseCode
-    comptime var response_type: type = undefined;
-    inline for (@typeInfo(SystemState.Command).@"struct".fields) |field| {
-        if (comptime std.mem.eql(u8, "command_response", field.name)) {
-            response_type = field.type;
-            break;
-        }
-    }
-    const command_status: SystemState.Command = .{
-        .command_received = response.received,
-        .command_response = std.meta.stringToEnum(
-            response_type,
-            @tagName(response.response),
-        ).?,
-    };
-    return command_status;
-}
-
-test parseCommandStatus {
-    const com: SystemState.Command = .{
-        .command_received = true,
-        .command_response = .InvalidCommand,
-    };
-    const CommandStatus = protobuf_msg.CommandStatus;
-    var response: CommandStatus = CommandStatus.init(std.testing.allocator);
-    response = std.mem.zeroInit(CommandStatus, .{});
-    defer response.deinit();
-    // Copy the value of y to the response
-    response = .{
-        .received = true,
-        .response = .InvalidCommand,
-    };
-    const encoded = try response.encode(std.testing.allocator);
-    defer std.testing.allocator.free(encoded);
-    try std.testing.expectEqual(
-        com,
-        try parseCommandStatus(
-            encoded,
-            std.testing.allocator,
-        ),
-    );
-}
+// test parseCommandStatus {
+//     const com: SystemState.Command = .{
+//         .command_received = true,
+//         .command_response = .InvalidCommand,
+//     };
+//     const CommandStatus = protobuf_msg.CommandStatus;
+//     var response: CommandStatus = CommandStatus.init(std.testing.allocator);
+//     response = std.mem.zeroInit(CommandStatus, .{});
+//     defer response.deinit();
+//     // Copy the value of y to the response
+//     response = .{
+//         .received = true,
+//         .response = .InvalidCommand,
+//     };
+//     const encoded = try response.encode(std.testing.allocator);
+//     defer std.testing.allocator.free(encoded);
+//     try std.testing.expectEqual(
+//         com,
+//         try parseCommandStatus(
+//             encoded,
+//             std.testing.allocator,
+//         ),
+//     );
+// }
 
 /// Check whether the socket has event flag occurred. Timeout is in milliseconds
 /// unit.
@@ -3953,6 +3889,7 @@ fn receive(socket: network.Socket) ![]const u8 {
         "received msg: {any}, length: {}",
         .{ buffer[0..msg_size], msg_size },
     );
+    // TODO: Return with allocator dupe
     return buffer[0..msg_size];
 }
 
