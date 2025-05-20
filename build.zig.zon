@@ -28,6 +28,7 @@
         .soem = .{
             .url = "https://github.com/pmotionf/SOEM/archive/78e1815.tar.gz",
             .hash = "soem-1.4.0-hMH6Q1TzDQBz-QT99ek9g1aYGUtjWvUeE33yC9aV6T59",
+            .lazy = true,
         },
     },
     .paths = .{

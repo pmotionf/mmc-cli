@@ -38,10 +38,6 @@ pub fn build(b: *std.Build) !void {
         .mdfunc = mdfunc_lib_path,
         .mdfunc_mock = mdfunc_mock_build,
     });
-    const soem = b.dependency("soem", .{
-        .target = target,
-        .optimize = optimize,
-    });
 
     const build_zig_zon = b.createModule(.{
         .root_source_file = b.path("build.zig.zon"),
@@ -65,8 +61,16 @@ pub fn build(b: *std.Build) !void {
             mod.addImport("win32", zwin32.module("win32"));
         }
     }
-    mod.linkLibrary(soem.artifact("soem"));
-    mod.addIncludePath(soem.path("include"));
+    if (target.result.os.tag == .linux) {
+        const soem = b.lazyDependency("soem", .{
+            .target = target,
+            .optimize = optimize,
+        });
+        if (soem) |dep| {
+            mod.linkLibrary(dep.artifact("soem"));
+            mod.addIncludePath(dep.path("include"));
+        }
+    }
 
     const exe = b.addExecutable(.{ .name = "mmc-cli", .root_module = mod });
     b.installArtifact(exe);
@@ -138,8 +142,16 @@ pub fn build(b: *std.Build) !void {
         "mmc_config",
         mmc_config_mock.module("mmc-config"),
     );
-    unit_tests.root_module.linkLibrary(soem.artifact("soem"));
-    unit_tests.root_module.addIncludePath(soem.path("include"));
+    if (target.result.os.tag == .linux) {
+        const soem = b.lazyDependency("soem", .{
+            .target = target,
+            .optimize = optimize,
+        });
+        if (soem) |dep| {
+            unit_tests.root_module.linkLibrary(dep.artifact("soem"));
+            unit_tests.root_module.addIncludePath(dep.path("include"));
+        }
+    }
     unit_tests.root_module.addImport("build.zig.zon", build_zig_zon);
 
     const run_unit_tests = b.addRunArtifact(unit_tests);

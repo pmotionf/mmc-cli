@@ -12,7 +12,13 @@ const prompt = @import("prompt.zig");
 const mcl = @import("command/mcl.zig");
 const return_demo2 = @import("command/return_demo2.zig");
 const client_cli = @import("command/client_cli.zig");
-const mes07 = @import("command/mes07.zig");
+const mes07 = if (builtin.os.tag == .linux)
+    @import("command/mes07.zig")
+else
+    struct {
+        pub fn init(_: anytype) !void {}
+        pub fn deinit() void {}
+    };
 
 const Config = @import("Config.zig");
 
