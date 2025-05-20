@@ -4,6 +4,7 @@ const std = @import("std");
 const MclConfig = @import("command/mcl.zig").Config;
 const ReturnDemo2Config = @import("command/return_demo2.zig").Config;
 const ClientCliConfig = @import("command/client_cli.zig").Config;
+const Mes07Config = @import("command/mes07.zig").Config;
 
 parsed: std.json.Parsed(Parse),
 
@@ -11,12 +12,14 @@ pub const Module = enum {
     mcl,
     return_demo2,
     client_cli,
+    mes07,
 };
 
 const ModuleConfig = union(Module) {
     mcl: MclConfig,
     return_demo2: ReturnDemo2Config,
     client_cli: ClientCliConfig,
+    mes07: Mes07Config,
 };
 
 const Parse = struct {

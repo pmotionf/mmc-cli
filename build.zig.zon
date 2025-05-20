@@ -25,6 +25,11 @@
             .hash = "zigwin32-25.0.28-preview-AAAAAI0J-wP-8_KKo4Yjr33XLhVhlJmeagGUedByaOnX",
             .lazy = true,
         },
+        .soem = .{
+            .url = "https://github.com/pmotionf/SOEM/archive/585c7df.tar.gz",
+            .hash = "soem-1.4.0-hMH6Q_P5DQBDCNya1vgaPwxaZNes36mTcce9K7X4DV5k",
+            .lazy = true,
+        },
     },
     .paths = .{
         "build.zig",

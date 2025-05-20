@@ -6,13 +6,20 @@ const builtin = @import("builtin");
 const std = @import("std");
 const chrono = @import("chrono");
 const build = @import("build.zig.zon");
-
 const prompt = @import("prompt.zig");
 
 // Command modules.
 const mcl = @import("command/mcl.zig");
 const return_demo2 = @import("command/return_demo2.zig");
 const client_cli = @import("command/client_cli.zig");
+const mes07 = if (builtin.os.tag == .linux)
+    @import("command/mes07.zig")
+else
+    struct {
+        pub fn init(_: anytype) !void {}
+        pub fn deinit() void {}
+    };
+
 const Config = @import("Config.zig");
 
 pub const Registry = struct {
@@ -742,7 +749,6 @@ fn deinitModules() void {
                 inline 0...fields.len - 1 => |i| {
                     @field(@This(), fields[i].name).deinit();
                 },
-                else => {},
             }
         }
     }
@@ -823,7 +829,6 @@ fn loadConfig(params: [][]const u8) !void {
                     true,
                 );
             },
-            else => {},
         }
     }
     config.deinit();

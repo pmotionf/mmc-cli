@@ -24,8 +24,14 @@ pub fn build(b: *std.Build) !void {
         .mdfunc = mdfunc_lib_path,
         .mdfunc_mock = mdfunc_mock_build,
     });
-    const network_dep = b.dependency("network", .{});
-    const chrono = b.dependency("chrono", .{});
+    const network_dep = b.dependency("network", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const chrono = b.dependency("chrono", .{
+        .target = target,
+        .optimize = optimize,
+    });
     const mmc_config = b.dependency("mmc_config", .{
         .target = target,
         .optimize = optimize,
@@ -53,6 +59,16 @@ pub fn build(b: *std.Build) !void {
         const zigwin32 = b.lazyDependency("zigwin32", .{});
         if (zigwin32) |zwin32| {
             mod.addImport("win32", zwin32.module("win32"));
+        }
+    }
+    if (target.result.os.tag == .linux) {
+        const soem = b.lazyDependency("soem", .{
+            .target = target,
+            .optimize = optimize,
+        });
+        if (soem) |dep| {
+            mod.linkLibrary(dep.artifact("soem"));
+            mod.addIncludePath(dep.path("include"));
         }
     }
 
@@ -126,6 +142,16 @@ pub fn build(b: *std.Build) !void {
         "mmc_config",
         mmc_config_mock.module("mmc-config"),
     );
+    if (target.result.os.tag == .linux) {
+        const soem = b.lazyDependency("soem", .{
+            .target = target,
+            .optimize = optimize,
+        });
+        if (soem) |dep| {
+            unit_tests.root_module.linkLibrary(dep.artifact("soem"));
+            unit_tests.root_module.addIncludePath(dep.path("include"));
+        }
+    }
     unit_tests.root_module.addImport("build.zig.zon", build_zig_zon);
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
