@@ -806,7 +806,8 @@ fn serverVersion(_: [][]const u8) !void {
             .{@tagName(command_msg.command_kind.?)},
         );
         try send(s, encoded);
-        const msg = try receive(s);
+        const msg = try receive(s, fba_allocator);
+        defer fba_allocator.free(msg);
         const ServerVersion = protobuf_msg.ServerVersion;
         const response: ServerVersion = try ServerVersion.decode(
             msg,
@@ -861,7 +862,8 @@ fn clientConnect(params: [][]const u8) !void {
             .{try s.getRemoteEndPoint()},
         );
         std.log.info("Receiving line information...", .{});
-        const msg = try receive(s);
+        const msg = try receive(s, fba_allocator);
+        defer fba_allocator.free(msg);
         const LineConfig = protobuf_msg.LineConfig;
         const response: LineConfig = try LineConfig.decode(
             msg,
@@ -1090,7 +1092,8 @@ fn getRegister(
             .{@tagName(command_msg.command_kind.?)},
         );
         try send(s, encoded);
-        const msg = try receive(s);
+        const msg = try receive(s, fba_allocator);
+        defer fba_allocator.free(msg);
         return switch (reg_type) {
             .X => try parseRegisterX(msg, fba_allocator),
             .Y => try parseRegisterY(msg, fba_allocator),
@@ -1110,7 +1113,7 @@ fn parseRegisterX(
         a,
     );
     defer response.deinit();
-    const x: mcl.registers.X = .{
+    return .{
         .cc_link_enabled = response.cc_link_enabled,
         .command_ready = response.command_ready,
         .command_received = response.command_received,
@@ -1167,7 +1170,6 @@ fn parseRegisterX(
         .error_status = response.error_status,
         .remote_ready = response.remote_ready,
     };
-    return x;
 }
 
 test parseRegisterX {
@@ -1334,7 +1336,7 @@ fn parseRegisterY(
         a,
     );
     defer response.deinit();
-    const y: mcl.registers.Y = .{
+    return .{
         .cc_link_enable = response.cc_link_enable,
         .start_command = response.start_command,
         .reset_command_received = response.reset_command_received,
@@ -1356,7 +1358,6 @@ fn parseRegisterY(
             .axis3 = response.reset_push_carrier.?.axis3,
         },
     };
-    return y;
 }
 
 test parseRegisterY {
@@ -1466,7 +1467,7 @@ fn parseRegisterWr(
             break;
         }
     }
-    const wr: mcl.registers.Wr = .{
+    return .{
         .command_response = std.meta.stringToEnum(
             mcl.registers.Wr.CommandResponseCode,
             @tagName(response.command_response),
@@ -1538,7 +1539,6 @@ fn parseRegisterWr(
             },
         },
     };
-    return wr;
 }
 
 // This test cannot run at all. It is stuck in defining wr variable.
@@ -1708,7 +1708,7 @@ fn parseRegisterWw(
         a,
     );
     defer response.deinit();
-    const ww: mcl.registers.Ww = .{
+    return .{
         .command = std.meta.stringToEnum(
             mcl.registers.Ww.Command,
             @tagName(response.command),
@@ -1736,7 +1736,6 @@ fn parseRegisterWw(
             },
         },
     };
-    return ww;
 }
 
 // This test cannot be run as Ww have a packed union (untagged union). Zig
@@ -1848,7 +1847,8 @@ fn clientAxisCarrier(params: [][]const u8) !void {
             .{@tagName(command_msg.command_kind.?)},
         );
         try send(s, encoded);
-        const msg = try receive(s);
+        const msg = try receive(s, fba_allocator);
+        defer fba_allocator.free(msg);
         const carrier: CarrierStatus = try CarrierStatus.decode(msg, fba_allocator);
         defer carrier.deinit();
         if (carrier.id == 0) {
@@ -1899,7 +1899,8 @@ fn clientAssertLocation(params: [][]const u8) !void {
             .{@tagName(command_msg.command_kind.?)},
         );
         try send(s, encoded);
-        const msg = try receive(s);
+        const msg = try receive(s, fba_allocator);
+        defer fba_allocator.free(msg);
         const carrier: CarrierStatus = try CarrierStatus.decode(msg, fba_allocator);
         defer carrier.deinit();
         const location: f32 = carrier.location;
@@ -2054,7 +2055,8 @@ fn clientCarrierLocation(params: [][]const u8) !void {
             .{@tagName(command_msg.command_kind.?)},
         );
         try send(s, encoded);
-        const msg = try receive(s);
+        const msg = try receive(s, fba_allocator);
+        defer fba_allocator.free(msg);
         const carrier: CarrierStatus = try CarrierStatus.decode(msg, fba_allocator);
         defer carrier.deinit();
         if (carrier.id == 0) {
@@ -2102,7 +2104,8 @@ fn clientCarrierAxis(params: [][]const u8) !void {
             .{@tagName(command_msg.command_kind.?)},
         );
         try send(s, encoded);
-        const msg = try receive(s);
+        const msg = try receive(s, fba_allocator);
+        defer fba_allocator.free(msg);
         const carrier: CarrierStatus = try CarrierStatus.decode(msg, fba_allocator);
         defer carrier.deinit();
         if (carrier.id == 0) {
@@ -2168,7 +2171,8 @@ fn clientHallStatus(params: [][]const u8) !void {
                 .{@tagName(command_msg.command_kind.?)},
             );
             try send(s, encoded);
-            const msg = try receive(s);
+            const msg = try receive(s, fba_allocator);
+            defer fba_allocator.free(msg);
             const hall: HallStatus = try HallStatus.decode(msg, fba_allocator);
             defer hall.deinit();
             std.log.info(
@@ -2203,7 +2207,8 @@ fn clientHallStatus(params: [][]const u8) !void {
                 .{@tagName(command_msg.command_kind.?)},
             );
             try send(s, encoded);
-            const msg = try receive(s);
+            const msg = try receive(s, fba_allocator);
+            defer fba_allocator.free(msg);
             const hall: HallStatus = try HallStatus.decode(msg, fba_allocator);
             defer hall.deinit();
             std.log.info(
@@ -2273,7 +2278,8 @@ fn clientAssertHall(params: [][]const u8) !void {
             .{@tagName(command_msg.command_kind.?)},
         );
         try send(s, encoded);
-        const msg = try receive(s);
+        const msg = try receive(s, fba_allocator);
+        defer fba_allocator.free(msg);
         const hall: HallStatus = try HallStatus.decode(msg, fba_allocator);
         defer hall.deinit();
         switch (side) {
@@ -2450,7 +2456,8 @@ fn clientWaitIsolate(params: [][]const u8) !void {
                 .{@tagName(command_msg.command_kind.?)},
             );
             try send(s, encoded);
-            const msg = try receive(s);
+            const msg = try receive(s, fba_allocator);
+            defer fba_allocator.free(msg);
             const carrier: CarrierStatus = try CarrierStatus.decode(msg, fba_allocator);
             defer carrier.deinit();
             std.log.debug(
@@ -2504,7 +2511,8 @@ fn clientWaitMoveCarrier(params: [][]const u8) !void {
                 .{@tagName(command_msg.command_kind.?)},
             );
             try send(s, encoded);
-            const msg = try receive(s);
+            const msg = try receive(s, fba_allocator);
+            defer fba_allocator.free(msg);
             const carrier: CarrierStatus = try CarrierStatus.decode(msg, fba_allocator);
             defer carrier.deinit();
             std.log.debug(
@@ -2918,7 +2926,8 @@ fn clientCarrierWaitPull(params: [][]const u8) !void {
                 .{@tagName(command_msg.command_kind.?)},
             );
             try send(s, encoded);
-            const msg = try receive(s);
+            const msg = try receive(s, fba_allocator);
+            defer fba_allocator.free(msg);
             const carrier: CarrierStatus =
                 try CarrierStatus.decode(msg, fba_allocator);
             defer carrier.deinit();
@@ -3277,11 +3286,13 @@ fn startLogRegisters(params: [][]const u8) !void {
         }
     }
 
+    // TODO: This should not be using arena allocator
     var logging_data =
         try CircularBufferAlloc(LoggingRegisters).initCapacity(
             allocator,
             logging_size,
         );
+    defer logging_data.deinit();
     const log_time_start = std.time.microTimestamp();
     std.log.info("logging registers data..", .{});
     var timer = try std.time.Timer.start();
@@ -3302,7 +3313,6 @@ fn startLogRegisters(params: [][]const u8) !void {
         &logging_data,
         log_writer,
     );
-    defer logging_data.deinit();
 }
 
 /// Convert the logged binary data to string and save it to the logging file
@@ -3561,7 +3571,8 @@ fn sendMessageAndWaitReceived(
                 .{@tagName(command_msg.command_kind.?)},
             );
             try send(s, encoded);
-            const msg = try receive(s);
+            const msg = try receive(s, fba_allocator);
+            defer fba_allocator.free(msg);
             const CommandID = protobuf_msg.CommandID;
             const response: CommandID = try CommandID.decode(msg, fba_allocator);
             defer response.deinit();
@@ -3580,7 +3591,8 @@ fn sendMessageAndWaitReceived(
             const encoded = try command_msg.encode(fba_allocator);
             defer fba_allocator.free(encoded);
             try send(s, encoded);
-            const msg = try receive(s);
+            const msg = try receive(s, fba_allocator);
+            defer fba_allocator.free(msg);
             const CommandStatus = protobuf_msg.CommandStatus;
             const response: CommandStatus = try CommandStatus.decode(msg, fba_allocator);
             defer response.deinit();
@@ -3815,7 +3827,7 @@ fn isSocketEventOccured(socket: network.Socket, event: i16, timeout: i32) !bool 
 }
 
 /// Non-blocking receive from socket
-fn receive(socket: network.Socket) ![]const u8 {
+fn receive(socket: network.Socket, a: std.mem.Allocator) ![]const u8 {
     // Check if the socket can read without blocking.
     var buffer: [8192]u8 = undefined;
     while (isSocketEventOccured(
@@ -3861,8 +3873,7 @@ fn receive(socket: network.Socket) ![]const u8 {
         "received msg: {any}, length: {}",
         .{ buffer[0..msg_size], msg_size },
     );
-    // TODO: Return with allocator dupe
-    return buffer[0..msg_size];
+    return a.dupe(u8, buffer[0..msg_size]);
 }
 
 fn send(socket: network.Socket, msg: []const u8) !void {
