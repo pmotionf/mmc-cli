@@ -70,6 +70,7 @@ pub fn init(c: Config) !void {
     allocator = arena.allocator();
 
     try network.init();
+    errdefer network.deinit();
     IP_address = try allocator.alloc(u8, c.IP_address.len);
     @memcpy(IP_address, c.IP_address);
     port = c.port;
@@ -792,7 +793,6 @@ fn serverVersion(_: [][]const u8) !void {
     if (main_socket) |s| {
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
-        errdefer command_msg.deinit();
         command_msg = .{
             .message_type = .SEND_COMMAND,
             .command_kind = .{
@@ -801,7 +801,6 @@ fn serverVersion(_: [][]const u8) !void {
         };
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        errdefer fba_allocator.free(encoded);
         std.log.debug(
             "message: {s}",
             .{@tagName(command_msg.command_kind.?)},
@@ -878,7 +877,6 @@ fn clientConnect(params: [][]const u8) !void {
             line_numbers,
         );
         defer allocator.free(lines);
-        errdefer allocator.free(lines);
         for (
             response.lines.items,
             response.line_names.items,
@@ -988,7 +986,6 @@ fn clientAutoInitialize(params: [][]const u8) !void {
     if (main_socket) |s| {
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
-        errdefer command_msg.deinit();
         command_msg = .{
             .message_type = .SEND_COMMAND,
             .command_kind = .{
@@ -1002,7 +999,6 @@ fn clientAutoInitialize(params: [][]const u8) !void {
         };
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        errdefer fba_allocator.free(encoded);
         std.log.debug(
             "message: {s}",
             .{@tagName(command_msg.command_kind.?)},
@@ -1072,7 +1068,6 @@ fn getRegister(
     if (main_socket) |s| {
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
-        errdefer command_msg.deinit();
         comptime var _buf: [2]u8 = undefined;
         const union_field_name = "get_" ++ comptime std.ascii.lowerString(
             &_buf,
@@ -1090,7 +1085,6 @@ fn getRegister(
         command_msg.message_type = .SEND_COMMAND;
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        errdefer fba_allocator.free(encoded);
         std.log.debug(
             "message: {s}",
             .{@tagName(command_msg.command_kind.?)},
@@ -1836,7 +1830,6 @@ fn clientAxisCarrier(params: [][]const u8) !void {
     if (main_socket) |s| {
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
-        errdefer command_msg.deinit();
         command_msg = .{
             .message_type = .SEND_COMMAND,
             .command_kind = .{
@@ -1850,7 +1843,6 @@ fn clientAxisCarrier(params: [][]const u8) !void {
         };
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        errdefer fba_allocator.free(encoded);
         std.log.debug(
             "message: {s}",
             .{@tagName(command_msg.command_kind.?)},
@@ -1889,7 +1881,6 @@ fn clientAssertLocation(params: [][]const u8) !void {
 
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
-        errdefer command_msg.deinit();
         command_msg = .{
             .message_type = .SEND_COMMAND,
             .command_kind = .{
@@ -1903,7 +1894,6 @@ fn clientAssertLocation(params: [][]const u8) !void {
         };
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        errdefer fba_allocator.free(encoded);
         std.log.debug(
             "message: {s}",
             .{@tagName(command_msg.command_kind.?)},
@@ -1933,7 +1923,6 @@ fn clientAxisReleaseServo(params: [][]const u8) !void {
     if (main_socket) |s| {
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
-        errdefer command_msg.deinit();
         command_msg = .{
             .message_type = .SEND_COMMAND,
             .command_kind = .{
@@ -1945,7 +1934,6 @@ fn clientAxisReleaseServo(params: [][]const u8) !void {
         };
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        errdefer fba_allocator.free(encoded);
         std.log.debug(
             "message: {s}",
             .{@tagName(command_msg.command_kind.?)},
@@ -1957,8 +1945,6 @@ fn clientAxisReleaseServo(params: [][]const u8) !void {
 fn clientClearErrors(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx: mcl.Line.Index = @intCast(try matchLine(line_names, line_name));
-    const line_id: mcl.Line.Id = @intCast(line_idx + 1);
-    _ = line_id; // autofix
     const line = mcl.lines[line_idx];
 
     var axis_id: ?mcl.Axis.Id.Line = null;
@@ -1976,34 +1962,29 @@ fn clientClearErrors(params: [][]const u8) !void {
         @intCast(id - 1)
     else
         null;
-    if (main_socket) |s| {
-        _ = s; // autofix
-        var command_msg: SendCommand = SendCommand.init(fba_allocator);
-        defer command_msg.deinit();
-        errdefer command_msg.deinit();
-        command_msg = .{
-            .message_type = .SEND_COMMAND,
-            .command_kind = .{
-                .clear_errors = .{
-                    .line_idx = @intCast(line_idx),
-                    .axis_idx = if (axis_idx) |idx|
-                        @intCast(idx)
-                    else
-                        null,
-                },
+    var command_msg: SendCommand = SendCommand.init(fba_allocator);
+    defer command_msg.deinit();
+
+    command_msg = .{
+        .message_type = .SEND_COMMAND,
+        .command_kind = .{
+            .clear_errors = .{
+                .line_idx = @intCast(line_idx),
+                .axis_idx = if (axis_idx) |idx|
+                    @intCast(idx)
+                else
+                    null,
             },
-        };
-        try sendMessageAndWaitReceived(
-            command_msg,
-        );
-    } else return error.ServerNotConnected;
+        },
+    };
+    try sendMessageAndWaitReceived(
+        command_msg,
+    );
 }
 
 fn clientClearCarrierInfo(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx: mcl.Line.Index = @intCast(try matchLine(line_names, line_name));
-    const line_id: mcl.Line.Id = @intCast(line_idx + 1);
-    _ = line_id; // autofix
     const line = mcl.lines[line_idx];
 
     var axis_id: ?mcl.Axis.Id.Line = null;
@@ -2021,27 +2002,24 @@ fn clientClearCarrierInfo(params: [][]const u8) !void {
         @intCast(id - 1)
     else
         null;
-    if (main_socket) |s| {
-        _ = s; // autofix
-        var command_msg: SendCommand = SendCommand.init(fba_allocator);
-        defer command_msg.deinit();
-        errdefer command_msg.deinit();
-        command_msg = .{
-            .message_type = .SEND_COMMAND,
-            .command_kind = .{
-                .clear_carrier_info = .{
-                    .line_idx = @intCast(line_idx),
-                    .axis_idx = if (axis_idx) |idx|
-                        @intCast(idx)
-                    else
-                        null,
-                },
+    var command_msg: SendCommand = SendCommand.init(fba_allocator);
+    defer command_msg.deinit();
+
+    command_msg = .{
+        .message_type = .SEND_COMMAND,
+        .command_kind = .{
+            .clear_carrier_info = .{
+                .line_idx = @intCast(line_idx),
+                .axis_idx = if (axis_idx) |idx|
+                    @intCast(idx)
+                else
+                    null,
             },
-        };
-        try sendMessageAndWaitReceived(
-            command_msg,
-        );
-    } else return error.ServerNotConnected;
+        },
+    };
+    try sendMessageAndWaitReceived(
+        command_msg,
+    );
 }
 
 fn clientCarrierLocation(params: [][]const u8) !void {
@@ -2056,7 +2034,7 @@ fn clientCarrierLocation(params: [][]const u8) !void {
 
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
-        errdefer command_msg.deinit();
+
         command_msg = .{
             .message_type = .SEND_COMMAND,
             .command_kind = .{
@@ -2070,7 +2048,7 @@ fn clientCarrierLocation(params: [][]const u8) !void {
         };
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        errdefer fba_allocator.free(encoded);
+
         std.log.debug(
             "message: {s}",
             .{@tagName(command_msg.command_kind.?)},
@@ -2104,7 +2082,7 @@ fn clientCarrierAxis(params: [][]const u8) !void {
 
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
-        errdefer command_msg.deinit();
+
         command_msg = .{
             .message_type = .SEND_COMMAND,
             .command_kind = .{
@@ -2118,7 +2096,7 @@ fn clientCarrierAxis(params: [][]const u8) !void {
         };
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        errdefer fba_allocator.free(encoded);
+
         std.log.debug(
             "message: {s}",
             .{@tagName(command_msg.command_kind.?)},
@@ -2172,7 +2150,7 @@ fn clientHallStatus(params: [][]const u8) !void {
 
             var command_msg: SendCommand = SendCommand.init(fba_allocator);
             defer command_msg.deinit();
-            errdefer command_msg.deinit();
+
             command_msg = .{
                 .message_type = .SEND_COMMAND,
                 .command_kind = .{
@@ -2184,7 +2162,7 @@ fn clientHallStatus(params: [][]const u8) !void {
             };
             const encoded = try command_msg.encode(fba_allocator);
             defer fba_allocator.free(encoded);
-            errdefer fba_allocator.free(encoded);
+
             std.log.debug(
                 "message: {s}",
                 .{@tagName(command_msg.command_kind.?)},
@@ -2277,7 +2255,7 @@ fn clientAssertHall(params: [][]const u8) !void {
 
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
-        errdefer command_msg.deinit();
+
         command_msg = .{
             .message_type = .SEND_COMMAND,
             .command_kind = .{
@@ -2289,7 +2267,7 @@ fn clientAssertHall(params: [][]const u8) !void {
         };
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        errdefer fba_allocator.free(encoded);
+
         std.log.debug(
             "message: {s}",
             .{@tagName(command_msg.command_kind.?)},
@@ -2314,25 +2292,19 @@ fn clientAssertHall(params: [][]const u8) !void {
 }
 
 fn clientMclReset(_: [][]const u8) !void {
-    if (main_socket) |s| {
-        var command_msg: SendCommand = SendCommand.init(fba_allocator);
-        defer command_msg.deinit();
-        errdefer command_msg.deinit();
-        command_msg = .{
-            .message_type = .SEND_COMMAND,
-            .command_kind = .{
-                .reset_mcl = .{},
-            },
-        };
-        const encoded = try command_msg.encode(fba_allocator);
-        defer fba_allocator.free(encoded);
-        errdefer fba_allocator.free(encoded);
-        std.log.debug(
-            "message: {s}",
-            .{@tagName(command_msg.command_kind.?)},
-        );
-        try send(s, encoded);
-    } else return error.ServerNotConnected;
+    var command_msg: SendCommand = SendCommand.init(fba_allocator);
+    defer command_msg.deinit();
+    command_msg = .{
+        .message_type = .SEND_COMMAND,
+        .command_kind = .{
+            .reset_mcl = .{},
+        },
+    };
+    const encoded = try command_msg.encode(fba_allocator);
+    defer fba_allocator.free(encoded);
+    try sendMessageAndWaitReceived(
+        command_msg,
+    );
 }
 
 fn clientCalibrate(params: [][]const u8) !void {
@@ -2458,7 +2430,7 @@ fn clientWaitIsolate(params: [][]const u8) !void {
 
             var command_msg: SendCommand = SendCommand.init(fba_allocator);
             defer command_msg.deinit();
-            errdefer command_msg.deinit();
+
             command_msg = .{
                 .message_type = .SEND_COMMAND,
                 .command_kind = .{
@@ -2472,7 +2444,7 @@ fn clientWaitIsolate(params: [][]const u8) !void {
             };
             const encoded = try command_msg.encode(fba_allocator);
             defer fba_allocator.free(encoded);
-            errdefer fba_allocator.free(encoded);
+
             std.log.debug(
                 "message: {s}",
                 .{@tagName(command_msg.command_kind.?)},
@@ -2512,7 +2484,7 @@ fn clientWaitMoveCarrier(params: [][]const u8) !void {
 
             var command_msg: SendCommand = SendCommand.init(fba_allocator);
             defer command_msg.deinit();
-            errdefer command_msg.deinit();
+
             command_msg = .{
                 .message_type = .SEND_COMMAND,
                 .command_kind = .{
@@ -2526,7 +2498,7 @@ fn clientWaitMoveCarrier(params: [][]const u8) !void {
             };
             const encoded = try command_msg.encode(fba_allocator);
             defer fba_allocator.free(encoded);
-            errdefer fba_allocator.free(encoded);
+
             std.log.debug(
                 "message: {s}",
                 .{@tagName(command_msg.command_kind.?)},
@@ -2926,7 +2898,7 @@ fn clientCarrierWaitPull(params: [][]const u8) !void {
 
             var command_msg: SendCommand = SendCommand.init(fba_allocator);
             defer command_msg.deinit();
-            errdefer command_msg.deinit();
+
             command_msg = .{
                 .message_type = .SEND_COMMAND,
                 .command_kind = .{
@@ -2940,7 +2912,7 @@ fn clientCarrierWaitPull(params: [][]const u8) !void {
             };
             const encoded = try command_msg.encode(fba_allocator);
             defer fba_allocator.free(encoded);
-            errdefer fba_allocator.free(encoded);
+
             std.log.debug(
                 "message: {s}",
                 .{@tagName(command_msg.command_kind.?)},
@@ -2967,7 +2939,7 @@ fn clientCarrierStopPull(params: [][]const u8) !void {
     if (main_socket) |s| {
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
-        errdefer command_msg.deinit();
+
         command_msg = .{
             .message_type = .SEND_COMMAND,
             .command_kind = .{
@@ -2979,7 +2951,7 @@ fn clientCarrierStopPull(params: [][]const u8) !void {
         };
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        errdefer fba_allocator.free(encoded);
+
         std.log.debug(
             "message: {s}",
             .{@tagName(command_msg.command_kind.?)},
@@ -2999,7 +2971,7 @@ fn clientCarrierStopPush(params: [][]const u8) !void {
     if (main_socket) |s| {
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
-        errdefer command_msg.deinit();
+
         command_msg = .{
             .message_type = .SEND_COMMAND,
             .command_kind = .{
@@ -3011,7 +2983,7 @@ fn clientCarrierStopPush(params: [][]const u8) !void {
         };
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
-        errdefer fba_allocator.free(encoded);
+
         std.log.debug(
             "message: {s}",
             .{@tagName(command_msg.command_kind.?)},
@@ -3266,7 +3238,7 @@ fn startLogRegisters(params: [][]const u8) !void {
     std.log.info("The registers will be logged to {s}", .{file_path});
     const log_file = try std.fs.cwd().createFile(file_path, .{});
     defer log_file.close();
-    errdefer log_file.close();
+
     // _buf is used to print the title prefix with std.fmt.bufPrint()
     var _buf: [1_024]u8 = undefined;
 
