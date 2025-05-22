@@ -893,10 +893,11 @@ fn clientConnect(params: [][]const u8) !void {
             );
             for (0..line.ranges.items.len) |range_idx| {
                 const range = line.ranges.items[range_idx];
-                lines[idx].ranges[range_idx].channel = std.meta.stringToEnum(
+                lines[idx].ranges[range_idx].channel = try convertEnum(
+                    range.channel,
                     mcl.cc_link.Channel,
-                    @tagName(range.channel),
-                ).?;
+                    .UpperSnakeToLowerSnake,
+                );
                 lines[idx].ranges[range_idx].end = @intCast(range.end);
                 lines[idx].ranges[range_idx].start = @intCast(range.start);
             }
@@ -1468,25 +1469,28 @@ fn parseRegisterWr(
         }
     }
     return .{
-        .command_response = std.meta.stringToEnum(
+        .command_response = try convertEnum(
+            response.command_response,
             mcl.registers.Wr.CommandResponseCode,
-            @tagName(response.command_response),
-        ) orelse return error.UnknownCommandResponse,
+            .UpperSnakeToTitle,
+        ),
         .received_backward = .{
             .id = @intCast(response.received_backward.?.id),
             .failed_bcc = response.received_backward.?.failed_bcc,
-            .kind = std.meta.stringToEnum(
+            .kind = try convertEnum(
+                response.received_backward.?.kind,
                 kind_type,
-                @tagName(response.received_backward.?.kind),
-            ).?,
+                .UpperSnakeToLowerSnake,
+            ),
         },
         .received_forward = .{
             .id = @intCast(response.received_forward.?.id),
             .failed_bcc = response.received_forward.?.failed_bcc,
-            .kind = std.meta.stringToEnum(
+            .kind = try convertEnum(
+                response.received_forward.?.kind,
                 kind_type,
-                @tagName(response.received_forward.?.kind),
-            ).?,
+                .UpperSnakeToLowerSnake,
+            ),
         },
         .carrier = .{
             .axis1 = .{
@@ -1500,10 +1504,11 @@ fn parseRegisterWr(
                     .enabled = response.carrier.?.axis1.?.cas.?.enabled,
                     .triggered = response.carrier.?.axis1.?.cas.?.triggered,
                 },
-                .state = std.meta.stringToEnum(
+                .state = try convertEnum(
+                    response.carrier.?.axis1.?.state,
                     mcl.registers.Wr.Carrier.State,
-                    @tagName(response.carrier.?.axis1.?.state),
-                ).?,
+                    .UpperSnakeToTitle,
+                ),
             },
             .axis2 = .{
                 .location = response.carrier.?.axis2.?.location,
@@ -1516,10 +1521,11 @@ fn parseRegisterWr(
                     .enabled = response.carrier.?.axis2.?.cas.?.enabled,
                     .triggered = response.carrier.?.axis2.?.cas.?.triggered,
                 },
-                .state = std.meta.stringToEnum(
+                .state = try convertEnum(
+                    response.carrier.?.axis2.?.state,
                     mcl.registers.Wr.Carrier.State,
-                    @tagName(response.carrier.?.axis2.?.state),
-                ).?,
+                    .UpperSnakeToTitle,
+                ),
             },
             .axis3 = .{
                 .location = response.carrier.?.axis3.?.location,
@@ -1532,10 +1538,11 @@ fn parseRegisterWr(
                     .enabled = response.carrier.?.axis3.?.cas.?.enabled,
                     .triggered = response.carrier.?.axis3.?.cas.?.triggered,
                 },
-                .state = std.meta.stringToEnum(
+                .state = try convertEnum(
+                    response.carrier.?.axis3.?.state,
                     mcl.registers.Wr.Carrier.State,
-                    @tagName(response.carrier.?.axis3.?.state),
-                ).?,
+                    .UpperSnakeToTitle,
+                ),
             },
         },
     };
@@ -1709,10 +1716,11 @@ fn parseRegisterWw(
     );
     defer response.deinit();
     return .{
-        .command = std.meta.stringToEnum(
+        .command = try convertEnum(
+            response.command,
             mcl.registers.Ww.Command,
-            @tagName(response.command),
-        ).?,
+            .UpperSnakeToTitle,
+        ),
         .axis = @intCast(response.axis),
         .carrier = .{
             .id = @intCast(response.carrier.?.id),
@@ -3588,7 +3596,7 @@ fn sendMessageAndWaitReceived(
                     .get_command_status = .{ .command_id = command_id },
                 },
             };
-            const encoded = try command_msg.encode(fba_allocator);
+            const encoded = try command_status_msg.encode(fba_allocator);
             defer fba_allocator.free(encoded);
             try send(s, encoded);
             const msg = try receive(s, fba_allocator);
@@ -3597,7 +3605,7 @@ fn sendMessageAndWaitReceived(
             const response: CommandStatus = try CommandStatus.decode(msg, fba_allocator);
             defer response.deinit();
             switch (response.status) {
-                .PROGRESSING => {}, // continue the loop
+                .PROCESSING, .QUEUED => {}, // continue the loop
                 .COMPLETED => break,
                 .FAILED => {
                     if (response.error_response) |err| {
@@ -3616,7 +3624,7 @@ fn sendMessageAndWaitReceived(
                             .INVALID_SYSTEM_STATE => error.InvalidSystemState,
                             .CARRIER_ALREADY_EXISTS => error.CarrierAlreadyExists,
                             .INVALID_AXIS => error.InvalidAxis,
-                            else => error.UnexpectedResponse,
+                            else => error.UnexpectedError,
                         };
                     } else return error.UnexpectedResponse;
                 },
@@ -3835,7 +3843,6 @@ fn receive(socket: network.Socket, a: std.mem.Allocator) ![]const u8 {
         std.posix.POLL.IN,
         0,
     )) |socket_status| {
-        if (socket_status) break;
         // This step is required for reading from socket as the socket
         // may still receive some message from server. This message is no
         // longer valuable, thus ignored in the catch.
@@ -3843,7 +3850,7 @@ fn receive(socket: network.Socket, a: std.mem.Allocator) ![]const u8 {
             if (isSocketEventOccured(
                 socket,
                 std.posix.POLL.IN,
-                5000,
+                500,
             )) |_socket_status| {
                 if (_socket_status)
                     // Remove any incoming messages, if any.
@@ -3856,6 +3863,7 @@ fn receive(socket: network.Socket, a: std.mem.Allocator) ![]const u8 {
                 return sock_err;
             }
         };
+        if (socket_status) break;
     } else |sock_err| {
         try disconnect();
         return sock_err;
@@ -3897,4 +3905,138 @@ fn send(socket: network.Socket, msg: []const u8) !void {
         "sent msg: {any}, length: {}",
         .{ msg, msg.len },
     );
+}
+
+fn upperSnakeToTitle(comptime input: []const u8) []const u8 {
+    comptime var result: []const u8 = "";
+    comptime var prev_underscore: bool = false;
+    inline for (input, 0..) |c, i| {
+        if (prev_underscore or i == 0) {
+            result = result ++ input[i .. i + 1];
+            prev_underscore = false;
+        } else if (c != '_') {
+            result = result ++ std.fmt.comptimePrint(
+                "{c}",
+                .{comptime std.ascii.toLower(c)},
+            );
+        } else {
+            prev_underscore = true;
+        }
+    }
+    return result;
+}
+
+test upperSnakeToTitle {
+    const upper_snake = "CLEAR_CARRIER_INFO8";
+    const title = "ClearCarrierInfo8";
+    try std.testing.expectEqualStrings(
+        title,
+        upperSnakeToTitle(upper_snake),
+    );
+}
+
+fn titleToUpperSnake(comptime input: []const u8) []const u8 {
+    comptime var result: []const u8 = "";
+    inline for (input, 0..) |c, i| {
+        if (i == 0) {
+            result = result ++ input[i .. i + 1];
+        } else if (comptime std.ascii.isUpper(c)) {
+            result = result ++ "_";
+            result = result ++ input[i .. i + 1];
+        } else {
+            result = result ++ std.fmt.comptimePrint(
+                "{c}",
+                .{comptime std.ascii.toUpper(c)},
+            );
+        }
+    }
+    return result;
+}
+
+test titleToUpperSnake {
+    const upper_snake = "CLEAR_CARRIER_INFO8";
+    const title = "ClearCarrierInfo8";
+    try std.testing.expectEqualStrings(
+        upper_snake,
+        titleToUpperSnake(title),
+    );
+}
+
+fn lowerSnakeToUpperSnake(comptime input: []const u8) []const u8 {
+    comptime var result: []const u8 = "";
+    inline for (input) |c| {
+        result = result ++ std.fmt.comptimePrint(
+            "{c}",
+            .{comptime std.ascii.toUpper(c)},
+        );
+    }
+    return result;
+}
+
+test lowerSnakeToUpperSnake {
+    const lower_snake = "cc_link_1slot";
+    const upper_snake = "CC_LINK_1SLOT";
+    try std.testing.expectEqualStrings(
+        upper_snake,
+        lowerSnakeToUpperSnake(lower_snake),
+    );
+}
+
+fn upperSnakeToLowerSnake(comptime input: []const u8) []const u8 {
+    comptime var result: []const u8 = "";
+    inline for (input) |c| {
+        result = result ++ std.fmt.comptimePrint(
+            "{c}",
+            .{comptime std.ascii.toLower(c)},
+        );
+    }
+    return result;
+}
+
+test upperSnakeToLowerSnake {
+    const lower_snake = "cc_link_1slot";
+    const upper_snake = "CC_LINK_1SLOT";
+    try std.testing.expectEqualStrings(
+        lower_snake,
+        upperSnakeToLowerSnake(upper_snake),
+    );
+}
+
+fn convertEnum(
+    source: anytype,
+    comptime target: type,
+    style: enum {
+        UpperSnakeToTitle,
+        TitleToUpperSnake,
+        LowerSnakeToUpperSnake,
+        UpperSnakeToLowerSnake,
+    },
+) !target {
+    if (@typeInfo(@TypeOf(source)) != .@"enum" and @typeInfo(target) != .@"enum")
+        return error.InvalidType;
+    const target_style = blk: {
+        const ti = @typeInfo(@TypeOf(source)).@"enum";
+        inline for (ti.fields) |field| {
+            if (field.value == @intFromEnum(source)) {
+                break :blk switch (style) {
+                    .UpperSnakeToTitle => upperSnakeToTitle(field.name),
+                    .TitleToUpperSnake => titleToUpperSnake(field.name),
+                    .LowerSnakeToUpperSnake => lowerSnakeToUpperSnake(field.name),
+                    .UpperSnakeToLowerSnake => upperSnakeToLowerSnake(field.name),
+                };
+            }
+        }
+        unreachable;
+    };
+    std.log.debug(
+        "target style: {s}, source: {s}",
+        .{ target_style, @tagName(source) },
+    );
+    const ti = @typeInfo(target).@"enum";
+    inline for (ti.fields) |field| {
+        if (std.mem.eql(u8, field.name, target_style)) {
+            return @enumFromInt(field.value);
+        }
+    }
+    return error.UnmatchedEnumField;
 }
