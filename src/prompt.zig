@@ -153,6 +153,7 @@ pub fn handler() void {
                 if (input.len > 0) {
                     disable.store(true, .monotonic);
                     prev_disable = true;
+                    stdout.writeByte('\n') catch continue :main;
                     command.enqueue(input) catch continue :main;
                     const buf_slice =
                         history_buf[history.getWriteIndex()][0..input.len];
@@ -160,7 +161,6 @@ pub fn handler() void {
                     history.writeItemOverwrite(buf_slice);
                     history_offset = null;
                     input = &.{};
-                    stdout.writeByte('\n') catch continue :main;
                     continue :main;
                 }
             },

@@ -5,6 +5,8 @@
 const builtin = @import("builtin");
 const std = @import("std");
 const chrono = @import("chrono");
+
+const main = @import("main.zig");
 const build = @import("build.zig.zon");
 const prompt = @import("prompt.zig");
 
@@ -902,6 +904,5 @@ fn clear(_: [][]const u8) !void {
 }
 
 fn exit(_: [][]const u8) !void {
-    deinit();
-    std.process.exit(1);
+    main.exit.store(true, .monotonic);
 }

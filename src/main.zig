@@ -10,6 +10,8 @@ pub const std_options: std.Options = .{
     .logFn = command.logFn,
 };
 
+pub var exit: std.atomic.Value(bool) = .init(false);
+
 fn stopCommandWindows(
     dwCtrlType: std.os.windows.DWORD,
 ) callconv(std.os.windows.WINAPI) std.os.windows.BOOL {
@@ -71,7 +73,7 @@ pub fn main() !void {
     try command.init();
     defer command.deinit();
 
-    command_loop: while (true) {
+    command_loop: while (!exit.load(.monotonic)) {
         if (command.stop.load(.monotonic)) {
             command.queueClear();
             command.stop.store(false, .monotonic);
