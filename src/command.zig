@@ -2,16 +2,20 @@
 //! and execute commands. Furthermore, it includes the implementations of a few
 //! general purpose commands that facilitate easier use of the MMC CLI utility.
 
-const builtin = @import("builtin");
 const std = @import("std");
-const chrono = @import("chrono");
+const builtin = @import("builtin");
+
 const build = @import("build.zig.zon");
+const chrono = @import("chrono");
+
+const client_cli = @import("command/client_cli.zig");
+const mcl = @import("command/mcl.zig");
+const return_demo2 = @import("command/return_demo2.zig");
+const Config = @import("Config.zig");
+const io = @import("io.zig");
 const prompt = @import("prompt.zig");
 
 // Command modules.
-const mcl = @import("command/mcl.zig");
-const return_demo2 = @import("command/return_demo2.zig");
-const client_cli = @import("command/client_cli.zig");
 const mes07 = if (builtin.os.tag == .linux)
     @import("command/mes07.zig")
 else
@@ -19,8 +23,6 @@ else
         pub fn init(_: anytype) !void {}
         pub fn deinit() void {}
     };
-
-const Config = @import("Config.zig");
 
 pub const Registry = struct {
     mapping: std.StringArrayHashMap(Command),
@@ -902,6 +904,8 @@ fn clear(_: [][]const u8) !void {
 }
 
 fn exit(_: [][]const u8) !void {
+    prompt.close.store(true, .monotonic);
+    io.deinit();
     deinit();
     std.process.exit(1);
 }
