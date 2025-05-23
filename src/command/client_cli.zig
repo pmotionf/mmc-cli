@@ -7,9 +7,7 @@ const mmc = @import("mmc_config");
 const protobuf_msg = mmc.protobuf_msg;
 const protobuf = mmc.protobuf;
 const SendCommand = protobuf_msg.SendCommand;
-const CarrierStatus = protobuf_msg.CarrierStatus;
-const HallStatus = protobuf_msg.HallStatus;
-const Direction = protobuf_msg.Direction;
+const Response = protobuf_msg.Response;
 const network = @import("network");
 
 const CircularBufferAlloc =
@@ -794,7 +792,6 @@ fn serverVersion(_: [][]const u8) !void {
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
         command_msg = .{
-            .message_type = .SEND_COMMAND,
             .command_kind = .{
                 .get_version = .{},
             },
@@ -808,16 +805,17 @@ fn serverVersion(_: [][]const u8) !void {
         try send(s, encoded);
         const msg = try receive(s, fba_allocator);
         defer fba_allocator.free(msg);
-        const ServerVersion = protobuf_msg.ServerVersion;
-        const response: ServerVersion = try ServerVersion.decode(
-            msg,
-            fba_allocator,
-        );
+        const response: Response = try parseResponse(msg, fba_allocator);
         defer response.deinit();
+        const version = switch (response.response orelse
+            return error.UnexpectedResponse) {
+            .server_version => |r| r,
+            else => return error.UnexpectedResponse,
+        };
         std.log.info("MMC Server Version: {d}.{d}.{d}\n", .{
-            response.major,
-            response.minor,
-            response.patch,
+            version.major,
+            version.minor,
+            version.patch,
         });
     } else {
         return error.NotConnected;
@@ -864,15 +862,16 @@ fn clientConnect(params: [][]const u8) !void {
         std.log.info("Receiving line information...", .{});
         const msg = try receive(s, fba_allocator);
         defer fba_allocator.free(msg);
-        const LineConfig = protobuf_msg.LineConfig;
-        const response: LineConfig = try LineConfig.decode(
-            msg,
-            fba_allocator,
-        );
+        const response: Response = try parseResponse(msg, fba_allocator);
         defer response.deinit();
-        if (response.line_names.items.len != response.lines.items.len)
+        const line_config = switch (response.response orelse
+            return error.UnexpectedResponse) {
+            .line_config => |r| r,
+            else => return error.UnexpectedResponse,
+        };
+        if (line_config.line_names.items.len != line_config.lines.items.len)
             return error.ConfigLineNumberOfLineNamesDoesNotMatch;
-        const line_numbers = response.line_names.items.len;
+        const line_numbers = line_config.line_names.items.len;
         line_names = try allocator.alloc([]u8, line_numbers);
         var lines = try allocator.alloc(
             mcl.Config.Line,
@@ -880,8 +879,8 @@ fn clientConnect(params: [][]const u8) !void {
         );
         defer allocator.free(lines);
         for (
-            response.lines.items,
-            response.line_names.items,
+            line_config.lines.items,
+            line_config.line_names.items,
             0..,
         ) |line, line_name, idx| {
             line_names[idx] = try allocator.alloc(u8, line_name.getSlice().len);
@@ -990,7 +989,6 @@ fn clientAutoInitialize(params: [][]const u8) !void {
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
         command_msg = .{
-            .message_type = .SEND_COMMAND,
             .command_kind = .{
                 .auto_initialize = .{
                     .line_id = if (line_id != 0)
@@ -1085,7 +1083,6 @@ fn getRegister(
             },
         );
         command_msg.command_kind = command_kind;
-        command_msg.message_type = .SEND_COMMAND;
         const encoded = try command_msg.encode(fba_allocator);
         defer fba_allocator.free(encoded);
         std.log.debug(
@@ -1108,68 +1105,69 @@ fn parseRegisterX(
     buffer: []const u8,
     a: std.mem.Allocator,
 ) !mcl.registers.X {
-    const RegisterX = protobuf_msg.RegisterX;
-    const response: RegisterX = try RegisterX.decode(
-        buffer,
-        a,
-    );
+    const response: Response = try parseResponse(buffer, a);
     defer response.deinit();
+    const x = switch (response.response orelse
+        return error.UnexpectedResponse) {
+        .x => |r| r,
+        else => return error.UnexpectedResponse,
+    };
     return .{
-        .cc_link_enabled = response.cc_link_enabled,
-        .command_ready = response.command_ready,
-        .command_received = response.command_received,
-        .axis_cleared_carrier = response.axis_cleared_carrier,
-        .cleared_carrier = response.cleared_carrier,
-        .servo_enabled = response.servo_enabled,
-        .emergency_stop_enabled = response.emergency_stop_enabled,
-        .paused = response.paused,
+        .cc_link_enabled = x.cc_link_enabled,
+        .command_ready = x.command_ready,
+        .command_received = x.command_received,
+        .axis_cleared_carrier = x.axis_cleared_carrier,
+        .cleared_carrier = x.cleared_carrier,
+        .servo_enabled = x.servo_enabled,
+        .emergency_stop_enabled = x.emergency_stop_enabled,
+        .paused = x.paused,
         .motor_enabled = .{
-            .axis1 = response.motor_enabled.?.axis1,
-            .axis2 = response.motor_enabled.?.axis2,
-            .axis3 = response.motor_enabled.?.axis3,
+            .axis1 = x.motor_enabled.?.axis1,
+            .axis2 = x.motor_enabled.?.axis2,
+            .axis3 = x.motor_enabled.?.axis3,
         },
-        .vdc_overvoltage_detected = response.vdc_overvoltage_detected,
-        .vdc_undervoltage_detected = response.vdc_undervoltage_detected,
-        .errors_cleared = response.errors_cleared,
+        .vdc_overvoltage_detected = x.vdc_overvoltage_detected,
+        .vdc_undervoltage_detected = x.vdc_undervoltage_detected,
+        .errors_cleared = x.errors_cleared,
         .communication_error = .{
-            .from_next = response.communication_error.?.from_next,
-            .from_prev = response.communication_error.?.from_prev,
+            .from_next = x.communication_error.?.from_next,
+            .from_prev = x.communication_error.?.from_prev,
         },
-        .inverter_overheat_detected = response.inverter_overheat_detected,
+        .inverter_overheat_detected = x.inverter_overheat_detected,
         .overcurrent_detected = .{
-            .axis1 = response.overcurrent_detected.?.axis1,
-            .axis2 = response.overcurrent_detected.?.axis2,
-            .axis3 = response.overcurrent_detected.?.axis3,
+            .axis1 = x.overcurrent_detected.?.axis1,
+            .axis2 = x.overcurrent_detected.?.axis2,
+            .axis3 = x.overcurrent_detected.?.axis3,
         },
         .hall_alarm = .{
             .axis1 = .{
-                .back = response.hall_alarm.?.axis1.?.back,
-                .front = response.hall_alarm.?.axis1.?.front,
+                .back = x.hall_alarm.?.axis1.?.back,
+                .front = x.hall_alarm.?.axis1.?.front,
             },
             .axis2 = .{
-                .back = response.hall_alarm.?.axis2.?.back,
-                .front = response.hall_alarm.?.axis2.?.front,
+                .back = x.hall_alarm.?.axis2.?.back,
+                .front = x.hall_alarm.?.axis2.?.front,
             },
             .axis3 = .{
-                .back = response.hall_alarm.?.axis3.?.back,
-                .front = response.hall_alarm.?.axis3.?.front,
+                .back = x.hall_alarm.?.axis3.?.back,
+                .front = x.hall_alarm.?.axis3.?.front,
             },
         },
         .wait_pull_carrier = .{
-            .axis1 = response.wait_pull_carrier.?.axis1,
-            .axis2 = response.wait_pull_carrier.?.axis2,
-            .axis3 = response.wait_pull_carrier.?.axis3,
+            .axis1 = x.wait_pull_carrier.?.axis1,
+            .axis2 = x.wait_pull_carrier.?.axis2,
+            .axis3 = x.wait_pull_carrier.?.axis3,
         },
         .wait_push_carrier = .{
-            .axis1 = response.wait_push_carrier.?.axis1,
-            .axis2 = response.wait_push_carrier.?.axis2,
-            .axis3 = response.wait_push_carrier.?.axis3,
+            .axis1 = x.wait_push_carrier.?.axis1,
+            .axis2 = x.wait_push_carrier.?.axis2,
+            .axis3 = x.wait_push_carrier.?.axis3,
         },
-        .control_loop_max_time_exceeded = response.control_loop_max_time_exceeded,
-        .initial_data_processing_request = response.initial_data_processing_request,
-        .initial_data_setting_complete = response.initial_data_setting_complete,
-        .error_status = response.error_status,
-        .remote_ready = response.remote_ready,
+        .control_loop_max_time_exceeded = x.control_loop_max_time_exceeded,
+        .initial_data_processing_request = x.initial_data_processing_request,
+        .initial_data_setting_complete = x.initial_data_setting_complete,
+        .error_status = x.error_status,
+        .remote_ready = x.remote_ready,
     };
 }
 
@@ -1231,7 +1229,7 @@ test parseRegisterX {
         .error_status = false,
         .remote_ready = false,
     };
-    const RegisterX = protobuf_msg.RegisterX;
+    const RegisterX = Response.RegisterX;
     var response: RegisterX = RegisterX.init(std.testing.allocator);
     response = std.mem.zeroInit(RegisterX, .{});
     defer response.deinit();
@@ -1331,32 +1329,33 @@ fn parseRegisterY(
     buffer: []const u8,
     a: std.mem.Allocator,
 ) !mcl.registers.Y {
-    const RegisterY = protobuf_msg.RegisterY;
-    const response: RegisterY = try RegisterY.decode(
-        buffer,
-        a,
-    );
+    const response: Response = try parseResponse(buffer, a);
     defer response.deinit();
+    const y = switch (response.response orelse
+        return error.UnexpectedResponse) {
+        .y => |r| r,
+        else => return error.UnexpectedResponse,
+    };
     return .{
-        .cc_link_enable = response.cc_link_enable,
-        .start_command = response.start_command,
-        .reset_command_received = response.reset_command_received,
-        .axis_clear_carrier = response.axis_clear_carrier,
-        .clear_carrier = response.clear_carrier,
-        .axis_servo_release = response.axis_servo_release,
-        .servo_release = response.servo_release,
-        .emergency_stop = response.emergency_stop,
-        .temporary_pause = response.temporary_pause,
-        .clear_errors = response.clear_errors,
+        .cc_link_enable = y.cc_link_enable,
+        .start_command = y.start_command,
+        .reset_command_received = y.reset_command_received,
+        .axis_clear_carrier = y.axis_clear_carrier,
+        .clear_carrier = y.clear_carrier,
+        .axis_servo_release = y.axis_servo_release,
+        .servo_release = y.servo_release,
+        .emergency_stop = y.emergency_stop,
+        .temporary_pause = y.temporary_pause,
+        .clear_errors = y.clear_errors,
         .reset_pull_carrier = .{
-            .axis1 = response.reset_pull_carrier.?.axis1,
-            .axis2 = response.reset_pull_carrier.?.axis2,
-            .axis3 = response.reset_pull_carrier.?.axis3,
+            .axis1 = y.reset_pull_carrier.?.axis1,
+            .axis2 = y.reset_pull_carrier.?.axis2,
+            .axis3 = y.reset_pull_carrier.?.axis3,
         },
         .reset_push_carrier = .{
-            .axis1 = response.reset_push_carrier.?.axis1,
-            .axis2 = response.reset_push_carrier.?.axis2,
-            .axis3 = response.reset_push_carrier.?.axis3,
+            .axis1 = y.reset_push_carrier.?.axis1,
+            .axis2 = y.reset_push_carrier.?.axis2,
+            .axis3 = y.reset_push_carrier.?.axis3,
         },
     };
 }
@@ -1384,7 +1383,7 @@ test parseRegisterY {
             .axis3 = false,
         },
     };
-    const RegisterY = protobuf_msg.RegisterY;
+    const RegisterY = Response.RegisterY;
     var response: RegisterY = RegisterY.init(std.testing.allocator);
     response = std.mem.zeroInit(RegisterY, .{});
     defer response.deinit();
@@ -1449,12 +1448,13 @@ fn parseRegisterWr(
     buffer: []const u8,
     a: std.mem.Allocator,
 ) !mcl.registers.Wr {
-    const RegisterWr = protobuf_msg.RegisterWr;
-    const response: RegisterWr = try RegisterWr.decode(
-        buffer,
-        a,
-    );
+    const response: Response = try parseResponse(buffer, a);
     defer response.deinit();
+    const wr = switch (response.response orelse
+        return error.UnexpectedResponse) {
+        .wr => |r| r,
+        else => return error.UnexpectedResponse,
+    };
     // wr.received_backward.kind type cannot be accessed within mcl library
     comptime var kind_type: type = undefined;
     inline for (@typeInfo(mcl.registers.Wr).@"struct".fields) |field| {
@@ -1470,76 +1470,76 @@ fn parseRegisterWr(
     }
     return .{
         .command_response = try convertEnum(
-            response.command_response,
+            wr.command_response,
             mcl.registers.Wr.CommandResponseCode,
             .UpperSnakeToTitle,
         ),
         .received_backward = .{
-            .id = @intCast(response.received_backward.?.id),
-            .failed_bcc = response.received_backward.?.failed_bcc,
+            .id = @intCast(wr.received_backward.?.id),
+            .failed_bcc = wr.received_backward.?.failed_bcc,
             .kind = try convertEnum(
-                response.received_backward.?.kind,
+                wr.received_backward.?.kind,
                 kind_type,
                 .UpperSnakeToLowerSnake,
             ),
         },
         .received_forward = .{
-            .id = @intCast(response.received_forward.?.id),
-            .failed_bcc = response.received_forward.?.failed_bcc,
+            .id = @intCast(wr.received_forward.?.id),
+            .failed_bcc = wr.received_forward.?.failed_bcc,
             .kind = try convertEnum(
-                response.received_forward.?.kind,
+                wr.received_forward.?.kind,
                 kind_type,
                 .UpperSnakeToLowerSnake,
             ),
         },
         .carrier = .{
             .axis1 = .{
-                .location = response.carrier.?.axis1.?.location,
-                .id = @intCast(response.carrier.?.axis1.?.id),
-                .arrived = response.carrier.?.axis1.?.arrived,
-                .auxiliary = response.carrier.?.axis1.?.auxiliary,
-                .enabled = response.carrier.?.axis1.?.enabled,
-                .quasi = response.carrier.?.axis1.?.quasi,
+                .location = wr.carrier.?.axis1.?.location,
+                .id = @intCast(wr.carrier.?.axis1.?.id),
+                .arrived = wr.carrier.?.axis1.?.arrived,
+                .auxiliary = wr.carrier.?.axis1.?.auxiliary,
+                .enabled = wr.carrier.?.axis1.?.enabled,
+                .quasi = wr.carrier.?.axis1.?.quasi,
                 .cas = .{
-                    .enabled = response.carrier.?.axis1.?.cas.?.enabled,
-                    .triggered = response.carrier.?.axis1.?.cas.?.triggered,
+                    .enabled = wr.carrier.?.axis1.?.cas.?.enabled,
+                    .triggered = wr.carrier.?.axis1.?.cas.?.triggered,
                 },
                 .state = try convertEnum(
-                    response.carrier.?.axis1.?.state,
+                    wr.carrier.?.axis1.?.state,
                     mcl.registers.Wr.Carrier.State,
                     .UpperSnakeToTitle,
                 ),
             },
             .axis2 = .{
-                .location = response.carrier.?.axis2.?.location,
-                .id = @intCast(response.carrier.?.axis2.?.id),
-                .arrived = response.carrier.?.axis2.?.arrived,
-                .auxiliary = response.carrier.?.axis2.?.auxiliary,
-                .enabled = response.carrier.?.axis2.?.enabled,
-                .quasi = response.carrier.?.axis2.?.quasi,
+                .location = wr.carrier.?.axis2.?.location,
+                .id = @intCast(wr.carrier.?.axis2.?.id),
+                .arrived = wr.carrier.?.axis2.?.arrived,
+                .auxiliary = wr.carrier.?.axis2.?.auxiliary,
+                .enabled = wr.carrier.?.axis2.?.enabled,
+                .quasi = wr.carrier.?.axis2.?.quasi,
                 .cas = .{
-                    .enabled = response.carrier.?.axis2.?.cas.?.enabled,
-                    .triggered = response.carrier.?.axis2.?.cas.?.triggered,
+                    .enabled = wr.carrier.?.axis2.?.cas.?.enabled,
+                    .triggered = wr.carrier.?.axis2.?.cas.?.triggered,
                 },
                 .state = try convertEnum(
-                    response.carrier.?.axis2.?.state,
+                    wr.carrier.?.axis2.?.state,
                     mcl.registers.Wr.Carrier.State,
                     .UpperSnakeToTitle,
                 ),
             },
             .axis3 = .{
-                .location = response.carrier.?.axis3.?.location,
-                .id = @intCast(response.carrier.?.axis3.?.id),
-                .arrived = response.carrier.?.axis3.?.arrived,
-                .auxiliary = response.carrier.?.axis3.?.auxiliary,
-                .enabled = response.carrier.?.axis3.?.enabled,
-                .quasi = response.carrier.?.axis3.?.quasi,
+                .location = wr.carrier.?.axis3.?.location,
+                .id = @intCast(wr.carrier.?.axis3.?.id),
+                .arrived = wr.carrier.?.axis3.?.arrived,
+                .auxiliary = wr.carrier.?.axis3.?.auxiliary,
+                .enabled = wr.carrier.?.axis3.?.enabled,
+                .quasi = wr.carrier.?.axis3.?.quasi,
                 .cas = .{
-                    .enabled = response.carrier.?.axis3.?.cas.?.enabled,
-                    .triggered = response.carrier.?.axis3.?.cas.?.triggered,
+                    .enabled = wr.carrier.?.axis3.?.cas.?.enabled,
+                    .triggered = wr.carrier.?.axis3.?.cas.?.triggered,
                 },
                 .state = try convertEnum(
-                    response.carrier.?.axis3.?.state,
+                    wr.carrier.?.axis3.?.state,
                     mcl.registers.Wr.Carrier.State,
                     .UpperSnakeToTitle,
                 ),
@@ -1612,7 +1612,7 @@ test parseRegisterWr {
     //         },
     //     },
     // };
-    // const RegisterWr = protobuf_msg.RegisterWr;
+    // const RegisterWr = Response.RegisterWr;
     // var response: RegisterWr = RegisterWr.init(std.testing.allocator);
     // response = std.mem.zeroInit(RegisterWr, .{});
     // defer response.deinit();
@@ -1709,37 +1709,38 @@ fn parseRegisterWw(
     buffer: []const u8,
     a: std.mem.Allocator,
 ) !mcl.registers.Ww {
-    const RegisterWw = protobuf_msg.RegisterWw;
-    const response: RegisterWw = try RegisterWw.decode(
-        buffer,
-        a,
-    );
+    const response: Response = try parseResponse(buffer, a);
     defer response.deinit();
+    const ww = switch (response.response orelse
+        return error.UnexpectedResponse) {
+        .ww => |r| r,
+        else => return error.UnexpectedResponse,
+    };
     return .{
         .command = try convertEnum(
-            response.command,
+            ww.command,
             mcl.registers.Ww.Command,
             .UpperSnakeToTitle,
         ),
-        .axis = @intCast(response.axis),
+        .axis = @intCast(ww.axis),
         .carrier = .{
-            .id = @intCast(response.carrier.?.id),
-            .enable_cas = response.carrier.?.enable_cas,
-            .isolate_link_next_axis = response.carrier.?.isolate_link_next_axis,
-            .isolate_link_prev_axis = response.carrier.?.isolate_link_prev_axis,
-            .speed = @intCast(response.carrier.?.speed),
-            .acceleration = @intCast(response.carrier.?.acceleration),
-            .target = switch (response.command) {
+            .id = @intCast(ww.carrier.?.id),
+            .enable_cas = ww.carrier.?.enable_cas,
+            .isolate_link_next_axis = ww.carrier.?.isolate_link_next_axis,
+            .isolate_link_prev_axis = ww.carrier.?.isolate_link_prev_axis,
+            .speed = @intCast(ww.carrier.?.speed),
+            .acceleration = @intCast(ww.carrier.?.acceleration),
+            .target = switch (ww.command) {
                 .SPEED_MOVE_CARRIER_AXIS,
                 .POSITION_MOVE_CARRIER_AXIS,
-                => .{ .u32 = @intCast(response.carrier.?.target.?.u32) },
+                => .{ .u32 = @intCast(ww.carrier.?.target.?.u32) },
                 .SPEED_MOVE_CARRIER_DISTANCE,
                 .SPEED_MOVE_CARRIER_LOCATION,
                 .POSITION_MOVE_CARRIER_DISTANCE,
                 .POSITION_MOVE_CARRIER_LOCATION,
                 .PULL_TRANSITION_LOCATION_BACKWARD,
                 .PULL_TRANSITION_LOCATION_FORWARD,
-                => .{ .f32 = response.carrier.?.target.?.f32 },
+                => .{ .f32 = ww.carrier.?.target.?.f32 },
                 else => .{ .u32 = 0 },
             },
         },
@@ -1769,7 +1770,7 @@ test parseRegisterWw {
     //     @compileLog(field.name, field.type);
     // }
 
-    // const RegisterWw = protobuf_msg.RegisterWw;
+    // const RegisterWw = Response.RegisterWw;
     // var response: RegisterWw = RegisterWw.init(std.testing.allocator);
     // response = std.mem.zeroInit(RegisterWw, .{});
     // defer response.deinit();
@@ -1838,7 +1839,6 @@ fn clientAxisCarrier(params: [][]const u8) !void {
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
         command_msg = .{
-            .message_type = .SEND_COMMAND,
             .command_kind = .{
                 .get_carrier_status = .{
                     .line_idx = @intCast(line_idx),
@@ -1857,8 +1857,13 @@ fn clientAxisCarrier(params: [][]const u8) !void {
         try send(s, encoded);
         const msg = try receive(s, fba_allocator);
         defer fba_allocator.free(msg);
-        const carrier: CarrierStatus = try CarrierStatus.decode(msg, fba_allocator);
-        defer carrier.deinit();
+        const response: Response = try parseResponse(msg, fba_allocator);
+        defer response.deinit();
+        const carrier = switch (response.response orelse
+            return error.UnexpectedResponse) {
+            .carrier => |r| r,
+            else => return error.UnexpectedResponse,
+        };
         if (carrier.id == 0) {
             std.log.info(
                 "No carrier recognized on axis {d}.\n",
@@ -1890,7 +1895,6 @@ fn clientAssertLocation(params: [][]const u8) !void {
         var command_msg: SendCommand = SendCommand.init(fba_allocator);
         defer command_msg.deinit();
         command_msg = .{
-            .message_type = .SEND_COMMAND,
             .command_kind = .{
                 .get_carrier_status = .{
                     .line_idx = @intCast(line_idx),
@@ -1909,8 +1913,13 @@ fn clientAssertLocation(params: [][]const u8) !void {
         try send(s, encoded);
         const msg = try receive(s, fba_allocator);
         defer fba_allocator.free(msg);
-        const carrier: CarrierStatus = try CarrierStatus.decode(msg, fba_allocator);
-        defer carrier.deinit();
+        const response: Response = try parseResponse(msg, fba_allocator);
+        defer response.deinit();
+        const carrier = switch (response.response orelse
+            return error.UnexpectedResponse) {
+            .carrier => |r| r,
+            else => return error.UnexpectedResponse,
+        };
         const location: f32 = carrier.location;
         if (location < expected_location - location_thr or
             location > expected_location + location_thr)
@@ -1929,26 +1938,17 @@ fn clientAxisReleaseServo(params: [][]const u8) !void {
     }
 
     const axis_idx: mcl.Axis.Index.Line = @intCast(axis_id - 1);
-    if (main_socket) |s| {
-        var command_msg: SendCommand = SendCommand.init(fba_allocator);
-        defer command_msg.deinit();
-        command_msg = .{
-            .message_type = .SEND_COMMAND,
-            .command_kind = .{
-                .release_axis_servo = .{
-                    .line_idx = @intCast(line_idx),
-                    .axis_idx = @intCast(axis_idx),
-                },
+    var command_msg: SendCommand = SendCommand.init(fba_allocator);
+    defer command_msg.deinit();
+    command_msg = .{
+        .command_kind = .{
+            .release_axis_servo = .{
+                .line_idx = @intCast(line_idx),
+                .axis_idx = @intCast(axis_idx),
             },
-        };
-        const encoded = try command_msg.encode(fba_allocator);
-        defer fba_allocator.free(encoded);
-        std.log.debug(
-            "message: {s}",
-            .{@tagName(command_msg.command_kind.?)},
-        );
-        try send(s, encoded);
-    } else return error.ServerNotConnected;
+        },
+    };
+    try sendMessageAndWaitReceived(command_msg);
 }
 
 fn clientClearErrors(params: [][]const u8) !void {
@@ -1975,7 +1975,6 @@ fn clientClearErrors(params: [][]const u8) !void {
     defer command_msg.deinit();
 
     command_msg = .{
-        .message_type = .SEND_COMMAND,
         .command_kind = .{
             .clear_errors = .{
                 .line_idx = @intCast(line_idx),
@@ -1986,9 +1985,7 @@ fn clientClearErrors(params: [][]const u8) !void {
             },
         },
     };
-    try sendMessageAndWaitReceived(
-        command_msg,
-    );
+    try sendMessageAndWaitReceived(command_msg);
 }
 
 fn clientClearCarrierInfo(params: [][]const u8) !void {
@@ -2015,7 +2012,6 @@ fn clientClearCarrierInfo(params: [][]const u8) !void {
     defer command_msg.deinit();
 
     command_msg = .{
-        .message_type = .SEND_COMMAND,
         .command_kind = .{
             .clear_carrier_info = .{
                 .line_idx = @intCast(line_idx),
@@ -2026,9 +2022,7 @@ fn clientClearCarrierInfo(params: [][]const u8) !void {
             },
         },
     };
-    try sendMessageAndWaitReceived(
-        command_msg,
-    );
+    try sendMessageAndWaitReceived(command_msg);
 }
 
 fn clientCarrierLocation(params: [][]const u8) !void {
@@ -2045,7 +2039,6 @@ fn clientCarrierLocation(params: [][]const u8) !void {
         defer command_msg.deinit();
 
         command_msg = .{
-            .message_type = .SEND_COMMAND,
             .command_kind = .{
                 .get_carrier_status = .{
                     .line_idx = @intCast(line_idx),
@@ -2065,8 +2058,13 @@ fn clientCarrierLocation(params: [][]const u8) !void {
         try send(s, encoded);
         const msg = try receive(s, fba_allocator);
         defer fba_allocator.free(msg);
-        const carrier: CarrierStatus = try CarrierStatus.decode(msg, fba_allocator);
-        defer carrier.deinit();
+        const response: Response = try parseResponse(msg, fba_allocator);
+        defer response.deinit();
+        const carrier = switch (response.response orelse
+            return error.UnexpectedResponse) {
+            .carrier => |r| r,
+            else => return error.UnexpectedResponse,
+        };
         if (carrier.id == 0) {
             std.log.err(
                 "Carrier not found",
@@ -2094,7 +2092,6 @@ fn clientCarrierAxis(params: [][]const u8) !void {
         defer command_msg.deinit();
 
         command_msg = .{
-            .message_type = .SEND_COMMAND,
             .command_kind = .{
                 .get_carrier_status = .{
                     .line_idx = @intCast(line_idx),
@@ -2114,8 +2111,13 @@ fn clientCarrierAxis(params: [][]const u8) !void {
         try send(s, encoded);
         const msg = try receive(s, fba_allocator);
         defer fba_allocator.free(msg);
-        const carrier: CarrierStatus = try CarrierStatus.decode(msg, fba_allocator);
-        defer carrier.deinit();
+        const response: Response = try parseResponse(msg, fba_allocator);
+        defer response.deinit();
+        const carrier = switch (response.response orelse
+            return error.UnexpectedResponse) {
+            .carrier => |r| r,
+            else => return error.UnexpectedResponse,
+        };
         if (carrier.id == 0) {
             std.log.err(
                 "Carrier not found",
@@ -2126,7 +2128,7 @@ fn clientCarrierAxis(params: [][]const u8) !void {
                 "Carrier {d} axis: {}",
                 .{ carrier.id, carrier.main_axis + 1 },
             );
-            if (carrier.aux_axis == 0) return;
+            if (carrier.aux_axis == carrier.main_axis) return;
             std.log.info(
                 "Carrier {d} axis: {}",
                 .{ carrier.id, carrier.aux_axis + 1 },
@@ -2163,7 +2165,6 @@ fn clientHallStatus(params: [][]const u8) !void {
             defer command_msg.deinit();
 
             command_msg = .{
-                .message_type = .SEND_COMMAND,
                 .command_kind = .{
                     .get_hall_status = .{
                         .line_idx = @intCast(line_idx),
@@ -2181,8 +2182,13 @@ fn clientHallStatus(params: [][]const u8) !void {
             try send(s, encoded);
             const msg = try receive(s, fba_allocator);
             defer fba_allocator.free(msg);
-            const hall: HallStatus = try HallStatus.decode(msg, fba_allocator);
-            defer hall.deinit();
+            const response: Response = try parseResponse(msg, fba_allocator);
+            defer response.deinit();
+            const hall = switch (response.response orelse
+                return error.UnexpectedResponse) {
+                .hall => |r| r,
+                else => return error.UnexpectedResponse,
+            };
             std.log.info(
                 "Axis {} Hall Sensor:\n\t FRONT - {s}\n\t BACK - {s}",
                 .{
@@ -2200,7 +2206,6 @@ fn clientHallStatus(params: [][]const u8) !void {
             var command_msg: SendCommand = SendCommand.init(fba_allocator);
             defer command_msg.deinit();
             command_msg = .{
-                .message_type = .SEND_COMMAND,
                 .command_kind = .{
                     .get_hall_status = .{
                         .line_idx = @intCast(line_idx),
@@ -2217,8 +2222,13 @@ fn clientHallStatus(params: [][]const u8) !void {
             try send(s, encoded);
             const msg = try receive(s, fba_allocator);
             defer fba_allocator.free(msg);
-            const hall: HallStatus = try HallStatus.decode(msg, fba_allocator);
-            defer hall.deinit();
+            const response: Response = try parseResponse(msg, fba_allocator);
+            defer response.deinit();
+            const hall = switch (response.response orelse
+                return error.UnexpectedResponse) {
+                .hall => |r| r,
+                else => return error.UnexpectedResponse,
+            };
             std.log.info(
                 "Axis {} Hall Sensor:\n\t FRONT - {s}\n\t BACK - {s}",
                 .{
@@ -2270,7 +2280,6 @@ fn clientAssertHall(params: [][]const u8) !void {
         defer command_msg.deinit();
 
         command_msg = .{
-            .message_type = .SEND_COMMAND,
             .command_kind = .{
                 .get_hall_status = .{
                     .line_idx = @intCast(line_idx),
@@ -2288,8 +2297,13 @@ fn clientAssertHall(params: [][]const u8) !void {
         try send(s, encoded);
         const msg = try receive(s, fba_allocator);
         defer fba_allocator.free(msg);
-        const hall: HallStatus = try HallStatus.decode(msg, fba_allocator);
-        defer hall.deinit();
+        const response: Response = try parseResponse(msg, fba_allocator);
+        defer response.deinit();
+        const hall = switch (response.response orelse
+            return error.UnexpectedResponse) {
+            .hall => |r| r,
+            else => return error.UnexpectedResponse,
+        };
         switch (side) {
             .backward => {
                 if (hall.back != alarm_on) {
@@ -2309,16 +2323,13 @@ fn clientMclReset(_: [][]const u8) !void {
     var command_msg: SendCommand = SendCommand.init(fba_allocator);
     defer command_msg.deinit();
     command_msg = .{
-        .message_type = .SEND_COMMAND,
         .command_kind = .{
             .reset_mcl = .{},
         },
     };
     const encoded = try command_msg.encode(fba_allocator);
     defer fba_allocator.free(encoded);
-    try sendMessageAndWaitReceived(
-        command_msg,
-    );
+    try sendMessageAndWaitReceived(command_msg);
 }
 
 fn clientCalibrate(params: [][]const u8) !void {
@@ -2328,7 +2339,6 @@ fn clientCalibrate(params: [][]const u8) !void {
     var command_msg: SendCommand = SendCommand.init(fba_allocator);
     defer command_msg.deinit();
     command_msg = .{
-        .message_type = .SEND_COMMAND,
         .command_code = .CALIBRATION,
         .command_kind = .{
             .calibrate = .{
@@ -2336,9 +2346,7 @@ fn clientCalibrate(params: [][]const u8) !void {
             },
         },
     };
-    try sendMessageAndWaitReceived(
-        command_msg,
-    );
+    try sendMessageAndWaitReceived(command_msg);
 }
 
 fn clientSetLineZero(params: [][]const u8) !void {
@@ -2347,7 +2355,6 @@ fn clientSetLineZero(params: [][]const u8) !void {
     var command_msg: SendCommand = SendCommand.init(fba_allocator);
     defer command_msg.deinit();
     command_msg = .{
-        .message_type = .SEND_COMMAND,
         .command_code = .SET_LINE_ZERO,
         .command_kind = .{
             .set_line_zero = .{
@@ -2355,9 +2362,7 @@ fn clientSetLineZero(params: [][]const u8) !void {
             },
         },
     };
-    try sendMessageAndWaitReceived(
-        command_msg,
-    );
+    try sendMessageAndWaitReceived(command_msg);
 }
 
 fn clientIsolate(params: [][]const u8) !void {
@@ -2370,7 +2375,7 @@ fn clientIsolate(params: [][]const u8) !void {
         return error.InvalidAxis;
     }
 
-    const dir: Direction = dir_parse: {
+    const dir: protobuf_msg.Direction = dir_parse: {
         if (std.ascii.eqlIgnoreCase("forward", params[2])) {
             break :dir_parse .FORWARD;
         } else if (std.ascii.eqlIgnoreCase("backward", params[2])) {
@@ -2384,7 +2389,7 @@ fn clientIsolate(params: [][]const u8) !void {
         try std.fmt.parseInt(u10, params[3], 0)
     else
         0;
-    const link_axis: Direction = link: {
+    const link_axis: protobuf_msg.Direction = link: {
         if (params[4].len > 0) {
             if (std.ascii.eqlIgnoreCase("next", params[4]) or
                 std.ascii.eqlIgnoreCase("right", params[4]))
@@ -2403,7 +2408,6 @@ fn clientIsolate(params: [][]const u8) !void {
     var command_msg: SendCommand = SendCommand.init(fba_allocator);
     defer command_msg.deinit();
     command_msg = .{
-        .message_type = .SEND_COMMAND,
         .command_code = if (dir == .FORWARD)
             .ISOLATE_FORWARD
         else
@@ -2418,9 +2422,7 @@ fn clientIsolate(params: [][]const u8) !void {
             },
         },
     };
-    try sendMessageAndWaitReceived(
-        command_msg,
-    );
+    try sendMessageAndWaitReceived(command_msg);
 }
 
 fn clientWaitIsolate(params: [][]const u8) !void {
@@ -2446,7 +2448,6 @@ fn clientWaitIsolate(params: [][]const u8) !void {
             defer command_msg.deinit();
 
             command_msg = .{
-                .message_type = .SEND_COMMAND,
                 .command_kind = .{
                     .get_carrier_status = .{
                         .line_idx = @intCast(line_idx),
@@ -2466,8 +2467,13 @@ fn clientWaitIsolate(params: [][]const u8) !void {
             try send(s, encoded);
             const msg = try receive(s, fba_allocator);
             defer fba_allocator.free(msg);
-            const carrier: CarrierStatus = try CarrierStatus.decode(msg, fba_allocator);
-            defer carrier.deinit();
+            const response: Response = try parseResponse(msg, fba_allocator);
+            defer response.deinit();
+            const carrier = switch (response.response orelse
+                return error.UnexpectedResponse) {
+                .carrier => |r| r,
+                else => return error.UnexpectedResponse,
+            };
             std.log.debug(
                 "line: {s}, carrier id: {}, carrier state: {s}",
                 .{ line_name, carrier.id, @tagName(carrier.state) },
@@ -2501,7 +2507,6 @@ fn clientWaitMoveCarrier(params: [][]const u8) !void {
             defer command_msg.deinit();
 
             command_msg = .{
-                .message_type = .SEND_COMMAND,
                 .command_kind = .{
                     .get_carrier_status = .{
                         .line_idx = @intCast(line_idx),
@@ -2521,8 +2526,13 @@ fn clientWaitMoveCarrier(params: [][]const u8) !void {
             try send(s, encoded);
             const msg = try receive(s, fba_allocator);
             defer fba_allocator.free(msg);
-            const carrier: CarrierStatus = try CarrierStatus.decode(msg, fba_allocator);
-            defer carrier.deinit();
+            const response: Response = try parseResponse(msg, fba_allocator);
+            defer response.deinit();
+            const carrier = switch (response.response orelse
+                return error.UnexpectedResponse) {
+                .carrier => |r| r,
+                else => return error.UnexpectedResponse,
+            };
             std.log.debug(
                 "line: {s}, carrier id: {}, carrier state: {s}",
                 .{ line_name, carrier.id, @tagName(carrier.state) },
@@ -2548,7 +2558,6 @@ fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
     var command_msg: SendCommand = SendCommand.init(fba_allocator);
     defer command_msg.deinit();
     command_msg = .{
-        .message_type = .SEND_COMMAND,
         .command_code = .POSITION_MOVE_CARRIER_AXIS,
         .command_kind = .{
             .move_carrier = .{
@@ -2560,9 +2569,7 @@ fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
             },
         },
     };
-    try sendMessageAndWaitReceived(
-        command_msg,
-    );
+    try sendMessageAndWaitReceived(command_msg);
 }
 
 fn clientCarrierPosMoveLocation(params: [][]const u8) !void {
@@ -2576,7 +2583,6 @@ fn clientCarrierPosMoveLocation(params: [][]const u8) !void {
     var command_msg: SendCommand = SendCommand.init(fba_allocator);
     defer command_msg.deinit();
     command_msg = .{
-        .message_type = .SEND_COMMAND,
         .command_code = .POSITION_MOVE_CARRIER_LOCATION,
         .command_kind = .{
             .move_carrier = .{
@@ -2588,9 +2594,7 @@ fn clientCarrierPosMoveLocation(params: [][]const u8) !void {
             },
         },
     };
-    try sendMessageAndWaitReceived(
-        command_msg,
-    );
+    try sendMessageAndWaitReceived(command_msg);
 }
 
 fn clientCarrierPosMoveDistance(params: [][]const u8) !void {
@@ -2607,7 +2611,6 @@ fn clientCarrierPosMoveDistance(params: [][]const u8) !void {
     var command_msg: SendCommand = SendCommand.init(fba_allocator);
     defer command_msg.deinit();
     command_msg = .{
-        .message_type = .SEND_COMMAND,
         .command_code = .POSITION_MOVE_CARRIER_DISTANCE,
         .command_kind = .{
             .move_carrier = .{
@@ -2619,9 +2622,7 @@ fn clientCarrierPosMoveDistance(params: [][]const u8) !void {
             },
         },
     };
-    try sendMessageAndWaitReceived(
-        command_msg,
-    );
+    try sendMessageAndWaitReceived(command_msg);
 }
 
 fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
@@ -2638,7 +2639,6 @@ fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
     var command_msg: SendCommand = SendCommand.init(fba_allocator);
     defer command_msg.deinit();
     command_msg = .{
-        .message_type = .SEND_COMMAND,
         .command_code = .SPEED_MOVE_CARRIER_AXIS,
         .command_kind = .{
             .move_carrier = .{
@@ -2650,9 +2650,7 @@ fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
             },
         },
     };
-    try sendMessageAndWaitReceived(
-        command_msg,
-    );
+    try sendMessageAndWaitReceived(command_msg);
 }
 
 fn clientCarrierSpdMoveLocation(params: [][]const u8) !void {
@@ -2666,7 +2664,6 @@ fn clientCarrierSpdMoveLocation(params: [][]const u8) !void {
     var command_msg: SendCommand = SendCommand.init(fba_allocator);
     defer command_msg.deinit();
     command_msg = .{
-        .message_type = .SEND_COMMAND,
         .command_code = .SPEED_MOVE_CARRIER_LOCATION,
         .command_kind = .{
             .move_carrier = .{
@@ -2678,9 +2675,7 @@ fn clientCarrierSpdMoveLocation(params: [][]const u8) !void {
             },
         },
     };
-    try sendMessageAndWaitReceived(
-        command_msg,
-    );
+    try sendMessageAndWaitReceived(command_msg);
 }
 
 fn clientCarrierSpdMoveDistance(params: [][]const u8) !void {
@@ -2697,7 +2692,6 @@ fn clientCarrierSpdMoveDistance(params: [][]const u8) !void {
     var command_msg: SendCommand = SendCommand.init(fba_allocator);
     defer command_msg.deinit();
     command_msg = .{
-        .message_type = .SEND_COMMAND,
         .command_code = .SPEED_MOVE_CARRIER_DISTANCE,
         .command_kind = .{
             .move_carrier = .{
@@ -2709,9 +2703,7 @@ fn clientCarrierSpdMoveDistance(params: [][]const u8) !void {
             },
         },
     };
-    try sendMessageAndWaitReceived(
-        command_msg,
-    );
+    try sendMessageAndWaitReceived(command_msg);
 }
 
 fn clientCarrierPushForward(params: [][]const u8) !void {
@@ -2728,7 +2720,7 @@ fn clientCarrierPushForward(params: [][]const u8) !void {
 
     var command_msg: SendCommand = SendCommand.init(fba_allocator);
     defer command_msg.deinit();
-    var command_code: protobuf_msg.RegisterWw.CommandCode = undefined;
+    var command_code: Response.RegisterWw.CommandCode = undefined;
     var command_axis: ?i32 = null;
     if (axis_id) |id| {
         const line = mcl.lines[line_idx];
@@ -2740,7 +2732,6 @@ fn clientCarrierPushForward(params: [][]const u8) !void {
         command_code = .PUSH_FORWARD;
     }
     command_msg = .{
-        .message_type = .SEND_COMMAND,
         .command_code = command_code,
         .command_kind = .{
             .push_carrier = .{
@@ -2753,9 +2744,7 @@ fn clientCarrierPushForward(params: [][]const u8) !void {
             },
         },
     };
-    try sendMessageAndWaitReceived(
-        command_msg,
-    );
+    try sendMessageAndWaitReceived(command_msg);
 }
 
 fn clientCarrierPushBackward(params: [][]const u8) !void {
@@ -2772,7 +2761,7 @@ fn clientCarrierPushBackward(params: [][]const u8) !void {
 
     var command_msg: SendCommand = SendCommand.init(fba_allocator);
     defer command_msg.deinit();
-    var command_code: protobuf_msg.RegisterWw.CommandCode = undefined;
+    var command_code: Response.RegisterWw.CommandCode = undefined;
     var command_axis: ?i32 = null;
     if (axis_id) |id| {
         const line = mcl.lines[line_idx];
@@ -2784,7 +2773,6 @@ fn clientCarrierPushBackward(params: [][]const u8) !void {
         command_code = .PUSH_BACKWARD;
     }
     command_msg = .{
-        .message_type = .SEND_COMMAND,
         .command_code = command_code,
         .command_kind = .{
             .push_carrier = .{
@@ -2798,9 +2786,7 @@ fn clientCarrierPushBackward(params: [][]const u8) !void {
         },
     };
 
-    try sendMessageAndWaitReceived(
-        command_msg,
-    );
+    try sendMessageAndWaitReceived(command_msg);
 }
 
 fn clientCarrierPullForward(params: [][]const u8) !void {
@@ -2819,7 +2805,7 @@ fn clientCarrierPullForward(params: [][]const u8) !void {
 
     var command_msg: SendCommand = SendCommand.init(fba_allocator);
     defer command_msg.deinit();
-    var command_code: protobuf_msg.RegisterWw.CommandCode = undefined;
+    var command_code: Response.RegisterWw.CommandCode = undefined;
     var command_destination: ?f32 = null;
     if (destination) |dest| {
         command_code = .PULL_TRANSITION_LOCATION_FORWARD;
@@ -2828,7 +2814,6 @@ fn clientCarrierPullForward(params: [][]const u8) !void {
         command_code = .PULL_FORWARD;
     }
     command_msg = .{
-        .message_type = .SEND_COMMAND,
         .command_code = command_code,
         .command_kind = .{
             .pull_carrier = .{
@@ -2843,9 +2828,7 @@ fn clientCarrierPullForward(params: [][]const u8) !void {
         },
     };
 
-    try sendMessageAndWaitReceived(
-        command_msg,
-    );
+    try sendMessageAndWaitReceived(command_msg);
 }
 
 fn clientCarrierPullBackward(params: [][]const u8) !void {
@@ -2865,7 +2848,7 @@ fn clientCarrierPullBackward(params: [][]const u8) !void {
 
     var command_msg: SendCommand = SendCommand.init(fba_allocator);
     defer command_msg.deinit();
-    var command_code: protobuf_msg.RegisterWw.CommandCode = undefined;
+    var command_code: Response.RegisterWw.CommandCode = undefined;
     var command_destination: ?f32 = null;
     if (destination) |dest| {
         command_code = .PULL_TRANSITION_LOCATION_BACKWARD;
@@ -2874,7 +2857,6 @@ fn clientCarrierPullBackward(params: [][]const u8) !void {
         command_code = .PULL_BACKWARD;
     }
     command_msg = .{
-        .message_type = .SEND_COMMAND,
         .command_code = command_code,
         .command_kind = .{
             .pull_carrier = .{
@@ -2888,9 +2870,7 @@ fn clientCarrierPullBackward(params: [][]const u8) !void {
             },
         },
     };
-    try sendMessageAndWaitReceived(
-        command_msg,
-    );
+    try sendMessageAndWaitReceived(command_msg);
 }
 
 fn clientCarrierWaitPull(params: [][]const u8) !void {
@@ -2916,7 +2896,6 @@ fn clientCarrierWaitPull(params: [][]const u8) !void {
             defer command_msg.deinit();
 
             command_msg = .{
-                .message_type = .SEND_COMMAND,
                 .command_kind = .{
                     .get_carrier_status = .{
                         .line_idx = @intCast(line_idx),
@@ -2936,9 +2915,13 @@ fn clientCarrierWaitPull(params: [][]const u8) !void {
             try send(s, encoded);
             const msg = try receive(s, fba_allocator);
             defer fba_allocator.free(msg);
-            const carrier: CarrierStatus =
-                try CarrierStatus.decode(msg, fba_allocator);
-            defer carrier.deinit();
+            const response: Response = try parseResponse(msg, fba_allocator);
+            defer response.deinit();
+            const carrier = switch (response.response orelse
+                return error.UnexpectedResponse) {
+                .carrier => |r| r,
+                else => return error.UnexpectedResponse,
+            };
             if (carrier.state == .PULL_FORWARD_COMPLETED or
                 carrier.state == .PULL_BACKWARD_COMPLETED) return;
         }
@@ -2953,28 +2936,18 @@ fn clientCarrierStopPull(params: [][]const u8) !void {
     if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
 
-    if (main_socket) |s| {
-        var command_msg: SendCommand = SendCommand.init(fba_allocator);
-        defer command_msg.deinit();
+    var command_msg: SendCommand = SendCommand.init(fba_allocator);
+    defer command_msg.deinit();
 
-        command_msg = .{
-            .message_type = .SEND_COMMAND,
-            .command_kind = .{
-                .stop_pull_carrier = .{
-                    .line_idx = @intCast(line_idx),
-                    .axis_idx = @intCast(axis_index),
-                },
+    command_msg = .{
+        .command_kind = .{
+            .stop_pull_carrier = .{
+                .line_idx = @intCast(line_idx),
+                .axis_idx = @intCast(axis_index),
             },
-        };
-        const encoded = try command_msg.encode(fba_allocator);
-        defer fba_allocator.free(encoded);
-
-        std.log.debug(
-            "message: {s}",
-            .{@tagName(command_msg.command_kind.?)},
-        );
-        try send(s, encoded);
-    } else return error.ServerNotConnected;
+        },
+    };
+    try sendMessageAndWaitReceived(command_msg);
 }
 
 fn clientCarrierStopPush(params: [][]const u8) !void {
@@ -2984,29 +2957,18 @@ fn clientCarrierStopPush(params: [][]const u8) !void {
     const line = mcl.lines[line_idx];
     if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
     const axis_index: mcl.Axis.Index.Line = @intCast(axis - 1);
+    var command_msg: SendCommand = SendCommand.init(fba_allocator);
+    defer command_msg.deinit();
 
-    if (main_socket) |s| {
-        var command_msg: SendCommand = SendCommand.init(fba_allocator);
-        defer command_msg.deinit();
-
-        command_msg = .{
-            .message_type = .SEND_COMMAND,
-            .command_kind = .{
-                .stop_push_carrier = .{
-                    .line_idx = @intCast(line_idx),
-                    .axis_idx = @intCast(axis_index),
-                },
+    command_msg = .{
+        .command_kind = .{
+            .stop_push_carrier = .{
+                .line_idx = @intCast(line_idx),
+                .axis_idx = @intCast(axis_index),
             },
-        };
-        const encoded = try command_msg.encode(fba_allocator);
-        defer fba_allocator.free(encoded);
-
-        std.log.debug(
-            "message: {s}",
-            .{@tagName(command_msg.command_kind.?)},
-        );
-        try send(s, encoded);
-    } else return error.ServerNotConnected;
+        },
+    };
+    try sendMessageAndWaitReceived(command_msg);
 }
 
 fn clientWaitAxisEmpty(params: [][]const u8) !void {
@@ -3581,17 +3543,19 @@ fn sendMessageAndWaitReceived(
             try send(s, encoded);
             const msg = try receive(s, fba_allocator);
             defer fba_allocator.free(msg);
-            const CommandID = protobuf_msg.CommandID;
-            const response: CommandID = try CommandID.decode(msg, fba_allocator);
+            const response: Response = try parseResponse(msg, fba_allocator);
             defer response.deinit();
-            command_id = response.command_id;
+            command_id = switch (response.response orelse
+                return error.UnexpectedResponse) {
+                .command_id => |r| r.command_id,
+                else => return error.UnexpectedResponse,
+            };
         }
         while (true) {
             try command.checkCommandInterrupt();
             var command_status_msg: SendCommand = SendCommand.init(fba_allocator);
             defer command_status_msg.deinit();
             command_status_msg = .{
-                .message_type = .SEND_COMMAND,
                 .command_kind = .{
                     .get_command_status = .{ .command_id = command_id },
                 },
@@ -3601,205 +3565,54 @@ fn sendMessageAndWaitReceived(
             try send(s, encoded);
             const msg = try receive(s, fba_allocator);
             defer fba_allocator.free(msg);
-            const CommandStatus = protobuf_msg.CommandStatus;
-            const response: CommandStatus = try CommandStatus.decode(msg, fba_allocator);
+            const response: Response = try parseResponse(msg, fba_allocator);
             defer response.deinit();
-            switch (response.status) {
+            const command_status = switch (response.response orelse
+                return error.UnexpectedResponse) {
+                .command_status => |r| r,
+                else => return error.UnexpectedResponse,
+            };
+            switch (command_status.status) {
                 .PROCESSING, .QUEUED => {}, // continue the loop
                 .COMPLETED => break,
-                .FAILED => {
-                    if (response.error_response) |err| {
-                        return switch (err) {
-                            .CC_LINK_DISCONNECTED => error.CCLinkDisconnected,
-                            .VDC_UNDERVOLTAGE_DETECTED => error.VDCUndervoltageDetected,
-                            .VDC_OVERVOLTAGE_DETECTED => error.VDCOvervoltageDetected,
-                            .COMMUNICATION_ERROR_DETECTED => error.CommunicationErrorDetected,
-                            .INVERTER_OVERHEAT_DETECTED => error.InverterOverheatDetected,
-                            .OVERCURRENT_DETECTED => error.OvercurrentDetected,
-                            .CONTROL_LOOP_MAX_TIME_EXCEEDED => error.ControlLoopMaxTimeExceeded,
-                            .INVALID_COMMAND => error.InvalidCommmand,
-                            .CARRIER_NOT_FOUND => error.CarrierNotFound,
-                            .HOMING_FAILED => error.HomingFailed,
-                            .INVALID_PARAMETER => error.InvalidParameter,
-                            .INVALID_SYSTEM_STATE => error.InvalidSystemState,
-                            .CARRIER_ALREADY_EXISTS => error.CarrierAlreadyExists,
-                            .INVALID_AXIS => error.InvalidAxis,
-                            else => error.UnexpectedError,
-                        };
-                    } else return error.UnexpectedResponse;
-                },
+                .FAILED => {}, // handled by parseResponse()
                 else => return error.UnexpectedResponse,
             }
         }
     } else return error.ServerNotConnected;
 }
 
-// fn parseCarrierStatus(
-//     buffer: []const u8,
-//     a: std.mem.Allocator,
-// ) !protobuf_msg.CarrierStatus {
-//     const CarrierStatus = protobuf_msg.CarrierStatus;
-//     const response: CarrierStatus = try CarrierStatus.decode(
-//         buffer,
-//         a,
-//     );
-//     defer response.deinit();
-//     return response.decode(input: []const u8, allocator: Allocator)
-//     // TODO: Find out why state_type != mcl.registers.Wr.Carrier.State
-//     comptime var state_type: type = undefined;
-//     inline for (@typeInfo(SystemState.Carrier).@"struct".fields) |field| {
-//         if (comptime std.mem.eql(u8, "state", field.name)) {
-//             state_type = field.type;
-//             break;
-//         }
-//     }
-//     const carrier: SystemState.Carrier = .{
-//         .axis_idx = .{
-//             .aux_axis = @intCast(response.axis_idx.?.aux_axis),
-//             .main_axis = @intCast(response.axis_idx.?.main_axis),
-//         },
-//         .id = @intCast(response.id),
-//         .location = response.location,
-//         .state = std.meta.stringToEnum(
-//             state_type,
-//             @tagName(response.state),
-//         ).?,
-//     };
-//     return carrier;
-// }
-
-// test parseCarrierStatus {
-//     const carrier: SystemState.Carrier = .{
-//         .axis_idx = .{
-//             .aux_axis = 1,
-//             .main_axis = 2,
-//         },
-//         .id = 1,
-//         .location = 0.0,
-//         .state = .PosMoveCompleted,
-//     };
-//     const CarrierStatus = protobuf_msg.CarrierStatus;
-//     var response: CarrierStatus = CarrierStatus.init(std.testing.allocator);
-//     response = std.mem.zeroInit(CarrierStatus, .{});
-//     defer response.deinit();
-//     // Copy the value of y to the response
-//     response = .{
-//         .axis_idx = .{
-//             .aux_axis = 1,
-//             .main_axis = 2,
-//         },
-//         .id = 1,
-//         .location = 0.0,
-//         .state = .PosMoveCompleted,
-//     };
-//     const encoded = try response.encode(std.testing.allocator);
-//     defer std.testing.allocator.free(encoded);
-//     try std.testing.expectEqual(
-//         carrier,
-//         try parseCarrierStatus(
-//             encoded,
-//             std.testing.allocator,
-//         ),
-//     );
-// }
-
-// fn parseHallStatus(
-//     buffer: []const u8,
-//     a: std.mem.Allocator,
-// ) !SystemState.Hall {
-//     const HallStatus = protobuf_msg.HallStatus;
-//     const response: HallStatus = try HallStatus.decode(
-//         buffer,
-//         a,
-//     );
-//     defer response.deinit();
-//     const hall: SystemState.Hall = .{
-//         .configured = response.configured,
-//         .back = response.back,
-//         .front = response.front,
-//     };
-//     return hall;
-// }
-
-// test parseHallStatus {
-//     const hall: SystemState.Hall = .{
-//         .configured = true,
-//         .back = true,
-//         .front = false,
-//     };
-//     const HallStatus = protobuf_msg.HallStatus;
-//     var response: HallStatus = HallStatus.init(std.testing.allocator);
-//     response = std.mem.zeroInit(HallStatus, .{});
-//     defer response.deinit();
-//     // Copy the value of y to the response
-//     response = .{
-//         .configured = true,
-//         .back = true,
-//         .front = false,
-//     };
-//     const encoded = try response.encode(std.testing.allocator);
-//     defer std.testing.allocator.free(encoded);
-//     try std.testing.expectEqual(
-//         hall,
-//         try parseHallStatus(
-//             encoded,
-//             std.testing.allocator,
-//         ),
-//     );
-// }
-
-// fn parseCommandStatus(
-//     buffer: []const u8,
-//     a: std.mem.Allocator,
-// ) !SystemState.Command {
-//     const CommandStatus = protobuf_msg.CommandStatus;
-//     const response: CommandStatus = try CommandStatus.decode(
-//         buffer,
-//         a,
-//     );
-//     defer response.deinit();
-//     // TODO: Find out why response_type != mcl.registers.Wr.CommandResponseCode
-//     comptime var response_type: type = undefined;
-//     inline for (@typeInfo(SystemState.Command).@"struct".fields) |field| {
-//         if (comptime std.mem.eql(u8, "command_response", field.name)) {
-//             response_type = field.type;
-//             break;
-//         }
-//     }
-//     const command_status: SystemState.Command = .{
-//         .command_received = response.received,
-//         .command_response = std.meta.stringToEnum(
-//             response_type,
-//             @tagName(response.response),
-//         ).?,
-//     };
-//     return command_status;
-// }
-
-// test parseCommandStatus {
-//     const com: SystemState.Command = .{
-//         .command_received = true,
-//         .command_response = .InvalidCommand,
-//     };
-//     const CommandStatus = protobuf_msg.CommandStatus;
-//     var response: CommandStatus = CommandStatus.init(std.testing.allocator);
-//     response = std.mem.zeroInit(CommandStatus, .{});
-//     defer response.deinit();
-//     // Copy the value of y to the response
-//     response = .{
-//         .received = true,
-//         .response = .InvalidCommand,
-//     };
-//     const encoded = try response.encode(std.testing.allocator);
-//     defer std.testing.allocator.free(encoded);
-//     try std.testing.expectEqual(
-//         com,
-//         try parseCommandStatus(
-//             encoded,
-//             std.testing.allocator,
-//         ),
-//     );
-// }
+/// Check server response. Return error if the response is a error message.
+fn parseResponse(msg: []const u8, a: std.mem.Allocator) !Response {
+    const response: Response = try Response.decode(msg, a);
+    errdefer response.deinit();
+    switch (response.response.?) {
+        .command_status => |r| {
+            if (r.status != .FAILED) return try response.dupe(a);
+            const _response = r.error_response orelse return error.Unexpected;
+            return switch (_response) {
+                .ERROR_UNSPECIFIED, .UNEXPECTED => error.Unexpected,
+                .CC_LINK_DISCONNECTED => error.CCLinkDisconnected,
+                .VDC_UNDERVOLTAGE_DETECTED => error.VDCUndervoltageDetected,
+                .VDC_OVERVOLTAGE_DETECTED => error.VDCOvervoltageDetected,
+                .COMMUNICATION_ERROR_DETECTED => error.CommunicationErrorDetected,
+                .INVERTER_OVERHEAT_DETECTED => error.InverterOverheatDetected,
+                .OVERCURRENT_DETECTED => error.OvercurrentDetected,
+                .INVALID_COMMAND => error.InvalidCommand,
+                .CARRIER_NOT_FOUND => error.CarrierNotFound,
+                .HOMING_FAILED => error.HomingFailed,
+                .INVALID_PARAMETER => error.InvalidParameter,
+                .INVALID_SYSTEM_STATE => error.InvalidSystemState,
+                .CARRIER_ALREADY_EXISTS => error.CarrierAlreadyExists,
+                .CONTROL_LOOP_MAX_TIME_EXCEEDED => error.ControlLoopMaxTimeExceeded,
+                .INVALID_AXIS => error.InvalidAxis,
+                // zig decided to force else or `_` prong
+                _ => unreachable,
+            };
+        },
+        else => return try response.dupe(a),
+    }
+}
 
 /// Check whether the socket has event flag occurred. Timeout is in milliseconds
 /// unit.
