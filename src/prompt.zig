@@ -22,12 +22,18 @@ var input_buffer: [max_input_size]u8 = undefined;
 var input: []u8 = &.{};
 var selection: []u8 = &.{};
 
+/// Cursor column index in interactive prompt.
+var cursor: u16 = 0;
+
 /// Prompt handler thread callback. Input must be set to non-canonical mode
 /// prior to spawning this thread. Only one prompt handler thread may be
 /// running at a time.
 pub fn handler() void {
     input = &.{};
     selection = &.{};
+    history.clearRetainingCapacity();
+    history_offset = null;
+    cursor = 0;
 
     const stdin = std.io.getStdIn().reader();
     const stdout = std.io.getStdOut().writer();
@@ -125,12 +131,18 @@ pub fn handler() void {
             },
             // Backspace
             0x08, 0x7F => {
-                if (input.len > 0) {
+                if (cursor < input.len) history_offset = null;
+                if (cursor > 0) {
+                    const after = input[cursor..];
+                    @memmove(
+                        input_buffer[cursor - 1 ..][0..after.len],
+                        after,
+                    );
                     input = input[0 .. input.len - 1];
-                } else {
-                    history_offset = null;
+                    cursor -= 1;
                 }
                 sequence = &.{};
+                if (input.len == 0) history_offset = null;
             },
             // Ctrl-A
             0x01 => {},
@@ -153,7 +165,10 @@ pub fn handler() void {
                 if (input.len > 0) {
                     disable.store(true, .monotonic);
                     prev_disable = true;
-                    stdout.writeByte('\n') catch continue :main;
+                    stdout.print(
+                        "\x1B[{d}G\n",
+                        .{input.len},
+                    ) catch continue :main;
                     command.enqueue(input) catch continue :main;
                     const buf_slice =
                         history_buf[history.getWriteIndex()][0..input.len];
@@ -161,6 +176,7 @@ pub fn handler() void {
                     history.writeItemOverwrite(buf_slice);
                     history_offset = null;
                     input = &.{};
+                    cursor = 0;
                     continue :main;
                 }
             },
@@ -178,6 +194,7 @@ pub fn handler() void {
 
                     input = input_buffer[0..hist_item.len];
                     @memcpy(input, hist_item);
+                    cursor = @intCast(input.len);
                 }
             },
             else => {
@@ -220,15 +237,20 @@ pub fn handler() void {
                         std.mem.eql(u8, "\xE0\x4D", sequence))
                     {
                         sequence = &.{};
-                        if (history_offset) |offset| {
-                            const hist_item = history.buffer[
-                                ((history.head) + offset - 1) %
-                                    history.buffer.len
-                            ];
+                        if (cursor >= input.len) {
+                            if (history_offset) |offset| {
+                                const hist_item = history.buffer[
+                                    ((history.head) + offset - 1) %
+                                        history.buffer.len
+                                ];
 
-                            input = input_buffer[0..hist_item.len];
-                            @memcpy(input, hist_item);
-                            history_offset = null;
+                                input = input_buffer[0..hist_item.len];
+                                @memcpy(input, hist_item);
+                                history_offset = null;
+                            }
+                            cursor = @intCast(input.len);
+                        } else {
+                            cursor += 1;
                         }
                     }
                     // Down Arrow
@@ -266,6 +288,9 @@ pub fn handler() void {
                         std.mem.eql(u8, "\xE0\x4B", sequence))
                     {
                         sequence = &.{};
+                        if (cursor > 0) {
+                            cursor -= 1;
+                        }
                     }
                     // Continue filling in sequence
                     else {
@@ -278,8 +303,12 @@ pub fn handler() void {
                         continue :main;
                     }
                 } else {
-                    input_buffer[input.len] = b;
+                    if (cursor > input.len) cursor = @intCast(input.len);
+                    const after = input[cursor..];
+                    @memmove(input_buffer[cursor + 1 ..][0..after.len], after);
+                    input_buffer[cursor] = b;
                     input = input_buffer[0 .. input.len + 1];
+                    cursor += 1;
                     if (history_offset) |offset| {
                         const hist_item = history.buffer[
                             ((history.head) + offset - 1) % history.buffer.len
@@ -347,5 +376,8 @@ pub fn handler() void {
                 ) catch continue :main;
             }
         }
+        // Print cursor
+        if (cursor > input.len) cursor = @intCast(input.len);
+        stdout.print("\x1B[{d}G", .{cursor + 1}) catch continue :main;
     }
 }
