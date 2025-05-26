@@ -178,14 +178,14 @@ pub var table: Table = undefined;
 var initialized_modules: std.EnumArray(Config.Module, bool) = undefined;
 
 var command_queue_lock: std.Thread.RwLock = undefined;
-var command_queue: std.ArrayList(CommandString) = undefined;
+var command_queue: std.DoublyLinkedList = undefined;
 
 var timer: ?std.time.Timer = null;
 var log_file: ?std.fs.File = null;
 
 const CommandString = struct {
-    buffer: [1024]u8,
-    len: usize,
+    str: []u8,
+    node: std.DoublyLinkedList.Node,
 };
 
 pub const Command = struct {
@@ -244,7 +244,7 @@ pub fn init() !void {
     registry = Registry.init(allocator);
     variables = std.BufMap.init(allocator);
     table = Table.init(std.heap.smp_allocator);
-    command_queue = std.ArrayList(CommandString).init(allocator);
+    command_queue = .{ .first = null, .last = null };
     command_queue_lock = .{};
     stop.store(false, .monotonic);
     timer = try std.time.Timer.start();
@@ -454,7 +454,7 @@ pub fn deinit() void {
     stop.store(true, .monotonic);
     defer stop.store(false, .monotonic);
     variables.deinit();
-    command_queue.deinit();
+    queueClear();
     command_queue_lock = undefined;
     deinitModules();
     registry.deinit();
@@ -464,13 +464,17 @@ pub fn deinit() void {
 pub fn queueEmpty() bool {
     command_queue_lock.lockShared();
     defer command_queue_lock.unlockShared();
-    return command_queue.items.len == 0;
+    return command_queue.first == null and command_queue.last == null;
 }
 
 pub fn queueClear() void {
     command_queue_lock.lock();
     defer command_queue_lock.unlock();
-    command_queue.clearRetainingCapacity();
+    while (command_queue.popFirst()) |node| {
+        const command_str: *CommandString = @fieldParentPtr("node", node);
+        std.heap.smp_allocator.free(command_str.str);
+        std.heap.smp_allocator.destroy(command_str);
+    }
 }
 
 /// Checks if the `stop` flag is set, and if so returns an error.
@@ -483,24 +487,28 @@ pub fn checkCommandInterrupt() !void {
 }
 
 pub fn enqueue(input: []const u8) !void {
-    var buffer = CommandString{
-        .buffer = undefined,
-        .len = undefined,
-    };
-
-    const max_len = @min(buffer.buffer.len, input.len);
-    @memcpy(buffer.buffer[0..max_len], input[0..max_len]);
-    buffer.len = max_len;
+    const str = try std.heap.smp_allocator.dupe(u8, input);
+    errdefer std.heap.smp_allocator.free(str);
+    const new_node: *CommandString =
+        try std.heap.smp_allocator.create(CommandString);
+    new_node.str = str;
     command_queue_lock.lock();
     defer command_queue_lock.unlock();
-    try command_queue.insert(0, buffer);
+    command_queue.append(&new_node.node);
 }
 
 pub fn execute() !void {
     command_queue_lock.lock();
-    const cb = command_queue.pop().?;
+    const node_opt = command_queue.popFirst();
     command_queue_lock.unlock();
-    try parseAndRun(cb.buffer[0..cb.len]);
+    if (node_opt) |node| {
+        const command_str: *CommandString = @fieldParentPtr("node", node);
+        defer {
+            std.heap.smp_allocator.free(command_str.str);
+            std.heap.smp_allocator.destroy(command_str);
+        }
+        try parseAndRun(command_str.str);
+    }
 }
 
 fn parseAndRun(input: []const u8) !void {
@@ -727,18 +735,17 @@ fn file(params: [][]const u8) !void {
     var f = try std.fs.cwd().openFile(params[0], .{});
     defer f.close();
     var reader = f.reader();
-    const current_len: usize = command_queue.items.len;
-    var new_line: CommandString = .{ .buffer = undefined, .len = 0 };
-    while (try reader.readUntilDelimiterOrEof(
-        &new_line.buffer,
-        '\n',
-    )) |_line| {
+    var buf: [std.fs.max_path_bytes + 512]u8 = undefined;
+    while (try reader.readUntilDelimiterOrEof(&buf, '\n')) |_line| {
         try checkCommandInterrupt();
-        const line = std.mem.trimLeft(u8, std.mem.trimRight(u8, _line, "\r"), "\n\t ");
+        const line = std.mem.trimLeft(
+            u8,
+            std.mem.trimRight(u8, _line, "\r"),
+            "\n\t ",
+        );
         if (line.len == 0 or line[0] == '#') continue;
-        new_line.len = line.len;
         std.log.info("Queueing command: {s}", .{line});
-        try command_queue.insert(current_len, new_line);
+        try enqueue(line);
     }
 }
 
