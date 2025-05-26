@@ -4,7 +4,7 @@ on:
   workflow_run:
     workflows: ['Test']
     types: [completed]
-    branches: 
+    branches:
       - main
   workflow_dispatch:
 
@@ -33,8 +33,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: mlugg/setup-zig@v1
-        with: 
+      - uses: mlugg/setup-zig@v2
+        with:
           version: master
 
       - uses: actions/github-script@v7
@@ -54,7 +54,7 @@ jobs:
             then echo "exists"; \
             else echo ""; \
             fi)" >> $GITHUB_OUTPUT
-        env: 
+        env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Windows
