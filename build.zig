@@ -39,6 +39,8 @@ pub fn build(b: *std.Build) !void {
         .mdfunc_mock = mdfunc_mock_build,
     });
 
+    const nng = b.dependency("nng", .{ .target = target, .optimize = optimize });
+
     const build_zig_zon = b.createModule(.{
         .root_source_file = b.path("build.zig.zon"),
         .target = target,
@@ -50,6 +52,8 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
+    mod.linkLibrary(nng.artifact("nng"));
+    mod.addIncludePath(nng.path("include"));
     mod.addImport("network", network_dep.module("network"));
     mod.addImport("mcl", mcl.module("mcl"));
     mod.addImport("chrono", chrono.module("chrono"));
@@ -99,46 +103,23 @@ pub fn build(b: *std.Build) !void {
         .mdfunc_mock = true,
     });
 
-    const check_exe = b.addExecutable(.{
-        .name = "mmc-cli",
-        .root_source_file = b.path("src/main.zig"),
+    const test_mod = b.createModule(.{
         .target = target,
         .optimize = optimize,
+        .root_source_file = b.path("src/main.zig"),
     });
-    check_exe.root_module.addImport("network", network_dep.module("network"));
-    check_exe.root_module.addImport("mcl", mcl_mock.module("mcl"));
-    check_exe.root_module.addImport("chrono", chrono.module("chrono"));
+    test_mod.linkLibrary(nng.artifact("nng"));
+    test_mod.addIncludePath(nng.path("include"));
+    test_mod.addImport("network", network_dep.module("network"));
+    test_mod.addImport("mcl", mcl_mock.module("mcl"));
+    test_mod.addImport("chrono", chrono.module("chrono"));
     if (target.result.os.tag == .windows) {
         const zigwin32 = b.lazyDependency("zigwin32", .{});
         if (zigwin32) |zwin32| {
-            check_exe.root_module.addImport("win32", zwin32.module("win32"));
+            test_mod.addImport("win32", zwin32.module("win32"));
         }
     }
-    check_exe.root_module.addImport(
-        "mmc_config",
-        mmc_config_mock.module("mmc-config"),
-    );
-    check_exe.root_module.addImport("build.zig.zon", build_zig_zon);
-    const check = b.step("check", "Check if `mmc-cli` compiles");
-    check.dependOn(&check_exe.step);
-
-    // Creates a step for unit testing. This only builds the test executable
-    // but does not run it.
-    const unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    unit_tests.root_module.addImport("network", network_dep.module("network"));
-    unit_tests.root_module.addImport("mcl", mcl_mock.module("mcl"));
-    unit_tests.root_module.addImport("chrono", chrono.module("chrono"));
-    if (target.result.os.tag == .windows) {
-        const zigwin32 = b.lazyDependency("zigwin32", .{});
-        if (zigwin32) |zwin32| {
-            unit_tests.root_module.addImport("win32", zwin32.module("win32"));
-        }
-    }
-    unit_tests.root_module.addImport(
+    test_mod.addImport(
         "mmc_config",
         mmc_config_mock.module("mmc-config"),
     );
@@ -148,12 +129,22 @@ pub fn build(b: *std.Build) !void {
             .optimize = optimize,
         });
         if (soem) |dep| {
-            unit_tests.root_module.linkLibrary(dep.artifact("soem"));
-            unit_tests.root_module.addIncludePath(dep.path("include"));
+            test_mod.linkLibrary(dep.artifact("soem"));
+            test_mod.addIncludePath(dep.path("include"));
         }
     }
-    unit_tests.root_module.addImport("build.zig.zon", build_zig_zon);
+    test_mod.addImport("build.zig.zon", build_zig_zon);
 
+    const check_exe = b.addExecutable(.{
+        .name = "mmc-cli",
+        .root_module = test_mod,
+    });
+    const check = b.step("check", "Check if `mmc-cli` compiles");
+    check.dependOn(&check_exe.step);
+
+    // Creates a step for unit testing. This only builds the test executable
+    // but does not run it.
+    const unit_tests = b.addTest(.{ .root_module = test_mod });
     const run_unit_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);

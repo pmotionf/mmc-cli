@@ -30,6 +30,10 @@
             .hash = "soem-1.4.0-hMH6Q_P5DQBDCNya1vgaPwxaZNes36mTcce9K7X4DV5k",
             .lazy = true,
         },
+        .nng = .{
+            .url = "https://github.com/mochalins/nng.zig/archive/9e6703f.tar.gz",
+            .hash = "nng-2.0.0-g4ThaJbXIwD1sdzwp06ZBsfGuwHHzixgDBbUerVfbU33",
+        },
     },
     .paths = .{
         "build.zig",

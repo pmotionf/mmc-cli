@@ -3978,3 +3978,19 @@ fn send(socket: network.Socket, msg: []const u8) !void {
         .{ msg, msg.len },
     );
 }
+
+const nng = @cImport({
+    @cInclude("nng/nng.h");
+});
+test {
+    _ = nng.nng_init(null);
+    defer nng.nng_fini();
+
+    var msg: ?*nng.nng_msg = null;
+    _ = nng.nng_msg_alloc(&msg, 5);
+    defer nng.nng_msg_free(msg);
+
+    _ = nng.nng_msg_clear(msg);
+
+    try std.testing.expectEqual(0, nng.nng_msg_len(msg));
+}
