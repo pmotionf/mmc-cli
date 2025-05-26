@@ -328,7 +328,10 @@ pub fn handler() void {
             },
         }
 
+        // Clear input line to prepare for writing
         stdout.writeAll("\x1B[2K\r") catch continue :main;
+
+        // Parse and print syntax highlighted input
         var last_non_space: ?usize = null;
         for (input, 0..) |c, i| {
             if (c == ' ') {
@@ -343,7 +346,22 @@ pub fn handler() void {
                             break;
                         }
                     } else {
-                        stdout.writeAll(fragment) catch continue :main;
+                        var it = command.variables.iterator();
+                        while (it.next()) |var_entry| {
+                            if (std.mem.eql(
+                                u8,
+                                var_entry.key_ptr.*,
+                                fragment,
+                            )) {
+                                stdout.print(
+                                    "\x1B[0;35m{s}\x1b[0m",
+                                    .{fragment},
+                                ) catch continue :main;
+                                break;
+                            }
+                        } else {
+                            stdout.writeAll(fragment) catch continue :main;
+                        }
                     }
                 }
                 last_non_space = null;
@@ -362,9 +380,22 @@ pub fn handler() void {
                     break;
                 }
             } else {
-                stdout.writeAll(fragment) catch continue :main;
+                var it = command.variables.iterator();
+                while (it.next()) |var_entry| {
+                    if (std.mem.eql(u8, var_entry.key_ptr.*, fragment)) {
+                        stdout.print(
+                            "\x1B[0;35m{s}\x1b[0m",
+                            .{fragment},
+                        ) catch continue :main;
+                        break;
+                    }
+                } else {
+                    stdout.writeAll(fragment) catch continue :main;
+                }
             }
         }
+
+        // Print history suggestion if exists
         if (history_offset) |offset| {
             const hist_item = history.buffer[
                 ((history.head) + offset - 1) % history.buffer.len
@@ -376,6 +407,7 @@ pub fn handler() void {
                 ) catch continue :main;
             }
         }
+
         // Print cursor
         if (cursor > input.len) cursor = @intCast(input.len);
         stdout.print("\x1B[{d}G", .{cursor + 1}) catch continue :main;
