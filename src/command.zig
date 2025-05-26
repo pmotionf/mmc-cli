@@ -8,7 +8,6 @@ const chrono = @import("chrono");
 
 const main = @import("main.zig");
 const build = @import("build.zig.zon");
-const prompt = @import("prompt.zig");
 
 // Command modules.
 const mcl = @import("command/mcl.zig");

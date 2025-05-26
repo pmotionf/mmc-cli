@@ -4,13 +4,15 @@ const network = @import("network");
 
 const io = @import("io.zig");
 const command = @import("command.zig");
-const prompt = @import("prompt.zig");
+const Prompt = @import("Prompt.zig");
 
 pub const std_options: std.Options = .{
     .logFn = command.logFn,
 };
 
 pub var exit: std.atomic.Value(bool) = .init(false);
+
+var prompt: Prompt = .{};
 
 fn stopCommandWindows(
     dwCtrlType: std.os.windows.DWORD,
@@ -30,7 +32,7 @@ pub fn main() !void {
     try io.init();
     defer io.deinit();
 
-    var prompter = try std.Thread.spawn(.{}, prompt.handler, .{});
+    var prompter = try std.Thread.spawn(.{}, Prompt.handler, .{&prompt});
     prompter.detach();
     defer prompt.close.store(true, .monotonic);
 
