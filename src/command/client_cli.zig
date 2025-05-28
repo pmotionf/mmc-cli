@@ -406,13 +406,14 @@ pub fn init(c: Config) !void {
     try command.registry.put(.{
         .name = "AUTO_INITIALIZE",
         .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name", .optional = true },
+            .{ .name = "line names", .optional = true },
         },
         .short_description = "Initialize all carriers automatically.",
         .long_description =
-        \\Isolate all carriers detected in the system automatically and move the
-        \\carrier to a free space. Ignore the already initialized carrier. Upon
-        \\completion, all carrier IDs will be printed and its current location.
+        \\Isolate all unisolated carriers on the provided lines and move the
+        \\isolated carriers to a free space. If no line is provided, auto 
+        \\initialize all unisolated carriers for all lines. Multiple lines should
+        \\be separated by comma, e.g. "AUTO_INITIALIZE front,back"
         ,
         .execute = &clientAutoInitialize,
     });
@@ -862,7 +863,7 @@ fn serverVersion(_: [][]const u8) !void {
 fn clientConnect(params: [][]const u8) !void {
     std.log.debug("{}", .{params.len});
     if (main_socket) |socket| {
-        if (isSocketEventOccured(
+        if (isSocketEventOccurred(
             socket,
             std.posix.POLL.IN | std.posix.POLL.OUT,
             0,
@@ -1017,25 +1018,49 @@ fn clientDisconnect(_: [][]const u8) !void {
 }
 
 fn clientAutoInitialize(params: [][]const u8) !void {
-    var line_id: ?usize = null;
+    var lines =
+        std.ArrayListAligned(SendCommand.AutoInitialize.Lines, null).init(fba_allocator);
+    defer lines.deinit();
     if (params[0].len != 0) {
-        const line_name: []const u8 = params[0];
-        line_id = @intCast(try matchLine(line_names, line_name) + 1);
+        var iterator = std.mem.tokenizeSequence(
+            u8,
+            params[0],
+            ",",
+        );
+        while (iterator.next()) |line_name| {
+            const line_idx = try matchLine(line_names, line_name);
+            const line: SendCommand.AutoInitialize.Lines = .{
+                .line_idx = @intCast(line_idx),
+                .acceleration = @intCast(line_accelerations[line_idx]),
+                .speed = @intCast(line_speeds[line_idx]),
+            };
+            try lines.append(line);
+        }
+    } else {
+        for (0..line_names.len) |line_idx| {
+            const line: SendCommand.AutoInitialize.Lines = .{
+                .line_idx = @intCast(line_idx),
+                .acceleration = @intCast(line_accelerations[line_idx]),
+                .speed = @intCast(line_speeds[line_idx]),
+            };
+            try lines.append(line);
+        }
     }
-    // Line idx is used to determine the speed and acceleration
-    // Use the first line's speed and acceleration if line_id is not specified
-    const line_idx = if (line_id) |id| id - 1 else 0;
     var command_msg: SendCommand = SendCommand.init(fba_allocator);
     defer command_msg.deinit();
     command_msg = .{
         .command_kind = .{
             .auto_initialize = .{
-                .line_id = if (line_id) |id| @intCast(id) else null,
-                .acceleration = line_accelerations[line_idx],
-                .speed = line_speeds[line_idx],
+                .lines = lines,
             },
         },
     };
+    for (lines.items) |line| {
+        std.log.debug(
+            "idx: {}, speed: {}, acceleration: {}",
+            .{ line.line_idx, line.speed, line.acceleration },
+        );
+    }
     const encoded = try command_msg.encode(fba_allocator);
     defer fba_allocator.free(encoded);
     try sendMessageAndWaitReceived(command_msg);
@@ -3844,7 +3869,7 @@ fn parseResponse(msg: []const u8, a: std.mem.Allocator) !Response {
 
 /// Check whether the socket has event flag occurred. Timeout is in milliseconds
 /// unit.
-fn isSocketEventOccured(socket: network.Socket, event: i16, timeout: i32) !bool {
+fn isSocketEventOccurred(socket: network.Socket, event: i16, timeout: i32) !bool {
     const fd: std.posix.pollfd = .{
         .fd = socket.internal,
         .events = event,
@@ -3879,7 +3904,7 @@ fn isSocketEventOccured(socket: network.Socket, event: i16, timeout: i32) !bool 
 fn receive(socket: network.Socket, a: std.mem.Allocator) ![]const u8 {
     // Check if the socket can read without blocking.
     var buffer: [8192]u8 = undefined;
-    while (isSocketEventOccured(
+    while (isSocketEventOccurred(
         socket,
         std.posix.POLL.IN,
         0,
@@ -3888,7 +3913,7 @@ fn receive(socket: network.Socket, a: std.mem.Allocator) ![]const u8 {
         // may still receive some message from server. This message is no
         // longer valuable, thus ignored in the catch.
         command.checkCommandInterrupt() catch |e| {
-            if (isSocketEventOccured(
+            if (isSocketEventOccurred(
                 socket,
                 std.posix.POLL.IN,
                 500,
@@ -3927,7 +3952,7 @@ fn receive(socket: network.Socket, a: std.mem.Allocator) ![]const u8 {
 
 fn send(socket: network.Socket, msg: []const u8) !void {
     // check if the socket can write without blocking
-    while (isSocketEventOccured(
+    while (isSocketEventOccurred(
         socket,
         std.posix.POLL.OUT,
         0,
