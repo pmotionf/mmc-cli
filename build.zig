@@ -35,8 +35,6 @@ pub fn build(b: *std.Build) !void {
     const mmc_config = b.dependency("mmc_config", .{
         .target = target,
         .optimize = optimize,
-        .mdfunc = mdfunc_lib_path,
-        .mdfunc_mock = mdfunc_mock_build,
     });
 
     const build_zig_zon = b.createModule(.{
@@ -92,13 +90,6 @@ pub fn build(b: *std.Build) !void {
         .mdfunc_mock = true,
     });
 
-    const mmc_config_mock = b.dependency("mmc_config", .{
-        .target = target,
-        .optimize = optimize,
-        .mdfunc = mdfunc_lib_path,
-        .mdfunc_mock = true,
-    });
-
     const check_exe = b.addExecutable(.{
         .name = "mmc-cli",
         .root_source_file = b.path("src/main.zig"),
@@ -116,7 +107,7 @@ pub fn build(b: *std.Build) !void {
     }
     check_exe.root_module.addImport(
         "mmc_config",
-        mmc_config_mock.module("mmc-config"),
+        mmc_config.module("mmc-config"),
     );
     check_exe.root_module.addImport("build.zig.zon", build_zig_zon);
     const check = b.step("check", "Check if `mmc-cli` compiles");
@@ -140,7 +131,7 @@ pub fn build(b: *std.Build) !void {
     }
     unit_tests.root_module.addImport(
         "mmc_config",
-        mmc_config_mock.module("mmc-config"),
+        mmc_config.module("mmc-config"),
     );
     if (target.result.os.tag == .linux) {
         const soem = b.lazyDependency("soem", .{

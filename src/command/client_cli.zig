@@ -980,32 +980,28 @@ fn clientDisconnect(_: [][]const u8) !void {
 }
 
 fn clientAutoInitialize(params: [][]const u8) !void {
-    var line_id: usize = 0;
+    var line_id: ?usize = null;
     if (params[0].len != 0) {
         const line_name: []const u8 = params[0];
         line_id = try matchLine(line_names, line_name) + 1;
     }
-    if (main_socket) |s| {
-        var command_msg: SendCommand = SendCommand.init(fba_allocator);
-        defer command_msg.deinit();
-        command_msg = .{
-            .command_kind = .{
-                .auto_initialize = .{
-                    .line_id = if (line_id != 0)
-                        @intCast(line_id)
-                    else
-                        null,
-                },
+    // Line idx is used to determine the speed and acceleration
+    // Use the first line's speed and acceleration if line_id is not specified
+    const line_idx = if (line_id) |id| id - 1 else 0;
+    var command_msg: SendCommand = SendCommand.init(fba_allocator);
+    defer command_msg.deinit();
+    command_msg = .{
+        .command_kind = .{
+            .auto_initialize = .{
+                .line_id = if (line_id) |id| @intCast(id) else null,
+                .acceleration = line_accelerations[line_idx],
+                .speed = line_speeds[line_idx],
             },
-        };
-        const encoded = try command_msg.encode(fba_allocator);
-        defer fba_allocator.free(encoded);
-        std.log.debug(
-            "message: {s}",
-            .{@tagName(command_msg.command_kind.?)},
-        );
-        try send(s, encoded);
-    } else return error.ServerNotConnected;
+        },
+    };
+    const encoded = try command_msg.encode(fba_allocator);
+    defer fba_allocator.free(encoded);
+    try sendMessageAndWaitReceived(command_msg);
 }
 
 fn clientSetSpeed(params: [][]const u8) !void {
