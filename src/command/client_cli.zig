@@ -1225,12 +1225,9 @@ test parseRegisterX {
         .error_status = false,
         .remote_ready = false,
     };
-    const RegisterX = Response.RegisterX;
-    var response: RegisterX = RegisterX.init(std.testing.allocator);
-    response = std.mem.zeroInit(RegisterX, .{});
+    var response: Response = Response.init(std.testing.allocator);
     defer response.deinit();
-    // Copy the value of x to response
-    response = .{
+    const x_actual: Response.RegisterX = .{
         .cc_link_enabled = true,
         .command_ready = true,
         .command_received = false,
@@ -1287,6 +1284,7 @@ test parseRegisterX {
         .error_status = false,
         .remote_ready = false,
     };
+    response.response = .{ .x = x_actual };
     const encoded = try response.encode(std.testing.allocator);
     defer std.testing.allocator.free(encoded);
     try std.testing.expectEqual(
@@ -1379,12 +1377,10 @@ test parseRegisterY {
             .axis3 = false,
         },
     };
-    const RegisterY = Response.RegisterY;
-    var response: RegisterY = RegisterY.init(std.testing.allocator);
-    response = std.mem.zeroInit(RegisterY, .{});
+    var response: Response = Response.init(std.testing.allocator);
     defer response.deinit();
     // Copy the value of y to the response
-    response = .{
+    const y_actual: Response.RegisterY = .{
         .cc_link_enable = true,
         .start_command = false,
         .reset_command_received = false,
@@ -1406,6 +1402,7 @@ test parseRegisterY {
             .axis3 = false,
         },
     };
+    response.response = .{ .y = y_actual };
     const encoded = try response.encode(std.testing.allocator);
     defer std.testing.allocator.free(encoded);
     try std.testing.expectEqual(
@@ -1608,12 +1605,10 @@ test parseRegisterWr {
     //         },
     //     },
     // };
-    // const RegisterWr = Response.RegisterWr;
-    // var response: RegisterWr = RegisterWr.init(std.testing.allocator);
-    // response = std.mem.zeroInit(RegisterWr, .{});
+    // var response: Response = Response.init(std.testing.allocator);
     // defer response.deinit();
     // // Copy the value of wr to the response
-    // response = .{
+    // const wr_actual: Response.RegisterWr = .{
     //     .command_response = .CarrierAlreadyExists,
     //     .received_backward = .{
     //         .id = 1,
@@ -1667,6 +1662,7 @@ test parseRegisterWr {
     //         },
     //     },
     // };
+    // response.response = .{.wr = wr_actual};
     // const encoded = try response.encode(std.testing.allocator);
     // defer std.testing.allocator.free(encoded);
     // try std.testing.expectEqual(
@@ -1766,12 +1762,10 @@ test parseRegisterWw {
     //     @compileLog(field.name, field.type);
     // }
 
-    // const RegisterWw = Response.RegisterWw;
-    // var response: RegisterWw = RegisterWw.init(std.testing.allocator);
-    // response = std.mem.zeroInit(RegisterWw, .{});
+    // var response: Response = Response.init(std.testing.allocator);
     // defer response.deinit();
     // // Copy the value of wr to the response
-    // response = .{
+    // const ww_actual: Response.RegisterWw = .{
     //     .command = .PositionMoveCarrierAxis,
     //     .axis = 0,
     //     .carrier = .{
@@ -1784,6 +1778,7 @@ test parseRegisterWw {
     //         .target = .{ .u32 = 2 },
     //     },
     // };
+    // response.response = .{.ww = ww_actual};
     // const encoded = try response.encode(std.testing.allocator);
     // defer std.testing.allocator.free(encoded);
     // try std.testing.expectEqual(
