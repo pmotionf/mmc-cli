@@ -323,11 +323,13 @@ pub fn handler(ctx: *Prompt) void {
                                     ctx.history.buffer.len
                             ];
 
-                            if (std.mem.eql(
-                                u8,
-                                ctx.input,
-                                old[0..ctx.input.len],
-                            )) {
+                            if (ctx.input.len <= old.len and
+                                std.mem.eql(
+                                    u8,
+                                    ctx.input,
+                                    old[0..ctx.input.len],
+                                ))
+                            {
                                 ctx.history_offset = remaining;
                                 break;
                             }
