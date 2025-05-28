@@ -21,6 +21,22 @@ pub fn init() !void {
         .windows => {
             const console = @import("win32").system.console;
             const stdin = std.io.getStdIn().handle;
+
+            if (IsValidCodePage(65001) == 0) {
+                return error.Utf8CodePageNotInstalled;
+            }
+            // Set input/output codepages to UTF-8
+            if (console.SetConsoleOutputCP(65001) == 0) {
+                return std.os.windows.unexpectedError(
+                    std.os.windows.GetLastError(),
+                );
+            }
+            if (console.SetConsoleCP(65001) == 0) {
+                return std.os.windows.unexpectedError(
+                    std.os.windows.GetLastError(),
+                );
+            }
+
             var mode: console.CONSOLE_MODE = undefined;
             if (console.GetConsoleMode(stdin, &mode) == 0) {
                 return std.os.windows.unexpectedError(
@@ -69,3 +85,7 @@ const OriginalCanonicalContext = switch (builtin.os.tag) {
     .windows => @import("win32").system.console.CONSOLE_MODE,
     else => @compileError("unsupported OS"),
 };
+
+extern "kernel32" fn IsValidCodePage(
+    cp: std.os.windows.UINT,
+) callconv(.winapi) std.os.windows.BOOL;
