@@ -49,14 +49,16 @@ fn insert(self: *Prompt, b: u8) void {
     self.input = self.input_buffer[0 .. self.input.len + 1];
     self.cursor.raw += 1;
     self.cursor.visible += 1;
-    if (self.getHistoryItem()) |hist_item| {
+    if (self.getHistoryItem()) |hist_item| check_history: {
         // Cancel selection if input length exceeds history item length.
         if (self.input.len > hist_item.len) {
             self.history_offset = null;
+            break :check_history;
         }
         // Cancel selection if insert does not match.
         if (hist_item[self.input.len - 1] != b) {
             self.history_offset = null;
+            break :check_history;
         }
     }
 }
