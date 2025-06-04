@@ -1,6 +1,6 @@
 .{
     .name = .mmc_cli,
-    .version = "0.7.4",
+    .version = "0.8.0",
     .fingerprint = 0x392c74984291bf14,
     .minimum_zig_version = "0.15.0-dev.579+07a5efd07",
     .dependencies = .{
@@ -17,8 +17,8 @@
             .hash = "chrono-0.1.0-uVd76GvCAwAvWrHupKdlB_UrmfZHRuVP-P4Xi_G8hz3R",
         },
         .mmc_config = .{
-            .url = "https://github.com/pmotionf/mmc-config/archive/f742f13.tar.gz",
-            .hash = "mmc_config-0.1.1-DKyEyeH0AABlfQZrUmFQmCvjmgKxwQ6oSArtWoNuF9HY",
+            .url = "https://github.com/pmotionf/mmc-config/archive/2a890a0.tar.gz",
+            .hash = "mmc_config-0.1.2-DKyEyeH0AAC2HvQjGWq10djRKzlgKXOITRL_Nf9iK_6p",
         },
         .zigwin32 = .{
             .url = "https://github.com/marlersoft/zigwin32/archive/d21b419.tar.gz",
