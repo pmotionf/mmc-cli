@@ -2,9 +2,9 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const chrono = @import("chrono");
-const mmc = @import("mmc_config");
-const protobuf_msg = mmc.protobuf_msg;
-const protobuf = mmc.protobuf;
+const api = @import("mmc-api");
+const protobuf_msg = api.protobuf_msg;
+const protobuf = api.protobuf;
 const SendCommand = protobuf_msg.SendCommand;
 const Response = protobuf_msg.Response;
 const Direction = protobuf_msg.Direction;
@@ -284,12 +284,12 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Display all carrier IDs on specified line(s).",
         .long_description =
-        \\Scan the line, starting from the first axis, and print all recognized 
+        \\Scan the line, starting from the first axis, and print all recognized
         \\carrier IDs on the given line in the order of their first appearance.
         \\This command support to scan multiple lines at once by providing line
-        \\parameter with comma separator, e.g., "front,back,tr". If a result variable 
-        \\prefix is provided, store all carrier IDs in the variable with the 
-        \\variable name: prefix_[num], e.g., prefix_1 and prefix_2 if two carriers 
+        \\parameter with comma separator, e.g., "front,back,tr". If a result variable
+        \\prefix is provided, store all carrier IDs in the variable with the
+        \\variable name: prefix_[num], e.g., prefix_1 and prefix_2 if two carriers
         \\exist on the provided line(s).
         ,
         .execute = &clientCarrierID,
@@ -439,7 +439,7 @@ pub fn init(c: Config) !void {
         .short_description = "Initialize all carriers automatically.",
         .long_description =
         \\Isolate all unisolated carriers on the provided lines and move the
-        \\isolated carriers to a free space. If no line is provided, auto 
+        \\isolated carriers to a free space. If no line is provided, auto
         \\initialize all unisolated carriers for all lines. Multiple lines should
         \\be separated by comma, e.g. "AUTO_INITIALIZE front,back"
         ,
@@ -1161,7 +1161,7 @@ fn clientStationX(params: [][]const u8) !void {
     const axis_idx: Axis.Index.Line = @intCast(axis_id - 1);
     const x = try getRegister(line_idx, axis_idx, fba_allocator, .X);
     defer x.deinit();
-    _ = try mmc.nestedWrite("X", x, 0, std.io.getStdOut().writer());
+    _ = try api.nestedWrite("X", x, 0, std.io.getStdOut().writer());
 }
 
 fn clientStationY(params: [][]const u8) !void {
@@ -1174,7 +1174,7 @@ fn clientStationY(params: [][]const u8) !void {
     const axis_idx: Axis.Index.Line = @intCast(axis_id - 1);
     const y = try getRegister(line_idx, axis_idx, fba_allocator, .Y);
     defer y.deinit();
-    _ = try mmc.nestedWrite("Y", y, 0, std.io.getStdOut().writer());
+    _ = try api.nestedWrite("Y", y, 0, std.io.getStdOut().writer());
 }
 
 fn clientStationWr(params: [][]const u8) !void {
@@ -1187,7 +1187,7 @@ fn clientStationWr(params: [][]const u8) !void {
     const axis_idx: Axis.Index.Line = @intCast(axis_id - 1);
     const wr = try getRegister(line_idx, axis_idx, fba_allocator, .Wr);
     defer wr.deinit();
-    _ = try mmc.nestedWrite("Wr", wr, 0, std.io.getStdOut().writer());
+    _ = try api.nestedWrite("Wr", wr, 0, std.io.getStdOut().writer());
 }
 
 fn clientStationWw(params: [][]const u8) !void {
@@ -1200,7 +1200,7 @@ fn clientStationWw(params: [][]const u8) !void {
     const axis_idx: Axis.Index.Line = @intCast(axis_id - 1);
     const ww = try getRegister(line_idx, axis_idx, fba_allocator, .Ww);
     defer ww.deinit();
-    _ = try mmc.nestedWrite("Ww", ww, 0, std.io.getStdOut().writer());
+    _ = try api.nestedWrite("Ww", ww, 0, std.io.getStdOut().writer());
 }
 
 fn clientAxisCarrier(params: [][]const u8) !void {
@@ -2176,22 +2176,22 @@ fn clientWaitAxisEmpty(params: [][]const u8) !void {
             fba_allocator,
             .X,
         );
-        const carrier = mmc.getAxisInfo(
+        const carrier = api.getAxisInfo(
             Response.RegisterWr.Carrier.Description,
             wr.carrier.?,
             local_axis,
         );
-        const axis_alarms = mmc.getAxisInfo(
+        const axis_alarms = api.getAxisInfo(
             Response.RegisterX.HallAlarm.Side,
             x.hall_alarm.?,
             local_axis,
         );
-        const wait_push = mmc.getAxisInfo(
+        const wait_push = api.getAxisInfo(
             bool,
             x.wait_push_carrier.?,
             local_axis,
         );
-        const wait_pull = mmc.getAxisInfo(
+        const wait_pull = api.getAxisInfo(
             bool,
             x.wait_pull_carrier.?,
             local_axis,

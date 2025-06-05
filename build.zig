@@ -26,7 +26,7 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
-    const mmc_config = b.dependency("mmc_config", .{
+    const mmc_api = b.dependency("mmc_api", .{
         .target = target,
         .optimize = optimize,
     });
@@ -44,7 +44,7 @@ pub fn build(b: *std.Build) !void {
     });
     mod.addImport("network", network_dep.module("network"));
     mod.addImport("chrono", chrono.module("chrono"));
-    mod.addImport("mmc_config", mmc_config.module("mmc-config"));
+    mod.addImport("mmc-api", mmc_api.module("mmc-api"));
     mod.addImport("build.zig.zon", build_zig_zon);
     switch (target.result.os.tag) {
         .windows => {
@@ -114,10 +114,7 @@ pub fn build(b: *std.Build) !void {
             check_exe.root_module.addImport("mcl", dep.module("mcl"));
         }
     }
-    check_exe.root_module.addImport(
-        "mmc_config",
-        mmc_config.module("mmc-config"),
-    );
+    check_exe.root_module.addImport("mmc-api", mmc_api.module("mmc-api"));
     check_exe.root_module.addImport("build.zig.zon", build_zig_zon);
     const check = b.step("check", "Check if `mmc-cli` compiles");
     check.dependOn(&check_exe.step);
@@ -146,10 +143,7 @@ pub fn build(b: *std.Build) !void {
             unit_tests.root_module.addImport("mcl", dep.module("mcl"));
         }
     }
-    unit_tests.root_module.addImport(
-        "mmc_config",
-        mmc_config.module("mmc-config"),
-    );
+    unit_tests.root_module.addImport("mmc-api", mmc_api.module("mmc-api"));
     if (target.result.os.tag == .linux) {
         const soem = b.lazyDependency("soem", .{
             .target = target,
