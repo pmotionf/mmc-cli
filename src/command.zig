@@ -10,7 +10,10 @@ const main = @import("main.zig");
 const build = @import("build.zig.zon");
 
 // Command modules.
-const mcl = @import("command/mcl.zig");
+const mcl = if (builtin.target.os.tag == .windows)
+    @import("command/mcl.zig")
+else
+    void;
 const return_demo2 = @import("command/return_demo2.zig");
 const client_cli = @import("command/client_cli.zig");
 const mes07 = if (builtin.os.tag == .linux)
@@ -755,7 +758,10 @@ fn deinitModules() void {
         if (e.value.*) {
             switch (@intFromEnum(e.key)) {
                 inline 0...fields.len - 1 => |i| {
-                    @field(@This(), fields[i].name).deinit();
+                    const f_type = @typeInfo(@field(@This(), fields[i].name));
+                    if (comptime f_type != .void) {
+                        @field(@This(), fields[i].name).deinit();
+                    }
                 },
             }
         }
@@ -829,13 +835,16 @@ fn loadConfig(params: [][]const u8) !void {
     for (config.modules()) |module| {
         switch (@intFromEnum(module)) {
             inline 0...fields.len - 1 => |i| {
-                try @field(@This(), fields[i].name).init(
-                    @field(module, fields[i].name),
-                );
-                initialized_modules.set(
-                    @field(Config.Module, fields[i].name),
-                    true,
-                );
+                const f_type = @typeInfo(@field(@This(), fields[i].name));
+                if (comptime f_type != .void) {
+                    try @field(@This(), fields[i].name).init(
+                        @field(module, fields[i].name),
+                    );
+                    initialized_modules.set(
+                        @field(Config.Module, fields[i].name),
+                        true,
+                    );
+                }
             },
         }
     }
