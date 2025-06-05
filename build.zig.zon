@@ -11,6 +11,7 @@
         .mcl = .{
             .url = "https://github.com/pmotionf/mcl/archive/9ef10f5.tar.gz",
             .hash = "mcl-0.7.0-bTecRt6_AADvxJK_exUoWWXi11_2qz9Jzu9i1UhGB6ak",
+            .lazy = true,
         },
         .chrono = .{
             .url = "https://github.com/pmotionf/chrono/archive/620de75.tar.gz",

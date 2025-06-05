@@ -1,7 +1,12 @@
 const Config = @This();
 
+const builtin = @import("builtin");
 const std = @import("std");
-const MclConfig = @import("command/mcl.zig").Config;
+
+const MclConfig = if (builtin.target.os.tag == .windows)
+    @import("command/mcl.zig").Config
+else
+    void;
 const ReturnDemo2Config = @import("command/return_demo2.zig").Config;
 const ClientCliConfig = @import("command/client_cli.zig").Config;
 const Mes07Config = @import("command/mes07.zig").Config;

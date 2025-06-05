@@ -4,26 +4,20 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const mdfunc_lib_path = b.option(
+    const mdfunc_lib_path = if (target.result.os.tag == .windows) (b.option(
         []const u8,
         "mdfunc",
         "Specify the path to the MELSEC static library artifact.",
     ) orelse if (target.result.cpu.arch == .x86_64)
         "vendor/mdfunc/lib/x64/MdFunc32.lib"
     else
-        "vendor/mdfunc/lib/mdfunc32.lib";
-    const mdfunc_mock_build = b.option(
+        "vendor/mdfunc/lib/mdfunc32.lib") else "";
+    const mdfunc_mock_build = if (target.result.os.tag == .windows) (b.option(
         bool,
         "mdfunc_mock",
         "Enable building a mock version of the MELSEC data link library.",
-    ) orelse (target.result.os.tag != .windows);
+    ) orelse (target.result.os.tag != .windows)) else false;
 
-    const mcl = b.dependency("mcl", .{
-        .target = target,
-        .optimize = optimize,
-        .mdfunc = mdfunc_lib_path,
-        .mdfunc_mock = mdfunc_mock_build,
-    });
     const network_dep = b.dependency("network", .{
         .target = target,
         .optimize = optimize,
@@ -49,25 +43,39 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     mod.addImport("network", network_dep.module("network"));
-    mod.addImport("mcl", mcl.module("mcl"));
     mod.addImport("chrono", chrono.module("chrono"));
     mod.addImport("mmc_config", mmc_config.module("mmc-config"));
     mod.addImport("build.zig.zon", build_zig_zon);
-    if (target.result.os.tag == .windows) {
-        const zigwin32 = b.lazyDependency("zigwin32", .{});
-        if (zigwin32) |zwin32| {
-            mod.addImport("win32", zwin32.module("win32"));
-        }
-    }
-    if (target.result.os.tag == .linux) {
-        const soem = b.lazyDependency("soem", .{
-            .target = target,
-            .optimize = optimize,
-        });
-        if (soem) |dep| {
-            mod.linkLibrary(dep.artifact("soem"));
-            mod.addIncludePath(dep.path("include"));
-        }
+    switch (target.result.os.tag) {
+        .windows => {
+            const zigwin32 = b.lazyDependency("zigwin32", .{});
+            if (zigwin32) |zwin32| {
+                mod.addImport("win32", zwin32.module("win32"));
+            }
+
+            const mcl = b.lazyDependency("mcl", .{
+                .target = target,
+                .optimize = optimize,
+                .mdfunc = mdfunc_lib_path,
+                .mdfunc_mock = mdfunc_mock_build,
+            });
+            if (mcl) |dep| {
+                mod.addImport("mcl", dep.module("mcl"));
+            }
+        },
+        .linux => {
+            const soem = b.lazyDependency("soem", .{
+                .target = target,
+                .optimize = optimize,
+            });
+            if (soem) |dep| {
+                mod.linkLibrary(dep.artifact("soem"));
+                mod.addIncludePath(dep.path("include"));
+            }
+        },
+        else => {
+            return error.UnsupportedOs;
+        },
     }
 
     const exe = b.addExecutable(.{ .name = "mmc-cli", .root_module = mod });
@@ -83,13 +91,6 @@ pub fn build(b: *std.Build) !void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    const mcl_mock = b.dependency("mcl", .{
-        .target = target,
-        .optimize = optimize,
-        .mdfunc = mdfunc_lib_path,
-        .mdfunc_mock = true,
-    });
-
     const check_exe = b.addExecutable(.{
         .name = "mmc-cli",
         .root_source_file = b.path("src/main.zig"),
@@ -97,12 +98,20 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     check_exe.root_module.addImport("network", network_dep.module("network"));
-    check_exe.root_module.addImport("mcl", mcl_mock.module("mcl"));
     check_exe.root_module.addImport("chrono", chrono.module("chrono"));
     if (target.result.os.tag == .windows) {
         const zigwin32 = b.lazyDependency("zigwin32", .{});
         if (zigwin32) |zwin32| {
             check_exe.root_module.addImport("win32", zwin32.module("win32"));
+        }
+        const mcl_mock = b.lazyDependency("mcl", .{
+            .target = target,
+            .optimize = optimize,
+            .mdfunc = mdfunc_lib_path,
+            .mdfunc_mock = true,
+        });
+        if (mcl_mock) |dep| {
+            check_exe.root_module.addImport("mcl", dep.module("mcl"));
         }
     }
     check_exe.root_module.addImport(
@@ -121,12 +130,20 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     unit_tests.root_module.addImport("network", network_dep.module("network"));
-    unit_tests.root_module.addImport("mcl", mcl_mock.module("mcl"));
     unit_tests.root_module.addImport("chrono", chrono.module("chrono"));
     if (target.result.os.tag == .windows) {
         const zigwin32 = b.lazyDependency("zigwin32", .{});
         if (zigwin32) |zwin32| {
             unit_tests.root_module.addImport("win32", zwin32.module("win32"));
+        }
+        const mcl_mock = b.lazyDependency("mcl", .{
+            .target = target,
+            .optimize = optimize,
+            .mdfunc = mdfunc_lib_path,
+            .mdfunc_mock = true,
+        });
+        if (mcl_mock) |dep| {
+            unit_tests.root_module.addImport("mcl", dep.module("mcl"));
         }
     }
     unit_tests.root_module.addImport(
