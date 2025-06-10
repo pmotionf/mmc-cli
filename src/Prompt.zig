@@ -6,6 +6,7 @@ const std = @import("std");
 
 const CircularBuffer = @import("circular_buffer.zig").CircularBuffer;
 const command = @import("command.zig");
+const io = @import("io.zig");
 
 const max_input_size = std.fs.max_path_bytes + 512;
 const max_history = 1024;
@@ -130,7 +131,9 @@ pub fn handler(ctx: *Prompt) void {
     ctx.clear();
 
     const stdin = std.io.getStdIn().reader();
-    const stdout = std.io.getStdOut().writer();
+
+    var buffered_out = std.io.bufferedWriter(std.io.getStdOut().writer());
+    const stdout = buffered_out.writer();
 
     var sequence_buffer: [4]u8 = undefined;
     var ctrl_sequence: []u8 = &.{};
@@ -144,6 +147,7 @@ pub fn handler(ctx: *Prompt) void {
             prev_disable = true;
             continue :main;
         }
+        defer buffered_out.flush() catch {};
 
         // Print prompt once on enable.
         if (prev_disable) {
@@ -252,6 +256,7 @@ pub fn handler(ctx: *Prompt) void {
                 ctrl_sequence = &.{};
                 ctx.clear();
             },
+            // Newline
             '\n' => {
                 ctrl_sequence = &.{};
                 if (ctx.history_offset) |offset| {
@@ -266,10 +271,16 @@ pub fn handler(ctx: *Prompt) void {
                 if (ctx.input.len > 0) {
                     ctx.disable.store(true, .monotonic);
                     prev_disable = true;
-                    stdout.print(
-                        "\x1B[{d}G\n",
-                        .{ctx.input.len},
+
+                    // Print newline at end of prompt before command start.
+                    ctx.cursor.moveEnd();
+                    io.cursor.moveColumn(
+                        stdout.any(),
+                        ctx.cursor.visible + 1,
                     ) catch continue :main;
+                    stdout.writeByte('\n') catch continue :main;
+                    buffered_out.flush() catch continue :main;
+
                     command.enqueue(ctx.input) catch continue :main;
                     const buf_slice = ctx.history_buf[
                         ctx.history.getWriteIndex()
@@ -443,10 +454,11 @@ pub fn handler(ctx: *Prompt) void {
                     const fragment = ctx.input[start..i];
                     for (command.registry.values()) |com| {
                         if (std.ascii.eqlIgnoreCase(com.name, fragment)) {
-                            stdout.print(
-                                "\x1B[0;32m{s}\x1b[0m",
-                                .{fragment},
-                            ) catch continue :main;
+                            io.style.set(stdout.any(), .{
+                                .fg = .{ .named = .green },
+                            }) catch continue :main;
+                            defer io.style.reset(stdout.any()) catch {};
+                            stdout.writeAll(fragment) catch continue :main;
                             break;
                         }
                     } else {
@@ -457,10 +469,12 @@ pub fn handler(ctx: *Prompt) void {
                                 var_entry.key_ptr.*,
                                 fragment,
                             )) {
-                                stdout.print(
-                                    "\x1B[0;35m{s}\x1b[0m",
-                                    .{fragment},
-                                ) catch continue :main;
+                                io.style.set(stdout.any(), .{
+                                    .fg = .{ .named = .magenta },
+                                }) catch continue :main;
+                                defer io.style.reset(stdout.any()) catch {};
+                                stdout.writeAll(fragment) catch
+                                    continue :main;
                                 break;
                             }
                         } else {
@@ -477,20 +491,22 @@ pub fn handler(ctx: *Prompt) void {
             const fragment = ctx.input[start..];
             for (command.registry.values()) |com| {
                 if (std.ascii.eqlIgnoreCase(com.name, fragment)) {
-                    stdout.print(
-                        "\x1B[0;32m{s}\x1b[0m",
-                        .{fragment},
-                    ) catch continue :main;
+                    io.style.set(stdout.any(), .{
+                        .fg = .{ .named = .green },
+                    }) catch continue :main;
+                    defer io.style.reset(stdout.any()) catch {};
+                    stdout.writeAll(fragment) catch continue :main;
                     break;
                 }
             } else {
                 var it = command.variables.iterator();
                 while (it.next()) |var_entry| {
                     if (std.mem.eql(u8, var_entry.key_ptr.*, fragment)) {
-                        stdout.print(
-                            "\x1B[0;35m{s}\x1b[0m",
-                            .{fragment},
-                        ) catch continue :main;
+                        io.style.set(stdout.any(), .{
+                            .fg = .{ .named = .magenta },
+                        }) catch continue :main;
+                        defer io.style.reset(stdout.any()) catch {};
+                        stdout.writeAll(fragment) catch continue :main;
                         break;
                     }
                 } else {
@@ -505,18 +521,18 @@ pub fn handler(ctx: *Prompt) void {
                 ((ctx.history.head) + offset - 1) % ctx.history.buffer.len
             ];
             if (hist_item.len > ctx.input.len) {
-                stdout.print(
-                    "\x1B[0;30;47m{s}\x1B[0m",
-                    .{hist_item[ctx.input.len..]},
-                ) catch continue :main;
+                io.style.set(stdout.any(), .{
+                    .fg = .{ .lut = .grayscale(12) },
+                    .underline = true,
+                }) catch continue :main;
+                defer io.style.reset(stdout.any()) catch {};
+                stdout.writeAll(hist_item[ctx.input.len..]) catch
+                    continue :main;
             }
         }
 
-        // Print cursor
-        stdout.print(
-            "\x1B[{d}G",
-            .{ctx.cursor.visible + 1},
-        ) catch continue :main;
+        io.cursor.moveColumn(stdout.any(), ctx.cursor.visible + 1) catch
+            continue :main;
     }
 }
 
