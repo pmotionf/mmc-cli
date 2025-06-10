@@ -152,10 +152,10 @@ pub fn handler(ctx: *Prompt) void {
         // Print prompt once on enable.
         if (prev_disable) {
             std.time.sleep(std.time.ns_per_ms * 10);
-            stdout.print(
+            stdout.writeAll(
                 "Please enter a command (HELP for info):\n",
-                .{},
             ) catch continue :main;
+            buffered_out.flush() catch continue :main;
         }
         prev_disable = false;
 
