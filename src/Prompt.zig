@@ -265,6 +265,18 @@ pub fn handler(ctx: *Prompt) void {
                                     ctx.cursor.moveEnd();
                                 } else {
                                     ctx.cursor.moveRight();
+                                    if (key_event.modifiers.ctrl) {
+                                        while (!ctx.cursor.isAtEnd() and
+                                            !std.mem.containsAtLeastScalar(
+                                                u8,
+                                                separators,
+                                                1,
+                                                ctx.input[ctx.cursor.raw],
+                                            ))
+                                        {
+                                            ctx.cursor.moveRight();
+                                        }
+                                    }
                                 }
                             },
                             .arrow_down => {
@@ -294,6 +306,18 @@ pub fn handler(ctx: *Prompt) void {
                             },
                             .arrow_left => {
                                 ctx.cursor.moveLeft();
+                                if (key_event.modifiers.ctrl) {
+                                    while (ctx.cursor.raw > 0 and
+                                        !std.mem.containsAtLeastScalar(
+                                            u8,
+                                            separators,
+                                            1,
+                                            ctx.input[ctx.cursor.raw],
+                                        ))
+                                    {
+                                        ctx.cursor.moveLeft();
+                                    }
+                                }
                             },
                             else => {},
                         }
