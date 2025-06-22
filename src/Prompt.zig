@@ -167,6 +167,18 @@ pub fn handler(ctx: *Prompt) void {
                             },
                             .backspace => {
                                 ctx.backspace();
+                                if (key_event.modifiers.ctrl) {
+                                    while (ctx.cursor.raw > 0 and
+                                        !std.mem.containsAtLeastScalar(
+                                            u8,
+                                            separators,
+                                            1,
+                                            ctx.input[ctx.cursor.raw - 1],
+                                        ))
+                                    {
+                                        ctx.backspace();
+                                    }
+                                }
                             },
                             .delete => {
                                 if (!ctx.cursor.isAtEnd()) {

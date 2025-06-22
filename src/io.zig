@@ -615,6 +615,10 @@ pub const event = struct {
                     result.key.value.codepoint.buffer[0..1];
                 result.key.modifiers.ctrl = true;
             },
+            '\x08' => {
+                result = .initKeyControl(.backspace);
+                result.key.modifiers.ctrl = true;
+            },
             '\x09' => result = .initKeyControl(.tab),
             // Ctrl-Enter
             '\x0A' => {
