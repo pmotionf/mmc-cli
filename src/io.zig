@@ -701,6 +701,7 @@ pub const Event = union(enum) {
         modifiers: packed struct {
             ctrl: bool = false,
             alt: bool = false,
+            shift: bool = false,
         } = .{},
 
         pub const Control = enum(u21) {
@@ -771,6 +772,10 @@ const csi_sequences: std.StaticStringMap(Event) = .initComptime(
         .{ "D", Event{ .key = .{ .value = .{ .control = .arrow_left } } } },
         .{ "H", Event{ .key = .{ .value = .{ .control = .home } } } },
         .{ "F", Event{ .key = .{ .value = .{ .control = .end } } } },
+        .{ "Z", Event{ .key = .{
+            .value = .{ .control = .tab },
+            .modifiers = .{ .shift = true },
+        } } },
         .{ "1;5A", Event{ .key = .{
             .value = .{ .control = .arrow_up },
             .modifiers = .{ .ctrl = true },
