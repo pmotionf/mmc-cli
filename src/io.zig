@@ -1,4 +1,4 @@
-//! This module contains the terminal input/outpt interface that should be
+//! This module contains the terminal input/output interface that should be
 //! used across the program.
 const builtin = @import("builtin");
 const std = @import("std");
@@ -14,8 +14,19 @@ pub fn init() !void {
             var attr = try std.posix.tcgetattr(stdin);
             original_canonical_context = attr;
 
+            // Disable auto-translate from '\r' (0x0D) to '\n' (0x0A)
+            // attr.lflag.ICRNL = false;
+            // Disable special Ctrl-V handling.
+            attr.lflag.IEXTEN = false;
+            // Disable software flow control (Ctrl-S and Ctrl-Q) handling.
+            // attr.lflag.IXON = false;
+            // Ensure that Ctrl-C (and Ctrl-Z) are properly sent as signals.
+            attr.lflag.ISIG = true;
+
+            // Disable canonical mode.
             attr.lflag.ICANON = false;
             attr.lflag.ECHO = false;
+
             try std.posix.tcsetattr(stdin, .NOW, attr);
         },
         .windows => {
@@ -256,6 +267,467 @@ pub const cursor = struct {
     }
 };
 
+pub const event = struct {
+    /// Poll for input events in the terminal.
+    pub fn poll() !usize {
+        switch (comptime builtin.os.tag) {
+            .linux => {
+                var fds: [1]std.posix.pollfd = .{.{
+                    .fd = std.io.getStdIn().handle,
+                    .events = std.posix.POLL.IN,
+                    .revents = undefined,
+                }};
+                return std.posix.poll(&fds, 0);
+            },
+            .windows => {
+                const console = @import("win32").system.console;
+                var num_events: u32 = undefined;
+                if (console.GetNumberOfConsoleInputEvents(
+                    std.io.getStdIn().handle,
+                    &num_events,
+                ) == 0) {
+                    return std.os.windows.unexpectedError(
+                        std.os.windows.GetLastError(),
+                    );
+                }
+                return num_events;
+            },
+            else => @compileError("unsupported OS"),
+        }
+    }
+
+    fn readByte() !u8 {
+        switch (comptime builtin.os.tag) {
+            .linux => {
+                const stdin = std.io.getStdIn().reader();
+                return stdin.readByte();
+            },
+            .windows => {
+                const console = @import("win32").system.console;
+                var buf: [1]u8 = undefined;
+                var chars_read: u32 = 0;
+                if (console.ReadConsoleA(
+                    std.io.getStdIn().handle,
+                    &buf,
+                    1,
+                    &chars_read,
+                    null,
+                ) == 0) {
+                    return std.os.windows.unexpectedError(
+                        std.os.windows.GetLastError(),
+                    );
+                }
+                if (chars_read == 0) return error.EndOfStream;
+                return buf[0];
+            },
+            else => @compileError("unsupported OS"),
+        }
+    }
+
+    fn pollByte() !bool {
+        switch (comptime builtin.target.os.tag) {
+            .linux => {
+                var fds: [1]std.posix.pollfd = .{.{
+                    .fd = std.io.getStdIn().handle,
+                    .events = std.posix.POLL.IN,
+                    .revents = undefined,
+                }};
+                return try std.posix.poll(&fds, 0) > 0;
+            },
+            .windows => {
+                const threading = @import("win32").system.threading;
+                const stdin_handle = std.io.getStdIn().handle;
+                return threading.WaitForSingleObject(
+                    stdin_handle,
+                    0,
+                ) == std.os.windows.WAIT_OBJECT_0;
+            },
+            else => @compileError("unsupported OS"),
+        }
+    }
+
+    /// Read event from terminal input buffer.
+    pub fn read(options: struct {
+        /// Nanosecond timeout between bytes in a sequence. Null is instant
+        /// timeout (no waiting), 0 is infinite timeout.
+        sequence_timeout: ?u64 = std.time.ns_per_ms * 10,
+        /// Nanosecond timeout to detect whether an escape key is pressed,
+        /// versus whether it is the start of an escape sequence. 0 is instant
+        /// timeout (no waiting).
+        escape_timeout: u64 = std.time.ns_per_ms * 10,
+    }) !Event {
+        const byte = try readByte();
+        const utf8_seq_len = std.unicode.utf8ByteSequenceLength(byte) catch 0;
+        var result: Event = .{ .key = undefined };
+
+        var timer = std.time.Timer.start() catch unreachable;
+
+        // Handle UTF-8 codepoint sequence.
+        if (utf8_seq_len > 1) {
+            result = .initKeyCodepointEmpty();
+            result.key.value.codepoint.buffer[0] = byte;
+            result.key.value.codepoint.sequence =
+                result.key.value.codepoint.buffer[0..1];
+
+            while (result.key.value.codepoint.sequence.len < utf8_seq_len) {
+                if (options.sequence_timeout) |seq_timeout| {
+                    if (seq_timeout == 0) {
+                        result.key.value.codepoint.buffer[
+                            result.key.value.codepoint.sequence.len
+                        ] = try readByte();
+                        result.key.value.codepoint.sequence.len += 1;
+                    } else {
+                        timer.reset();
+                        while (timer.read() < seq_timeout) {
+                            if (try pollByte()) {
+                                result.key.value.codepoint.buffer[
+                                    result.key.value.codepoint.sequence.len
+                                ] = try readByte();
+                                result.key.value.codepoint.sequence.len += 1;
+                                break;
+                            }
+                        } else {
+                            return error.IncompleteCodepoint;
+                        }
+                    }
+                } else {
+                    if (try pollByte()) {
+                        result.key.value.codepoint.buffer[
+                            result.key.value.codepoint.sequence.len
+                        ] = try readByte();
+                        result.key.value.codepoint.sequence.len += 1;
+                    } else {
+                        return error.IncompleteCodepoint;
+                    }
+                }
+            }
+            return result;
+        }
+
+        parse: switch (byte) {
+            // Potentially escape sequence, or just Escape.
+            '\x1B' => {
+                if (options.escape_timeout > 0) {
+                    timer.reset();
+                    while (timer.read() < options.escape_timeout) {
+                        if (try pollByte()) break;
+                    } else {
+                        result = .initKeyControl(.escape);
+                        break :parse;
+                    }
+                } else if (!(try pollByte())) {
+                    result = .initKeyControl(.escape);
+                    break :parse;
+                }
+
+                // Check for '[' after escape byte
+                const next = try readByte();
+                if (next == '[') continue :parse '\x9B';
+
+                var seq_buf: [escape_sequences.max_len]u8 = undefined;
+                seq_buf[0] = next;
+                var seq: []u8 = seq_buf[0..1];
+                if (escape_sequences.get(seq)) |ev| {
+                    result = ev;
+                    break :parse;
+                }
+
+                if (options.sequence_timeout) |seq_timeout| {
+                    if (seq_timeout == 0) {
+                        while (seq.len < seq_buf.len) {
+                            seq_buf[seq.len] = try readByte();
+                            seq.len += 1;
+                            // Eager match sequence
+                            if (escape_sequences.get(seq)) |ev| {
+                                result = ev;
+                                break :parse;
+                            }
+                        }
+                        if (escape_sequences.get(seq)) |ev| {
+                            result = ev;
+                            break :parse;
+                        } else {
+                            return error.UnknownEscapeSequence;
+                        }
+                    } else {
+                        while (seq.len < seq_buf.len) {
+                            timer.reset();
+                            while (timer.read() < seq_timeout) {
+                                if (try pollByte()) {
+                                    break;
+                                }
+                            } else {
+                                return error.IncompleteEscapeSequence;
+                            }
+                            seq_buf[seq.len] = try readByte();
+                            seq.len += 1;
+                            // Eager match sequence
+                            if (escape_sequences.get(seq)) |ev| {
+                                result = ev;
+                                break :parse;
+                            }
+                        }
+                        if (escape_sequences.get(seq)) |ev| {
+                            result = ev;
+                            break :parse;
+                        } else {
+                            return error.UnknownEscapeSequence;
+                        }
+                    }
+                } else {
+                    while (seq.len < seq_buf.len) {
+                        if (!(try pollByte())) {
+                            return error.IncompleteEscapeSequence;
+                        }
+                        seq_buf[seq.len] = try readByte();
+                        seq.len += 1;
+                        // Eager match sequence
+                        if (escape_sequences.get(seq)) |ev| {
+                            result = ev;
+                            break :parse;
+                        }
+                    }
+                    if (escape_sequences.get(seq)) |ev| {
+                        result = ev;
+                        break :parse;
+                    } else {
+                        return error.UnknownEscapeSequence;
+                    }
+                }
+            },
+            // CSI escape sequence.
+            '\x9B' => {
+                var seq_buf: [csi_sequences.max_len]u8 = undefined;
+                var seq: []u8 = seq_buf[0..0];
+                if (options.sequence_timeout) |seq_timeout| {
+                    if (seq_timeout == 0) {
+                        while (seq.len < seq_buf.len) {
+                            seq_buf[seq.len] = try readByte();
+                            seq.len += 1;
+                            // Eager match sequence
+                            if (csi_sequences.get(seq)) |ev| {
+                                result = ev;
+                                break :parse;
+                            }
+                        }
+                        if (csi_sequences.get(seq)) |ev| {
+                            result = ev;
+                            break :parse;
+                        } else {
+                            return error.UnknownCsiSequence;
+                        }
+                    } else {
+                        while (seq.len < seq_buf.len) {
+                            timer.reset();
+                            while (timer.read() < seq_timeout) {
+                                if (try pollByte()) {
+                                    break;
+                                }
+                            } else {
+                                std.log.debug(
+                                    "Incomplete CSI sequence {s}",
+                                    .{seq},
+                                );
+                                return error.IncompleteCsiSequence;
+                            }
+                            seq_buf[seq.len] = try readByte();
+                            seq.len += 1;
+                            // Eager match sequence
+                            if (csi_sequences.get(seq)) |ev| {
+                                result = ev;
+                                break :parse;
+                            }
+                        }
+                        if (csi_sequences.get(seq)) |ev| {
+                            result = ev;
+                            break :parse;
+                        } else {
+                            std.log.debug(
+                                "Unknown CSI sequence {s}",
+                                .{seq},
+                            );
+                            return error.UnknownCsiSequence;
+                        }
+                    }
+                } else {
+                    while (seq.len < seq_buf.len) {
+                        if (!(try pollByte())) {
+                            return error.IncompleteCsiSequence;
+                        }
+                        seq_buf[seq.len] = try readByte();
+                        seq.len += 1;
+                        // Eager match sequence
+                        if (csi_sequences.get(seq)) |ev| {
+                            result = ev;
+                            break :parse;
+                        }
+                    }
+                    if (csi_sequences.get(seq)) |ev| {
+                        result = ev;
+                        break :parse;
+                    } else {
+                        return error.UnknownCsiSequence;
+                    }
+                }
+            },
+
+            '\x00' => switch (comptime builtin.os.tag) {
+                .linux => {},
+                .windows => {
+                    result = .initKeyCodepointEmpty();
+                    result.key.value.codepoint.buffer[0] = ' ';
+                    result.key.value.codepoint.sequence =
+                        result.key.value.codepoint.buffer[0..1];
+                    result.key.modifiers.ctrl = true;
+                },
+                else => @compileError("unsupported OS"),
+            },
+
+            // Ctrl-A
+            '\x01' => {
+                result = .initKeyCodepointEmpty();
+                result.key.value.codepoint.buffer[0] = 'a';
+                result.key.value.codepoint.sequence =
+                    result.key.value.codepoint.buffer[0..1];
+                result.key.modifiers.ctrl = true;
+            },
+            // Ctrl-B
+            '\x02' => {
+                result = .initKeyCodepointEmpty();
+                result.key.value.codepoint.buffer[0] = 'b';
+                result.key.value.codepoint.sequence =
+                    result.key.value.codepoint.buffer[0..1];
+                result.key.modifiers.ctrl = true;
+            },
+            // Ctrl-C
+            '\x03' => {
+                result = .initKeyCodepointEmpty();
+                result.key.value.codepoint.buffer[0] = 'c';
+                result.key.value.codepoint.sequence =
+                    result.key.value.codepoint.buffer[0..1];
+                result.key.modifiers.ctrl = true;
+            },
+            // Ctrl-D
+            '\x04' => {
+                result = .initKeyCodepointEmpty();
+                result.key.value.codepoint.buffer[0] = 'd';
+                result.key.value.codepoint.sequence =
+                    result.key.value.codepoint.buffer[0..1];
+                result.key.modifiers.ctrl = true;
+            },
+            '\x09' => result = .initKeyControl(.tab),
+            // Ctrl-Enter
+            '\x0A' => {
+                result = .initKeyControl(.enter);
+                result.key.modifiers.ctrl = true;
+            },
+            '\x0D' => result = .initKeyControl(.enter),
+            // Ctrl-O
+            '\x0F' => {
+                result = .initKeyCodepointEmpty();
+                result.key.value.codepoint.buffer[0] = 'o';
+                result.key.value.codepoint.sequence =
+                    result.key.value.codepoint.buffer[0..1];
+                result.key.modifiers.ctrl = true;
+            },
+            // Ctrl-Q
+            '\x11' => {
+                result = .initKeyCodepointEmpty();
+                result.key.value.codepoint.buffer[0] = 'q';
+                result.key.value.codepoint.sequence =
+                    result.key.value.codepoint.buffer[0..1];
+                result.key.modifiers.ctrl = true;
+            },
+            // Ctrl-S
+            '\x13' => {
+                result = .initKeyCodepointEmpty();
+                result.key.value.codepoint.buffer[0] = 's';
+                result.key.value.codepoint.sequence =
+                    result.key.value.codepoint.buffer[0..1];
+                result.key.modifiers.ctrl = true;
+            },
+            // Ctrl-V
+            '\x16' => {
+                result = .initKeyCodepointEmpty();
+                result.key.value.codepoint.buffer[0] = 'v';
+                result.key.value.codepoint.sequence =
+                    result.key.value.codepoint.buffer[0..1];
+                result.key.modifiers.ctrl = true;
+            },
+            // Ctrl-Z
+            '\x1A' => {
+                result = .initKeyCodepointEmpty();
+                result.key.value.codepoint.buffer[0] = 'z';
+                result.key.value.codepoint.sequence =
+                    result.key.value.codepoint.buffer[0..1];
+                result.key.modifiers.ctrl = true;
+            },
+
+            '\x7F' => result = .initKeyControl(.backspace),
+
+            else => {
+                result = .initKeyCodepointEmpty();
+                result.key.value.codepoint.buffer[0] = byte;
+                result.key.value.codepoint.sequence =
+                    result.key.value.codepoint.buffer[0..1];
+            },
+        }
+        return result;
+    }
+};
+
+pub const Event = union(enum) {
+    key: Key,
+    mouse: Mouse,
+
+    /// Initializes key event empty codepoint.
+    pub fn initKeyCodepointEmpty() Event {
+        return .{ .key = .{ .value = .{ .codepoint = .{} } } };
+    }
+
+    /// Initializes control key event.
+    pub fn initKeyControl(ctrl: Key.Control) Event {
+        return .{ .key = .{ .value = .{ .control = ctrl } } };
+    }
+
+    pub const Key = struct {
+        value: union(enum) {
+            codepoint: struct {
+                sequence: []u8 = &.{},
+                buffer: [4]u8 = undefined,
+            },
+            control: Control,
+        },
+        modifiers: packed struct {
+            ctrl: bool = false,
+            alt: bool = false,
+        } = .{},
+
+        pub const Control = enum(u21) {
+            arrow_up,
+            arrow_down,
+            arrow_right,
+            arrow_left,
+            home,
+            end,
+            backspace,
+            delete,
+            insert,
+            pause,
+            escape,
+            page_up,
+            page_down,
+            tab,
+            enter,
+        };
+    };
+
+    pub const Mouse = packed struct {
+        // TODO: Support terminal mouse events. Should be done after
+        // implementing incrementally detected support for Kitty protocol.
+    };
+};
+
 const OriginalCanonicalContext = switch (builtin.os.tag) {
     .linux => std.os.linux.termios,
     .windows => @import("win32").system.console.CONSOLE_MODE,
@@ -265,3 +737,55 @@ const OriginalCanonicalContext = switch (builtin.os.tag) {
 extern "kernel32" fn IsValidCodePage(
     cp: std.os.windows.UINT,
 ) callconv(.winapi) std.os.windows.BOOL;
+
+/// Terminal input escape sequences.
+const escape_sequences: std.StaticStringMap(Event) = .initComptime(
+    .{
+        .{ "OA", Event{ .key = .{ .value = .{ .control = .arrow_up } } } },
+        .{ "OB", Event{ .key = .{ .value = .{ .control = .arrow_down } } } },
+        .{ "OC", Event{ .key = .{ .value = .{ .control = .arrow_right } } } },
+        .{ "OD", Event{ .key = .{ .value = .{ .control = .arrow_left } } } },
+        .{ "OH", Event{ .key = .{ .value = .{ .control = .home } } } },
+        .{ "OF", Event{ .key = .{ .value = .{ .control = .end } } } },
+    } ++ switch (builtin.target.os.tag) {
+        .windows => .{},
+        .linux => .{},
+        else => @compileError("unsupported OS"),
+    },
+);
+
+/// Terminal input CSI sequences.
+const csi_sequences: std.StaticStringMap(Event) = .initComptime(
+    .{
+        .{ "1~", Event{ .key = .{ .value = .{ .control = .home } } } },
+        .{ "2~", Event{ .key = .{ .value = .{ .control = .insert } } } },
+        .{ "3~", Event{ .key = .{ .value = .{ .control = .delete } } } },
+        .{ "4~", Event{ .key = .{ .value = .{ .control = .end } } } },
+        .{ "5~", Event{ .key = .{ .value = .{ .control = .page_up } } } },
+        .{ "6~", Event{ .key = .{ .value = .{ .control = .page_down } } } },
+        .{ "7~", Event{ .key = .{ .value = .{ .control = .home } } } },
+        .{ "8~", Event{ .key = .{ .value = .{ .control = .end } } } },
+        .{ "A", Event{ .key = .{ .value = .{ .control = .arrow_up } } } },
+        .{ "B", Event{ .key = .{ .value = .{ .control = .arrow_down } } } },
+        .{ "C", Event{ .key = .{ .value = .{ .control = .arrow_right } } } },
+        .{ "D", Event{ .key = .{ .value = .{ .control = .arrow_left } } } },
+        .{ "H", Event{ .key = .{ .value = .{ .control = .home } } } },
+        .{ "F", Event{ .key = .{ .value = .{ .control = .end } } } },
+        .{ "1;5A", Event{ .key = .{
+            .value = .{ .control = .arrow_up },
+            .modifiers = .{ .ctrl = true },
+        } } },
+        .{ "1;5B", Event{ .key = .{
+            .value = .{ .control = .arrow_down },
+            .modifiers = .{ .ctrl = true },
+        } } },
+        .{ "1;5C", Event{ .key = .{
+            .value = .{ .control = .arrow_right },
+            .modifiers = .{ .ctrl = true },
+        } } },
+        .{ "1;5D", Event{ .key = .{
+            .value = .{ .control = .arrow_left },
+            .modifiers = .{ .ctrl = true },
+        } } },
+    },
+);

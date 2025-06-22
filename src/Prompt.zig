@@ -130,16 +130,8 @@ pub fn handler(ctx: *Prompt) void {
     ctx.history.clearRetainingCapacity();
     ctx.clear();
 
-    const stdin = std.io.getStdIn().reader();
-
     var buffered_out = std.io.bufferedWriter(std.io.getStdOut().writer());
     const stdout = buffered_out.writer();
-
-    var sequence_buffer: [4]u8 = undefined;
-    var ctrl_sequence: []u8 = &.{};
-    var unicode_sequence: []u8 = &.{};
-
-    var timer = std.time.Timer.start() catch unreachable;
 
     var prev_disable: bool = true;
     main: while (!ctx.close.load(.monotonic)) {
@@ -159,287 +151,171 @@ pub fn handler(ctx: *Prompt) void {
         }
         prev_disable = false;
 
-        const b_raw: ?u8 = switch (comptime builtin.os.tag) {
-            .linux => b: {
-                var fds: [1]std.posix.pollfd =
-                    .{.{
-                        .fd = std.io.getStdIn().handle,
-                        .events = std.posix.POLL.IN,
-                        .revents = undefined,
-                    }};
-                if (std.posix.poll(&fds, 0) catch continue :main > 0) {
-                    break :b stdin.readByte() catch continue :main;
-                } else {
-                    break :b null;
-                }
-            },
-            .windows => b: {
-                const threading = @import("win32").system.threading;
-                const stdin_handle = std.io.getStdIn().handle;
-                if (threading.WaitForSingleObject(
-                    stdin_handle,
-                    0,
-                ) == std.os.windows.WAIT_OBJECT_0) {
-                    const console = @import("win32").system.console;
-                    var buf: [1]u8 = undefined;
-                    var chars_read: u32 = 0;
-                    if (console.ReadConsoleA(
-                        stdin_handle,
-                        &buf,
-                        1,
-                        &chars_read,
-                        null,
-                    ) == 0) {
-                        continue :main;
-                    }
-                    if (chars_read == 0) continue :main;
-                    break :b buf[0];
-                } else {
-                    break :b null;
-                }
-            },
-            else => @compileError("unsupported OS"),
-        };
-
-        if (b_raw) |br| {
-            // Start control sequence
-            if (br == 0x9B or br == 0x1B or br == 0x00 or br == 0xE0) {
-                sequence_buffer[0] = br;
-                ctrl_sequence = sequence_buffer[0..1];
-                unicode_sequence = &.{};
-                timer.reset();
-                continue :main;
-            }
-
-            // Start UTF-8 codepoint
-            else if (unicode_sequence.len == 0 and
-                std.unicode.utf8ByteSequenceLength(br) catch 0 > 1)
-            {
-                sequence_buffer[0] = br;
-                unicode_sequence = sequence_buffer[0..1];
-                ctrl_sequence = &.{};
-                timer.reset();
-                continue :main;
-            }
+        if (io.event.poll() catch continue :main == 0) {
+            continue :main;
         }
 
-        const b: u8 = b_raw orelse b: {
-            if (ctrl_sequence.len > 0 and
-                timer.read() > std.time.ns_per_ms * 100)
-            {
-                defer ctrl_sequence = &.{};
-                if (std.mem.eql(u8, "\x1B", ctrl_sequence)) {
-                    break :b '\x1B';
-                }
-            } else if (unicode_sequence.len > 0 and
-                timer.read() > std.time.ns_per_ms * 100)
-            {
-                unicode_sequence = &.{};
-            }
-            continue :main;
-        };
+        const event = io.event.read(.{}) catch continue :main;
 
-        parse: switch (b) {
-            // Escape
-            0x1B => {
-                ctx.history_offset = null;
-            },
-            // Backspace
-            0x08, 0x7F => {
-                ctx.backspace();
-                ctrl_sequence = &.{};
-            },
-            // Ctrl-A
-            0x01 => {},
-            // Ctrl-D
-            0x04 => {
-                ctrl_sequence = &.{};
-                ctx.clear();
-            },
-            // Newline
-            '\n' => {
-                ctrl_sequence = &.{};
-                if (ctx.history_offset) |offset| {
-                    const hist_item = ctx.history.buffer[
-                        ((ctx.history.head) + offset - 1) %
-                            ctx.history.buffer.len
-                    ];
-
-                    ctx.input = ctx.input_buffer[0..hist_item.len];
-                    @memcpy(ctx.input, hist_item);
-                }
-                if (ctx.input.len > 0) {
-                    ctx.disable.store(true, .monotonic);
-                    prev_disable = true;
-
-                    // Print newline at end of prompt before command start.
-                    ctx.cursor.moveEnd();
-                    io.cursor.moveColumn(
-                        stdout.any(),
-                        ctx.cursor.visible + 1,
-                    ) catch continue :main;
-                    stdout.writeByte('\n') catch continue :main;
-                    buffered_out.flush() catch continue :main;
-
-                    command.enqueue(ctx.input) catch continue :main;
-                    const buf_slice = ctx.history_buf[
-                        ctx.history.getWriteIndex()
-                    ][0..ctx.input.len];
-                    @memcpy(buf_slice, ctx.input);
-                    ctx.history.writeItemOverwrite(buf_slice);
-                    ctx.clear();
-                    continue :main;
-                }
-            },
-            '\r' => {
-                ctrl_sequence = &.{};
-                if (comptime builtin.target.os.tag == .windows) {
-                    continue :parse '\n';
-                }
-            },
-            '\t' => {
-                if (ctx.history_offset) |offset| {
-                    const hist_item = ctx.history.buffer[
-                        ((ctx.history.head) + offset - 1) %
-                            ctx.history.buffer.len
-                    ];
-
-                    ctx.input = ctx.input_buffer[0..hist_item.len];
-                    @memcpy(ctx.input, hist_item);
-                    ctx.cursor.moveEnd();
-                }
-            },
-            else => {
-                if (ctrl_sequence.len > 0) {
-                    sequence_buffer[ctrl_sequence.len] = b;
-                    ctrl_sequence = sequence_buffer[0 .. ctrl_sequence.len + 1];
-                    // Backspace
-                    if (std.mem.eql(u8, "\x9B?", ctrl_sequence) or
-                        std.mem.eql(u8, "\x9BH", ctrl_sequence))
-                    {
-                        ctrl_sequence = &.{};
-                        continue :parse 0x08;
-                    }
-                    // Up Arrow
-                    else if (std.mem.eql(u8, "\x1B[A", ctrl_sequence) or
-                        std.mem.eql(u8, "\x00\x48", ctrl_sequence) or
-                        std.mem.eql(u8, "\xE0\x48", ctrl_sequence))
-                    {
-                        ctrl_sequence = &.{};
-                        var remaining = if (ctx.history_offset) |offset|
-                            if (offset > 0) offset - 1 else offset
-                        else
-                            ctx.history.count;
-                        while (remaining > 0) {
-                            const old = ctx.history.buffer[
-                                (ctx.history.head + remaining - 1) %
-                                    ctx.history.buffer.len
-                            ];
-
-                            if (ctx.input.len <= old.len and
-                                std.mem.eql(
-                                    u8,
-                                    ctx.input,
-                                    old[0..ctx.input.len],
-                                ))
-                            {
-                                ctx.history_offset = remaining;
-                                break;
-                            }
-                            remaining -= 1;
-                        }
-                    }
-                    // Right Arrow
-                    else if (std.mem.eql(u8, "\x1B[C", ctrl_sequence) or
-                        std.mem.eql(u8, "\x00\x4D", ctrl_sequence) or
-                        std.mem.eql(u8, "\xE0\x4D", ctrl_sequence))
-                    {
-                        ctrl_sequence = &.{};
-                        if (ctx.cursor.raw >= ctx.input.len) {
-                            if (ctx.history_offset) |offset| {
-                                const hist_item = ctx.history.buffer[
-                                    ((ctx.history.head) + offset - 1) %
-                                        ctx.history.buffer.len
-                                ];
-
-                                ctx.input = ctx.input_buffer[0..hist_item.len];
-                                @memcpy(ctx.input, hist_item);
+        parse: switch (event) {
+            .key => |key_event| {
+                switch (key_event.value) {
+                    .control => |control_key| {
+                        switch (control_key) {
+                            .escape => {
                                 ctx.history_offset = null;
-                            }
-                            ctx.cursor.moveEnd();
-                        } else {
-                            ctx.cursor.moveRight();
-                        }
-                    }
-                    // Down Arrow
-                    else if (std.mem.eql(u8, "\x1B[B", ctrl_sequence) or
-                        std.mem.eql(u8, "\x00\x50", ctrl_sequence) or
-                        std.mem.eql(u8, "\xE0\x50", ctrl_sequence))
-                    {
-                        ctrl_sequence = &.{};
-                        if (ctx.history_offset) |offset| {
-                            var remaining: usize =
-                                if (offset > 0) offset + 1 else offset;
-                            while (remaining <= ctx.history.count) {
-                                const old = ctx.history.buffer[
-                                    (ctx.history.head + remaining - 1) %
-                                        ctx.history.buffer.len
-                                ];
-
-                                if (std.mem.eql(
-                                    u8,
-                                    ctx.input,
-                                    old[0..ctx.input.len],
-                                )) {
-                                    ctx.history_offset = @intCast(remaining);
-                                    break;
+                            },
+                            .backspace => {
+                                ctx.backspace();
+                            },
+                            .delete => {
+                                if (!ctx.cursor.isAtEnd()) {
+                                    ctx.cursor.moveRight();
+                                    ctx.backspace();
                                 }
-                                remaining += 1;
-                            } else {
-                                ctx.history_offset = null;
+                            },
+                            .enter => {
+                                if (ctx.history_offset) |offset| {
+                                    const hist_item = ctx.history.buffer[
+                                        ((ctx.history.head) + offset - 1) %
+                                            ctx.history.buffer.len
+                                    ];
+
+                                    ctx.input =
+                                        ctx.input_buffer[0..hist_item.len];
+                                    @memcpy(ctx.input, hist_item);
+                                }
+                                if (ctx.input.len > 0) {
+                                    ctx.disable.store(true, .monotonic);
+                                    prev_disable = true;
+
+                                    // Print newline at end of prompt before
+                                    // command start.
+                                    ctx.cursor.moveEnd();
+                                    io.cursor.moveColumn(
+                                        stdout.any(),
+                                        ctx.cursor.visible + 1,
+                                    ) catch continue :main;
+                                    stdout.writeByte('\n') catch
+                                        continue :main;
+                                    buffered_out.flush() catch continue :main;
+
+                                    command.enqueue(ctx.input) catch
+                                        continue :main;
+                                    const buf_slice = ctx.history_buf[
+                                        ctx.history.getWriteIndex()
+                                    ][0..ctx.input.len];
+                                    @memcpy(buf_slice, ctx.input);
+                                    ctx.history.writeItemOverwrite(buf_slice);
+                                    ctx.clear();
+                                    continue :main;
+                                }
+                            },
+                            .tab => {
+                                if (ctx.history_offset) |offset| {
+                                    const hist_item = ctx.history.buffer[
+                                        ((ctx.history.head) + offset - 1) %
+                                            ctx.history.buffer.len
+                                    ];
+
+                                    ctx.input =
+                                        ctx.input_buffer[0..hist_item.len];
+                                    @memcpy(ctx.input, hist_item);
+                                    ctx.cursor.moveEnd();
+                                }
+                            },
+                            .arrow_up => {
+                                var remaining =
+                                    if (ctx.history_offset) |offset|
+                                        if (offset > 0) offset - 1 else offset
+                                    else
+                                        ctx.history.count;
+                                while (remaining > 0) {
+                                    const old = ctx.history.buffer[
+                                        (ctx.history.head + remaining - 1) %
+                                            ctx.history.buffer.len
+                                    ];
+
+                                    if (ctx.input.len <= old.len and
+                                        std.mem.eql(
+                                            u8,
+                                            ctx.input,
+                                            old[0..ctx.input.len],
+                                        ))
+                                    {
+                                        ctx.history_offset = remaining;
+                                        break;
+                                    }
+                                    remaining -= 1;
+                                }
+                            },
+                            .arrow_right => {
+                                if (ctx.cursor.raw >= ctx.input.len) {
+                                    if (ctx.history_offset) |offset| {
+                                        const hist_item = ctx.history.buffer[
+                                            ((ctx.history.head) + offset - 1) %
+                                                ctx.history.buffer.len
+                                        ];
+
+                                        ctx.input =
+                                            ctx.input_buffer[0..hist_item.len];
+                                        @memcpy(ctx.input, hist_item);
+                                        ctx.history_offset = null;
+                                    }
+                                    ctx.cursor.moveEnd();
+                                } else {
+                                    ctx.cursor.moveRight();
+                                }
+                            },
+                            .arrow_down => {
+                                if (ctx.history_offset) |offset| {
+                                    var remaining: usize =
+                                        if (offset > 0) offset + 1 else offset;
+                                    while (remaining <= ctx.history.count) {
+                                        const old = ctx.history.buffer[
+                                            (ctx.history.head + remaining - 1) %
+                                                ctx.history.buffer.len
+                                        ];
+
+                                        if (std.mem.eql(
+                                            u8,
+                                            ctx.input,
+                                            old[0..ctx.input.len],
+                                        )) {
+                                            ctx.history_offset =
+                                                @intCast(remaining);
+                                            break;
+                                        }
+                                        remaining += 1;
+                                    } else {
+                                        ctx.history_offset = null;
+                                    }
+                                }
+                            },
+                            .arrow_left => {
+                                ctx.cursor.moveLeft();
+                            },
+                            else => {},
+                        }
+                    },
+                    .codepoint => |cp| {
+                        if (key_event.modifiers.ctrl and
+                            cp.sequence.len == 1)
+                        {
+                            switch (cp.sequence[0]) {
+                                'd' => {
+                                    ctx.clear();
+                                    break :parse;
+                                },
+                                else => {},
                             }
                         }
-                    }
-                    // Left Arrow
-                    else if (std.mem.eql(u8, "\x1B[D", ctrl_sequence) or
-                        std.mem.eql(u8, "\x00\x4B", ctrl_sequence) or
-                        std.mem.eql(u8, "\xE0\x4B", ctrl_sequence))
-                    {
-                        ctrl_sequence = &.{};
-                        ctx.cursor.moveLeft();
-                    }
-                    // Continue filling in sequence
-                    else {
-                        // Unknown sequence
-                        if (ctrl_sequence.len == sequence_buffer.len) {
-                            ctrl_sequence = &.{};
-                            continue :parse b;
-                        }
-                        timer.reset();
-                        continue :main;
-                    }
-                } else if (unicode_sequence.len > 0) {
-                    const codepoint_len = std.unicode.utf8ByteSequenceLength(
-                        unicode_sequence[0],
-                    ) catch unreachable;
-                    if (unicode_sequence.len < codepoint_len) {
-                        sequence_buffer[unicode_sequence.len] = b;
-                        unicode_sequence =
-                            sequence_buffer[0 .. unicode_sequence.len + 1];
-                        if (unicode_sequence.len == codepoint_len) {
-                            ctx.insertCodepoint(unicode_sequence);
-                            unicode_sequence = &.{};
-                        } else {
-                            timer.reset();
-                            continue :main;
-                        }
-                    } else {
-                        ctx.insertCodepoint(unicode_sequence);
-                        unicode_sequence = &.{};
-                    }
-                } else {
-                    ctx.insert(b);
+                        ctx.insertCodepoint(cp.sequence);
+                    },
                 }
+            },
+            .mouse => {
+                // TODO
             },
         }
 
@@ -536,9 +412,17 @@ pub fn handler(ctx: *Prompt) void {
     }
 }
 
+const separators: []const u8 = " ,._-()[]{}`~+=*!@#$%^&|\\/'\":;<>?\t\n";
+
 const Cursor = struct {
     raw: std.math.IntFittingRange(0, max_input_size) = 0,
     visible: u16 = 0,
+
+    fn isAtEnd(self: *const Cursor) bool {
+        const ctx: *const Prompt =
+            @alignCast(@fieldParentPtr("cursor", self));
+        return self.raw == ctx.input.len;
+    }
 
     fn moveLeft(self: *Cursor) void {
         const ctx: *Prompt = @alignCast(@fieldParentPtr("cursor", self));
