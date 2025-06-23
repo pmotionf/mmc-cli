@@ -18,8 +18,8 @@
             .hash = "chrono-0.1.0-uVd76GvCAwAvWrHupKdlB_UrmfZHRuVP-P4Xi_G8hz3R",
         },
         .mmc_api = .{
-            .url = "https://github.com/pmotionf/mmc-api/archive/1ded1d5.tar.gz",
-            .hash = "mmc_api-0.1.3-P5raR2j1AAB7jsIGaKJRwLlP7eUpQZmDL9qA12pb2SO8",
+            .url = "https://github.com/pmotionf/mmc-api/archive/83688c3.tar.gz",
+            .hash = "mmc_api-0.2.0-P5raR6ArAQCTJ06ElwLSCoW7FTDmKNV_Ox22kQIuvSHe",
         },
         .zigwin32 = .{
             .url = "https://github.com/marlersoft/zigwin32/archive/d21b419.tar.gz",
