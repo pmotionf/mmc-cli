@@ -64,7 +64,7 @@ fn insert(self: *Prompt, b: u8) void {
     }
 }
 
-fn insertCodepoint(self: *Prompt, cp: []u8) void {
+fn insertCodepoint(self: *Prompt, cp: []const u8) void {
     std.debug.assert(self.cursor.raw <= self.input.len);
     std.debug.assert(self.input.len + cp.len <= self.input_buffer.len);
     std.debug.assert(cp.len <= 4);
@@ -335,10 +335,9 @@ pub fn handler(ctx: *Prompt) void {
                         }
                     },
                     .codepoint => |cp| {
-                        if (key_event.modifiers.ctrl and
-                            cp.sequence.len == 1)
-                        {
-                            switch (cp.sequence[0]) {
+                        const cp_seq = cp.sequence();
+                        if (key_event.modifiers.ctrl and cp_seq.len == 1) {
+                            switch (cp_seq[0]) {
                                 'd' => {
                                     ctx.clear();
                                     break :parse;
@@ -346,7 +345,7 @@ pub fn handler(ctx: *Prompt) void {
                                 else => {},
                             }
                         }
-                        ctx.insertCodepoint(cp.sequence);
+                        ctx.insertCodepoint(cp_seq);
                     },
                 }
             },

@@ -364,26 +364,23 @@ pub const event = struct {
 
         // Handle UTF-8 codepoint sequence.
         if (utf8_seq_len > 1) {
-            result = .initKeyCodepointEmpty();
-            result.key.value.codepoint.buffer[0] = byte;
-            result.key.value.codepoint.sequence =
-                result.key.value.codepoint.buffer[0..1];
+            result = .initKeyCodepoint(&.{byte});
 
-            while (result.key.value.codepoint.sequence.len < utf8_seq_len) {
+            while (result.key.value.codepoint.len < utf8_seq_len) {
                 if (options.sequence_timeout) |seq_timeout| {
                     if (seq_timeout == 0) {
                         result.key.value.codepoint.buffer[
-                            result.key.value.codepoint.sequence.len
+                            result.key.value.codepoint.len
                         ] = try readByte();
-                        result.key.value.codepoint.sequence.len += 1;
+                        result.key.value.codepoint.len += 1;
                     } else {
                         timer.reset();
                         while (timer.read() < seq_timeout) {
                             if (try pollByte()) {
                                 result.key.value.codepoint.buffer[
-                                    result.key.value.codepoint.sequence.len
+                                    result.key.value.codepoint.len
                                 ] = try readByte();
-                                result.key.value.codepoint.sequence.len += 1;
+                                result.key.value.codepoint.len += 1;
                                 break;
                             }
                         } else {
@@ -393,9 +390,9 @@ pub const event = struct {
                 } else {
                     if (try pollByte()) {
                         result.key.value.codepoint.buffer[
-                            result.key.value.codepoint.sequence.len
+                            result.key.value.codepoint.len
                         ] = try readByte();
-                        result.key.value.codepoint.sequence.len += 1;
+                        result.key.value.codepoint.len += 1;
                     } else {
                         return error.IncompleteCodepoint;
                     }
@@ -524,10 +521,6 @@ pub const event = struct {
                                     break;
                                 }
                             } else {
-                                std.log.debug(
-                                    "Incomplete CSI sequence {s}",
-                                    .{seq},
-                                );
                                 return error.IncompleteCsiSequence;
                             }
                             seq_buf[seq.len] = try readByte();
@@ -542,10 +535,6 @@ pub const event = struct {
                             result = ev;
                             break :parse;
                         } else {
-                            std.log.debug(
-                                "Unknown CSI sequence {s}",
-                                .{seq},
-                            );
                             return error.UnknownCsiSequence;
                         }
                     }
@@ -571,48 +560,37 @@ pub const event = struct {
                 }
             },
 
-            '\x00' => switch (comptime builtin.os.tag) {
-                .linux => {},
-                .windows => {
-                    result = .initKeyCodepointEmpty();
-                    result.key.value.codepoint.buffer[0] = ' ';
-                    result.key.value.codepoint.sequence =
-                        result.key.value.codepoint.buffer[0..1];
-                    result.key.modifiers.ctrl = true;
-                },
-                else => @compileError("unsupported OS"),
+            '\x00' => {
+                result = .initKeyCodepoint(" ");
+                result.key.modifiers.ctrl = true;
             },
 
-            // Ctrl-A
             '\x01' => {
-                result = .initKeyCodepointEmpty();
-                result.key.value.codepoint.buffer[0] = 'a';
-                result.key.value.codepoint.sequence =
-                    result.key.value.codepoint.buffer[0..1];
+                result = .initKeyCodepoint("a");
                 result.key.modifiers.ctrl = true;
             },
-            // Ctrl-B
             '\x02' => {
-                result = .initKeyCodepointEmpty();
-                result.key.value.codepoint.buffer[0] = 'b';
-                result.key.value.codepoint.sequence =
-                    result.key.value.codepoint.buffer[0..1];
+                result = .initKeyCodepoint("b");
                 result.key.modifiers.ctrl = true;
             },
-            // Ctrl-C
             '\x03' => {
-                result = .initKeyCodepointEmpty();
-                result.key.value.codepoint.buffer[0] = 'c';
-                result.key.value.codepoint.sequence =
-                    result.key.value.codepoint.buffer[0..1];
+                result = .initKeyCodepoint("c");
                 result.key.modifiers.ctrl = true;
             },
-            // Ctrl-D
             '\x04' => {
-                result = .initKeyCodepointEmpty();
-                result.key.value.codepoint.buffer[0] = 'd';
-                result.key.value.codepoint.sequence =
-                    result.key.value.codepoint.buffer[0..1];
+                result = .initKeyCodepoint("d");
+                result.key.modifiers.ctrl = true;
+            },
+            '\x05' => {
+                result = .initKeyCodepoint("e");
+                result.key.modifiers.ctrl = true;
+            },
+            '\x06' => {
+                result = .initKeyCodepoint("f");
+                result.key.modifiers.ctrl = true;
+            },
+            '\x07' => {
+                result = .initKeyCodepoint("g");
                 result.key.modifiers.ctrl = true;
             },
             '\x08' => {
@@ -620,60 +598,94 @@ pub const event = struct {
                 result.key.modifiers.ctrl = true;
             },
             '\x09' => result = .initKeyControl(.tab),
-            // Ctrl-Enter
             '\x0A' => {
                 result = .initKeyControl(.enter);
                 result.key.modifiers.ctrl = true;
             },
+            '\x0B' => {
+                result = .initKeyCodepoint("k");
+                result.key.modifiers.ctrl = true;
+            },
+            '\x0C' => {
+                result = .initKeyCodepoint("l");
+                result.key.modifiers.ctrl = true;
+            },
             '\x0D' => result = .initKeyControl(.enter),
-            // Ctrl-O
+            '\x0E' => {
+                result = .initKeyCodepoint("n");
+                result.key.modifiers.ctrl = true;
+            },
             '\x0F' => {
-                result = .initKeyCodepointEmpty();
-                result.key.value.codepoint.buffer[0] = 'o';
-                result.key.value.codepoint.sequence =
-                    result.key.value.codepoint.buffer[0..1];
+                result = .initKeyCodepoint("o");
                 result.key.modifiers.ctrl = true;
             },
-            // Ctrl-Q
+            '\x10' => {
+                result = .initKeyCodepoint("p");
+                result.key.modifiers.ctrl = true;
+            },
             '\x11' => {
-                result = .initKeyCodepointEmpty();
-                result.key.value.codepoint.buffer[0] = 'q';
-                result.key.value.codepoint.sequence =
-                    result.key.value.codepoint.buffer[0..1];
+                result = .initKeyCodepoint("q");
                 result.key.modifiers.ctrl = true;
             },
-            // Ctrl-S
+            '\x12' => {
+                result = .initKeyCodepoint("r");
+                result.key.modifiers.ctrl = true;
+            },
             '\x13' => {
-                result = .initKeyCodepointEmpty();
-                result.key.value.codepoint.buffer[0] = 's';
-                result.key.value.codepoint.sequence =
-                    result.key.value.codepoint.buffer[0..1];
+                result = .initKeyCodepoint("s");
                 result.key.modifiers.ctrl = true;
             },
-            // Ctrl-V
+            '\x14' => {
+                result = .initKeyCodepoint("t");
+                result.key.modifiers.ctrl = true;
+            },
+            '\x15' => {
+                result = .initKeyCodepoint("u");
+                result.key.modifiers.ctrl = true;
+            },
             '\x16' => {
-                result = .initKeyCodepointEmpty();
-                result.key.value.codepoint.buffer[0] = 'v';
-                result.key.value.codepoint.sequence =
-                    result.key.value.codepoint.buffer[0..1];
+                result = .initKeyCodepoint("v");
                 result.key.modifiers.ctrl = true;
             },
-            // Ctrl-Z
+            '\x17' => {
+                result = .initKeyCodepoint("w");
+                result.key.modifiers.ctrl = true;
+            },
+            '\x18' => {
+                result = .initKeyCodepoint("x");
+                result.key.modifiers.ctrl = true;
+            },
+            // Ctrl-Y
+            '\x19' => {
+                result = .initKeyCodepoint("y");
+                result.key.modifiers.ctrl = true;
+            },
             '\x1A' => {
-                result = .initKeyCodepointEmpty();
-                result.key.value.codepoint.buffer[0] = 'z';
-                result.key.value.codepoint.sequence =
-                    result.key.value.codepoint.buffer[0..1];
+                result = .initKeyCodepoint("z");
+                result.key.modifiers.ctrl = true;
+            },
+
+            '\x1C' => {
+                result = .initKeyCodepoint("4");
+                result.key.modifiers.ctrl = true;
+            },
+            '\x1D' => {
+                result = .initKeyCodepoint("5");
+                result.key.modifiers.ctrl = true;
+            },
+            '\x1E' => {
+                result = .initKeyCodepoint("6");
+                result.key.modifiers.ctrl = true;
+            },
+            '\x1F' => {
+                result = .initKeyCodepoint("7");
                 result.key.modifiers.ctrl = true;
             },
 
             '\x7F' => result = .initKeyControl(.backspace),
 
             else => {
-                result = .initKeyCodepointEmpty();
-                result.key.value.codepoint.buffer[0] = byte;
-                result.key.value.codepoint.sequence =
-                    result.key.value.codepoint.buffer[0..1];
+                result = .initKeyCodepoint(&.{byte});
             },
         }
         return result;
@@ -683,6 +695,12 @@ pub const event = struct {
 pub const Event = union(enum) {
     key: Key,
     mouse: Mouse,
+
+    /// Initializes key event to provided codepoint. Codepoint must be a byte
+    /// sequence between length 0 and 4.
+    pub fn initKeyCodepoint(codepoint: []const u8) Event {
+        return .{ .key = .{ .value = .{ .codepoint = .init(codepoint) } } };
+    }
 
     /// Initializes key event empty codepoint.
     pub fn initKeyCodepointEmpty() Event {
@@ -697,8 +715,21 @@ pub const Event = union(enum) {
     pub const Key = struct {
         value: union(enum) {
             codepoint: struct {
-                sequence: []u8 = &.{},
                 buffer: [4]u8 = undefined,
+                len: u3 = 0,
+
+                /// Initialize valid UTF-8 codepoint.
+                pub fn init(codepoint: []const u8) @This() {
+                    std.debug.assert(codepoint.len <= 4);
+                    var result: @This() = undefined;
+                    @memcpy(result.buffer[0..codepoint.len], codepoint);
+                    result.len = @intCast(codepoint.len);
+                    return result;
+                }
+
+                pub fn sequence(self: *const @This()) []const u8 {
+                    return self.buffer[0..self.len];
+                }
             },
             control: Control,
         },
@@ -744,57 +775,453 @@ extern "kernel32" fn IsValidCodePage(
 ) callconv(.winapi) std.os.windows.BOOL;
 
 /// Terminal input escape sequences.
-const escape_sequences: std.StaticStringMap(Event) = .initComptime(
-    .{
-        .{ "OA", Event{ .key = .{ .value = .{ .control = .arrow_up } } } },
-        .{ "OB", Event{ .key = .{ .value = .{ .control = .arrow_down } } } },
-        .{ "OC", Event{ .key = .{ .value = .{ .control = .arrow_right } } } },
-        .{ "OD", Event{ .key = .{ .value = .{ .control = .arrow_left } } } },
-        .{ "OH", Event{ .key = .{ .value = .{ .control = .home } } } },
-        .{ "OF", Event{ .key = .{ .value = .{ .control = .end } } } },
-    } ++ switch (builtin.target.os.tag) {
-        .windows => .{},
-        .linux => .{},
-        else => @compileError("unsupported OS"),
-    },
-);
+const escape_sequences: std.StaticStringMap(Event) = .initComptime(.{
+    .{ "OA", Event{ .key = .{ .value = .{ .control = .arrow_up } } } },
+    .{ "OB", Event{ .key = .{ .value = .{ .control = .arrow_down } } } },
+    .{ "OC", Event{ .key = .{ .value = .{ .control = .arrow_right } } } },
+    .{ "OD", Event{ .key = .{ .value = .{ .control = .arrow_left } } } },
+    .{ "OH", Event{ .key = .{ .value = .{ .control = .home } } } },
+    .{ "OF", Event{ .key = .{ .value = .{ .control = .end } } } },
+    .{ "A", Event{ .key = .{
+        .value = .{ .codepoint = .init("A") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "B", Event{ .key = .{
+        .value = .{ .codepoint = .init("B") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "C", Event{ .key = .{
+        .value = .{ .codepoint = .init("C") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "D", Event{ .key = .{
+        .value = .{ .codepoint = .init("D") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "E", Event{ .key = .{
+        .value = .{ .codepoint = .init("E") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "F", Event{ .key = .{
+        .value = .{ .codepoint = .init("F") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "G", Event{ .key = .{
+        .value = .{ .codepoint = .init("G") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "H", Event{ .key = .{
+        .value = .{ .codepoint = .init("H") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "G", Event{ .key = .{
+        .value = .{ .codepoint = .init("G") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "H", Event{ .key = .{
+        .value = .{ .codepoint = .init("H") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "I", Event{ .key = .{
+        .value = .{ .codepoint = .init("I") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "J", Event{ .key = .{
+        .value = .{ .codepoint = .init("J") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "K", Event{ .key = .{
+        .value = .{ .codepoint = .init("K") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "L", Event{ .key = .{
+        .value = .{ .codepoint = .init("L") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "M", Event{ .key = .{
+        .value = .{ .codepoint = .init("M") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "N", Event{ .key = .{
+        .value = .{ .codepoint = .init("N") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "O", Event{ .key = .{
+        .value = .{ .codepoint = .init("O") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "P", Event{ .key = .{
+        .value = .{ .codepoint = .init("P") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "Q", Event{ .key = .{
+        .value = .{ .codepoint = .init("Q") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "R", Event{ .key = .{
+        .value = .{ .codepoint = .init("R") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "S", Event{ .key = .{
+        .value = .{ .codepoint = .init("S") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "T", Event{ .key = .{
+        .value = .{ .codepoint = .init("T") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "U", Event{ .key = .{
+        .value = .{ .codepoint = .init("U") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "V", Event{ .key = .{
+        .value = .{ .codepoint = .init("V") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "W", Event{ .key = .{
+        .value = .{ .codepoint = .init("W") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "X", Event{ .key = .{
+        .value = .{ .codepoint = .init("X") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "Y", Event{ .key = .{
+        .value = .{ .codepoint = .init("Y") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "Z", Event{ .key = .{
+        .value = .{ .codepoint = .init("Z") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "a", Event{ .key = .{
+        .value = .{ .codepoint = .init("a") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "b", Event{ .key = .{
+        .value = .{ .codepoint = .init("b") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "c", Event{ .key = .{
+        .value = .{ .codepoint = .init("c") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "d", Event{ .key = .{
+        .value = .{ .codepoint = .init("d") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "e", Event{ .key = .{
+        .value = .{ .codepoint = .init("e") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "f", Event{ .key = .{
+        .value = .{ .codepoint = .init("f") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "g", Event{ .key = .{
+        .value = .{ .codepoint = .init("g") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "h", Event{ .key = .{
+        .value = .{ .codepoint = .init("h") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "i", Event{ .key = .{
+        .value = .{ .codepoint = .init("i") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "j", Event{ .key = .{
+        .value = .{ .codepoint = .init("j") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "k", Event{ .key = .{
+        .value = .{ .codepoint = .init("k") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "l", Event{ .key = .{
+        .value = .{ .codepoint = .init("l") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "m", Event{ .key = .{
+        .value = .{ .codepoint = .init("m") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "n", Event{ .key = .{
+        .value = .{ .codepoint = .init("n") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "o", Event{ .key = .{
+        .value = .{ .codepoint = .init("o") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "p", Event{ .key = .{
+        .value = .{ .codepoint = .init("p") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "q", Event{ .key = .{
+        .value = .{ .codepoint = .init("q") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "r", Event{ .key = .{
+        .value = .{ .codepoint = .init("r") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "s", Event{ .key = .{
+        .value = .{ .codepoint = .init("s") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "t", Event{ .key = .{
+        .value = .{ .codepoint = .init("t") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "u", Event{ .key = .{
+        .value = .{ .codepoint = .init("u") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "v", Event{ .key = .{
+        .value = .{ .codepoint = .init("v") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "w", Event{ .key = .{
+        .value = .{ .codepoint = .init("w") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "x", Event{ .key = .{
+        .value = .{ .codepoint = .init("x") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "y", Event{ .key = .{
+        .value = .{ .codepoint = .init("y") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "z", Event{ .key = .{
+        .value = .{ .codepoint = .init("z") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "1", Event{ .key = .{
+        .value = .{ .codepoint = .init("1") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "2", Event{ .key = .{
+        .value = .{ .codepoint = .init("2") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "3", Event{ .key = .{
+        .value = .{ .codepoint = .init("3") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "4", Event{ .key = .{
+        .value = .{ .codepoint = .init("4") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "5", Event{ .key = .{
+        .value = .{ .codepoint = .init("5") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "6", Event{ .key = .{
+        .value = .{ .codepoint = .init("6") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "7", Event{ .key = .{
+        .value = .{ .codepoint = .init("7") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "8", Event{ .key = .{
+        .value = .{ .codepoint = .init("8") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "9", Event{ .key = .{
+        .value = .{ .codepoint = .init("9") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "0", Event{ .key = .{
+        .value = .{ .codepoint = .init("0") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "-", Event{ .key = .{
+        .value = .{ .codepoint = .init("-") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "_", Event{ .key = .{
+        .value = .{ .codepoint = .init("_") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "=", Event{ .key = .{
+        .value = .{ .codepoint = .init("=") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "+", Event{ .key = .{
+        .value = .{ .codepoint = .init("+") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "!", Event{ .key = .{
+        .value = .{ .codepoint = .init("!") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "@", Event{ .key = .{
+        .value = .{ .codepoint = .init("@") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "#", Event{ .key = .{
+        .value = .{ .codepoint = .init("#") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "$", Event{ .key = .{
+        .value = .{ .codepoint = .init("$") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "%", Event{ .key = .{
+        .value = .{ .codepoint = .init("%") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "^", Event{ .key = .{
+        .value = .{ .codepoint = .init("^") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "&", Event{ .key = .{
+        .value = .{ .codepoint = .init("&") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "*", Event{ .key = .{
+        .value = .{ .codepoint = .init("*") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "(", Event{ .key = .{
+        .value = .{ .codepoint = .init("(") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ ")", Event{ .key = .{
+        .value = .{ .codepoint = .init(")") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ ";", Event{ .key = .{
+        .value = .{ .codepoint = .init(";") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ ":", Event{ .key = .{
+        .value = .{ .codepoint = .init(";") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "'", Event{ .key = .{
+        .value = .{ .codepoint = .init("'") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "\"", Event{ .key = .{
+        .value = .{ .codepoint = .init("\"") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "/", Event{ .key = .{
+        .value = .{ .codepoint = .init("/") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "?", Event{ .key = .{
+        .value = .{ .codepoint = .init("?") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "\\", Event{ .key = .{
+        .value = .{ .codepoint = .init("\\") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "|", Event{ .key = .{
+        .value = .{ .codepoint = .init("|") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "`", Event{ .key = .{
+        .value = .{ .codepoint = .init("`") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "~", Event{ .key = .{
+        .value = .{ .codepoint = .init("~") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "[", Event{ .key = .{
+        .value = .{ .codepoint = .init("[") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "]", Event{ .key = .{
+        .value = .{ .codepoint = .init("]") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "{", Event{ .key = .{
+        .value = .{ .codepoint = .init("{") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "}", Event{ .key = .{
+        .value = .{ .codepoint = .init("}") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ "<", Event{ .key = .{
+        .value = .{ .codepoint = .init("<") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ ">", Event{ .key = .{
+        .value = .{ .codepoint = .init(">") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ ",", Event{ .key = .{
+        .value = .{ .codepoint = .init(",") },
+        .modifiers = .{ .alt = true },
+    } } },
+    .{ ".", Event{ .key = .{
+        .value = .{ .codepoint = .init(".") },
+        .modifiers = .{ .alt = true },
+    } } },
+});
 
 /// Terminal input CSI sequences.
-const csi_sequences: std.StaticStringMap(Event) = .initComptime(
-    .{
-        .{ "1~", Event{ .key = .{ .value = .{ .control = .home } } } },
-        .{ "2~", Event{ .key = .{ .value = .{ .control = .insert } } } },
-        .{ "3~", Event{ .key = .{ .value = .{ .control = .delete } } } },
-        .{ "4~", Event{ .key = .{ .value = .{ .control = .end } } } },
-        .{ "5~", Event{ .key = .{ .value = .{ .control = .page_up } } } },
-        .{ "6~", Event{ .key = .{ .value = .{ .control = .page_down } } } },
-        .{ "7~", Event{ .key = .{ .value = .{ .control = .home } } } },
-        .{ "8~", Event{ .key = .{ .value = .{ .control = .end } } } },
-        .{ "A", Event{ .key = .{ .value = .{ .control = .arrow_up } } } },
-        .{ "B", Event{ .key = .{ .value = .{ .control = .arrow_down } } } },
-        .{ "C", Event{ .key = .{ .value = .{ .control = .arrow_right } } } },
-        .{ "D", Event{ .key = .{ .value = .{ .control = .arrow_left } } } },
-        .{ "H", Event{ .key = .{ .value = .{ .control = .home } } } },
-        .{ "F", Event{ .key = .{ .value = .{ .control = .end } } } },
-        .{ "Z", Event{ .key = .{
-            .value = .{ .control = .tab },
-            .modifiers = .{ .shift = true },
-        } } },
-        .{ "1;5A", Event{ .key = .{
-            .value = .{ .control = .arrow_up },
-            .modifiers = .{ .ctrl = true },
-        } } },
-        .{ "1;5B", Event{ .key = .{
-            .value = .{ .control = .arrow_down },
-            .modifiers = .{ .ctrl = true },
-        } } },
-        .{ "1;5C", Event{ .key = .{
-            .value = .{ .control = .arrow_right },
-            .modifiers = .{ .ctrl = true },
-        } } },
-        .{ "1;5D", Event{ .key = .{
-            .value = .{ .control = .arrow_left },
-            .modifiers = .{ .ctrl = true },
-        } } },
-    },
-);
+const csi_sequences: std.StaticStringMap(Event) = .initComptime(.{
+    .{ "1~", Event{ .key = .{ .value = .{ .control = .home } } } },
+    .{ "2~", Event{ .key = .{ .value = .{ .control = .insert } } } },
+    .{ "3~", Event{ .key = .{ .value = .{ .control = .delete } } } },
+    .{ "4~", Event{ .key = .{ .value = .{ .control = .end } } } },
+    .{ "5~", Event{ .key = .{ .value = .{ .control = .page_up } } } },
+    .{ "6~", Event{ .key = .{ .value = .{ .control = .page_down } } } },
+    .{ "7~", Event{ .key = .{ .value = .{ .control = .home } } } },
+    .{ "8~", Event{ .key = .{ .value = .{ .control = .end } } } },
+    .{ "A", Event{ .key = .{ .value = .{ .control = .arrow_up } } } },
+    .{ "B", Event{ .key = .{ .value = .{ .control = .arrow_down } } } },
+    .{ "C", Event{ .key = .{ .value = .{ .control = .arrow_right } } } },
+    .{ "D", Event{ .key = .{ .value = .{ .control = .arrow_left } } } },
+    .{ "H", Event{ .key = .{ .value = .{ .control = .home } } } },
+    .{ "F", Event{ .key = .{ .value = .{ .control = .end } } } },
+    .{ "Z", Event{ .key = .{
+        .value = .{ .control = .tab },
+        .modifiers = .{ .shift = true },
+    } } },
+    .{ "1;5A", Event{ .key = .{
+        .value = .{ .control = .arrow_up },
+        .modifiers = .{ .ctrl = true },
+    } } },
+    .{ "1;5B", Event{ .key = .{
+        .value = .{ .control = .arrow_down },
+        .modifiers = .{ .ctrl = true },
+    } } },
+    .{ "1;5C", Event{ .key = .{
+        .value = .{ .control = .arrow_right },
+        .modifiers = .{ .ctrl = true },
+    } } },
+    .{ "1;5D", Event{ .key = .{
+        .value = .{ .control = .arrow_left },
+        .modifiers = .{ .ctrl = true },
+    } } },
+    .{ "46;5u", Event{ .key = .{
+        .value = .{ .codepoint = .init(".") },
+        .modifiers = .{ .ctrl = true },
+    } } },
+    .{ "62;5u", Event{ .key = .{
+        .value = .{ .codepoint = .init(".") },
+        .modifiers = .{ .ctrl = true, .shift = true },
+    } } },
+    .{ "96;5u", Event{ .key = .{
+        .value = .{ .codepoint = .init("`") },
+        .modifiers = .{ .ctrl = true },
+    } } },
+    .{ "98;6u", Event{ .key = .{
+        .value = .{ .codepoint = .init("B") },
+        .modifiers = .{ .ctrl = true, .shift = true },
+    } } },
+    .{ "121;6u", Event{ .key = .{
+        .value = .{ .codepoint = .init("Y") },
+        .modifiers = .{ .ctrl = true, .shift = true },
+    } } },
+});
