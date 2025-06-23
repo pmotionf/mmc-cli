@@ -166,17 +166,35 @@ pub fn handler(ctx: *Prompt) void {
                                 ctx.history_offset = null;
                             },
                             .backspace => {
+                                // Whether first deleted is whitespace.
+                                const is_ws: bool = if (ctx.cursor.raw > 0 and
+                                    std.ascii.isWhitespace(
+                                        ctx.input[ctx.cursor.raw - 1],
+                                    ))
+                                    true
+                                else
+                                    false;
                                 ctx.backspace();
                                 if (key_event.modifiers.ctrl) {
-                                    while (ctx.cursor.raw > 0 and
-                                        !std.mem.containsAtLeastScalar(
-                                            u8,
-                                            separators,
-                                            1,
-                                            ctx.input[ctx.cursor.raw - 1],
-                                        ))
-                                    {
-                                        ctx.backspace();
+                                    if (is_ws) {
+                                        while (ctx.cursor.raw > 0 and
+                                            std.ascii.isWhitespace(
+                                                ctx.input[ctx.cursor.raw - 1],
+                                            ))
+                                        {
+                                            ctx.backspace();
+                                        }
+                                    } else {
+                                        while (ctx.cursor.raw > 0 and
+                                            !std.mem.containsAtLeastScalar(
+                                                u8,
+                                                separators,
+                                                1,
+                                                ctx.input[ctx.cursor.raw - 1],
+                                            ))
+                                        {
+                                            ctx.backspace();
+                                        }
                                     }
                                 }
                             },
