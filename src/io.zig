@@ -60,6 +60,8 @@ pub fn init() !void {
             mode.ENABLE_ECHO_INPUT = 0;
             mode.ENABLE_VIRTUAL_TERMINAL_INPUT = 1;
             mode.ENABLE_MOUSE_INPUT = 0;
+            // Necessary to have terminal handle Ctrl-C.
+            mode.ENABLE_PROCESSED_INPUT = 1;
             if (console.SetConsoleMode(stdin, mode) == 0) {
                 return std.os.windows.unexpectedError(
                     std.os.windows.GetLastError(),
@@ -293,6 +295,7 @@ pub const clipboard = struct {
                                 const wtf16: [*:0]u16 =
                                     @alignCast(@ptrCast(data));
                                 const source_len = std.mem.len(wtf16);
+
                                 const source = wtf16[0..source_len];
                                 const len =
                                     std.unicode.wtf16LeToWtf8(buffer, source);
@@ -726,7 +729,9 @@ pub const event = struct {
             '\x7F' => result = .initKeyControl(.backspace),
 
             else => {
-                result = .initKeyCodepoint(&.{byte});
+                if (utf8_seq_len == 1) {
+                    result = .initKeyCodepoint(&.{byte});
+                }
             },
         }
         return result;

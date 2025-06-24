@@ -96,6 +96,43 @@ fn insertCodepoint(self: *Prompt, cp: []const u8) void {
     }
 }
 
+/// Insert UTF-8 encoded string.
+fn insertString(self: *Prompt, string: []const u8) void {
+    std.debug.assert(self.cursor.raw <= self.input.len);
+    std.debug.assert(self.input.len + string.len <= self.input_buffer.len);
+
+    // Cancel history selection if insert is in middle of input.
+    if (self.cursor.raw < self.input.len) {
+        self.history_offset = null;
+    }
+    const after = self.input[self.cursor.raw..];
+    @memmove(
+        self.input_buffer[self.cursor.raw + string.len ..][0..after.len],
+        after,
+    );
+    @memcpy(self.input_buffer[self.cursor.raw..][0..string.len], string);
+    const after_raw_pos = self.cursor.raw + string.len;
+    while (self.cursor.raw < after_raw_pos) {
+        self.cursor.moveRight();
+    }
+
+    if (self.getHistoryItem()) |hist_item| {
+        // Cancel selection if input length exceeds history item length.
+        if (self.input.len > hist_item.len) {
+            self.history_offset = null;
+        }
+
+        // Cancel selection if insert does not match.
+        if (!std.mem.eql(
+            u8,
+            hist_item[self.input.len - string.len ..][0..string.len],
+            string,
+        )) {
+            self.history_offset = null;
+        }
+    }
+}
+
 /// Delete one grapheme cursor before cursor.
 fn backspace(self: *Prompt) void {
     std.debug.assert(self.cursor.raw <= self.input.len);
@@ -397,9 +434,7 @@ pub fn handler(ctx: *Prompt) void {
                                             const paste = io.clipboard.get(
                                                 &buf,
                                             ) catch {};
-                                            for (paste) |b| {
-                                                ctx.insert(b);
-                                            }
+                                            ctx.insertString(paste);
                                         },
                                         else => {},
                                     }
