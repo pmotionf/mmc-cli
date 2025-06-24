@@ -199,9 +199,38 @@ pub fn handler(ctx: *Prompt) void {
                                 }
                             },
                             .delete => {
+                                // Whether first deleted is whitespace.
+                                var is_ws: bool = false;
                                 if (!ctx.cursor.isAtEnd()) {
+                                    is_ws = std.ascii.isWhitespace(
+                                        ctx.input[ctx.cursor.raw],
+                                    );
                                     ctx.cursor.moveRight();
                                     ctx.backspace();
+                                }
+                                if (key_event.modifiers.ctrl) {
+                                    if (is_ws) {
+                                        while (!ctx.cursor.isAtEnd() and
+                                            std.ascii.isWhitespace(
+                                                ctx.input[ctx.cursor.raw],
+                                            ))
+                                        {
+                                            ctx.cursor.moveRight();
+                                            ctx.backspace();
+                                        }
+                                    } else {
+                                        while (!ctx.cursor.isAtEnd() and
+                                            !std.mem.containsAtLeastScalar(
+                                                u8,
+                                                separators,
+                                                1,
+                                                ctx.input[ctx.cursor.raw],
+                                            ))
+                                        {
+                                            ctx.cursor.moveRight();
+                                            ctx.backspace();
+                                        }
+                                    }
                                 }
                             },
                             .enter => {
