@@ -87,8 +87,8 @@ fn insertCodepoint(self: *Prompt, cp: []const u8) void {
             self.history_offset = null;
         }
         // Cancel selection if insert does not match.
-        for (hist_item[self.input.len - cp.len ..], 0..) |c, i| {
-            if (c != cp[i]) {
+        for (cp, 0..) |c, i| {
+            if (c != hist_item[self.input.len - cp.len + i]) {
                 self.history_offset = null;
                 break;
             }
