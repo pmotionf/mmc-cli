@@ -1204,6 +1204,10 @@ const csi_sequences: std.StaticStringMap(Event) = .initComptime(.{
         .value = .{ .control = .arrow_left },
         .modifiers = .{ .ctrl = true },
     } } },
+    .{ "3;5~", Event{ .key = .{
+        .value = .{ .control = .delete },
+        .modifiers = .{ .ctrl = true },
+    } } },
     .{ "46;5u", Event{ .key = .{
         .value = .{ .codepoint = .init(".") },
         .modifiers = .{ .ctrl = true },
