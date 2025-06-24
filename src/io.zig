@@ -267,6 +267,47 @@ pub const cursor = struct {
     }
 };
 
+pub const clipboard = struct {
+    pub fn get(buffer: []u8) ![]u8 {
+        switch (comptime builtin.os.tag) {
+            .windows => {
+                const win32 = @import("win32").system;
+                const de = win32.data_exchange;
+                const ss = win32.system_services;
+                const mem = win32.memory;
+                if (de.OpenClipboard(null) != 0) {
+                    defer _ = de.CloseClipboard();
+                    if (de.IsClipboardFormatAvailable(
+                        @intFromEnum(ss.CF_UNICODETEXT),
+                    ) != 0) {
+                        const cp_handle = de.GetClipboardData(
+                            @intFromEnum(ss.CF_UNICODETEXT),
+                        );
+                        if (cp_handle) |handle| {
+                            if (mem.GlobalLock(
+                                @bitCast(@intFromPtr(handle)),
+                            )) |data| {
+                                defer _ = mem.GlobalUnlock(
+                                    @bitCast(@intFromPtr(handle)),
+                                );
+                                const wtf16: [*:0]u16 =
+                                    @alignCast(@ptrCast(data));
+                                const source_len = std.mem.len(wtf16);
+                                const source = wtf16[0..source_len];
+                                const len =
+                                    std.unicode.wtf16LeToWtf8(buffer, source);
+                                return buffer[0..len];
+                            }
+                        }
+                    }
+                }
+            },
+            else => {},
+        }
+        return &.{};
+    }
+};
+
 pub const event = struct {
     /// Poll for input events in the terminal.
     pub fn poll() !usize {

@@ -389,6 +389,21 @@ pub fn handler(ctx: *Prompt) void {
                                     ctx.clear();
                                     break :parse;
                                 },
+                                'v' => {
+                                    switch (comptime builtin.os.tag) {
+                                        .windows => {
+                                            var buf: [max_input_size]u8 =
+                                                undefined;
+                                            const paste = io.clipboard.get(
+                                                &buf,
+                                            ) catch {};
+                                            for (paste) |b| {
+                                                ctx.insert(b);
+                                            }
+                                        },
+                                        else => {},
+                                    }
+                                },
                                 else => {},
                             }
                         }
