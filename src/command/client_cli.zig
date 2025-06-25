@@ -48,7 +48,7 @@ const Line = struct {
     axes: []Axis,
     stations: []Station,
     name: []u8,
-    speed: u5,
+    velocity: u5,
     acceleration: u8,
 
     pub const Index = Station.Index;
@@ -907,7 +907,14 @@ fn clientConnect(params: [][]const u8) !void {
             "Connected to {}",
             .{try s.getRemoteEndPoint()},
         );
-        try lineConfig();
+        getLineConfig() catch |e| {
+            std.log.err("{s}", .{@errorName(e)});
+            return try disconnect();
+        };
+        assertAPIVersion() catch |e| {
+            std.log.err("{s}", .{@errorName(e)});
+            return try disconnect();
+        };
     } else {
         std.log.err("Failed to connect to server", .{});
     }
@@ -945,10 +952,10 @@ fn clientSetSpeed(params: [][]const u8) !void {
     if (carrier_speed <= 0.0 or carrier_speed > 3.0) return error.InvalidSpeed;
 
     const line_idx = try matchLine(lines, line_name);
-    lines[line_idx].speed = @intFromFloat(carrier_speed * 10.0);
+    lines[line_idx].velocity = @intFromFloat(carrier_speed * 10.0);
 
     std.log.info("Set speed to {d}m/s.", .{
-        @as(f32, @floatFromInt(lines[line_idx].speed)) / 10.0,
+        @as(f32, @floatFromInt(lines[line_idx].velocity)) / 10.0,
     });
 }
 
@@ -974,7 +981,7 @@ fn clientGetSpeed(params: [][]const u8) !void {
         "Line {s} speed: {d}m/s",
         .{
             line_name,
-            @as(f32, @floatFromInt(lines[line_idx].speed)) / 10.0,
+            @as(f32, @floatFromInt(lines[line_idx].velocity)) / 10.0,
         },
     );
 }
@@ -995,17 +1002,19 @@ fn clientGetAcceleration(params: [][]const u8) !void {
 fn serverVersion(_: [][]const u8) !void {
     var core_msg: CoreRequest = CoreRequest.init(fba_allocator);
     defer core_msg.deinit();
-    core_msg.kind = .CORE_REQUEST_KIND_SERVER_VERSION;
-    const version = try sendRequest(
+    core_msg.kind = .CORE_REQUEST_KIND_SERVER_INFO;
+    const server = try sendRequest(
         core_msg,
         fba_allocator,
-        CoreResponse.SemanticVersion,
+        CoreResponse.Server,
     );
-    defer version.deinit();
+    const version = server.version.?;
+    defer server.deinit();
     std.log.info(
         "MMC Server Version: {d}.{d}.{d}\n",
         .{ version.major, version.minor, version.patch },
     );
+    std.log.debug("Server name: {s}", .{server.name.getSlice()});
 }
 
 /// Request api version used by the server. Called inside connect function and
@@ -1028,27 +1037,18 @@ fn APIVersion() !std.SemanticVersion {
 }
 
 /// Request line configurataion from the server. Called inside connect command
-fn lineConfig() !void {
+fn getLineConfig() !void {
     var core_msg: CoreRequest = CoreRequest.init(fba_allocator);
     defer core_msg.deinit();
     core_msg.kind = .CORE_REQUEST_KIND_LINE_CONFIG;
-    const line_config = try sendRequest(
+    const response = try sendRequest(
         core_msg,
         fba_allocator,
-        []CoreResponse.LineConfig.Line,
+        CoreResponse.LineConfig,
     );
-    defer allocator.free(line_config);
+    defer response.deinit();
 
-    // std.log.info("Receiving line information...", .{});
-    // const core_msg = try sendReq(s, fba_allocator);
-    // defer fba_allocator.free(core_msg);
-    // const response: CoreResponse = try parseResponse(core_msg, allocator);
-    // defer response.deinit();
-    // const line_config: CoreResponse.LineConfig.Line = switch (response.body orelse
-    //     return error.UnexpectedResponse) {
-    //     .line_config => |r| r,
-    //     else => return error.UnexpectedResponse,
-    // };
+    const line_config = response.lines.items;
     lines = try allocator.alloc(Line, line_config.len);
     log_lines = try allocator.alloc(LogLine, lines.len);
     for (line_config, 0..) |line, line_idx| {
@@ -1065,7 +1065,7 @@ fn lineConfig() !void {
             line.name.Owned.str.len,
         );
         lines[line_idx].acceleration = 78;
-        lines[line_idx].speed = 12;
+        lines[line_idx].velocity = 12;
         lines[line_idx].index = @intCast(line_idx);
         lines[line_idx].id = @intCast(line_idx + 1);
         var num_axes: usize = 0;
@@ -1116,10 +1116,45 @@ fn lineConfig() !void {
                 line.axes.len,
                 line.stations.len,
                 line.acceleration,
-                line.speed,
+                line.velocity,
             },
         );
     }
+}
+
+/// Assert that the API versions used in mmc-cli and mmc server are identical
+/// for major and minor version
+fn assertAPIVersion() !void {
+    var core_msg: CoreRequest = CoreRequest.init(fba_allocator);
+    defer core_msg.deinit();
+    core_msg.kind = .CORE_REQUEST_KIND_API_VERSION;
+    const server_api_version = try sendRequest(
+        core_msg,
+        fba_allocator,
+        CoreResponse.SemanticVersion,
+    );
+    const cli_api_version = api.version;
+    if (cli_api_version.major != server_api_version.major or
+        cli_api_version.minor != server_api_version.minor)
+    {
+        return error.APIVersionMismatch;
+    }
+    std.log.debug(
+        "server api version: {}.{}.{}",
+        .{
+            server_api_version.major,
+            server_api_version.minor,
+            server_api_version.patch,
+        },
+    );
+    std.log.debug(
+        "client api version: {}.{}.{}",
+        .{
+            cli_api_version.major,
+            cli_api_version.minor,
+            cli_api_version.patch,
+        },
+    );
 }
 
 fn clientAutoInitialize(params: [][]const u8) !void {
@@ -1140,7 +1175,7 @@ fn clientAutoInitialize(params: [][]const u8) !void {
             const line: CommandRequest.AutoInitialize.Lines = .{
                 .line_id = @intCast(_line.id),
                 .acceleration = @intCast(_line.acceleration),
-                .speed = @intCast(_line.speed),
+                .velocity = @intCast(_line.velocity),
             };
             try init_lines.append(line);
         }
@@ -1149,7 +1184,7 @@ fn clientAutoInitialize(params: [][]const u8) !void {
             const line: CommandRequest.AutoInitialize.Lines = .{
                 .line_id = @intCast(_line.id),
                 .acceleration = @intCast(_line.acceleration),
-                .speed = @intCast(_line.speed),
+                .velocity = @intCast(_line.velocity),
             };
             try init_lines.append(line);
         }
@@ -1162,7 +1197,7 @@ fn clientAutoInitialize(params: [][]const u8) !void {
     for (init_lines.items) |line| {
         std.log.debug(
             "id: {}, speed: {}, acceleration: {}",
-            .{ line.line_id, line.speed, line.acceleration },
+            .{ line.line_id, line.velocity, line.acceleration },
         );
     }
     const encoded = try command_msg.encode(fba_allocator);
@@ -1826,7 +1861,7 @@ fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
         .move_carrier = .{
             .line_id = @intCast(line.id),
             .carrier_id = carrier_id,
-            .speed = @intCast(lines[line_idx].speed),
+            .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .target = .{ .axis = @intCast(axis_id) },
             .control_kind = .CONTROL_POSITION,
@@ -1849,7 +1884,7 @@ fn clientCarrierPosMoveLocation(params: [][]const u8) !void {
         .move_carrier = .{
             .line_id = @intCast(line.id),
             .carrier_id = carrier_id,
-            .speed = @intCast(lines[line_idx].speed),
+            .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .target = .{ .location = location },
             .control_kind = .CONTROL_POSITION,
@@ -1875,7 +1910,7 @@ fn clientCarrierPosMoveDistance(params: [][]const u8) !void {
         .move_carrier = .{
             .line_id = @intCast(line.id),
             .carrier_id = carrier_id,
-            .speed = @intCast(lines[line_idx].speed),
+            .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .target = .{ .distance = distance },
             .control_kind = .CONTROL_POSITION,
@@ -1901,10 +1936,10 @@ fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
         .move_carrier = .{
             .line_id = @intCast(line.id),
             .carrier_id = carrier_id,
-            .speed = @intCast(lines[line_idx].speed),
+            .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .target = .{ .axis = @intCast(axis_id) },
-            .control_kind = .CONTROL_SPEED,
+            .control_kind = .CONTROL_VELOCITY,
         },
     };
     try sendCommandRequest(command_msg, fba_allocator);
@@ -1924,10 +1959,10 @@ fn clientCarrierSpdMoveLocation(params: [][]const u8) !void {
         .move_carrier = .{
             .line_id = @intCast(line.id),
             .carrier_id = carrier_id,
-            .speed = @intCast(lines[line_idx].speed),
+            .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .target = .{ .location = location },
-            .control_kind = .CONTROL_SPEED,
+            .control_kind = .CONTROL_VELOCITY,
         },
     };
     try sendCommandRequest(command_msg, fba_allocator);
@@ -1951,10 +1986,10 @@ fn clientCarrierSpdMoveDistance(params: [][]const u8) !void {
         .move_carrier = .{
             .line_id = @intCast(line.id),
             .carrier_id = carrier_id,
-            .speed = @intCast(lines[line_idx].speed),
+            .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .target = .{ .distance = distance },
-            .control_kind = .CONTROL_SPEED,
+            .control_kind = .CONTROL_VELOCITY,
         },
     };
     try sendCommandRequest(command_msg, fba_allocator);
@@ -1983,7 +2018,7 @@ fn clientCarrierPushForward(params: [][]const u8) !void {
         .push_carrier = .{
             .line_id = @intCast(line.id),
             .carrier_id = carrier_id,
-            .speed = @intCast(lines[line_idx].speed),
+            .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .direction = .DIRECTION_FORWARD,
             .axis_id = command_axis,
@@ -2015,7 +2050,7 @@ fn clientCarrierPushBackward(params: [][]const u8) !void {
         .push_carrier = .{
             .line_id = @intCast(line.id),
             .carrier_id = carrier_id,
-            .speed = @intCast(lines[line_idx].speed),
+            .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .direction = .DIRECTION_BACKWARD,
             .axis_id = command_axis,
@@ -2045,7 +2080,7 @@ fn clientCarrierPullForward(params: [][]const u8) !void {
             .line_id = @intCast(line.id),
             .axis_id = @intCast(axis_id),
             .carrier_id = carrier_id,
-            .speed = @intCast(lines[line_idx].speed),
+            .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .direction = .DIRECTION_FORWARD,
             .target = blk: {
@@ -2081,7 +2116,7 @@ fn clientCarrierPullBackward(params: [][]const u8) !void {
             .line_id = @intCast(line.id),
             .axis_id = @intCast(axis_id),
             .carrier_id = carrier_id,
-            .speed = @intCast(lines[line_idx].speed),
+            .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .direction = .DIRECTION_BACKWARD,
             .target = blk: {
@@ -2199,13 +2234,13 @@ fn clientWaitAxisEmpty(params: [][]const u8) !void {
                 },
             },
         };
-        const _axis_info = try sendRequest(
+        const response = try sendRequest(
             info_msg,
             fba_allocator,
-            []InfoResponse.Axes.Axis,
+            InfoResponse.Axes,
         );
-        defer allocator.free(_axis_info);
-        const axis_info = _axis_info[0];
+        defer response.deinit();
+        const axis_info = response.axes.items[0];
         const carrier = axis_info.carrier_id;
         const axis_alarms = axis_info.hall_alarm.?;
         const wait_push = axis_info.waiting_push;
@@ -2596,7 +2631,7 @@ fn logRegisters(log_time_start: i64, timer: *std.time.Timer) !LoggingRegisters {
                         switch (reg_entry.key) {
                             .x => {
                                 result.registers[reg_idx].x = try getRegister(
-                                    line.index,
+                                    line.id,
                                     station.id,
                                     fba_allocator,
                                     .X,
@@ -2604,7 +2639,7 @@ fn logRegisters(log_time_start: i64, timer: *std.time.Timer) !LoggingRegisters {
                             },
                             .y => {
                                 result.registers[reg_idx].y = try getRegister(
-                                    line.index,
+                                    line.id,
                                     station.id,
                                     fba_allocator,
                                     .Y,
@@ -2612,7 +2647,7 @@ fn logRegisters(log_time_start: i64, timer: *std.time.Timer) !LoggingRegisters {
                             },
                             .wr => {
                                 result.registers[reg_idx].wr = try getRegister(
-                                    line.index,
+                                    line.id,
                                     station.id,
                                     fba_allocator,
                                     .Wr,
@@ -2620,7 +2655,7 @@ fn logRegisters(log_time_start: i64, timer: *std.time.Timer) !LoggingRegisters {
                             },
                             .ww => {
                                 result.registers[reg_idx].ww = try getRegister(
-                                    line.index,
+                                    line.id,
                                     station.id,
                                     fba_allocator,
                                     .Ww,
@@ -2688,12 +2723,25 @@ fn matchLine(_lines: []Line, name: []const u8) !usize {
 /// Send a request to the server and retrieve the response. Response that requires
 /// memory need to free the memory
 fn sendRequest(
-    msg: anytype,
+    /// `body` type should be one of CoreRequest, CommandRequest, or InfoRequest
+    body: anytype,
     a: std.mem.Allocator,
     comptime T: type,
 ) !T {
     if (main_socket) |s| {
-        const encoded = try msg.encode(a);
+        var encoded: []u8 = undefined;
+        if (@TypeOf(body) == CoreRequest) {
+            const _msg: api.mmc_msg.Request = .{ .body = .{ .core = body } };
+            encoded = try _msg.encode(a);
+        }
+        if (@TypeOf(body) == InfoRequest) {
+            const _msg: api.mmc_msg.Request = .{ .body = .{ .info = body } };
+            encoded = try _msg.encode(a);
+        }
+        if (@TypeOf(body) == CommandRequest) {
+            const _msg: api.mmc_msg.Request = .{ .body = .{ .command = body } };
+            encoded = try _msg.encode(a);
+        }
         defer a.free(encoded);
         try send(s, encoded);
         const rep = try receive(s, a);
@@ -2728,7 +2776,18 @@ fn sendCommandRequest(
         switch (command_status.status) {
             .STATUS_PROCESSING, .STATUS_QUEUED => {}, // continue the loop
             .STATUS_COMPLETED => break,
-            .STATUS_FAILED => {}, // handled by parseResponse()
+            .STATUS_FAILED => {
+                return switch (command_status.error_response.?) {
+                    .ERROR_KIND_CARRIER_ALREADY_EXISTS => error.CarrierAlreadyExists,
+                    .ERROR_KIND_CARRIER_NOT_FOUND => error.CarrierNotFound,
+                    .ERROR_KIND_HOMING_FAILED => error.HomingFailed,
+                    .ERROR_KIND_INVALID_AXIS => error.InvalidAxis,
+                    .ERROR_KIND_INVALID_COMMAND => error.InvalidCommand,
+                    .ERROR_KIND_INVALID_PARAMETER => error.InvalidParameter,
+                    .ERROR_KIND_INVALID_SYSTEM_STATE => error.InvalidSystemState,
+                    else => error.UnexpectedResponse,
+                };
+            },
             else => return error.UnexpectedResponse,
         }
     }
@@ -2741,60 +2800,69 @@ fn parseResponse(a: std.mem.Allocator, comptime T: type, msg: []const u8) !T {
         try api.mmc_msg.Response.decode(msg, a);
 
     defer response.deinit();
-    switch (response.body.?) {
-        .command => |command_response| switch (command_response.body.?) {
-            .command_id => |r| if (@TypeOf(r) == T) return r,
-            .request_error => |r| if (@TypeOf(r) == T) {
+    std.log.debug("{any}", .{response});
+    return switch (response.body.?) {
+        inline .command => |command_response| blk: switch (command_response.body.?) {
+            inline .command_id => |r| if (@TypeOf(r) == T) break :blk r else unreachable,
+            inline .request_error => |r| if (@TypeOf(r) == T) {
                 switch (r) {
-                    .COMMAND_REQUEST_ERROR_UNSPECIFIED => return error.UnexpectedResponse,
-                    .COMMAND_REQUEST_ERROR_INVALID_LINE => return error.InvalidLine,
-                    .COMMAND_REQUEST_ERROR_INVALID_AXIS => return error.InvalidAxis,
-                    .COMMAND_REQUEST_ERROR_CARRIER_NOT_FOUND => return error.CarrierNotFound,
-                    .COMMAND_REQUEST_ERROR_CC_LINK_DISCONNECTED => return error.CCLinkDisconnected,
-                    .COMMAND_REQUEST_ERROR_INVALID_ACCELERATION => return error.InvalidAcceleration,
-                    .COMMAND_REQUEST_ERROR_INVALID_SPEED => return error.InvalidSpeed,
-                    .COMMAND_REQUEST_ERROR_SERVER_RUNNING_OUT_OF_MEMORY => return error.ServerRunningOutOfMemory,
-                    .COMMAND_REQUEST_ERROR_MISSING_PARAMETER => return error.MissingParameter,
+                    .COMMAND_REQUEST_ERROR_UNSPECIFIED => break :blk error.UnexpectedResponse,
+                    .COMMAND_REQUEST_ERROR_INVALID_LINE => break :blk error.InvalidLine,
+                    .COMMAND_REQUEST_ERROR_INVALID_AXIS => break :blk error.InvalidAxis,
+                    .COMMAND_REQUEST_ERROR_CARRIER_NOT_FOUND => break :blk error.CarrierNotFound,
+                    .COMMAND_REQUEST_ERROR_CC_LINK_DISCONNECTED => break :blk error.CCLinkDisconnected,
+                    .COMMAND_REQUEST_ERROR_INVALID_ACCELERATION => break :blk error.InvalidAcceleration,
+                    .COMMAND_REQUEST_ERROR_INVALID_SPEED => break :blk error.InvalidSpeed,
+                    .COMMAND_REQUEST_ERROR_SERVER_RUNNING_OUT_OF_MEMORY => break :blk error.ServerRunningOutOfMemory,
+                    .COMMAND_REQUEST_ERROR_MISSING_PARAMETER => break :blk error.MissingParameter,
                     _ => unreachable,
                 }
-            },
+            } else unreachable,
         },
-        .core => |core_response| switch (core_response.body.?) {
-            .server_version, .api_version => |r| if (@TypeOf(r) == T) return r,
-            .line_config => |r| if (@TypeOf(r) == T)
-                return try allocator.dupe(T, r.lines.items),
-            .request_error => |r| if (@TypeOf(r) == T) switch (r) {
-                .CORE_REQUEST_ERROR_UNSPECIFIED => return error.UnexpectedResponse,
-                .CORE_REQUEST_ERROR_UNKNOWN_REQUEST => return error.UnknownRequest,
+        inline .core => |core_response| switch (core_response.body.?) {
+            inline .server => |r| if (@TypeOf(r) == T)
+                try r.dupe(allocator)
+            else
+                unreachable,
+            inline .api_version => |r| if (@TypeOf(r) == T) r else unreachable,
+            inline .line_config => |r| if (@TypeOf(r) == T)
+                try r.dupe(allocator)
+            else
+                unreachable,
+            inline .request_error => |r| switch (r) {
+                .CORE_REQUEST_ERROR_UNSPECIFIED => error.UnexpectedResponse,
+                .CORE_REQUEST_ERROR_UNKNOWN_REQUEST => error.UnknownRequest,
                 _ => unreachable,
             },
         },
-        .info => |info_response| switch (info_response.body.?) {
-            .register_x => |r| if (@TypeOf(r) == T) return r,
-            .register_y => |r| if (@TypeOf(r) == T) return r,
-            .register_wr => |r| if (@TypeOf(r) == T) return r,
-            .register_ww => |r| if (@TypeOf(r) == T) return r,
-            .command => |r| if (@TypeOf(r) == T) return r,
-            .hall_alarm => |r| if (@TypeOf(r) == T) return r,
-            .carrier => |r| if (@TypeOf(r) == T) return r,
-            .axis => |r| if (@TypeOf(r) == T)
-                return try allocator.dupe(T, r.axes.items),
-            .station => |r| if (@TypeOf(r) == T)
-                return try allocator.dupe(T, r.stations.items),
-            .request_error => |r| if (@TypeOf(r) == T) return switch (r) {
-                .INFO_REQUEST_ERROR_UNSPECIFIED => return error.UnexpectedResponse,
-                .INFO_REQUEST_ERROR_INVALID_LINE => return error.InvalidLine,
-                .INFO_REQUEST_ERROR_INVALID_AXIS => return error.InvalidAxis,
-                .INFO_REQUEST_ERROR_INVALID_STATION => return error.InvalidStation,
-                .INFO_REQUEST_ERROR_CARRIER_NOT_FOUND => return error.CarrierNotFound,
-                .INFO_REQUEST_ERROR_CC_LINK_DISCONNECTED => return error.CCLinkDisconnected,
-                .INFO_REQUEST_ERROR_SERVER_RUNNING_OUT_OF_MEMORY => return error.ServerRunningOutOfMemory,
-                .INFO_REQUEST_ERROR_MISSING_PARAMETER => return error.MissingParameter,
+        inline .info => |info_response| switch (info_response.body.?) {
+            inline .register_x => |r| if (@TypeOf(r) == T) r else unreachable,
+            inline .register_y => |r| if (@TypeOf(r) == T) r else unreachable,
+            inline .register_wr => |r| if (@TypeOf(r) == T) r else unreachable,
+            inline .register_ww => |r| if (@TypeOf(r) == T) r else unreachable,
+            inline .command => |r| if (@TypeOf(r) == T) r else unreachable,
+            inline .hall_alarm => |r| if (@TypeOf(r) == T) r else unreachable,
+            inline .carrier => |r| if (@TypeOf(r) == T) r else unreachable,
+            inline .axis => |r| if (@TypeOf(r) == T)
+                try r.dupe(allocator)
+            else
+                unreachable,
+            inline .station => |r| if (@TypeOf(r) == T)
+                try r.dupe(allocator)
+            else
+                unreachable,
+            inline .request_error => |r| switch (r) {
+                .INFO_REQUEST_ERROR_UNSPECIFIED => error.UnexpectedResponse,
+                .INFO_REQUEST_ERROR_INVALID_LINE => error.InvalidLine,
+                .INFO_REQUEST_ERROR_INVALID_AXIS => error.InvalidAxis,
+                .INFO_REQUEST_ERROR_INVALID_STATION => error.InvalidStation,
+                .INFO_REQUEST_ERROR_CARRIER_NOT_FOUND => error.CarrierNotFound,
+                .INFO_REQUEST_ERROR_CC_LINK_DISCONNECTED => error.CCLinkDisconnected,
+                .INFO_REQUEST_ERROR_MISSING_PARAMETER => error.MissingParameter,
                 _ => unreachable,
             },
         },
-    }
-    unreachable;
+    };
 }
 
 /// Check whether the socket has event flag occurred. Timeout is in milliseconds
