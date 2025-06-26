@@ -2831,7 +2831,7 @@ fn parseResponse(a: std.mem.Allocator, comptime T: type, msg: []const u8) !T {
                 unreachable,
             inline .request_error => |r| switch (r) {
                 .CORE_REQUEST_ERROR_UNSPECIFIED => error.UnexpectedResponse,
-                .CORE_REQUEST_ERROR_UNKNOWN_REQUEST => error.UnknownRequest,
+                .CORE_REQUEST_ERROR_REQUEST_UNKNOWN => error.RequestUnknown,
                 _ => unreachable,
             },
         },

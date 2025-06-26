@@ -1,8 +1,8 @@
 .{
     .name = .mmc_cli,
-    .version = "0.8.0",
+    .version = "0.9.0",
     .fingerprint = 0x392c74984291bf14,
-    .minimum_zig_version = "0.15.0-dev.579+07a5efd07",
+    .minimum_zig_version = "0.15.0-dev.777+6810ffa42",
     .dependencies = .{
         .network = .{
             .url = "https://github.com/mochalins/network/archive/dd8f929.tar.gz",
@@ -18,8 +18,8 @@
             .hash = "chrono-0.1.0-uVd76GvCAwAvWrHupKdlB_UrmfZHRuVP-P4Xi_G8hz3R",
         },
         .mmc_api = .{
-            .url = "https://github.com/pmotionf/mmc-api/archive/d084340.tar.gz",
-            .hash = "mmc_api-0.2.0-P5raRwA4AQDqNwuoSGGfDn5H3kUx6mzJdLle3mX6cggk",
+            .url = "https://github.com/pmotionf/mmc-api/archive/54af447.tar.gz",
+            .hash = "mmc_api-0.2.0-P5raRzY5AQDy5-clEt3Av3HvRXFfdAigNLQVktielopU",
         },
         .zigwin32 = .{
             .url = "https://github.com/marlersoft/zigwin32/archive/d21b419.tar.gz",
