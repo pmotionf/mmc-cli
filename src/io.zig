@@ -60,6 +60,7 @@ pub fn init() !void {
             mode.ENABLE_ECHO_INPUT = 0;
             mode.ENABLE_VIRTUAL_TERMINAL_INPUT = 1;
             mode.ENABLE_MOUSE_INPUT = 0;
+            mode.ENABLE_WINDOW_INPUT = 0;
             // Necessary to have terminal handle Ctrl-C.
             mode.ENABLE_PROCESSED_INPUT = 1;
             if (console.SetConsoleMode(stdin, mode) == 0) {
@@ -411,34 +412,45 @@ pub const event = struct {
             result = .initKeyCodepoint(&.{byte});
 
             while (result.key.value.codepoint.len < utf8_seq_len) {
-                if (options.sequence_timeout) |seq_timeout| {
-                    if (seq_timeout == 0) {
-                        result.key.value.codepoint.buffer[
-                            result.key.value.codepoint.len
-                        ] = try readByte();
-                        result.key.value.codepoint.len += 1;
-                    } else {
-                        timer.reset();
-                        while (timer.read() < seq_timeout) {
-                            if (try pollByte()) {
-                                result.key.value.codepoint.buffer[
-                                    result.key.value.codepoint.len
-                                ] = try readByte();
-                                result.key.value.codepoint.len += 1;
-                                break;
+                // Windows events emit the UTF-8 sequence such that only the
+                // start byte has a corresponding event in queue; poll calls
+                // will not reflect the subsequent available bytes. All poll
+                // calls must thus be skipped for UTF-8 sequence parsing.
+                if (comptime builtin.os.tag == .windows) {
+                    result.key.value.codepoint.buffer[
+                        result.key.value.codepoint.len
+                    ] = try readByte();
+                    result.key.value.codepoint.len += 1;
+                } else {
+                    if (options.sequence_timeout) |seq_timeout| {
+                        if (seq_timeout == 0) {
+                            result.key.value.codepoint.buffer[
+                                result.key.value.codepoint.len
+                            ] = try readByte();
+                            result.key.value.codepoint.len += 1;
+                        } else {
+                            timer.reset();
+                            while (timer.read() < seq_timeout) {
+                                if (try pollByte()) {
+                                    result.key.value.codepoint.buffer[
+                                        result.key.value.codepoint.len
+                                    ] = try readByte();
+                                    result.key.value.codepoint.len += 1;
+                                    break;
+                                }
+                            } else {
+                                return error.IncompleteCodepoint;
                             }
+                        }
+                    } else {
+                        if (try pollByte()) {
+                            result.key.value.codepoint.buffer[
+                                result.key.value.codepoint.len
+                            ] = try readByte();
+                            result.key.value.codepoint.len += 1;
                         } else {
                             return error.IncompleteCodepoint;
                         }
-                    }
-                } else {
-                    if (try pollByte()) {
-                        result.key.value.codepoint.buffer[
-                            result.key.value.codepoint.len
-                        ] = try readByte();
-                        result.key.value.codepoint.len += 1;
-                    } else {
-                        return error.IncompleteCodepoint;
                     }
                 }
             }
