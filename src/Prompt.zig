@@ -111,6 +111,7 @@ fn insertString(self: *Prompt, string: []const u8) void {
         after,
     );
     @memcpy(self.input_buffer[self.cursor.raw..][0..string.len], string);
+    self.input = self.input_buffer[0 .. self.input.len + string.len];
     const after_raw_pos = self.cursor.raw + string.len;
     while (self.cursor.raw < after_raw_pos) {
         self.cursor.moveRight();
@@ -435,6 +436,7 @@ pub fn handler(ctx: *Prompt) void {
                                                 &buf,
                                             ) catch {};
                                             ctx.insertString(paste);
+                                            break :parse;
                                         },
                                         else => {},
                                     }
