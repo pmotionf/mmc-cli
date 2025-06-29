@@ -416,6 +416,16 @@ pub fn handler(ctx: *Prompt) void {
                                     }
                                 }
                             },
+                            .home => {
+                                while (ctx.cursor.raw > 0) {
+                                    ctx.cursor.moveLeft();
+                                }
+                            },
+                            .end => {
+                                while (ctx.cursor.raw < ctx.input.len) {
+                                    ctx.cursor.moveRight();
+                                }
+                            },
                             else => {},
                         }
                     },
