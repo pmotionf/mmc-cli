@@ -4,35 +4,23 @@ const Prompt = @This();
 const builtin = @import("builtin");
 const std = @import("std");
 
-const CircularBuffer = @import("circular_buffer.zig").CircularBuffer;
+const History = @import("Prompt/History.zig");
 const command = @import("command.zig");
 const io = @import("io.zig");
 
-const max_input_size = std.fs.max_path_bytes + 512;
-const max_history = 1024;
+pub const max_input_size = std.fs.max_path_bytes + 512;
 
 /// Flag to hide prompt and ignore user input.
 disable: std.atomic.Value(bool) = .init(false),
 /// Flag to gracefully exit running prompt handler thread.
 close: std.atomic.Value(bool) = .init(false),
 
-history_buf: [max_history][max_input_size]u8 = undefined,
-history: CircularBuffer([]u8, max_history) = .{},
-/// Currently displayed history item offset from tail.
-history_offset: ?std.math.IntFittingRange(0, max_history) = null,
+history: History = .{},
 
 input_buffer: [max_input_size]u8 = undefined,
 input: []u8 = &.{},
 
 cursor: Cursor = .{},
-
-fn getHistoryItem(self: *Prompt) ?[]const u8 {
-    if (self.history_offset) |offset| {
-        return self.history.buffer[
-            ((self.history.head) + offset - 1) % self.history.buffer.len
-        ];
-    } else return null;
-}
 
 /// Insert byte at cursor location. Must guarantee that cursor location is
 /// between 0 and the current input length, inclusive.
@@ -71,7 +59,7 @@ fn insertCodepoint(self: *Prompt, cp: []const u8) void {
 
     // Cancel history selection if insert is in middle of input.
     if (self.cursor.raw < self.input.len) {
-        self.history_offset = null;
+        self.history.selection = null;
     }
     const after = self.input[self.cursor.raw..];
     @memmove(
@@ -81,15 +69,16 @@ fn insertCodepoint(self: *Prompt, cp: []const u8) void {
     @memcpy(self.input_buffer[self.cursor.raw..][0..cp.len], cp);
     self.input = self.input_buffer[0 .. self.input.len + cp.len];
     self.cursor.moveRight();
-    if (self.getHistoryItem()) |hist_item| {
+    if (self.history.selection) |*selection| {
+        const hist_item = selection.slice();
         // Cancel selection if input length exceeds history item length.
         if (self.input.len > hist_item.len) {
-            self.history_offset = null;
+            self.history.selection = null;
         }
         // Cancel selection if insert does not match.
         for (cp, 0..) |c, i| {
             if (c != hist_item[self.input.len - cp.len + i]) {
-                self.history_offset = null;
+                self.history.selection = null;
                 break;
             }
         }
@@ -103,7 +92,7 @@ fn insertString(self: *Prompt, string: []const u8) void {
 
     // Cancel history selection if insert is in middle of input.
     if (self.cursor.raw < self.input.len) {
-        self.history_offset = null;
+        self.history.selection = null;
     }
     const after = self.input[self.cursor.raw..];
     @memmove(
@@ -117,10 +106,11 @@ fn insertString(self: *Prompt, string: []const u8) void {
         self.cursor.moveRight();
     }
 
-    if (self.getHistoryItem()) |hist_item| {
+    if (self.history.selection) |*selection| {
+        const hist_item = selection.slice();
         // Cancel selection if input length exceeds history item length.
         if (self.input.len > hist_item.len) {
-            self.history_offset = null;
+            self.history.selection = null;
         }
 
         // Cancel selection if insert does not match.
@@ -129,7 +119,7 @@ fn insertString(self: *Prompt, string: []const u8) void {
             hist_item[self.input.len - string.len ..][0..string.len],
             string,
         )) {
-            self.history_offset = null;
+            self.history.selection = null;
         }
     }
 }
@@ -140,7 +130,7 @@ fn backspace(self: *Prompt) void {
 
     // Cancel history selection if delete is in middle of input.
     if (self.cursor.raw < self.input.len) {
-        self.history_offset = null;
+        self.history.selection = null;
     }
     const after = self.input[self.cursor.raw..];
 
@@ -148,12 +138,12 @@ fn backspace(self: *Prompt) void {
     @memmove(self.input[self.cursor.raw..][0..after.len], after);
 
     self.input = self.input[0 .. self.cursor.raw + after.len];
-    if (self.input.len == 0) self.history_offset = null;
+    if (self.input.len == 0) self.history.selection = null;
 }
 
 /// Clear input.
 fn clear(self: *Prompt) void {
-    self.history_offset = null;
+    self.history.selection = null;
     self.input = &.{};
     self.cursor = .{
         .raw = 0,
@@ -165,7 +155,7 @@ fn clear(self: *Prompt) void {
 /// prior to spawning this thread. Only one prompt handler thread may be
 /// running at a time.
 pub fn handler(ctx: *Prompt) void {
-    ctx.history.clearRetainingCapacity();
+    ctx.history.clear();
     ctx.clear();
 
     var buffered_out = std.io.bufferedWriter(std.io.getStdOut().writer());
@@ -201,7 +191,7 @@ pub fn handler(ctx: *Prompt) void {
                     .control => |control_key| {
                         switch (control_key) {
                             .escape => {
-                                ctx.history_offset = null;
+                                ctx.history.selection = null;
                             },
                             .backspace => {
                                 // Whether first deleted is whitespace.
@@ -272,12 +262,8 @@ pub fn handler(ctx: *Prompt) void {
                                 }
                             },
                             .enter => {
-                                if (ctx.history_offset) |offset| {
-                                    const hist_item = ctx.history.buffer[
-                                        ((ctx.history.head) + offset - 1) %
-                                            ctx.history.buffer.len
-                                    ];
-
+                                if (ctx.history.selection) |*selection| {
+                                    const hist_item = selection.slice();
                                     ctx.input =
                                         ctx.input_buffer[0..hist_item.len];
                                     @memcpy(ctx.input, hist_item);
@@ -299,22 +285,15 @@ pub fn handler(ctx: *Prompt) void {
 
                                     command.enqueue(ctx.input) catch
                                         continue :main;
-                                    const buf_slice = ctx.history_buf[
-                                        ctx.history.getWriteIndex()
-                                    ][0..ctx.input.len];
-                                    @memcpy(buf_slice, ctx.input);
-                                    ctx.history.writeItemOverwrite(buf_slice);
+                                    ctx.history.append(ctx.input);
+                                    ctx.history.selection = null;
                                     ctx.clear();
                                     continue :main;
                                 }
                             },
                             .tab => {
-                                if (ctx.history_offset) |offset| {
-                                    const hist_item = ctx.history.buffer[
-                                        ((ctx.history.head) + offset - 1) %
-                                            ctx.history.buffer.len
-                                    ];
-
+                                if (ctx.history.selection) |*selection| {
+                                    const hist_item = selection.slice();
                                     ctx.input =
                                         ctx.input_buffer[0..hist_item.len];
                                     @memcpy(ctx.input, hist_item);
@@ -322,42 +301,21 @@ pub fn handler(ctx: *Prompt) void {
                                 }
                             },
                             .arrow_up => {
-                                var remaining =
-                                    if (ctx.history_offset) |offset|
-                                        if (offset > 0) offset - 1 else offset
-                                    else
-                                        ctx.history.count;
-                                while (remaining > 0) {
-                                    const old = ctx.history.buffer[
-                                        (ctx.history.head + remaining - 1) %
-                                            ctx.history.buffer.len
-                                    ];
-
-                                    if (ctx.input.len <= old.len and
-                                        std.mem.eql(
-                                            u8,
-                                            ctx.input,
-                                            old[0..ctx.input.len],
-                                        ))
-                                    {
-                                        ctx.history_offset = remaining;
-                                        break;
-                                    }
-                                    remaining -= 1;
+                                if (ctx.history.selection) |*selection| {
+                                    selection.previous(ctx.input);
+                                } else {
+                                    ctx.history.select(ctx.input);
                                 }
                             },
                             .arrow_right => {
                                 if (ctx.cursor.raw >= ctx.input.len) {
-                                    if (ctx.history_offset) |offset| {
-                                        const hist_item = ctx.history.buffer[
-                                            ((ctx.history.head) + offset - 1) %
-                                                ctx.history.buffer.len
-                                        ];
+                                    if (ctx.history.selection) |*selection| {
+                                        const hist_item = selection.slice();
 
                                         ctx.input =
                                             ctx.input_buffer[0..hist_item.len];
                                         @memcpy(ctx.input, hist_item);
-                                        ctx.history_offset = null;
+                                        ctx.history.selection = null;
                                     }
                                     ctx.cursor.moveEnd();
                                 } else {
@@ -377,28 +335,8 @@ pub fn handler(ctx: *Prompt) void {
                                 }
                             },
                             .arrow_down => {
-                                if (ctx.history_offset) |offset| {
-                                    var remaining: usize =
-                                        if (offset > 0) offset + 1 else offset;
-                                    while (remaining <= ctx.history.count) {
-                                        const old = ctx.history.buffer[
-                                            (ctx.history.head + remaining - 1) %
-                                                ctx.history.buffer.len
-                                        ];
-
-                                        if (std.mem.eql(
-                                            u8,
-                                            ctx.input,
-                                            old[0..ctx.input.len],
-                                        )) {
-                                            ctx.history_offset =
-                                                @intCast(remaining);
-                                            break;
-                                        }
-                                        remaining += 1;
-                                    } else {
-                                        ctx.history_offset = null;
-                                    }
+                                if (ctx.history.selection) |*selection| {
+                                    selection.next(ctx.input);
                                 }
                             },
                             .arrow_left => {
@@ -536,10 +474,8 @@ pub fn handler(ctx: *Prompt) void {
         }
 
         // Print history suggestion if exists
-        if (ctx.history_offset) |offset| {
-            const hist_item = ctx.history.buffer[
-                ((ctx.history.head) + offset - 1) % ctx.history.buffer.len
-            ];
+        if (ctx.history.selection) |*selection| {
+            const hist_item = selection.slice();
             if (hist_item.len > ctx.input.len) {
                 io.style.set(stdout.any(), .{
                     .fg = .{ .lut = .grayscale(12) },
