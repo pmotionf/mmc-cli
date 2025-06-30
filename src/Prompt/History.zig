@@ -109,7 +109,7 @@ pub fn select(self: *History, prefix: []const u8) void {
                 self.history.buffer.len
         ];
         if (prefix.len > item.len) continue;
-        if (std.mem.eql(u8, prefix, item[0..prefix.len])) {
+        if (std.ascii.eqlIgnoreCase(prefix, item[0..prefix.len])) {
             self.selection = .{ .index = @intCast(remaining - 1) };
             break;
         }
