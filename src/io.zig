@@ -174,6 +174,7 @@ pub const Style = struct {
     bg: ?Color = null,
     bold: ?bool = null,
     underline: ?bool = null,
+    italic: ?bool = null,
     /// Reverse foreground and background colors.
     reverse: ?bool = null,
 };
@@ -251,6 +252,9 @@ pub const style = struct {
         }
         if (s.underline) |ul| {
             try writer.print("\x1B[{d}m", .{@as(u8, if (ul) 4 else 24)});
+        }
+        if (s.italic) |il| {
+            try writer.print("\x1B[{d}m", .{@as(u8, if (il) 3 else 23)});
         }
         if (s.reverse) |rev| {
             if (rev) {
