@@ -354,6 +354,17 @@ pub fn handler(ctx: *Prompt) void {
                 ctx.input[0..ctx.cursor.raw],
                 ' ',
             )) |si| si + 1 else 0;
+
+            if (start_ind > 0) {
+                if (std.mem.allEqual(u8, ctx.input[0..start_ind], ' ')) {
+                    ctx.complete.kind = .command;
+                } else {
+                    ctx.complete.kind = .variable;
+                }
+            } else {
+                ctx.complete.kind = .command;
+            }
+
             const partial = ctx.input[start_ind..ctx.cursor.raw];
             ctx.complete.setPartial(partial);
 
