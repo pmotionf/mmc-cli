@@ -4,168 +4,38 @@ const Prompt = @This();
 const builtin = @import("builtin");
 const std = @import("std");
 
-const CircularBuffer = @import("circular_buffer.zig").CircularBuffer;
 const command = @import("command.zig");
 const io = @import("io.zig");
 
-const max_input_size = std.fs.max_path_bytes + 512;
-const max_history = 1024;
+const Complete = @import("Prompt/Complete.zig");
+const History = @import("Prompt/History.zig");
+
+pub const max_input_size = std.fs.max_path_bytes + 512;
 
 /// Flag to hide prompt and ignore user input.
 disable: std.atomic.Value(bool) = .init(false),
 /// Flag to gracefully exit running prompt handler thread.
 close: std.atomic.Value(bool) = .init(false),
 
-history_buf: [max_history][max_input_size]u8 = undefined,
-history: CircularBuffer([]u8, max_history) = .{},
-/// Currently displayed history item offset from tail.
-history_offset: ?std.math.IntFittingRange(0, max_history) = null,
+history: History = .{},
+
+complete: Complete = .{ .kind = .command },
+/// Start index of partial that has generated the currently available
+/// completion suggestion.
+complete_partial_start: ?usize = null,
+/// Currently selected completion, if completion has been selected.
+complete_selection: ?usize = null,
 
 input_buffer: [max_input_size]u8 = undefined,
 input: []u8 = &.{},
 
 cursor: Cursor = .{},
 
-fn getHistoryItem(self: *Prompt) ?[]const u8 {
-    if (self.history_offset) |offset| {
-        return self.history.buffer[
-            ((self.history.head) + offset - 1) % self.history.buffer.len
-        ];
-    } else return null;
-}
-
-/// Insert byte at cursor location. Must guarantee that cursor location is
-/// between 0 and the current input length, inclusive.
-fn insert(self: *Prompt, b: u8) void {
-    std.debug.assert(self.cursor.raw <= self.input.len);
-    std.debug.assert(self.input.len < self.input_buffer.len);
-
-    // Cancel history selection if insert is in middle of input.
-    if (self.cursor.raw < self.input.len) {
-        self.history_offset = null;
-    }
-    const after = self.input[self.cursor.raw..];
-    @memmove(self.input_buffer[self.cursor.raw + 1 ..][0..after.len], after);
-    self.input_buffer[self.cursor.raw] = b;
-    self.input = self.input_buffer[0 .. self.input.len + 1];
-    self.cursor.raw += 1;
-    self.cursor.visible += 1;
-    if (self.getHistoryItem()) |hist_item| check_history: {
-        // Cancel selection if input length exceeds history item length.
-        if (self.input.len > hist_item.len) {
-            self.history_offset = null;
-            break :check_history;
-        }
-        // Cancel selection if insert does not match.
-        if (hist_item[self.input.len - 1] != b) {
-            self.history_offset = null;
-            break :check_history;
-        }
-    }
-}
-
-fn insertCodepoint(self: *Prompt, cp: []const u8) void {
-    std.debug.assert(self.cursor.raw <= self.input.len);
-    std.debug.assert(self.input.len + cp.len <= self.input_buffer.len);
-    std.debug.assert(cp.len <= 4);
-
-    // Cancel history selection if insert is in middle of input.
-    if (self.cursor.raw < self.input.len) {
-        self.history_offset = null;
-    }
-    const after = self.input[self.cursor.raw..];
-    @memmove(
-        self.input_buffer[self.cursor.raw + cp.len ..][0..after.len],
-        after,
-    );
-    @memcpy(self.input_buffer[self.cursor.raw..][0..cp.len], cp);
-    self.input = self.input_buffer[0 .. self.input.len + cp.len];
-    self.cursor.moveRight();
-    if (self.getHistoryItem()) |hist_item| {
-        // Cancel selection if input length exceeds history item length.
-        if (self.input.len > hist_item.len) {
-            self.history_offset = null;
-        }
-        // Cancel selection if insert does not match.
-        for (cp, 0..) |c, i| {
-            if (c != hist_item[self.input.len - cp.len + i]) {
-                self.history_offset = null;
-                break;
-            }
-        }
-    }
-}
-
-/// Insert UTF-8 encoded string.
-fn insertString(self: *Prompt, string: []const u8) void {
-    std.debug.assert(self.cursor.raw <= self.input.len);
-    std.debug.assert(self.input.len + string.len <= self.input_buffer.len);
-
-    // Cancel history selection if insert is in middle of input.
-    if (self.cursor.raw < self.input.len) {
-        self.history_offset = null;
-    }
-    const after = self.input[self.cursor.raw..];
-    @memmove(
-        self.input_buffer[self.cursor.raw + string.len ..][0..after.len],
-        after,
-    );
-    @memcpy(self.input_buffer[self.cursor.raw..][0..string.len], string);
-    self.input = self.input_buffer[0 .. self.input.len + string.len];
-    const after_raw_pos = self.cursor.raw + string.len;
-    while (self.cursor.raw < after_raw_pos) {
-        self.cursor.moveRight();
-    }
-
-    if (self.getHistoryItem()) |hist_item| {
-        // Cancel selection if input length exceeds history item length.
-        if (self.input.len > hist_item.len) {
-            self.history_offset = null;
-        }
-
-        // Cancel selection if insert does not match.
-        if (!std.mem.eql(
-            u8,
-            hist_item[self.input.len - string.len ..][0..string.len],
-            string,
-        )) {
-            self.history_offset = null;
-        }
-    }
-}
-
-/// Delete one grapheme cursor before cursor.
-fn backspace(self: *Prompt) void {
-    std.debug.assert(self.cursor.raw <= self.input.len);
-
-    // Cancel history selection if delete is in middle of input.
-    if (self.cursor.raw < self.input.len) {
-        self.history_offset = null;
-    }
-    const after = self.input[self.cursor.raw..];
-
-    self.cursor.moveLeft();
-    @memmove(self.input[self.cursor.raw..][0..after.len], after);
-
-    self.input = self.input[0 .. self.cursor.raw + after.len];
-    if (self.input.len == 0) self.history_offset = null;
-}
-
-/// Clear input.
-fn clear(self: *Prompt) void {
-    self.history_offset = null;
-    self.input = &.{};
-    self.cursor = .{
-        .raw = 0,
-        .visible = 0,
-    };
-}
-
 /// Prompt handler thread callback. Input must be set to non-canonical mode
 /// prior to spawning this thread. Only one prompt handler thread may be
 /// running at a time.
 pub fn handler(ctx: *Prompt) void {
-    ctx.history.clearRetainingCapacity();
+    ctx.history.clear();
     ctx.clear();
 
     var buffered_out = std.io.bufferedWriter(std.io.getStdOut().writer());
@@ -193,15 +63,19 @@ pub fn handler(ctx: *Prompt) void {
             continue :main;
         }
 
-        const event = io.event.read(.{}) catch continue :main;
+        // By default, we should de-select completion if there is a suggestion
+        // that is selected. Only if the input is a Tab/Shift-Tab should we
+        // keep the completion selection.
+        var keep_complete_selection: bool = false;
 
+        const event = io.event.read(.{}) catch continue :main;
         parse: switch (event) {
             .key => |key_event| {
                 switch (key_event.value) {
                     .control => |control_key| {
                         switch (control_key) {
                             .escape => {
-                                ctx.history_offset = null;
+                                ctx.history.selection = null;
                             },
                             .backspace => {
                                 // Whether first deleted is whitespace.
@@ -272,12 +146,8 @@ pub fn handler(ctx: *Prompt) void {
                                 }
                             },
                             .enter => {
-                                if (ctx.history_offset) |offset| {
-                                    const hist_item = ctx.history.buffer[
-                                        ((ctx.history.head) + offset - 1) %
-                                            ctx.history.buffer.len
-                                    ];
-
+                                if (ctx.history.selection) |*selection| {
+                                    const hist_item = selection.slice();
                                     ctx.input =
                                         ctx.input_buffer[0..hist_item.len];
                                     @memcpy(ctx.input, hist_item);
@@ -299,65 +169,100 @@ pub fn handler(ctx: *Prompt) void {
 
                                     command.enqueue(ctx.input) catch
                                         continue :main;
-                                    const buf_slice = ctx.history_buf[
-                                        ctx.history.getWriteIndex()
-                                    ][0..ctx.input.len];
-                                    @memcpy(buf_slice, ctx.input);
-                                    ctx.history.writeItemOverwrite(buf_slice);
+                                    ctx.history.append(ctx.input);
+                                    ctx.history.selection = null;
                                     ctx.clear();
                                     continue :main;
                                 }
                             },
                             .tab => {
-                                if (ctx.history_offset) |offset| {
-                                    const hist_item = ctx.history.buffer[
-                                        ((ctx.history.head) + offset - 1) %
-                                            ctx.history.buffer.len
-                                    ];
-
+                                if (ctx.history.selection) |*selection| {
+                                    const hist_item = selection.slice();
                                     ctx.input =
                                         ctx.input_buffer[0..hist_item.len];
                                     @memcpy(ctx.input, hist_item);
                                     ctx.cursor.moveEnd();
+                                } else if (ctx.complete_partial_start) |cvs| {
+                                    keep_complete_selection = true;
+                                    const prefix = ctx.complete.prefix;
+                                    const sg = ctx.complete.suggestions;
+
+                                    // Scroll suggestions if completed.
+                                    if (ctx.complete_selection) |idx| {
+                                        if (key_event.modifiers.shift) {
+                                            if (idx > 0) {
+                                                ctx.complete_selection =
+                                                    idx - 1;
+                                                while (ctx.cursor.raw > cvs) {
+                                                    ctx.backspace();
+                                                }
+                                                ctx.insertString(sg[idx - 1]);
+                                            }
+                                        } else if (idx < sg.len - 1) {
+                                            ctx.complete_selection = idx + 1;
+                                            while (ctx.cursor.raw > cvs) {
+                                                ctx.backspace();
+                                            }
+                                            ctx.insertString(sg[idx + 1]);
+                                        }
+                                    }
+                                    // Select suggestion if not completed.
+                                    else if (prefix.len > 0) {
+                                        const partial =
+                                            ctx.input[cvs..ctx.cursor.raw];
+                                        // Prefix is available to complete.
+                                        if (prefix.len > partial.len) {
+                                            while (ctx.cursor.raw > cvs) {
+                                                ctx.backspace();
+                                            }
+                                            ctx.insertString(prefix);
+                                        }
+                                        // Prefix already completed, manually
+                                        // trigger cycling through remaining
+                                        // suggestions.
+                                        else if (sg.len > 1) {
+                                            while (ctx.cursor.raw > cvs) {
+                                                ctx.backspace();
+                                            }
+                                            ctx.insertString(sg[0]);
+                                            ctx.complete_selection = 0;
+                                        }
+                                    }
                                 }
                             },
                             .arrow_up => {
-                                var remaining =
-                                    if (ctx.history_offset) |offset|
-                                        if (offset > 0) offset - 1 else offset
-                                    else
-                                        ctx.history.count;
-                                while (remaining > 0) {
-                                    const old = ctx.history.buffer[
-                                        (ctx.history.head + remaining - 1) %
-                                            ctx.history.buffer.len
-                                    ];
-
-                                    if (ctx.input.len <= old.len and
-                                        std.mem.eql(
-                                            u8,
-                                            ctx.input,
-                                            old[0..ctx.input.len],
-                                        ))
-                                    {
-                                        ctx.history_offset = remaining;
-                                        break;
-                                    }
-                                    remaining -= 1;
+                                if (ctx.history.selection) |*selection| {
+                                    selection.previous(ctx.input);
+                                } else {
+                                    ctx.history.select(ctx.input);
                                 }
                             },
-                            .arrow_right => {
+                            .arrow_right => ar: {
+                                // Complete suggestion if visible.
+                                if (ctx.complete_partial_start) |cvs| {
+                                    const prefix = ctx.complete.prefix;
+                                    const partial =
+                                        ctx.input[cvs..ctx.cursor.raw];
+                                    // Prefix is available to complete.
+                                    if (prefix.len > partial.len) {
+                                        while (ctx.cursor.raw > cvs) {
+                                            ctx.backspace();
+                                        }
+                                        ctx.insertString(prefix);
+
+                                        keep_complete_selection = true;
+                                        break :ar;
+                                    }
+                                }
+
                                 if (ctx.cursor.raw >= ctx.input.len) {
-                                    if (ctx.history_offset) |offset| {
-                                        const hist_item = ctx.history.buffer[
-                                            ((ctx.history.head) + offset - 1) %
-                                                ctx.history.buffer.len
-                                        ];
+                                    if (ctx.history.selection) |*selection| {
+                                        const hist_item = selection.slice();
 
                                         ctx.input =
                                             ctx.input_buffer[0..hist_item.len];
                                         @memcpy(ctx.input, hist_item);
-                                        ctx.history_offset = null;
+                                        ctx.history.selection = null;
                                     }
                                     ctx.cursor.moveEnd();
                                 } else {
@@ -377,28 +282,8 @@ pub fn handler(ctx: *Prompt) void {
                                 }
                             },
                             .arrow_down => {
-                                if (ctx.history_offset) |offset| {
-                                    var remaining: usize =
-                                        if (offset > 0) offset + 1 else offset;
-                                    while (remaining <= ctx.history.count) {
-                                        const old = ctx.history.buffer[
-                                            (ctx.history.head + remaining - 1) %
-                                                ctx.history.buffer.len
-                                        ];
-
-                                        if (std.mem.eql(
-                                            u8,
-                                            ctx.input,
-                                            old[0..ctx.input.len],
-                                        )) {
-                                            ctx.history_offset =
-                                                @intCast(remaining);
-                                            break;
-                                        }
-                                        remaining += 1;
-                                    } else {
-                                        ctx.history_offset = null;
-                                    }
+                                if (ctx.history.selection) |*selection| {
+                                    selection.next(ctx.input);
                                 }
                             },
                             .arrow_left => {
@@ -463,14 +348,64 @@ pub fn handler(ctx: *Prompt) void {
             },
         }
 
+        if (!keep_complete_selection) {
+            ctx.complete_selection = null;
+            ctx.complete.setPartial("");
+        }
+
+        // Generate completion suggestion.
+        const start_completion: ?usize = completion: {
+            if (ctx.cursor.raw == 0) break :completion null;
+            if (ctx.cursor.raw < ctx.input.len and
+                ctx.input[ctx.cursor.raw] != ' ') break :completion null;
+            if (ctx.input[ctx.cursor.raw - 1] == ' ') break :completion null;
+            if (ctx.history.selection != null) break :completion null;
+            if (ctx.complete_selection != null) {
+                if (ctx.complete_partial_start) |cvs| {
+                    break :completion cvs;
+                }
+            }
+
+            const start_ind = if (std.mem.lastIndexOfScalar(
+                u8,
+                ctx.input[0..ctx.cursor.raw],
+                ' ',
+            )) |si| si + 1 else 0;
+
+            if (start_ind > 0) {
+                if (std.mem.allEqual(u8, ctx.input[0..start_ind], ' ')) {
+                    ctx.complete.kind = .command;
+                } else {
+                    ctx.complete.kind = .variable;
+                }
+            } else {
+                ctx.complete.kind = .command;
+            }
+
+            const partial = ctx.input[start_ind..ctx.cursor.raw];
+            ctx.complete.setPartial(partial);
+
+            break :completion start_ind;
+        };
+        ctx.complete_partial_start = start_completion;
+
         // Clear input line to prepare for writing
         stdout.writeAll("\x1B[2K\r") catch continue :main;
 
         // Parse and print syntax highlighted input
-        var last_non_space: ?usize = null;
+        var last_frag_start: ?usize = null; // Last start byte != ' '.
         for (ctx.input, 0..) |c, i| {
             if (c == ' ') {
-                if (last_non_space) |start| {
+                if (last_frag_start) |start| {
+                    // Underline fragment if it has just been completed.
+                    if (ctx.complete_partial_start) |cvs| {
+                        if (cvs == start and ctx.complete_selection != null) {
+                            io.style.set(
+                                stdout.any(),
+                                .{ .underline = true },
+                            ) catch continue :main;
+                        }
+                    }
                     const fragment = ctx.input[start..i];
                     for (command.registry.values()) |com| {
                         if (std.ascii.eqlIgnoreCase(com.name, fragment)) {
@@ -502,44 +437,85 @@ pub fn handler(ctx: *Prompt) void {
                         }
                     }
                 }
-                last_non_space = null;
-                stdout.writeByte(' ') catch continue :main;
-            } else if (last_non_space == null) {
-                last_non_space = i;
-            }
-        } else if (last_non_space) |start| {
-            const fragment = ctx.input[start..];
-            for (command.registry.values()) |com| {
-                if (std.ascii.eqlIgnoreCase(com.name, fragment)) {
-                    io.style.set(stdout.any(), .{
-                        .fg = .{ .named = .green },
-                    }) catch continue :main;
-                    defer io.style.reset(stdout.any()) catch {};
-                    stdout.writeAll(fragment) catch continue :main;
-                    break;
+                last_frag_start = null;
+
+                // Print completion suggestion before cursor.
+                if (start_completion) |start_ind| {
+                    if (i == ctx.cursor.raw) {
+                        const completed_len = ctx.cursor.raw - start_ind;
+                        if (ctx.complete.prefix.len > completed_len) {
+                            const suggestion =
+                                ctx.complete.prefix[completed_len..];
+                            io.style.set(stdout.any(), .{
+                                .fg = .{ .lut = .grayscale(12) },
+                            }) catch continue :main;
+                            defer io.style.reset(stdout.any()) catch {};
+                            stdout.writeAll(suggestion) catch continue :main;
+                        }
+                    }
                 }
-            } else {
-                var it = command.variables.iterator();
-                while (it.next()) |var_entry| {
-                    if (std.mem.eql(u8, var_entry.key_ptr.*, fragment)) {
+
+                stdout.writeByte(' ') catch continue :main;
+            } else if (last_frag_start == null) {
+                last_frag_start = i;
+            }
+        } else {
+            if (last_frag_start) |start| {
+                // Underline fragment if it has just been completed.
+                if (ctx.complete_partial_start) |cvs| {
+                    if (cvs == start and ctx.complete_selection != null) {
+                        io.style.set(
+                            stdout.any(),
+                            .{ .underline = true },
+                        ) catch continue :main;
+                    }
+                }
+                const fragment = ctx.input[start..];
+                for (command.registry.values()) |com| {
+                    if (std.ascii.eqlIgnoreCase(com.name, fragment)) {
                         io.style.set(stdout.any(), .{
-                            .fg = .{ .named = .magenta },
+                            .fg = .{ .named = .green },
                         }) catch continue :main;
                         defer io.style.reset(stdout.any()) catch {};
                         stdout.writeAll(fragment) catch continue :main;
                         break;
                     }
                 } else {
-                    stdout.writeAll(fragment) catch continue :main;
+                    var it = command.variables.iterator();
+                    while (it.next()) |var_entry| {
+                        if (std.mem.eql(u8, var_entry.key_ptr.*, fragment)) {
+                            io.style.set(stdout.any(), .{
+                                .fg = .{ .named = .magenta },
+                            }) catch continue :main;
+                            defer io.style.reset(stdout.any()) catch {};
+                            stdout.writeAll(fragment) catch continue :main;
+                            break;
+                        }
+                    } else {
+                        stdout.writeAll(fragment) catch continue :main;
+                    }
+                }
+            }
+            if (ctx.cursor.raw == ctx.input.len) {
+                // Print completion suggestion before cursor.
+                if (start_completion) |start_ind| {
+                    const completed_len = ctx.cursor.raw - start_ind;
+                    if (ctx.complete.prefix.len > completed_len) {
+                        const suggestion =
+                            ctx.complete.prefix[completed_len..];
+                        io.style.set(stdout.any(), .{
+                            .fg = .{ .lut = .grayscale(12) },
+                        }) catch continue :main;
+                        defer io.style.reset(stdout.any()) catch {};
+                        stdout.writeAll(suggestion) catch continue :main;
+                    }
                 }
             }
         }
 
         // Print history suggestion if exists
-        if (ctx.history_offset) |offset| {
-            const hist_item = ctx.history.buffer[
-                ((ctx.history.head) + offset - 1) % ctx.history.buffer.len
-            ];
+        if (ctx.history.selection) |*selection| {
+            const hist_item = selection.slice();
             if (hist_item.len > ctx.input.len) {
                 io.style.set(stdout.any(), .{
                     .fg = .{ .lut = .grayscale(12) },
@@ -630,6 +606,135 @@ const Cursor = struct {
         }
     }
 };
+
+/// Insert byte at cursor location. Must guarantee that cursor location is
+/// between 0 and the current input length, inclusive.
+fn insert(self: *Prompt, b: u8) void {
+    std.debug.assert(self.cursor.raw <= self.input.len);
+    std.debug.assert(self.input.len < self.input_buffer.len);
+
+    // Cancel history selection if insert is in middle of input.
+    if (self.cursor.raw < self.input.len) {
+        self.history_offset = null;
+    }
+    const after = self.input[self.cursor.raw..];
+    @memmove(self.input_buffer[self.cursor.raw + 1 ..][0..after.len], after);
+    self.input_buffer[self.cursor.raw] = b;
+    self.input = self.input_buffer[0 .. self.input.len + 1];
+    self.cursor.raw += 1;
+    self.cursor.visible += 1;
+    if (self.getHistoryItem()) |hist_item| check_history: {
+        // Cancel selection if input length exceeds history item length.
+        if (self.input.len > hist_item.len) {
+            self.history_offset = null;
+            break :check_history;
+        }
+        // Cancel selection if insert does not match.
+        if (hist_item[self.input.len - 1] != b) {
+            self.history_offset = null;
+            break :check_history;
+        }
+    }
+}
+
+fn insertCodepoint(self: *Prompt, cp: []const u8) void {
+    std.debug.assert(self.cursor.raw <= self.input.len);
+    std.debug.assert(self.input.len + cp.len <= self.input_buffer.len);
+    std.debug.assert(cp.len <= 4);
+
+    // Cancel history selection if insert is in middle of input.
+    if (self.cursor.raw < self.input.len) {
+        self.history.selection = null;
+    }
+    const after = self.input[self.cursor.raw..];
+    @memmove(
+        self.input_buffer[self.cursor.raw + cp.len ..][0..after.len],
+        after,
+    );
+    @memcpy(self.input_buffer[self.cursor.raw..][0..cp.len], cp);
+    self.input = self.input_buffer[0 .. self.input.len + cp.len];
+    self.cursor.moveRight();
+    if (self.history.selection) |*selection| {
+        const hist_item = selection.slice();
+        // Cancel selection if input length exceeds history item length.
+        if (self.input.len > hist_item.len) {
+            self.history.selection = null;
+        }
+        // Cancel selection if insert does not match.
+        for (cp, 0..) |c, i| {
+            if (c != hist_item[self.input.len - cp.len + i]) {
+                self.history.selection = null;
+                break;
+            }
+        }
+    }
+}
+
+/// Insert UTF-8 encoded string.
+fn insertString(self: *Prompt, string: []const u8) void {
+    std.debug.assert(self.cursor.raw <= self.input.len);
+    std.debug.assert(self.input.len + string.len <= self.input_buffer.len);
+
+    // Cancel history selection if insert is in middle of input.
+    if (self.cursor.raw < self.input.len) {
+        self.history.selection = null;
+    }
+    const after = self.input[self.cursor.raw..];
+    @memmove(
+        self.input_buffer[self.cursor.raw + string.len ..][0..after.len],
+        after,
+    );
+    @memcpy(self.input_buffer[self.cursor.raw..][0..string.len], string);
+    self.input = self.input_buffer[0 .. self.input.len + string.len];
+    const after_raw_pos = self.cursor.raw + string.len;
+    while (self.cursor.raw < after_raw_pos) {
+        self.cursor.moveRight();
+    }
+
+    if (self.history.selection) |*selection| {
+        const hist_item = selection.slice();
+        // Cancel selection if input length exceeds history item length.
+        if (self.input.len > hist_item.len) {
+            self.history.selection = null;
+        }
+
+        // Cancel selection if insert does not match.
+        if (!std.mem.eql(
+            u8,
+            hist_item[self.input.len - string.len ..][0..string.len],
+            string,
+        )) {
+            self.history.selection = null;
+        }
+    }
+}
+
+/// Delete one grapheme cursor before cursor.
+fn backspace(self: *Prompt) void {
+    std.debug.assert(self.cursor.raw <= self.input.len);
+
+    // Cancel history selection if delete is in middle of input.
+    if (self.cursor.raw < self.input.len) {
+        self.history.selection = null;
+    }
+    const after = self.input[self.cursor.raw..];
+
+    self.cursor.moveLeft();
+    @memmove(self.input[self.cursor.raw..][0..after.len], after);
+
+    self.input = self.input[0 .. self.cursor.raw + after.len];
+    if (self.input.len == 0) self.history.selection = null;
+}
+
+/// Clear input.
+fn clear(self: *Prompt) void {
+    self.history.selection = null;
+    self.input = &.{};
+    self.cursor = .{
+        .raw = 0,
+        .visible = 0,
+    };
+}
 
 const Interval = struct { first: u32, last: u32 };
 

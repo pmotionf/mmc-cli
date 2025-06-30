@@ -86,9 +86,9 @@ const Station = struct {
     pub const Id = std.math.IntFittingRange(1, 64 * 4);
 };
 
-var lines: []Line = undefined;
+var lines: []Line = &.{};
 
-var log_lines: []LogLine = undefined;
+var log_lines: []LogLine = &.{};
 
 // TODO: Decide the value properly
 var fba_buffer: [1_024_000]u8 = undefined;
