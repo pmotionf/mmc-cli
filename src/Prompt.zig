@@ -237,7 +237,24 @@ pub fn handler(ctx: *Prompt) void {
                                     ctx.history.select(ctx.input);
                                 }
                             },
-                            .arrow_right => {
+                            .arrow_right => ar: {
+                                // Complete suggestion if visible.
+                                if (ctx.complete_partial_start) |cvs| {
+                                    const prefix = ctx.complete.prefix;
+                                    const partial =
+                                        ctx.input[cvs..ctx.cursor.raw];
+                                    // Prefix is available to complete.
+                                    if (prefix.len > partial.len) {
+                                        while (ctx.cursor.raw > cvs) {
+                                            ctx.backspace();
+                                        }
+                                        ctx.insertString(prefix);
+
+                                        keep_complete_selection = true;
+                                        break :ar;
+                                    }
+                                }
+
                                 if (ctx.cursor.raw >= ctx.input.len) {
                                     if (ctx.history.selection) |*selection| {
                                         const hist_item = selection.slice();
