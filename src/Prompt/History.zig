@@ -87,11 +87,27 @@ const Selection = struct {
         ));
     }
 
+    test getSelf {
+        var hist = try std.testing.allocator.create(History);
+        defer std.testing.allocator.destroy(hist);
+        hist.selection = .{ .index = undefined };
+        const ptr = hist.selection.?.getSelf();
+        try std.testing.expectEqual(hist, ptr);
+    }
+
     fn getSelfConst(selection: *const Selection) *const History {
         return @alignCast(@fieldParentPtr(
             "selection",
             @as(*const ?Selection, @ptrCast(selection)),
         ));
+    }
+
+    test getSelfConst {
+        var hist = try std.testing.allocator.create(History);
+        defer std.testing.allocator.destroy(hist);
+        hist.selection = .{ .index = undefined };
+        const ptr = hist.selection.?.getSelfConst();
+        try std.testing.expectEqual(hist, ptr);
     }
 };
 
@@ -115,17 +131,6 @@ pub fn select(self: *History, prefix: []const u8) void {
         }
         remaining -= 1;
     }
-}
-
-test Selection {
-    var test_history: History = .{ .selection = .{ .index = 0 } };
-
-    const parent: *History = @alignCast(@fieldParentPtr(
-        "selection",
-        @as(*?Selection, @ptrCast(&test_history.selection.?)),
-    ));
-
-    try std.testing.expectEqual(&test_history, parent);
 }
 
 /// Appends item to history, overwriting oldest item if history is full.
