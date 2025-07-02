@@ -2777,7 +2777,7 @@ fn sendCommandRequest(
             .STATUS_PROCESSING, .STATUS_QUEUED => {}, // continue the loop
             .STATUS_COMPLETED => break,
             .STATUS_FAILED => {
-                return switch (command_status.error_response.?) {
+                return switch (command_status.error_response orelse return error.UnexpectedResponse) {
                     .ERROR_KIND_CARRIER_ALREADY_EXISTS => error.CarrierAlreadyExists,
                     .ERROR_KIND_CARRIER_NOT_FOUND => error.CarrierNotFound,
                     .ERROR_KIND_HOMING_FAILED => error.HomingFailed,
@@ -2800,11 +2800,16 @@ fn parseResponse(a: std.mem.Allocator, comptime T: type, msg: []const u8) !T {
         try api.mmc_msg.Response.decode(msg, a);
 
     defer response.deinit();
-    std.log.debug("{any}", .{response});
+    switch (response.body.?) {
+        .command => std.log.debug("{any}", .{response.body.?.command}),
+        .core => std.log.debug("{any}", .{response.body.?.core}),
+        .info => std.log.debug("{any}", .{response.body.?.info}),
+        .request_error => std.log.debug("{any}", .{response.body.?.request_error}),
+    }
     return switch (response.body.?) {
-        inline .command => |command_response| blk: switch (command_response.body.?) {
-            inline .command_id => |r| if (@TypeOf(r) == T) break :blk r else unreachable,
-            inline .request_error => |r| if (@TypeOf(r) == T) {
+        .command => |command_response| blk: switch (command_response.body.?) {
+            .command_id => |r| if (@TypeOf(r) == T) break :blk r else error.UnexpectedResponse,
+            .request_error => |r| {
                 switch (r) {
                     .COMMAND_REQUEST_ERROR_UNSPECIFIED => break :blk error.UnexpectedResponse,
                     .COMMAND_REQUEST_ERROR_INVALID_LINE => break :blk error.InvalidLine,
@@ -2812,46 +2817,31 @@ fn parseResponse(a: std.mem.Allocator, comptime T: type, msg: []const u8) !T {
                     .COMMAND_REQUEST_ERROR_CARRIER_NOT_FOUND => break :blk error.CarrierNotFound,
                     .COMMAND_REQUEST_ERROR_CC_LINK_DISCONNECTED => break :blk error.CCLinkDisconnected,
                     .COMMAND_REQUEST_ERROR_INVALID_ACCELERATION => break :blk error.InvalidAcceleration,
-                    .COMMAND_REQUEST_ERROR_INVALID_SPEED => break :blk error.InvalidSpeed,
-                    .COMMAND_REQUEST_ERROR_SERVER_RUNNING_OUT_OF_MEMORY => break :blk error.ServerRunningOutOfMemory,
+                    .COMMAND_REQUEST_ERROR_INVALID_VELOCITY => break :blk error.InvalidSpeed,
+                    .COMMAND_REQUEST_ERROR_OUT_OF_MEMORY => break :blk error.ServerRunningOutOfMemory,
                     .COMMAND_REQUEST_ERROR_MISSING_PARAMETER => break :blk error.MissingParameter,
+                    .COMMAND_REQUEST_ERROR_INVALID_DIRECTION => break :blk error.InvalidDirection,
                     _ => unreachable,
                 }
-            } else unreachable,
+            },
         },
-        inline .core => |core_response| switch (core_response.body.?) {
-            inline .server => |r| if (@TypeOf(r) == T)
-                try r.dupe(allocator)
-            else
-                unreachable,
-            inline .api_version => |r| if (@TypeOf(r) == T) r else unreachable,
-            inline .line_config => |r| if (@TypeOf(r) == T)
-                try r.dupe(allocator)
-            else
-                unreachable,
-            inline .request_error => |r| switch (r) {
+        .core => |core_response| switch (core_response.body.?) {
+            .request_error => |r| switch (r) {
                 .CORE_REQUEST_ERROR_UNSPECIFIED => error.UnexpectedResponse,
                 .CORE_REQUEST_ERROR_REQUEST_UNKNOWN => error.RequestUnknown,
                 _ => unreachable,
             },
+            .api_version => |r| if (@TypeOf(r) == T)
+                r
+            else
+                error.UnexpectedResponse,
+            inline .server, .line_config => |r| if (@TypeOf(r) == T)
+                try r.dupe(allocator)
+            else
+                error.UnexpectedResponse,
         },
-        inline .info => |info_response| switch (info_response.body.?) {
-            inline .register_x => |r| if (@TypeOf(r) == T) r else unreachable,
-            inline .register_y => |r| if (@TypeOf(r) == T) r else unreachable,
-            inline .register_wr => |r| if (@TypeOf(r) == T) r else unreachable,
-            inline .register_ww => |r| if (@TypeOf(r) == T) r else unreachable,
-            inline .command => |r| if (@TypeOf(r) == T) r else unreachable,
-            inline .hall_alarm => |r| if (@TypeOf(r) == T) r else unreachable,
-            inline .carrier => |r| if (@TypeOf(r) == T) r else unreachable,
-            inline .axis => |r| if (@TypeOf(r) == T)
-                try r.dupe(allocator)
-            else
-                unreachable,
-            inline .station => |r| if (@TypeOf(r) == T)
-                try r.dupe(allocator)
-            else
-                unreachable,
-            inline .request_error => |r| switch (r) {
+        .info => |info_response| switch (info_response.body.?) {
+            .request_error => |r| switch (r) {
                 .INFO_REQUEST_ERROR_UNSPECIFIED => error.UnexpectedResponse,
                 .INFO_REQUEST_ERROR_INVALID_LINE => error.InvalidLine,
                 .INFO_REQUEST_ERROR_INVALID_AXIS => error.InvalidAxis,
@@ -2861,6 +2851,19 @@ fn parseResponse(a: std.mem.Allocator, comptime T: type, msg: []const u8) !T {
                 .INFO_REQUEST_ERROR_MISSING_PARAMETER => error.MissingParameter,
                 _ => unreachable,
             },
+            inline .axis, .station => |body_kind| if (@TypeOf(body_kind) == T)
+                try body_kind.dupe(allocator)
+            else
+                return error.UnexpectedResponse,
+            inline else => |body_kind| if (@TypeOf(body_kind) == T)
+                body_kind
+            else
+                return error.UnexpectedResponse,
+        },
+        .request_error => |r| switch (r) {
+            .MMC_REQUEST_ERROR_UNSPECIFIED => error.UnexpectedResponse,
+            .MMC_REQUEST_ERROR_INVALID_MESSAGE => error.RequestUnknown,
+            _ => unreachable,
         },
     };
 }
