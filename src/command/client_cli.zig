@@ -936,8 +936,8 @@ fn disconnect() !void {
         allocator.free(lines);
         allocator.free(log_lines);
         main_socket = null;
-        lines = undefined;
-        log_lines = undefined;
+        lines = &.{};
+        log_lines = &.{};
     } else return error.ServerNotConnected;
 }
 
