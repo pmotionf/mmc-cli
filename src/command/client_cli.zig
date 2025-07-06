@@ -924,8 +924,8 @@ fn clientConnect(params: [][]const u8) !void {
 fn disconnect() !void {
     if (main_socket) |s| {
         std.log.info(
-            "Disconnecting from server {}",
-            .{try s.getRemoteEndPoint()},
+            "Disconnecting from server {s}:{}",
+            .{ IP_address, port },
         );
         s.close();
         for (lines) |line| {
