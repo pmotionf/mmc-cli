@@ -113,6 +113,9 @@ const Selection = struct {
 
 /// Selects most recent history item based on provided prefix, if available.
 pub fn select(self: *History, prefix: []const u8) void {
+    if (self.history.count == 0) {
+        return;
+    }
     if (prefix.len == 0) {
         self.selection = .{ .index = @intCast(self.history.count - 1) };
         return;
