@@ -53,15 +53,8 @@ pub fn build(b: *std.Build) !void {
                 mod.addImport("win32", zwin32.module("win32"));
             }
 
-            const mcl = b.lazyDependency("mcl", .{
-                .target = target,
-                .optimize = optimize,
-                .mdfunc = mdfunc_lib_path,
-                .mdfunc_mock = mdfunc_mock_build,
-            });
-            if (mcl) |dep| {
-                mod.addImport("mcl", dep.module("mcl"));
-            }
+            mod.linkSystemLibrary("ws2_32", .{});
+            mod.linkSystemLibrary("user32", .{});
         },
         .linux => {
             const soem = b.lazyDependency("soem", .{
@@ -79,6 +72,17 @@ pub fn build(b: *std.Build) !void {
     }
 
     const exe = b.addExecutable(.{ .name = "mmc-cli", .root_module = mod });
+    if (target.result.os.tag == .windows) {
+        const mcl = b.lazyDependency("mcl", .{
+            .target = target,
+            .optimize = optimize,
+            .mdfunc = mdfunc_lib_path,
+            .mdfunc_mock = mdfunc_mock_build,
+        });
+        if (mcl) |dep| {
+            exe.root_module.addImport("mcl", dep.module("mcl"));
+        }
+    }
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
@@ -93,17 +97,9 @@ pub fn build(b: *std.Build) !void {
 
     const check_exe = b.addExecutable(.{
         .name = "mmc-cli",
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = mod,
     });
-    check_exe.root_module.addImport("network", network_dep.module("network"));
-    check_exe.root_module.addImport("chrono", chrono.module("chrono"));
     if (target.result.os.tag == .windows) {
-        const zigwin32 = b.lazyDependency("zigwin32", .{});
-        if (zigwin32) |zwin32| {
-            check_exe.root_module.addImport("win32", zwin32.module("win32"));
-        }
         const mcl_mock = b.lazyDependency("mcl", .{
             .target = target,
             .optimize = optimize,
@@ -114,25 +110,13 @@ pub fn build(b: *std.Build) !void {
             check_exe.root_module.addImport("mcl", dep.module("mcl"));
         }
     }
-    check_exe.root_module.addImport("mmc-api", mmc_api.module("mmc-api"));
-    check_exe.root_module.addImport("build.zig.zon", build_zig_zon);
     const check = b.step("check", "Check if `mmc-cli` compiles");
     check.dependOn(&check_exe.step);
 
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
-    const unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    unit_tests.root_module.addImport("network", network_dep.module("network"));
-    unit_tests.root_module.addImport("chrono", chrono.module("chrono"));
+    const unit_tests = b.addTest(.{ .root_module = mod });
     if (target.result.os.tag == .windows) {
-        const zigwin32 = b.lazyDependency("zigwin32", .{});
-        if (zigwin32) |zwin32| {
-            unit_tests.root_module.addImport("win32", zwin32.module("win32"));
-        }
         const mcl_mock = b.lazyDependency("mcl", .{
             .target = target,
             .optimize = optimize,
@@ -143,19 +127,6 @@ pub fn build(b: *std.Build) !void {
             unit_tests.root_module.addImport("mcl", dep.module("mcl"));
         }
     }
-    unit_tests.root_module.addImport("mmc-api", mmc_api.module("mmc-api"));
-    if (target.result.os.tag == .linux) {
-        const soem = b.lazyDependency("soem", .{
-            .target = target,
-            .optimize = optimize,
-        });
-        if (soem) |dep| {
-            unit_tests.root_module.linkLibrary(dep.artifact("soem"));
-            unit_tests.root_module.addIncludePath(dep.path("include"));
-        }
-    }
-    unit_tests.root_module.addImport("build.zig.zon", build_zig_zon);
-
     const run_unit_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
