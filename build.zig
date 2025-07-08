@@ -64,44 +64,26 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    const mod = b.createModule(.{
+    const imports: []const std.Build.Module.Import = &.{
+        .{ .name = "build.zig.zon", .module = build_zig_zon },
+        .{ .name = "mmc-api", .module = mmc_api.module("mmc-api") },
+        .{ .name = "network", .module = network_dep.module("network") },
+        .{ .name = "chrono", .module = chrono.module("chrono") },
+    };
+    const setup_options: SetupOptions = .{
+        .target = target,
+        .optimize = optimize,
+        .options = options,
+        .imports = imports,
+    };
+
+    const exe = b.addExecutable(.{
+        .name = "mmc-cli",
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
-        .imports = &.{
-            .{ .name = "build.zig.zon", .module = build_zig_zon },
-            .{ .name = "mmc-api", .module = mmc_api.module("mmc-api") },
-            .{ .name = "network", .module = network_dep.module("network") },
-            .{ .name = "chrono", .module = chrono.module("chrono") },
-        },
     });
-    mod.addOptions("config", options);
-    switch (target.result.os.tag) {
-        .windows => {
-            const zigwin32 = b.lazyDependency("zigwin32", .{});
-            if (zigwin32) |zwin32| {
-                mod.addImport("win32", zwin32.module("win32"));
-            }
-
-            mod.linkSystemLibrary("ws2_32", .{});
-            mod.linkSystemLibrary("user32", .{});
-        },
-        .linux => {
-            const soem = b.lazyDependency("soem", .{
-                .target = target,
-                .optimize = optimize,
-            });
-            if (soem) |dep| {
-                mod.linkLibrary(dep.artifact("soem"));
-                mod.addIncludePath(dep.path("include"));
-            }
-        },
-        else => {
-            return error.UnsupportedOs;
-        },
-    }
-
-    const exe = b.addExecutable(.{ .name = "mmc-cli", .root_module = mod });
+    try setupModule(b, exe.root_module, setup_options);
     if (target.result.os.tag == .windows and mcl) {
         const mcl_dep = b.lazyDependency("mcl", .{
             .target = target,
@@ -127,8 +109,11 @@ pub fn build(b: *std.Build) !void {
 
     const check_exe = b.addExecutable(.{
         .name = "mmc-cli",
-        .root_module = mod,
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
     });
+    try setupModule(b, check_exe.root_module, setup_options);
     if (target.result.os.tag == .windows and mcl) {
         const mcl_mock = b.lazyDependency("mcl", .{
             .target = target,
@@ -145,7 +130,12 @@ pub fn build(b: *std.Build) !void {
 
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
-    const unit_tests = b.addTest(.{ .root_module = mod });
+    const unit_tests = b.addTest(.{
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    try setupModule(b, unit_tests.root_module, setup_options);
     if (target.result.os.tag == .windows and mcl) {
         const mcl_mock = b.lazyDependency("mcl", .{
             .target = target,
@@ -160,4 +150,48 @@ pub fn build(b: *std.Build) !void {
     const run_unit_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
+}
+
+const SetupOptions = struct {
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    imports: []const std.Build.Module.Import = &.{},
+    options: ?*std.Build.Step.Options = null,
+};
+
+fn setupModule(
+    b: *std.Build,
+    mod: *std.Build.Module,
+    options: SetupOptions,
+) !void {
+    if (options.options) |opt| {
+        mod.addOptions("config", opt);
+    }
+    for (options.imports) |import| {
+        mod.addImport(import.name, import.module);
+    }
+    switch (options.target.result.os.tag) {
+        .windows => {
+            const zigwin32 = b.lazyDependency("zigwin32", .{});
+            if (zigwin32) |zwin32| {
+                mod.addImport("win32", zwin32.module("win32"));
+            }
+
+            mod.linkSystemLibrary("ws2_32", .{});
+            mod.linkSystemLibrary("user32", .{});
+        },
+        .linux => {
+            const soem = b.lazyDependency("soem", .{
+                .target = options.target,
+                .optimize = options.optimize,
+            });
+            if (soem) |dep| {
+                mod.linkLibrary(dep.artifact("soem"));
+                mod.addIncludePath(dep.path("include"));
+            }
+        },
+        else => {
+            return error.UnsupportedOs;
+        },
+    }
 }
