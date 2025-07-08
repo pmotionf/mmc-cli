@@ -97,8 +97,8 @@ const fba_allocator = fba.allocator();
 
 var arena: std.heap.ArenaAllocator = undefined;
 var allocator: std.mem.Allocator = undefined;
-var IP_address: []u8 = undefined;
-var port: u16 = undefined;
+var IP_address: []u8 = &.{};
+var port: u16 = 0;
 
 pub var main_socket: ?network.Socket = null;
 
@@ -887,10 +887,14 @@ fn clientConnect(params: [][]const u8) !void {
             try disconnect();
         }
     }
-    if (params[0].len != 0 and params[1].len == 0) return error.MissingParameter;
+    if (params[0].len != 0 and params[1].len == 0)
+        return error.MissingParameter;
     if (params[1].len > 0) {
         port = try std.fmt.parseInt(u16, params[0], 0);
-        IP_address = @constCast(params[1]);
+        if (IP_address.len != params[1].len) {
+            IP_address = try allocator.realloc(IP_address, params[1].len);
+        }
+        @memcpy(IP_address, params[1]);
     }
     std.log.info(
         "Trying to connect to {s}:{}",
