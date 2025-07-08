@@ -9,20 +9,16 @@ const chrono = @import("chrono");
 const main = @import("main.zig");
 const build = @import("build.zig.zon");
 
+// Build configuration.
+const config = @import("config");
+
 // Command modules.
-const mcl = if (builtin.target.os.tag == .windows)
-    @import("command/mcl.zig")
-else
-    void;
-const return_demo2 = @import("command/return_demo2.zig");
-const client_cli = @import("command/client_cli.zig");
-const mes07 = if (builtin.os.tag == .linux)
-    @import("command/mes07.zig")
-else
-    struct {
-        pub fn init(_: anytype) !void {}
-        pub fn deinit() void {}
-    };
+const mcl = if (config.mcl) @import("command/mcl.zig") else void;
+const return_demo2 =
+    if (config.return_demo2) @import("command/return_demo2.zig") else void;
+const client_cli =
+    if (config.mmc_client) @import("command/client_cli.zig") else void;
+const mes07 = if (config.mes07) @import("command/mes07.zig") else void;
 
 const Config = @import("Config.zig");
 
@@ -828,11 +824,11 @@ fn loadConfig(params: [][]const u8) !void {
         };
     var m_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     const m_allocator = m_arena.allocator();
-    var config = try Config.parse(m_allocator, config_file);
+    var conf = try Config.parse(m_allocator, config_file);
 
     // Initialize only the modules specified in config file.
     const fields = @typeInfo(Config.Module).@"enum".fields;
-    for (config.modules()) |module| {
+    for (conf.modules()) |module| {
         switch (@intFromEnum(module)) {
             inline 0...fields.len - 1 => |i| {
                 const f_type = @typeInfo(@field(@This(), fields[i].name));
@@ -848,7 +844,7 @@ fn loadConfig(params: [][]const u8) !void {
             },
         }
     }
-    config.deinit();
+    conf.deinit();
     m_arena.deinit();
 }
 

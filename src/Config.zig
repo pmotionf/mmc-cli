@@ -2,14 +2,17 @@ const Config = @This();
 
 const builtin = @import("builtin");
 const std = @import("std");
+const config = @import("config");
 
-const MclConfig = if (builtin.target.os.tag == .windows)
-    @import("command/mcl.zig").Config
+const MclConfig = if (config.mcl) @import("command/mcl.zig").Config else void;
+const ReturnDemo2Config = if (config.return_demo2)
+    @import("command/return_demo2.zig").Config
 else
     void;
-const ReturnDemo2Config = @import("command/return_demo2.zig").Config;
-const ClientCliConfig = @import("command/client_cli.zig").Config;
-const Mes07Config = @import("command/mes07.zig").Config;
+const ClientCliConfig =
+    if (config.mmc_client) @import("command/client_cli.zig").Config else void;
+const Mes07Config =
+    if (config.mes07) @import("command/mes07.zig").Config else void;
 
 parsed: std.json.Parsed(Parse),
 

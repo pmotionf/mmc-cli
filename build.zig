@@ -4,6 +4,33 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const options = b.addOptions();
+    // Enable/disable backends selectively through options.
+    const mcl = if (target.result.os.tag == .windows) b.option(
+        bool,
+        "mcl",
+        "Enable the `MCL` backend (default true).",
+    ) orelse true else false;
+    options.addOption(bool, "mcl", mcl);
+    const return_demo2 = b.option(
+        bool,
+        "return_demo2",
+        "Enable the `return_demo2` backend (default false).",
+    ) orelse false;
+    options.addOption(bool, "return_demo2", return_demo2);
+    const mmc_client = b.option(
+        bool,
+        "mmc_client",
+        "Enable the `mmc_client` backend (default true).",
+    ) orelse true;
+    options.addOption(bool, "mmc_client", mmc_client);
+    const mes07 = if (target.result.os.tag == .linux) b.option(
+        bool,
+        "mes07",
+        "Enable the `mes07` backend (default true).",
+    ) orelse true else false;
+    options.addOption(bool, "mes07", mes07);
+
     const mdfunc_lib_path = if (target.result.os.tag == .windows) (b.option(
         []const u8,
         "mdfunc",
@@ -41,11 +68,14 @@ pub fn build(b: *std.Build) !void {
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+        .imports = &.{
+            .{ .name = "build.zig.zon", .module = build_zig_zon },
+            .{ .name = "mmc-api", .module = mmc_api.module("mmc-api") },
+            .{ .name = "network", .module = network_dep.module("network") },
+            .{ .name = "chrono", .module = chrono.module("chrono") },
+        },
     });
-    mod.addImport("network", network_dep.module("network"));
-    mod.addImport("chrono", chrono.module("chrono"));
-    mod.addImport("mmc-api", mmc_api.module("mmc-api"));
-    mod.addImport("build.zig.zon", build_zig_zon);
+    mod.addOptions("config", options);
     switch (target.result.os.tag) {
         .windows => {
             const zigwin32 = b.lazyDependency("zigwin32", .{});
@@ -72,14 +102,14 @@ pub fn build(b: *std.Build) !void {
     }
 
     const exe = b.addExecutable(.{ .name = "mmc-cli", .root_module = mod });
-    if (target.result.os.tag == .windows) {
-        const mcl = b.lazyDependency("mcl", .{
+    if (target.result.os.tag == .windows and mcl) {
+        const mcl_dep = b.lazyDependency("mcl", .{
             .target = target,
             .optimize = optimize,
             .mdfunc = mdfunc_lib_path,
             .mdfunc_mock = mdfunc_mock_build,
         });
-        if (mcl) |dep| {
+        if (mcl_dep) |dep| {
             exe.root_module.addImport("mcl", dep.module("mcl"));
         }
     }
@@ -99,7 +129,7 @@ pub fn build(b: *std.Build) !void {
         .name = "mmc-cli",
         .root_module = mod,
     });
-    if (target.result.os.tag == .windows) {
+    if (target.result.os.tag == .windows and mcl) {
         const mcl_mock = b.lazyDependency("mcl", .{
             .target = target,
             .optimize = optimize,
@@ -116,7 +146,7 @@ pub fn build(b: *std.Build) !void {
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
     const unit_tests = b.addTest(.{ .root_module = mod });
-    if (target.result.os.tag == .windows) {
+    if (target.result.os.tag == .windows and mcl) {
         const mcl_mock = b.lazyDependency("mcl", .{
             .target = target,
             .optimize = optimize,
