@@ -461,11 +461,13 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{ .name = "destination axis" },
+            .{ .name = "disable cas", .optional = true },
         },
         .short_description = "Move carrier to target axis center.",
         .long_description =
         \\Move given carrier to the center of target axis. The carrier ID must be
-        \\currently recognized within the motion system.
+        \\currently recognized within the motion system. Provide "true" to disable
+        \\CAS (collision avoidance system) for the command.
         ,
         .execute = &clientCarrierPosMoveAxis,
     });
@@ -476,12 +478,14 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{ .name = "destination location" },
+            .{ .name = "disable cas", .optional = true },
         },
         .short_description = "Move carrier to target location.",
         .long_description =
         \\Move given carrier to target location. The carrier ID must be currently
         \\recognized within the motion system, and the target location must be
-        \\provided in millimeters as a whole or decimal number.
+        \\provided in millimeters as a whole or decimal number. Provide "true" to 
+        \\disable CAS (collision avoidance system) for the command.
         ,
         .execute = &clientCarrierPosMoveLocation,
     });
@@ -492,13 +496,15 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{ .name = "distance" },
+            .{ .name = "disable cas", .optional = true },
         },
         .short_description = "Move carrier by a distance.",
         .long_description =
         \\Move given carrier by a provided distance. The carrier ID must be
         \\currently recognized within the motion system, and the distance must
         \\be provided in millimeters as a whole or decimal number. The distance
-        \\may be negative for backward movement.
+        \\may be negative for backward movement. Provide "true" to disable
+        \\CAS (collision avoidance system) for the command.
         ,
         .execute = &clientCarrierPosMoveDistance,
     });
@@ -509,12 +515,14 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{ .name = "destination axis" },
+            .{ .name = "disable cas", .optional = true },
         },
         .short_description = "Move carrier to target axis center.",
         .long_description =
         \\Move given carrier to the center of target axis. The carrier ID must be
         \\currently recognized within the motion system. This command moves the
-        \\carrier with speed profile feedback.
+        \\carrier with speed profile feedback. Provide "true" to disable CAS 
+        \\(collision avoidance system) for the command.
         ,
         .execute = &clientCarrierSpdMoveAxis,
     });
@@ -525,13 +533,15 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{ .name = "destination location" },
+            .{ .name = "disable cas", .optional = true },
         },
         .short_description = "Move carrier to target location.",
         .long_description =
         \\Move given carrier to target location. The carrier ID must be currently
         \\recognized within the motion system, and the target location must be
         \\provided in millimeters as a whole or decimal number. This command
-        \\moves the carrier with speed profile feedback.
+        \\moves the carrier with speed profile feedback. Provide "true" to disable
+        \\CAS (collision avoidance system) for the command.
         ,
         .execute = &clientCarrierSpdMoveLocation,
     });
@@ -542,6 +552,7 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{ .name = "distance" },
+            .{ .name = "disable cas", .optional = true },
         },
         .short_description = "Move carrier by a distance.",
         .long_description =
@@ -549,7 +560,8 @@ pub fn init(c: Config) !void {
         \\currently recognized within the motion system, and the distance must
         \\be provided in millimeters as a whole or decimal number. The distance
         \\may be negative for backward movement. This command moves the carrier
-        \\with speed profile feedback.
+        \\with speed profile feedback. Provide "true" to disable CAS (collision 
+        \\avoidance system) for the command.
         ,
         .execute = &clientCarrierSpdMoveDistance,
     });
@@ -601,13 +613,15 @@ pub fn init(c: Config) !void {
             .{ .name = "axis" },
             .{ .name = "carrier" },
             .{ .name = "destination", .optional = true },
+            .{ .name = "disable cas", .optional = true },
         },
         .short_description = "Pull incoming carrier forward at axis.",
         .long_description =
         \\Pull incoming carrier forward at axis. The pulled carrier's new ID
         \\must also be provided. If a destination in millimeters is specified,
         \\the carrier will automatically move to the destination after pull is
-        \\completed.
+        \\completed. Provide "true" to disable CAS (collision avoidance system) 
+        \\for the command when the final destination is provided.
         ,
         .execute = &clientCarrierPullForward,
     });
@@ -619,13 +633,15 @@ pub fn init(c: Config) !void {
             .{ .name = "axis" },
             .{ .name = "carrier" },
             .{ .name = "destination", .optional = true },
+            .{ .name = "disable cas", .optional = true },
         },
         .short_description = "Pull incoming carrier backward at axis.",
         .long_description =
         \\Pull incoming carrier backward at axis. The pulled carrier's new ID
         \\must also be provided. If a destination in millimeters is specified,
         \\the carrier will automatically move to the destination after pull is
-        \\completed.
+        \\completed. Provide "true" to disable CAS (collision avoidance system) 
+        \\for the command when the final destination is provided.
         ,
         .execute = &clientCarrierPullBackward,
     });
@@ -1596,6 +1612,12 @@ fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
     const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
     const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[2], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
+    const disable_cas = if (params.len == 0)
+        false
+    else if (std.ascii.eqlIgnoreCase("true", params[3]))
+        true
+    else
+        return error.InvalidCasConfiguration;
 
     const line_idx = try matchLine(lines, line_name);
     const line = lines[line_idx];
@@ -1609,6 +1631,7 @@ fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
             .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .target = .{ .axis = @intCast(axis_id) },
+            .disable_cas = disable_cas,
             .control_kind = .CONTROL_POSITION,
         },
     };
@@ -1620,6 +1643,12 @@ fn clientCarrierPosMoveLocation(params: [][]const u8) !void {
     const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
+    const disable_cas = if (params.len == 0)
+        false
+    else if (std.ascii.eqlIgnoreCase("true", params[3]))
+        true
+    else
+        return error.InvalidCasConfiguration;
 
     const line_idx = try matchLine(lines, line_name);
     const line = lines[line_idx];
@@ -1632,6 +1661,7 @@ fn clientCarrierPosMoveLocation(params: [][]const u8) !void {
             .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .target = .{ .location = location },
+            .disable_cas = disable_cas,
             .control_kind = .CONTROL_POSITION,
         },
     };
@@ -1647,6 +1677,12 @@ fn clientCarrierPosMoveDistance(params: [][]const u8) !void {
         return;
     }
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
+    const disable_cas = if (params.len == 0)
+        false
+    else if (std.ascii.eqlIgnoreCase("true", params[3]))
+        true
+    else
+        return error.InvalidCasConfiguration;
     const line_idx = try matchLine(lines, line_name);
     const line = lines[line_idx];
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
@@ -1658,6 +1694,7 @@ fn clientCarrierPosMoveDistance(params: [][]const u8) !void {
             .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .target = .{ .distance = distance },
+            .disable_cas = disable_cas,
             .control_kind = .CONTROL_POSITION,
         },
     };
@@ -1674,6 +1711,12 @@ fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
         return error.InvalidAxis;
     }
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
+    const disable_cas = if (params.len == 0)
+        false
+    else if (std.ascii.eqlIgnoreCase("true", params[3]))
+        true
+    else
+        return error.InvalidCasConfiguration;
 
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
     defer command_msg.deinit();
@@ -1684,6 +1727,7 @@ fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
             .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .target = .{ .axis = @intCast(axis_id) },
+            .disable_cas = disable_cas,
             .control_kind = .CONTROL_VELOCITY,
         },
     };
@@ -1695,6 +1739,12 @@ fn clientCarrierSpdMoveLocation(params: [][]const u8) !void {
     const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
+    const disable_cas = if (params.len == 0)
+        false
+    else if (std.ascii.eqlIgnoreCase("true", params[3]))
+        true
+    else
+        return error.InvalidCasConfiguration;
 
     const line_idx = try matchLine(lines, line_name);
     const line = lines[line_idx];
@@ -1707,6 +1757,7 @@ fn clientCarrierSpdMoveLocation(params: [][]const u8) !void {
             .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .target = .{ .location = location },
+            .disable_cas = disable_cas,
             .control_kind = .CONTROL_VELOCITY,
         },
     };
@@ -1724,6 +1775,12 @@ fn clientCarrierSpdMoveDistance(params: [][]const u8) !void {
         return;
     }
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
+    const disable_cas = if (params.len == 0)
+        false
+    else if (std.ascii.eqlIgnoreCase("true", params[3]))
+        true
+    else
+        return error.InvalidCasConfiguration;
 
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
     defer command_msg.deinit();
@@ -1734,6 +1791,7 @@ fn clientCarrierSpdMoveDistance(params: [][]const u8) !void {
             .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .target = .{ .distance = distance },
+            .disable_cas = disable_cas,
             .control_kind = .CONTROL_VELOCITY,
         },
     };
@@ -1817,6 +1875,12 @@ fn clientCarrierPullForward(params: [][]const u8) !void {
     const line = lines[line_idx];
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     if (axis_id == 0 or axis_id > line.axes.len) return error.InvalidAxis;
+    const disable_cas = if (params.len == 0)
+        false
+    else if (std.ascii.eqlIgnoreCase("true", params[3]))
+        true
+    else
+        return error.InvalidCasConfiguration;
 
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
     defer command_msg.deinit();
@@ -1831,7 +1895,7 @@ fn clientCarrierPullForward(params: [][]const u8) !void {
             .transition = blk: {
                 if (destination) |loc| break :blk .{
                     .control_kind = .CONTROL_POSITION,
-                    .disable_cas = false,
+                    .disable_cas = disable_cas,
                     .target = .{
                         .location = loc,
                     },
@@ -1856,6 +1920,12 @@ fn clientCarrierPullBackward(params: [][]const u8) !void {
     const line = lines[line_idx];
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     if (axis_id == 0 or axis_id > line.axes.len) return error.InvalidAxis;
+    const disable_cas = if (params.len == 0)
+        false
+    else if (std.ascii.eqlIgnoreCase("true", params[3]))
+        true
+    else
+        return error.InvalidCasConfiguration;
 
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
     defer command_msg.deinit();
@@ -1870,7 +1940,7 @@ fn clientCarrierPullBackward(params: [][]const u8) !void {
             .transition = blk: {
                 if (destination) |loc| break :blk .{
                     .control_kind = .CONTROL_POSITION,
-                    .disable_cas = false,
+                    .disable_cas = disable_cas,
                     .target = .{
                         .location = loc,
                     },
