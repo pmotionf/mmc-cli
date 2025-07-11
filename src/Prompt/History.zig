@@ -41,6 +41,7 @@ const Selection = struct {
         const self = selection.getSelfConst();
         var remaining = selection.index;
         while (remaining > 0) {
+            defer remaining -= 1;
             const item = self.history.buffer[
                 (self.history.head + remaining - 1) % self.history.buffer.len
             ];
@@ -49,7 +50,6 @@ const Selection = struct {
                 selection.index = remaining - 1;
                 break;
             }
-            remaining -= 1;
         }
     }
 
@@ -123,6 +123,7 @@ pub fn select(self: *History, prefix: []const u8) void {
 
     var remaining = self.history.count;
     while (remaining > 0) {
+        defer remaining -= 1;
         const item = self.history.buffer[
             (self.history.head + remaining - 1) %
                 self.history.buffer.len
@@ -132,7 +133,6 @@ pub fn select(self: *History, prefix: []const u8) void {
             self.selection = .{ .index = @intCast(remaining - 1) };
             break;
         }
-        remaining -= 1;
     }
 }
 
