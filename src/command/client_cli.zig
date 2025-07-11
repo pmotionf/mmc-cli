@@ -327,15 +327,6 @@ pub fn init(c: Config) !void {
     });
     errdefer command.registry.orderedRemove("CLEAR_ERRORS");
     try command.registry.put(.{
-        .name = "RESET_MCL",
-        .short_description = "Reset all MCL registers.",
-        .long_description =
-        \\Reset all write registers (Y and Ww) on the server.
-        ,
-        .execute = &clientMclReset,
-    });
-    errdefer command.registry.orderedRemove("RESET_MCL");
-    try command.registry.put(.{
         .name = "CLEAR_CARRIER_INFO",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -996,7 +987,7 @@ fn assertAPIVersion() !void {
 
 fn clientAutoInitialize(params: [][]const u8) !void {
     var init_lines = std.ArrayListAligned(
-        CommandRequest.AutoInitialize.Lines,
+        CommandRequest.AutoInitialize.Line,
         null,
     ).init(fba_allocator);
     defer init_lines.deinit();
@@ -1009,7 +1000,7 @@ fn clientAutoInitialize(params: [][]const u8) !void {
         while (iterator.next()) |line_name| {
             const line_idx = try matchLine(lines, line_name);
             const _line = lines[line_idx];
-            const line: CommandRequest.AutoInitialize.Lines = .{
+            const line: CommandRequest.AutoInitialize.Line = .{
                 .line_id = @intCast(_line.id),
                 .acceleration = @intCast(_line.acceleration),
                 .velocity = @intCast(_line.velocity),
@@ -1018,7 +1009,7 @@ fn clientAutoInitialize(params: [][]const u8) !void {
         }
     } else {
         for (lines) |_line| {
-            const line: CommandRequest.AutoInitialize.Lines = .{
+            const line: CommandRequest.AutoInitialize.Line = .{
                 .line_id = @intCast(_line.id),
                 .acceleration = @intCast(_line.acceleration),
                 .velocity = @intCast(_line.velocity),
@@ -1031,12 +1022,6 @@ fn clientAutoInitialize(params: [][]const u8) !void {
     command_msg.body = .{
         .auto_initialize = .{ .lines = init_lines },
     };
-    for (init_lines.items) |line| {
-        std.log.debug(
-            "id: {}, speed: {}, acceleration: {}",
-            .{ line.line_id, line.velocity, line.acceleration },
-        );
-    }
     const encoded = try command_msg.encode(fba_allocator);
     defer fba_allocator.free(encoded);
     try sendCommandRequest(command_msg, fba_allocator);
@@ -1189,7 +1174,7 @@ fn clientAssertLocation(params: [][]const u8) !void {
         fba_allocator,
         InfoResponse.Carrier,
     );
-    const location: f32 = carrier.location;
+    const location: f32 = carrier.position;
     if (location < expected_location - location_thr or
         location > expected_location + location_thr)
         return error.UnexpectedCarrierLocation;
@@ -1206,7 +1191,7 @@ fn clientAxisReleaseServo(params: [][]const u8) !void {
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
     defer command_msg.deinit();
     command_msg.body = .{
-        .release_axis_servo = .{
+        .release_control = .{
             .line_id = @intCast(line.id),
             .axis_id = @intCast(axis.id.line),
         },
@@ -1228,7 +1213,10 @@ fn clientClearErrors(params: [][]const u8) !void {
     command_msg.body = .{
         .clear_errors = .{
             .line_id = @intCast(line.id),
-            .axis_id = if (axis_id) |id| @intCast(id) else null,
+            .driver_id = if (axis_id) |id|
+                @intCast(line.axes[id - 1].driver.id)
+            else
+                null,
         },
     };
     try sendCommandRequest(command_msg, fba_allocator);
@@ -1280,14 +1268,14 @@ fn clientCarrierLocation(params: [][]const u8) !void {
     defer carrier.deinit();
     std.log.info(
         "Carrier {d} location: {d} mm",
-        .{ carrier.id, carrier.location },
+        .{ carrier.id, carrier.position },
     );
     if (result_var.len > 0) {
         var float_buf: [12]u8 = undefined;
         try command.variables.put(result_var, try std.fmt.bufPrint(
             &float_buf,
             "{d}",
-            .{carrier.location},
+            .{carrier.position},
         ));
     }
 }
@@ -1339,17 +1327,21 @@ fn clientHallStatus(params: [][]const u8) !void {
     defer info_msg.deinit();
     if (axis_id) |axis| {
         info_msg.body = .{
-            .hall_alarm = .{
+            .axis = .{
                 .line_id = @intCast(line.id),
-                .axis_id = axis,
+                .range = .{
+                    .start_id = @intCast(axis),
+                    .end_id = @intCast(axis),
+                },
             },
         };
-        const hall = try sendRequest(
+        const response = try sendRequest(
             info_msg,
             fba_allocator,
-            InfoResponse.HallAlarm,
+            InfoResponse.Axes,
         );
-        defer hall.deinit();
+        defer response.deinit();
+        const hall = response.axes.items[0].hall_alarm.?;
         std.log.info(
             "Axis {} Hall Sensor:\n\t BACK - {s}\n\t FRONT - {s}",
             .{
@@ -1359,23 +1351,26 @@ fn clientHallStatus(params: [][]const u8) !void {
             },
         );
     } else {
-        for (line.axes) |axis| {
-            info_msg.body = .{
-                .hall_alarm = .{
-                    .line_id = @intCast(line.id),
-                    .axis_id = @intCast(axis.id.line),
+        info_msg.body = .{
+            .axis = .{
+                .line_id = @intCast(line.id),
+                .range = .{
+                    .start_id = 1,
+                    .end_id = @intCast(line.axes.len),
                 },
-            };
-            const hall = try sendRequest(
-                info_msg,
-                fba_allocator,
-                InfoResponse.HallAlarm,
-            );
-            defer hall.deinit();
+            },
+        };
+        const response = try sendRequest(
+            info_msg,
+            fba_allocator,
+            InfoResponse.Axes,
+        );
+        for (response.axes.items) |axis| {
+            const hall = axis.hall_alarm.?;
             std.log.info(
                 "Axis {} Hall Sensor:\n\t BACK - {s}\n\t FRONT - {s}",
                 .{
-                    axis.id.line,
+                    axis.id,
                     if (hall.back) "ON" else "OFF",
                     if (hall.front) "ON" else "OFF",
                 },
@@ -1415,17 +1410,21 @@ fn clientAssertHall(params: [][]const u8) !void {
     defer info_msg.deinit();
 
     info_msg.body = .{
-        .hall_alarm = .{
+        .axis = .{
             .line_id = @intCast(line.id),
-            .axis_id = @intCast(axis_id),
+            .range = .{
+                .start_id = @intCast(axis_id),
+                .end_id = @intCast(axis_id),
+            },
         },
     };
-    const hall = try sendRequest(
+    const response = try sendRequest(
         info_msg,
         fba_allocator,
-        InfoResponse.HallAlarm,
+        InfoResponse.Axes,
     );
-    defer hall.deinit();
+    defer response.deinit();
+    const hall = response.axes.items[0].hall_alarm.?;
     switch (side) {
         .DIRECTION_BACKWARD => {
             if (hall.back != alarm_on) {
@@ -1439,15 +1438,6 @@ fn clientAssertHall(params: [][]const u8) !void {
         },
         else => return error.UnexpectedResponse,
     }
-}
-
-fn clientMclReset(_: [][]const u8) !void {
-    var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
-    defer command_msg.deinit();
-    command_msg.body = .{ .reset_mcl = .{} };
-    const encoded = try command_msg.encode(fba_allocator);
-    defer fba_allocator.free(encoded);
-    try sendCommandRequest(command_msg, fba_allocator);
 }
 
 fn clientCalibrate(params: [][]const u8) !void {
@@ -1557,8 +1547,8 @@ fn clientWaitIsolate(params: [][]const u8) !void {
             InfoResponse.Carrier,
         );
         defer carrier.deinit();
-        if (carrier.state == .STATE_BACKWARD_ISOLATION_COMPLETED or
-            carrier.state == .STATE_FORWARD_ISOLATION_COMPLETED) return;
+        if (carrier.state == .CARRIER_STATE_BACKWARD_ISOLATION_COMPLETED or
+            carrier.state == .CARRIER_STATE_FORWARD_ISOLATION_COMPLETED) return;
     }
 }
 
@@ -1595,8 +1585,8 @@ fn clientWaitMoveCarrier(params: [][]const u8) !void {
             InfoResponse.Carrier,
         );
         defer carrier.deinit();
-        if (carrier.state == .STATE_POS_MOVE_COMPLETED or
-            carrier.state == .STATE_SPD_MOVE_COMPLETED) return;
+        if (carrier.state == .CARRIER_STATE_POS_MOVE_COMPLETED or
+            carrier.state == .CARRIER_STATE_SPD_MOVE_COMPLETED) return;
     }
 }
 
@@ -1837,11 +1827,14 @@ fn clientCarrierPullForward(params: [][]const u8) !void {
             .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .direction = .DIRECTION_FORWARD,
-            .target = blk: {
-                if (destination) |location|
-                    break :blk .{ .location = location }
-                else
-                    break :blk null;
+            .transition = blk: {
+                if (destination) |loc| break :blk .{
+                    .control_kind = .CONTROL_POSITION,
+                    .disable_cas = false,
+                    .target = .{
+                        .location = loc,
+                    },
+                } else break :blk null;
             },
         },
     };
@@ -1873,11 +1866,14 @@ fn clientCarrierPullBackward(params: [][]const u8) !void {
             .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .direction = .DIRECTION_BACKWARD,
-            .target = blk: {
-                if (destination) |location|
-                    break :blk .{ .location = location }
-                else
-                    break :blk null;
+            .transition = blk: {
+                if (destination) |loc| break :blk .{
+                    .control_kind = .CONTROL_POSITION,
+                    .disable_cas = false,
+                    .target = .{
+                        .location = loc,
+                    },
+                } else break :blk null;
             },
         },
     };
@@ -1915,8 +1911,8 @@ fn clientCarrierWaitPull(params: [][]const u8) !void {
             InfoResponse.Carrier,
         );
         defer carrier.deinit();
-        if (carrier.state == .STATE_PULL_FORWARD_COMPLETED or
-            carrier.state == .STATE_PULL_BACKWARD_COMPLETED) return;
+        if (carrier.state == .CARRIER_STATE_PULL_FORWARD_COMPLETED or
+            carrier.state == .CARRIER_STATE_PULL_BACKWARD_COMPLETED) return;
     }
 }
 
@@ -2058,7 +2054,7 @@ fn sendCommandRequest(
     while (true) {
         try command.checkCommandInterrupt();
         info_msg.body = .{
-            .command = .{ .command_id = command_id },
+            .command = .{ .id = command_id },
         };
         const command_status = try sendRequest(
             info_msg,
@@ -2067,7 +2063,7 @@ fn sendCommandRequest(
         );
         defer command_status.deinit();
         switch (command_status.status) {
-            .STATUS_PROCESSING, .STATUS_QUEUED => {}, // continue the loop
+            .STATUS_PROGRESSING, .STATUS_QUEUED => {}, // continue the loop
             .STATUS_COMPLETED => break,
             .STATUS_FAILED => {
                 return switch (command_status.error_response orelse return error.UnexpectedResponse) {
