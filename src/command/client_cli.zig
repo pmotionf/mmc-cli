@@ -1112,56 +1112,53 @@ fn clientCarrierID(params: [][]const u8) !void {
     var variable_count: usize = 1;
     for (line_idxs.items) |line_idx| {
         const line = lines[line_idx];
-        for (line.drivers) |driver| {
-            const wr: InfoResponse.RegisterWr = try getRegister(
-                line.id,
-                driver.id,
-                fba_allocator,
-                .Wr,
+        var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
+        info_msg.body = .{
+            .axis = .{
+                .line_id = @intCast(line.id),
+                .range = .{
+                    .start_id = 1,
+                    .end_id = @intCast(line.axes.len),
+                },
+            },
+        };
+        const response = try sendRequest(
+            info_msg,
+            fba_allocator,
+            InfoResponse.Axes,
+        );
+        for (response.axes.items) |axis| {
+            std.log.info(
+                "Carrier {d} on line {s} axis {d}",
+                .{ axis.carrier_id, line.name, axis.id },
             );
-            const _carrier = wr.carrier.?;
-            const ti = @typeInfo(@TypeOf(_carrier)).@"struct";
-            inline for (ti.fields, 0..) |field, axis_idx| {
-                const carrier: InfoResponse.RegisterWr.Carrier.Description =
-                    @field(_carrier, field.name).?;
-                if (carrier.id != 0) {
-                    std.log.info(
-                        "Carrier {d} on line {s} axis {d}",
-                        .{
-                            carrier.id,
-                            line.name,
-                            axis_idx + @as(usize, @intCast(driver.index * 3)) + 1,
-                        },
-                    );
-                    if (result_var.len > 0) {
-                        var int_buf: [8]u8 = undefined;
-                        var var_buf: [36]u8 = undefined;
-                        const variable_key = try std.fmt.bufPrint(
-                            &var_buf,
-                            "{s}_{d}",
-                            .{ result_var, variable_count },
-                        );
-                        const variable_value = try std.fmt.bufPrint(
-                            &int_buf,
-                            "{d}",
-                            .{carrier.id},
-                        );
-                        var iterator = command.variables.iterator();
-                        var isValueExists: bool = false;
-                        while (iterator.next()) |entry| {
-                            if (std.mem.eql(u8, variable_value, entry.value_ptr.*)) {
-                                isValueExists = true;
-                                break;
-                            }
-                        }
-                        if (!isValueExists) {
-                            try command.variables.put(
-                                variable_key,
-                                variable_value,
-                            );
-                            variable_count += 1;
-                        }
+            if (result_var.len > 0) {
+                var int_buf: [8]u8 = undefined;
+                var var_buf: [36]u8 = undefined;
+                const variable_key = try std.fmt.bufPrint(
+                    &var_buf,
+                    "{s}_{d}",
+                    .{ result_var, variable_count },
+                );
+                const variable_value = try std.fmt.bufPrint(
+                    &int_buf,
+                    "{d}",
+                    .{axis.carrier_id},
+                );
+                var iterator = command.variables.iterator();
+                var isValueExists: bool = false;
+                while (iterator.next()) |entry| {
+                    if (std.mem.eql(u8, variable_value, entry.value_ptr.*)) {
+                        isValueExists = true;
+                        break;
                     }
+                }
+                if (!isValueExists) {
+                    try command.variables.put(
+                        variable_key,
+                        variable_value,
+                    );
+                    variable_count += 1;
                 }
             }
         }
