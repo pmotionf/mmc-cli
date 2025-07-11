@@ -1613,7 +1613,7 @@ fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
     const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
     const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[2], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
-    const disable_cas = if (params.len == 0)
+    const disable_cas = if (params[3].len == 0)
         false
     else if (std.ascii.eqlIgnoreCase("true", params[3]))
         true
@@ -1644,7 +1644,7 @@ fn clientCarrierPosMoveLocation(params: [][]const u8) !void {
     const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
-    const disable_cas = if (params.len == 0)
+    const disable_cas = if (params[3].len == 0)
         false
     else if (std.ascii.eqlIgnoreCase("true", params[3]))
         true
@@ -1678,7 +1678,7 @@ fn clientCarrierPosMoveDistance(params: [][]const u8) !void {
         return;
     }
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
-    const disable_cas = if (params.len == 0)
+    const disable_cas = if (params[3].len == 0)
         false
     else if (std.ascii.eqlIgnoreCase("true", params[3]))
         true
@@ -1712,7 +1712,7 @@ fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
         return error.InvalidAxis;
     }
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
-    const disable_cas = if (params.len == 0)
+    const disable_cas = if (params[3].len == 0)
         false
     else if (std.ascii.eqlIgnoreCase("true", params[3]))
         true
@@ -1740,7 +1740,7 @@ fn clientCarrierSpdMoveLocation(params: [][]const u8) !void {
     const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
-    const disable_cas = if (params.len == 0)
+    const disable_cas = if (params[3].len == 0)
         false
     else if (std.ascii.eqlIgnoreCase("true", params[3]))
         true
@@ -1776,7 +1776,7 @@ fn clientCarrierSpdMoveDistance(params: [][]const u8) !void {
         return;
     }
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
-    const disable_cas = if (params.len == 0)
+    const disable_cas = if (params[3].len == 0)
         false
     else if (std.ascii.eqlIgnoreCase("true", params[3]))
         true
@@ -1876,7 +1876,7 @@ fn clientCarrierPullForward(params: [][]const u8) !void {
     const line = lines[line_idx];
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     if (axis_id == 0 or axis_id > line.axes.len) return error.InvalidAxis;
-    const disable_cas = if (params.len == 0)
+    const disable_cas = if (params[3].len == 0)
         false
     else if (std.ascii.eqlIgnoreCase("true", params[3]))
         true
@@ -1921,7 +1921,7 @@ fn clientCarrierPullBackward(params: [][]const u8) !void {
     const line = lines[line_idx];
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     if (axis_id == 0 or axis_id > line.axes.len) return error.InvalidAxis;
-    const disable_cas = if (params.len == 0)
+    const disable_cas = if (params[3].len == 0)
         false
     else if (std.ascii.eqlIgnoreCase("true", params[3]))
         true
