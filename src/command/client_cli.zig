@@ -16,70 +16,44 @@ const CircularBufferAlloc =
     @import("../circular_buffer.zig").CircularBufferAlloc;
 const command = @import("../command.zig");
 
-const LogLine = struct {
-    /// Flag if line is configured for logging or not
-    status: bool,
-    /// Specify which registers to log for each line
-    registers: std.EnumArray(RegisterType, bool),
-    /// Flag which stations to be logged based on axes provided by user
-    stations: [256]bool,
-};
-
-const RegisterType = enum { x, y, wr, ww };
-
-const RegisterTypeCap = enum { X, Y, Wr, Ww };
-
-const Registers = struct {
-    x: InfoResponse.RegisterX,
-    y: InfoResponse.RegisterY,
-    wr: InfoResponse.RegisterWr,
-    ww: InfoResponse.RegisterWw,
-};
-
-const LoggingRegisters = struct {
-    timestamp: f64,
-    /// The maximum number of stations is 64 * 4
-    registers: [64 * 4]Registers,
-};
-
 const Line = struct {
     index: Line.Index,
     id: Line.Id,
     axes: []Axis,
-    stations: []Station,
+    drivers: []Driver,
     name: []u8,
     velocity: u5,
     acceleration: u8,
 
-    pub const Index = Station.Index;
-    pub const Id = Station.Id;
+    pub const Index = Driver.Index;
+    pub const Id = Driver.Id;
 };
 
 const Axis = struct {
-    station: *const Station,
+    driver: *const Driver,
     index: Index,
     id: Id,
     pub const Index = struct {
         line: Axis.Index.Line,
-        station: Axis.Index.Station,
+        driver: Axis.Index.Driver,
 
         pub const Line = std.math.IntFittingRange(0, 64 * 4 * 3 - 1);
-        pub const Station = std.math.IntFittingRange(0, 2);
+        pub const Driver = std.math.IntFittingRange(0, 2);
     };
 
     pub const Id = struct {
         line: Axis.Id.Line,
-        station: Axis.Id.Station,
+        driver: Axis.Id.Driver,
 
         pub const Line = std.math.IntFittingRange(1, 64 * 4 * 3);
-        pub const Station = std.math.IntFittingRange(1, 3);
+        pub const Driver = std.math.IntFittingRange(1, 3);
     };
 };
 
-const Station = struct {
+const Driver = struct {
     line: *const Line,
-    index: Station.Index,
-    id: Station.Id,
+    index: Driver.Index,
+    id: Driver.Id,
     axes: []Axis,
 
     pub const Index = std.math.IntFittingRange(0, 64 * 4 - 1);
@@ -87,8 +61,6 @@ const Station = struct {
 };
 
 var lines: []Line = &.{};
-
-var log_lines: []LogLine = &.{};
 
 // TODO: Decide the value properly
 var fba_buffer: [1_024_000]u8 = undefined;
@@ -213,62 +185,6 @@ pub fn init(c: Config) !void {
         .execute = &clientGetAcceleration,
     });
     errdefer command.registry.orderedRemove("GET_ACCELERATION");
-    try command.registry.put(.{
-        .name = "PRINT_X",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-        },
-        .short_description = "Print the X register of a station.",
-        .long_description =
-        \\Print the X register of a station. The station X register to
-        \\be printed is determined by the provided axis.
-        ,
-        .execute = &clientStationX,
-    });
-    errdefer command.registry.orderedRemove("PRINT_X");
-    try command.registry.put(.{
-        .name = "PRINT_Y",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-        },
-        .short_description = "Print the Y register of a station.",
-        .long_description =
-        \\Print the Y register of a station. The station Y register to
-        \\be printed is determined by the provided axis.
-        ,
-        .execute = &clientStationY,
-    });
-    errdefer command.registry.orderedRemove("PRINT_Y");
-    try command.registry.put(.{
-        .name = "PRINT_WR",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-        },
-        .short_description = "Print the Wr register of a station.",
-        .long_description =
-        \\Print the Wr register of a station. The station Wr register
-        \\to be printed is determined by the provided axis.
-        ,
-        .execute = &clientStationWr,
-    });
-    errdefer command.registry.orderedRemove("PRINT_WR");
-    try command.registry.put(.{
-        .name = "PRINT_WW",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-        },
-        .short_description = "Print the Ww register of a station.",
-        .long_description =
-        \\Print the Ww register of a station. The station Ww register
-        \\to be printed is determined by the provided axis.
-        ,
-        .execute = &clientStationWw,
-    });
-    errdefer command.registry.orderedRemove("PRINT_WW");
     try command.registry.put(.{
         .name = "AXIS_CARRIER",
         .parameters = &[_]command.Command.Parameter{
@@ -785,83 +701,6 @@ pub fn init(c: Config) !void {
         .execute = &clientWaitAxisEmpty,
     });
     errdefer command.registry.orderedRemove("WAIT_AXIS_EMPTY");
-    try command.registry.put(.{
-        .name = "ADD_LOG_REGISTERS",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axes" },
-            .{ .name = "registers" },
-        },
-        .short_description = "Add registers logging configuration.",
-        .long_description =
-        \\Setup the logging configuration for the specified line. This will
-        \\overwrite the existing configuration for the specified line if any.
-        \\It will log registers based on the given "registers" parameter on the
-        \\station depending on the provided axes. Both "registers" and "axes"
-        \\shall be provided as comma-separated values:
-        \\
-        \\"ADD_LOG_REGISTERS line_name 1,4,7 x,y"
-        \\
-        \\Both "registers" and "axes" accept "all" as the parameter to log every
-        \\register and axes. The line configured for logging registers can be
-        \\evaluated by "STATUS_LOG_REGISTERS" command.
-        ,
-        .execute = &addLogRegisters,
-    });
-    errdefer command.registry.orderedRemove("ADD_LOG_REGISTERS");
-    try command.registry.put(.{
-        .name = "REMOVE_LOG_REGISTERS",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-        },
-        .short_description = "Remove the logging configuration for the specified line.",
-        .long_description =
-        \\Remove logging configuration for logging registers on the specified
-        \\line.
-        ,
-        .execute = &removeLogRegisters,
-    });
-    errdefer command.registry.orderedRemove("REMOVE_LOG_REGISTERS");
-    try command.registry.put(.{
-        .name = "RESET_LOG_REGISTERS",
-        .short_description = "Remove all logging configurations.",
-        .long_description =
-        \\Remove all logging configurations for logging registers for every
-        \\line.
-        ,
-        .execute = &resetLogRegisters,
-    });
-    errdefer command.registry.orderedRemove("RESET_LOG_REGISTERS");
-    try command.registry.put(.{
-        .name = "STATUS_LOG_REGISTERS",
-        .short_description = "Print the logging configurations entry.",
-        .long_description =
-        \\Print the logging configuration for each line (if any). The status is
-        \\given by "line_name:station_id:registers" with stations and registers
-        \\are a comma-separated string.
-        ,
-        .execute = &statusLogRegisters,
-    });
-    errdefer _ = command.registry.orderedRemove("STATUS_LOG_REGISTERS");
-    try command.registry.put(.{
-        .name = "START_LOG_REGISTERS",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "duration" },
-            .{ .name = "path", .optional = true },
-        },
-        .short_description = "Start the logging and save the file upon cancellation.",
-        .long_description =
-        \\Start the registers logging process. The log file will always contain
-        \\only the most recent data covering the specified duration (in seconds).
-        \\The Logging runs until cancelled manually (Ctrl+C). This command returns
-        \\an error if no lines have been configured to be logged. If no path is
-        \\provided, a default log file containing all register values will be
-        \\created in the current working directory as:
-        \\    "mmc-register-YYYY.MM.DD-HH.MM.SS.csv".
-        ,
-        .execute = &startLogRegisters,
-    });
-    errdefer _ = command.registry.orderedRemove("START_LOG_REGISTERS");
 }
 
 pub fn deinit() void {
@@ -935,13 +774,11 @@ fn disconnect() !void {
         for (lines) |line| {
             allocator.free(line.axes);
             allocator.free(line.name);
-            allocator.free(line.stations);
+            allocator.free(line.drivers);
         }
         allocator.free(lines);
-        allocator.free(log_lines);
         main_socket = null;
         lines = &.{};
-        log_lines = &.{};
     } else return error.ServerNotConnected;
 }
 
@@ -1054,14 +891,13 @@ fn getLineConfig() !void {
 
     const line_config = response.lines.items;
     lines = try allocator.alloc(Line, line_config.len);
-    log_lines = try allocator.alloc(LogLine, lines.len);
     for (line_config, 0..) |line, line_idx| {
         lines[line_idx].axes = try allocator.alloc(
             Axis,
             @intCast(line.axes),
         );
-        lines[line_idx].stations = try allocator.alloc(
-            Station,
+        lines[line_idx].drivers = try allocator.alloc(
+            Driver,
             @intCast(@divFloor(line.axes - 1, 3) + 1),
         );
         lines[line_idx].name = try allocator.alloc(
@@ -1074,32 +910,29 @@ fn getLineConfig() !void {
         lines[line_idx].id = @intCast(line_idx + 1);
         var num_axes: usize = 0;
         @memcpy(lines[line_idx].name, line.name.getSlice());
-        for (0..@intCast(@divFloor(line.axes - 1, 3) + 1)) |station_idx| {
+        for (0..@intCast(@divFloor(line.axes - 1, 3) + 1)) |driver_idx| {
             const start_num_axes = num_axes;
             for (0..3) |local_axis_idx| {
                 lines[line_idx].axes[num_axes] = .{
-                    .station = &lines[line_idx].stations[station_idx],
+                    .driver = &lines[line_idx].drivers[driver_idx],
                     .index = .{
-                        .station = @intCast(local_axis_idx),
+                        .driver = @intCast(local_axis_idx),
                         .line = @intCast(num_axes),
                     },
                     .id = .{
-                        .station = @intCast(local_axis_idx + 1),
+                        .driver = @intCast(local_axis_idx + 1),
                         .line = @intCast(num_axes + 1),
                     },
                 };
                 num_axes += 1;
             }
-            lines[line_idx].stations[station_idx] = .{
+            lines[line_idx].drivers[driver_idx] = .{
                 .axes = lines[line_idx].axes[start_num_axes..num_axes],
                 .line = &lines[line_idx],
-                .index = @intCast(station_idx),
-                .id = @intCast(station_idx + 1),
+                .index = @intCast(driver_idx),
+                .id = @intCast(driver_idx + 1),
             };
         }
-        // Initializing logging registers
-        log_lines[line_idx].stations = .{false} ** 256;
-        log_lines[line_idx].status = false;
     }
     std.log.info(
         "Received the line configuration for the following line:",
@@ -1113,12 +946,12 @@ fn getLineConfig() !void {
     }
     for (lines) |line| {
         std.log.debug(
-            "{s}:index {}:axes {}:stations {}:acc {}:speed {}",
+            "{s}:index {}:axes {}:drivers {}:acc {}:speed {}",
             .{
                 line.name,
                 line.index,
                 line.axes.len,
-                line.stations.len,
+                line.drivers.len,
                 line.acceleration,
                 line.velocity,
             },
@@ -1209,86 +1042,6 @@ fn clientAutoInitialize(params: [][]const u8) !void {
     try sendCommandRequest(command_msg, fba_allocator);
 }
 
-fn getRegister(
-    line_id: Line.Id,
-    station_id: Station.Id,
-    a: std.mem.Allocator,
-    comptime reg_type: RegisterTypeCap,
-) !@field(InfoResponse, std.fmt.comptimePrint(
-    "Register{s}",
-    .{@tagName(reg_type)},
-)) {
-    var info_msg: InfoRequest = InfoRequest.init(a);
-    defer info_msg.deinit();
-    comptime var _buf: [2]u8 = undefined;
-    const union_field_name = "register_" ++ comptime std.ascii.lowerString(
-        &_buf,
-        @tagName(reg_type),
-    );
-    info_msg.body = @unionInit(
-        InfoRequest.body_union,
-        union_field_name,
-        .{
-            .line_id = line_id,
-            .station_id = station_id,
-        },
-    );
-    return switch (reg_type) {
-        .X => try sendRequest(info_msg, fba_allocator, InfoResponse.RegisterX),
-        .Y => try sendRequest(info_msg, fba_allocator, InfoResponse.RegisterY),
-        .Wr => try sendRequest(info_msg, fba_allocator, InfoResponse.RegisterWr),
-        .Ww => try sendRequest(info_msg, fba_allocator, InfoResponse.RegisterWw),
-    };
-}
-
-fn clientStationX(params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
-    const line_idx = try matchLine(lines, line_name);
-    const line: Line = lines[line_idx];
-    if (axis_id < 1 or axis_id > line.axes.len) return error.InvalidAxis;
-    const axis = line.axes[axis_id - 1];
-    const station = axis.station;
-    const x = try getRegister(line.id, station.id, fba_allocator, .X);
-    _ = try api.nestedWrite("X", x, 0, std.io.getStdOut().writer());
-}
-
-fn clientStationY(params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
-    const line_idx = try matchLine(lines, line_name);
-    const line: Line = lines[line_idx];
-    if (axis_id < 1 or axis_id > line.axes.len) return error.InvalidAxis;
-    const axis = line.axes[axis_id - 1];
-    const station = axis.station;
-    const y = try getRegister(line.id, station.id, fba_allocator, .Y);
-    _ = try api.nestedWrite("Y", y, 0, std.io.getStdOut().writer());
-}
-
-fn clientStationWr(params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
-    const line_idx = try matchLine(lines, line_name);
-    const line: Line = lines[line_idx];
-    if (axis_id < 1 or axis_id > line.axes.len) return error.InvalidAxis;
-    const axis = line.axes[axis_id - 1];
-    const station = axis.station;
-    const wr = try getRegister(line.id, station.id, fba_allocator, .Wr);
-    _ = try api.nestedWrite("Wr", wr, 0, std.io.getStdOut().writer());
-}
-
-fn clientStationWw(params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
-    const line_idx = try matchLine(lines, line_name);
-    const line: Line = lines[line_idx];
-    if (axis_id < 1 or axis_id > line.axes.len) return error.InvalidAxis;
-    const axis = line.axes[axis_id - 1];
-    const station = axis.station;
-    const ww = try getRegister(line.id, station.id, fba_allocator, .Ww);
-    _ = try api.nestedWrite("Ww", ww, 0, std.io.getStdOut().writer());
-}
-
 fn clientAxisCarrier(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
@@ -1359,10 +1112,10 @@ fn clientCarrierID(params: [][]const u8) !void {
     var variable_count: usize = 1;
     for (line_idxs.items) |line_idx| {
         const line = lines[line_idx];
-        for (line.stations) |station| {
+        for (line.drivers) |driver| {
             const wr: InfoResponse.RegisterWr = try getRegister(
                 line.id,
-                station.id,
+                driver.id,
                 fba_allocator,
                 .Wr,
             );
@@ -1377,7 +1130,7 @@ fn clientCarrierID(params: [][]const u8) !void {
                         .{
                             carrier.id,
                             line.name,
-                            axis_idx + @as(usize, @intCast(station.index * 3)) + 1,
+                            axis_idx + @as(usize, @intCast(driver.index * 3)) + 1,
                         },
                     );
                     if (result_var.len > 0) {
@@ -2257,467 +2010,6 @@ fn clientWaitAxisEmpty(params: [][]const u8) !void {
     }
 }
 
-/// Add logging configuration for registers logging in the specified line
-fn addLogRegisters(params: [][]const u8) !void {
-    const line_name = params[0];
-    const line_idx = try matchLine(lines, line_name);
-    const line = lines[line_idx];
-
-    var log: LogLine = std.mem.zeroInit(LogLine, .{});
-
-    // Validate "axes" parameter
-    var axis_input_iterator = std.mem.tokenizeSequence(u8, params[1], ",");
-    while (axis_input_iterator.next()) |token| {
-        if (std.ascii.eqlIgnoreCase("all", token)) {
-            for (0..line.stations.len) |i| {
-                log.stations[i] = true;
-            }
-            break;
-        }
-        const axis_id = try std.fmt.parseInt(Axis.Id.Line, token, 0);
-
-        if (axis_id < 1 or axis_id > line.axes.len) {
-            return error.InvalidAxis;
-        }
-        const axis_index: usize = @intCast(axis_id - 1);
-        const station_index: usize = @intCast(axis_index / 3);
-        log.stations[station_index] = true;
-    }
-
-    // Validate "registers" parameter
-    var reg_input_iterator = std.mem.tokenizeSequence(u8, params[2], ",");
-    outer: while (reg_input_iterator.next()) |token| {
-        if (std.ascii.eqlIgnoreCase("all", token)) {
-            inline for (@typeInfo(RegisterType).@"enum".fields) |field| {
-                log.registers.set(@enumFromInt(field.value), true);
-            }
-            break;
-        }
-        inline for (@typeInfo(RegisterType).@"enum".fields) |field| {
-            if (std.ascii.eqlIgnoreCase(field.name, token)) {
-                log.registers.set(@enumFromInt(field.value), true);
-                continue :outer;
-            }
-        }
-        return error.InvalidRegister;
-    }
-    var info_buffer: [64]u8 = undefined;
-    const prefix = "Ready to log registers: ";
-    @memcpy(info_buffer[0..prefix.len], prefix);
-    var buf_len = prefix.len;
-
-    var register_iterator = log.registers.iterator();
-    while (register_iterator.next()) |reg_entry| {
-        if (!log.registers.get(reg_entry.key)) continue;
-        const reg_tag: []const u8 = @tagName(reg_entry.key);
-        @memcpy(
-            info_buffer[buf_len .. buf_len + reg_tag.len],
-            @tagName(reg_entry.key),
-        );
-        @memcpy(
-            info_buffer[buf_len + reg_tag.len .. buf_len + reg_tag.len + 1],
-            ",",
-        );
-        buf_len += reg_tag.len + 1;
-    }
-    std.log.info("{s}", .{info_buffer[0 .. buf_len - 1]});
-    log.status = true;
-    log_lines[line_idx] = log;
-}
-
-fn removeLogRegisters(params: [][]const u8) !void {
-    const line_name = params[0];
-    const line_idx = try matchLine(lines, line_name);
-
-    if (log_lines[line_idx].status == false) {
-        std.log.err("Line is not configured for logging yet", .{});
-        return;
-    }
-
-    log_lines[line_idx].status = false;
-}
-
-fn resetLogRegisters(_: [][]const u8) !void {
-    for (lines) |line| {
-        log_lines[line.index].status = false;
-    }
-}
-
-fn statusLogRegisters(_: [][]const u8) !void {
-    var buffer: [8192]u8 = undefined;
-    var buf_len: usize = 0;
-    // flag to indicate printing ","
-    var first = true;
-    for (lines) |line| {
-        // Section to print line name
-        if (log_lines[line.index].status == false) continue;
-        buf_len += (try std.fmt.bufPrint(
-            buffer[buf_len..],
-            "{s}:",
-            .{line.name},
-        )).len;
-        // Section to print station index
-        first = true;
-        for (0..log_lines[line.index].stations.len) |station_idx| {
-            if (log_lines[line.index].stations[station_idx] == false) continue;
-            if (!first) {
-                buf_len += (try std.fmt.bufPrint(
-                    buffer[buf_len..],
-                    "{s}",
-                    .{","},
-                )).len;
-            }
-            buf_len += std.fmt.formatIntBuf(
-                buffer[buf_len..],
-                station_idx + 1,
-                10,
-                .lower,
-                .{},
-            );
-            first = false;
-        }
-        buf_len += (try std.fmt.bufPrint(
-            buffer[buf_len..],
-            "{s}",
-            .{":"},
-        )).len;
-        // Section to print register
-        first = true;
-        var reg_iterator = log_lines[line.index].registers.iterator();
-        while (reg_iterator.next()) |reg_entry| {
-            if (reg_entry.value.* == false) continue;
-            if (!first) {
-                buf_len += (try std.fmt.bufPrint(
-                    buffer[buf_len..],
-                    "{s}",
-                    .{","},
-                )).len;
-            }
-            buf_len += (try std.fmt.bufPrint(
-                buffer[buf_len..],
-                "{s}",
-                .{@tagName(reg_entry.key)},
-            )).len;
-            first = false;
-        }
-        buf_len += (try std.fmt.bufPrint(
-            buffer[buf_len..],
-            "{s}",
-            .{"\n"},
-        )).len;
-    }
-    std.log.info("{s}", .{buffer[0..buf_len]});
-}
-
-fn startLogRegisters(params: [][]const u8) !void {
-    const log_duration = try std.fmt.parseFloat(f64, params[0]);
-    // Assumption: The registers value is updated every 3 ms
-    const logging_size_float =
-        log_duration * @as(f64, @floatFromInt(std.time.ms_per_s)) / 3.0;
-    if (std.math.isNan(logging_size_float) or
-        std.math.isInf(logging_size_float) or
-        !std.math.isFinite(logging_size_float)) return error.InvalidDuration;
-
-    const logging_size =
-        @as(usize, @intFromFloat(@round(logging_size_float)));
-
-    var log_registers_initialized = false;
-    for (lines) |line| {
-        if (log_lines[line.index].status == true) {
-            log_registers_initialized = true;
-            break;
-        }
-    }
-    if (!log_registers_initialized) {
-        std.log.err("Logging is not configured for any line", .{});
-        return;
-    }
-    const path = params[1];
-    var path_buffer: [512]u8 = undefined;
-    const file_path = if (path.len > 0) path else p: {
-        var timestamp: u64 = @intCast(std.time.timestamp());
-        timestamp += std.time.s_per_hour * 9;
-        const days_since_epoch: i32 = @intCast(timestamp / std.time.s_per_day);
-        const ymd =
-            chrono.date.YearMonthDay.fromDaysSinceUnixEpoch(days_since_epoch);
-        const time_day: u32 = @intCast(timestamp % std.time.s_per_day);
-        const time = try chrono.Time.fromNumSecondsFromMidnight(time_day, 0);
-
-        break :p try std.fmt.bufPrint(
-            &path_buffer,
-            "mmc-register-{}.{:0>2}.{:0>2}-{:0>2}.{:0>2}.{:0>2}.csv",
-            .{
-                ymd.year,
-                ymd.month.number(),
-                ymd.day,
-                time.hour(),
-                time.minute(),
-                time.second(),
-            },
-        );
-    };
-    std.log.info("The registers will be logged to {s}", .{file_path});
-    const log_file = try std.fs.cwd().createFile(file_path, .{});
-    defer log_file.close();
-
-    // _buf is used to print the title prefix with std.fmt.bufPrint()
-    var _buf: [1_024]u8 = undefined;
-
-    const log_writer = log_file.writer();
-    try log_writer.print("timestamp,", .{});
-
-    for (lines) |line| {
-        if (log_lines[line.index].status == false) continue;
-        for (0..256) |station_idx| {
-            if (log_lines[line.index].stations[station_idx] == false) continue;
-            var reg_iterator = log_lines[line.index].registers.iterator();
-            while (reg_iterator.next()) |reg_entry| {
-                const reg_type = @TypeOf(reg_entry.key);
-                inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
-                    if (@intFromEnum(reg_entry.key) == reg_enum.value and
-                        reg_entry.value.* == true)
-                    {
-                        try writeLoggingHeaders(
-                            log_writer,
-                            try std.fmt.bufPrint(
-                                &_buf,
-                                "{s}_station{d}_{s}",
-                                .{ line.name, station_idx + 1, reg_enum.name },
-                            ),
-                            "",
-                            @FieldType(
-                                Registers,
-                                reg_enum.name,
-                            ),
-                        );
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    var logging_data =
-        try CircularBufferAlloc(LoggingRegisters).initCapacity(
-            allocator,
-            logging_size,
-        );
-    defer logging_data.deinit();
-    const log_time_start = std.time.microTimestamp();
-    std.log.info("logging registers data..", .{});
-    var timer = try std.time.Timer.start();
-    while (true) {
-        command.checkCommandInterrupt() catch {
-            std.log.info("saving logging data..", .{});
-            break;
-        };
-        logging_data.writeItemOverwrite(logRegisters(
-            log_time_start,
-            &timer,
-        ) catch {
-            std.log.info("saving logging data..", .{});
-            break;
-        });
-    }
-    try logToString(
-        &logging_data,
-        log_writer,
-    );
-}
-
-/// Convert the logged binary data to string and save it to the logging file
-fn logToString(
-    logging_data: *CircularBufferAlloc(LoggingRegisters),
-    writer: std.fs.File.Writer,
-) !void {
-    while (logging_data.readItem()) |item| {
-        // Copy a newline in every logging data entry
-        try writer.writeByte('\n');
-        // write timestamp to the buffer
-        try writer.print("{d},", .{item.timestamp});
-
-        var reg_idx: usize = 0;
-        for (lines) |line| {
-            if (log_lines[line.index].status == false) continue;
-            for (0..256) |station_idx| {
-                if (log_lines[line.index].stations[station_idx] == false) continue;
-                var reg_iterator = log_lines[line.index].registers.iterator();
-                var command_code: InfoResponse.RegisterWw.CommandCode = .COMMAND_CODE_UNSPECIFIED;
-                while (reg_iterator.next()) |reg_entry| {
-                    const reg_type = @TypeOf(reg_entry.key);
-                    inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
-                        if (@intFromEnum(reg_entry.key) == reg_enum.value and
-                            reg_entry.value.* == true)
-                        {
-                            try registerValueToString(
-                                @field(
-                                    item.registers[reg_idx],
-                                    reg_enum.name,
-                                ),
-                                writer,
-                                &command_code,
-                            );
-                            reg_idx += 1;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// Write register values into the string
-fn registerValueToString(
-    parent: anytype,
-    writer: std.fs.File.Writer,
-    command_code: *InfoResponse.RegisterWw.CommandCode,
-) !void {
-    const parent_ti = @typeInfo(@TypeOf(parent)).@"struct";
-    inline for (parent_ti.fields) |child_field| {
-        if (comptime @typeInfo(child_field.type) == .optional and
-            @typeInfo(@typeInfo(child_field.type).optional.child) != .@"union")
-        {
-            try registerValueToString(
-                @field(parent, child_field.name).?,
-                writer,
-                command_code,
-            );
-        } else {
-            if (comptime @typeInfo(child_field.type) == .@"enum") {
-                const child_value = @field(parent, child_field.name);
-                if (child_field.type == InfoResponse.RegisterWw.CommandCode) {
-                    command_code.* = child_value;
-                }
-                try writer.print("{d},", .{@intFromEnum(child_value)});
-            } else if (@typeInfo(child_field.type) == .optional and
-                @typeInfo(@typeInfo(child_field.type).optional.child) == .@"union")
-            {
-                const child_value = @field(parent, child_field.name).?;
-                switch (child_value) {
-                    inline else => |_, tag| {
-                        std.log.debug("union tag {s}", .{@tagName(tag)});
-                        const union_val = @field(child_value, @tagName(tag));
-                        try writer.print("{d},", .{union_val});
-                    },
-                }
-            } else {
-                const child_value = @field(parent, child_field.name);
-                if (@typeInfo(@TypeOf(child_value)) == .float) {
-                    try writer.print("{d},", .{child_value});
-                } else try writer.print("{},", .{child_value});
-            }
-        }
-    }
-}
-
-/// Log the registers value. The registers value is logged in binary data, but
-/// saved into slice of bytes
-fn logRegisters(log_time_start: i64, timer: *std.time.Timer) !LoggingRegisters {
-    while (timer.read() < 3 * std.time.ns_per_ms) {}
-    const timestamp = @as(f64, @floatFromInt(std.time.microTimestamp() - log_time_start)) / 1_000_000;
-    timer.reset();
-    var result: LoggingRegisters = undefined;
-    result.timestamp = timestamp;
-
-    var reg_idx: usize = 0;
-    for (lines) |line| {
-        if (log_lines[line.index].status == false) continue;
-        for (line.stations) |station| {
-            if (log_lines[line.index].stations[station.index] == false) continue;
-            var reg_iterator = log_lines[line.index].registers.iterator();
-            while (reg_iterator.next()) |reg_entry| {
-                const reg_type = @TypeOf(reg_entry.key);
-                inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
-                    if (@intFromEnum(reg_entry.key) == reg_enum.value and
-                        reg_entry.value.* == true)
-                    {
-                        switch (reg_entry.key) {
-                            .x => {
-                                result.registers[reg_idx].x = try getRegister(
-                                    line.id,
-                                    station.id,
-                                    fba_allocator,
-                                    .X,
-                                );
-                            },
-                            .y => {
-                                result.registers[reg_idx].y = try getRegister(
-                                    line.id,
-                                    station.id,
-                                    fba_allocator,
-                                    .Y,
-                                );
-                            },
-                            .wr => {
-                                result.registers[reg_idx].wr = try getRegister(
-                                    line.id,
-                                    station.id,
-                                    fba_allocator,
-                                    .Wr,
-                                );
-                            },
-                            .ww => {
-                                result.registers[reg_idx].ww = try getRegister(
-                                    line.id,
-                                    station.id,
-                                    fba_allocator,
-                                    .Ww,
-                                );
-                            },
-                        }
-                        reg_idx += 1;
-                        break;
-                    }
-                }
-            }
-        }
-    }
-    return result;
-}
-
-/// Write the register field to a buffer. Return the number of bytes used.
-fn writeLoggingHeaders(
-    writer: anytype,
-    prefix: []const u8,
-    comptime parent: []const u8,
-    comptime ParentType: type,
-) !void {
-    inline for (@typeInfo(ParentType).@"struct".fields) |child_field| {
-        if (@typeInfo(child_field.type) == .optional and
-            @typeInfo(@typeInfo(child_field.type).optional.child) != .@"union")
-        {
-            if (parent.len == 0) {
-                try writeLoggingHeaders(
-                    writer,
-                    prefix,
-                    child_field.name,
-                    @typeInfo(child_field.type).optional.child,
-                );
-            } else {
-                try writeLoggingHeaders(
-                    writer,
-                    prefix,
-                    parent ++ "." ++ child_field.name,
-                    @typeInfo(child_field.type).optional.child,
-                );
-            }
-        } else {
-            if (parent.len == 0) {
-                try writer.print(
-                    "{s}_{s},",
-                    .{ prefix, child_field.name },
-                );
-            } else {
-                try writer.print(
-                    "{s}_{s},",
-                    .{ prefix, parent ++ "." ++ child_field.name },
-                );
-            }
-        }
-    }
-}
-
 fn matchLine(_lines: []Line, name: []const u8) !usize {
     for (_lines) |line| {
         if (std.mem.eql(u8, line.name, name)) return line.index;
@@ -2825,8 +2117,20 @@ fn parseResponse(a: std.mem.Allocator, comptime T: type, msg: []const u8) !T {
                     .COMMAND_REQUEST_ERROR_OUT_OF_MEMORY => break :blk error.ServerRunningOutOfMemory,
                     .COMMAND_REQUEST_ERROR_MISSING_PARAMETER => break :blk error.MissingParameter,
                     .COMMAND_REQUEST_ERROR_INVALID_DIRECTION => break :blk error.InvalidDirection,
+                    .COMMAND_REQUEST_ERROR_INVALID_LOCATION => break :blk error.InvalidLocation,
+                    .COMMAND_REQUEST_ERROR_INVALID_DISTANCE => break :blk error.InvalidDistance,
+                    .COMMAND_REQUEST_ERROR_INVALID_CARRIER => break :blk error.InvalidCarrier,
+                    .COMMAND_REQUEST_ERROR_COMMAND_PROGRESSING => break :blk error.CommandProgressing,
+                    .COMMAND_REQUEST_ERROR_COMMAND_NOT_FOUND => break :blk error.CommandNotFound,
+                    .COMMAND_REQUEST_ERROR_MAXIMUM_AUTO_INITIALIZE_EXCEEDED => break :blk error.MaximumAutoInitializeExceeded,
+                    .COMMAND_REQUEST_ERROR_INVALID_DRIVER => break :blk error.InvalidDriver,
                     _ => unreachable,
                 }
+            },
+            .command_operation => |r| switch (r) {
+                .COMMAND_STATUS_UNSPECIFIED => break :blk error.UnexpectedResponse,
+                .COMMAND_STATUS_COMPLETED => if (T == bool) break :blk true else error.UnexpectedResponse,
+                _ => unreachable,
             },
         },
         .core => |core_response| switch (core_response.body.?) {
@@ -2849,13 +2153,14 @@ fn parseResponse(a: std.mem.Allocator, comptime T: type, msg: []const u8) !T {
                 .INFO_REQUEST_ERROR_UNSPECIFIED => error.UnexpectedResponse,
                 .INFO_REQUEST_ERROR_INVALID_LINE => error.InvalidLine,
                 .INFO_REQUEST_ERROR_INVALID_AXIS => error.InvalidAxis,
-                .INFO_REQUEST_ERROR_INVALID_STATION => error.InvalidStation,
+                .INFO_REQUEST_ERROR_INVALID_DRIVER => error.InvalidDriver,
                 .INFO_REQUEST_ERROR_CARRIER_NOT_FOUND => error.CarrierNotFound,
                 .INFO_REQUEST_ERROR_CC_LINK_DISCONNECTED => error.CCLinkDisconnected,
                 .INFO_REQUEST_ERROR_MISSING_PARAMETER => error.MissingParameter,
+                .INFO_REQUEST_ERROR_COMMAND_NOT_FOUND => error.CommandNotFound,
                 _ => unreachable,
             },
-            inline .axis, .station => |body_kind| if (@TypeOf(body_kind) == T)
+            inline .axis, .driver => |body_kind| if (@TypeOf(body_kind) == T)
                 try body_kind.dupe(allocator)
             else
                 return error.UnexpectedResponse,
