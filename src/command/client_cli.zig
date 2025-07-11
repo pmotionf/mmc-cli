@@ -1129,6 +1129,7 @@ fn clientCarrierID(params: [][]const u8) !void {
             InfoResponse.Axes,
         );
         for (response.axes.items) |axis| {
+            if (axis.carrier_id == 0) continue;
             std.log.info(
                 "Carrier {d} on line {s} axis {d}",
                 .{ axis.carrier_id, line.name, axis.id },
@@ -1503,7 +1504,7 @@ fn clientIsolate(params: [][]const u8) !void {
         try std.fmt.parseInt(u10, params[3], 0)
     else
         0;
-    const link_axis: Direction = link: {
+    const link_axis: ?Direction = link: {
         if (params[4].len > 0) {
             if (std.ascii.eqlIgnoreCase("next", params[4]) or
                 std.ascii.eqlIgnoreCase("right", params[4]))
@@ -1514,7 +1515,7 @@ fn clientIsolate(params: [][]const u8) !void {
             {
                 break :link .DIRECTION_BACKWARD;
             } else return error.InvalidIsolateLinkAxis;
-        } else break :link .DIRECTION_UNSPECIFIED;
+        } else break :link null;
     };
 
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
