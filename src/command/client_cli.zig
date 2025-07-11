@@ -344,7 +344,7 @@ pub fn init(c: Config) !void {
         .name = "RELEASE_AXIS_SERVO",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "axis" },
+            .{ .name = "axis", .optional = true },
         },
         .short_description = "Release the servo of a given axis.",
         .long_description =
@@ -652,7 +652,7 @@ pub fn init(c: Config) !void {
         .name = "STOP_PULL_CARRIER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "axis" },
+            .{ .name = "axis", .optional = true },
         },
         .short_description = "Stop active carrier pull at axis.",
         .long_description =
@@ -665,7 +665,7 @@ pub fn init(c: Config) !void {
         .name = "STOP_PUSH_CARRIER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "axis" },
+            .{ .name = "axis", .optional = true },
         },
         .short_description = "Stop active carrier push at axis.",
         .long_description =
@@ -1182,18 +1182,19 @@ fn clientAssertLocation(params: [][]const u8) !void {
 
 fn clientAxisReleaseServo(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
-
     const line_idx = try matchLine(lines, line_name);
     const line: Line = lines[line_idx];
-    if (axis_id < 1 or axis_id > line.axes.len) return error.InvalidAxis;
-    const axis = line.axes[axis_id - 1];
+    var axis_id: ?Axis.Id.Line = null;
+    if (params[1].len > 0) {
+        axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
+        if (axis_id.? < 1 or axis_id.? > line.axes.len) return error.InvalidAxis;
+    }
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
     defer command_msg.deinit();
     command_msg.body = .{
         .release_control = .{
             .line_id = @intCast(line.id),
-            .axis_id = @intCast(axis.id.line),
+            .axis_id = if (axis_id) |axis| @intCast(axis) else null,
         },
     };
     try sendCommandRequest(command_msg, fba_allocator);
@@ -1918,18 +1919,20 @@ fn clientCarrierWaitPull(params: [][]const u8) !void {
 
 fn clientCarrierStopPull(params: [][]const u8) !void {
     const line_name = params[0];
-    const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
     const line_idx = try matchLine(lines, line_name);
     const line = lines[line_idx];
-    if (axis_id == 0 or axis_id > line.axes.len) return error.InvalidAxis;
-
+    var axis_id: ?Axis.Id.Line = null;
+    if (params[1].len > 0) {
+        axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
+        if (axis_id.? < 1 or axis_id.? > line.axes.len) return error.InvalidAxis;
+    }
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
     defer command_msg.deinit();
 
     command_msg.body = .{
         .stop_pull_carrier = .{
             .line_id = @intCast(line.id),
-            .axis_id = @intCast(axis_id),
+            .axis_id = if (axis_id) |axis| @intCast(axis) else null,
         },
     };
     try sendCommandRequest(command_msg, fba_allocator);
@@ -1937,17 +1940,20 @@ fn clientCarrierStopPull(params: [][]const u8) !void {
 
 fn clientCarrierStopPush(params: [][]const u8) !void {
     const line_name = params[0];
-    const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
     const line_idx = try matchLine(lines, line_name);
     const line = lines[line_idx];
-    if (axis_id == 0 or axis_id > line.axes.len) return error.InvalidAxis;
+    var axis_id: ?Axis.Id.Line = null;
+    if (params[1].len > 0) {
+        axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
+        if (axis_id.? < 1 or axis_id.? > line.axes.len) return error.InvalidAxis;
+    }
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
     defer command_msg.deinit();
 
     command_msg.body = .{
         .stop_push_carrier = .{
             .line_id = @intCast(line.id),
-            .axis_id = @intCast(axis_id),
+            .axis_id = if (axis_id) |axis| @intCast(axis) else null,
         },
     };
     try sendCommandRequest(command_msg, fba_allocator);
