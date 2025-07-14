@@ -195,9 +195,9 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Print the information tied to an axis.
         ,
-        .execute = &clientAxis,
+        .execute = &clientAxisInfo,
     });
-    errdefer command.registry.orderedRemove("PRINT_DRIVER_INFO");
+    errdefer command.registry.orderedRemove("PRINT_AXIS_INFO");
     try command.registry.put(.{
         .name = "PRINT_DRIVER_INFO",
         .parameters = &[_]command.Command.Parameter{
@@ -208,9 +208,22 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Print the information tied to a driver.
         ,
-        .execute = &clientDriver,
+        .execute = &clientDriverInfo,
     });
     errdefer command.registry.orderedRemove("PRINT_DRIVER_INFO");
+    try command.registry.put(.{
+        .name = "PRINT_CARRIER_INFO",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "carrier" },
+        },
+        .short_description = "Print the carrier information.",
+        .long_description =
+        \\Print the information tied to a carrier.
+        ,
+        .execute = &clientCarrierInfo,
+    });
+    errdefer command.registry.orderedRemove("PRINT_CARRIER_INFO");
     try command.registry.put(.{
         .name = "AXIS_CARRIER",
         .parameters = &[_]command.Command.Parameter{
@@ -1027,7 +1040,7 @@ fn assertAPIVersion() !void {
     );
 }
 
-fn clientAxis(params: [][]const u8) !void {
+fn clientAxisInfo(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
     const line_idx = try matchLine(lines, line_name);
@@ -1059,7 +1072,7 @@ fn clientAxis(params: [][]const u8) !void {
     );
 }
 
-fn clientDriver(params: [][]const u8) !void {
+fn clientDriverInfo(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const driver_id = try std.fmt.parseInt(Driver.Id, params[1], 0);
     const line_idx = try matchLine(lines, line_name);
@@ -1086,6 +1099,33 @@ fn clientDriver(params: [][]const u8) !void {
     _ = try api.nestedWrite(
         "Driver",
         driver,
+        0,
+        std.io.getStdOut().writer(),
+    );
+}
+
+fn clientCarrierInfo(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    const line_idx = try matchLine(lines, line_name);
+    const line: Line = lines[line_idx];
+    var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
+    defer info_msg.deinit();
+    info_msg.body = .{
+        .carrier = .{
+            .line_id = @intCast(line.id),
+            .param = .{ .carrier_id = @intCast(carrier_id) },
+        },
+    };
+    const carrier = try sendRequest(
+        info_msg,
+        fba_allocator,
+        InfoResponse.Carrier,
+    );
+    defer carrier.deinit();
+    _ = try api.nestedWrite(
+        "Carrier",
+        carrier,
         0,
         std.io.getStdOut().writer(),
     );
