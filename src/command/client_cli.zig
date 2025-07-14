@@ -186,6 +186,19 @@ pub fn init(c: Config) !void {
     });
     errdefer command.registry.orderedRemove("GET_ACCELERATION");
     try command.registry.put(.{
+        .name = "PRINT_AXIS_INFO",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+        },
+        .short_description = "Print the axis information.",
+        .long_description =
+        \\Print the information tied to an axis.
+        ,
+        .execute = &clientAxis,
+    });
+    errdefer command.registry.orderedRemove("PRINT_AXIS_INFO");
+    try command.registry.put(.{
         .name = "AXIS_CARRIER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -998,6 +1011,38 @@ fn assertAPIVersion() !void {
             cli_api_version.minor,
             cli_api_version.patch,
         },
+    );
+}
+
+fn clientAxis(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
+    const line_idx = try matchLine(lines, line_name);
+    const line: Line = lines[line_idx];
+    if (axis_id < 1 or axis_id > line.axes.len) return error.InvalidAxis;
+    var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
+    defer info_msg.deinit();
+    info_msg.body = .{
+        .axis = .{
+            .line_id = @intCast(line.id),
+            .range = .{
+                .start_id = @intCast(axis_id),
+                .end_id = @intCast(axis_id),
+            },
+        },
+    };
+    const axes = try sendRequest(
+        info_msg,
+        fba_allocator,
+        InfoResponse.Axes,
+    );
+    defer axes.deinit();
+    const axis = axes.axes.items[0];
+    _ = try api.nestedWrite(
+        "Axis",
+        axis,
+        0,
+        std.io.getStdOut().writer(),
     );
 }
 
@@ -1876,9 +1921,9 @@ fn clientCarrierPullForward(params: [][]const u8) !void {
     const line = lines[line_idx];
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     if (axis_id == 0 or axis_id > line.axes.len) return error.InvalidAxis;
-    const disable_cas = if (params[3].len == 0)
+    const disable_cas = if (params[4].len == 0)
         false
-    else if (std.ascii.eqlIgnoreCase("true", params[3]))
+    else if (std.ascii.eqlIgnoreCase("true", params[4]))
         true
     else
         return error.InvalidCasConfiguration;
@@ -1921,9 +1966,9 @@ fn clientCarrierPullBackward(params: [][]const u8) !void {
     const line = lines[line_idx];
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     if (axis_id == 0 or axis_id > line.axes.len) return error.InvalidAxis;
-    const disable_cas = if (params[3].len == 0)
+    const disable_cas = if (params[4].len == 0)
         false
-    else if (std.ascii.eqlIgnoreCase("true", params[3]))
+    else if (std.ascii.eqlIgnoreCase("true", params[4]))
         true
     else
         return error.InvalidCasConfiguration;
