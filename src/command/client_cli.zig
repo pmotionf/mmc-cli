@@ -197,7 +197,20 @@ pub fn init(c: Config) !void {
         ,
         .execute = &clientAxis,
     });
-    errdefer command.registry.orderedRemove("PRINT_AXIS_INFO");
+    errdefer command.registry.orderedRemove("PRINT_DRIVER_INFO");
+    try command.registry.put(.{
+        .name = "PRINT_DRIVER_INFO",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "driver" },
+        },
+        .short_description = "Print the driver information.",
+        .long_description =
+        \\Print the information tied to a driver.
+        ,
+        .execute = &clientDriver,
+    });
+    errdefer command.registry.orderedRemove("PRINT_DRIVER_INFO");
     try command.registry.put(.{
         .name = "AXIS_CARRIER",
         .parameters = &[_]command.Command.Parameter{
@@ -1041,6 +1054,38 @@ fn clientAxis(params: [][]const u8) !void {
     _ = try api.nestedWrite(
         "Axis",
         axis,
+        0,
+        std.io.getStdOut().writer(),
+    );
+}
+
+fn clientDriver(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const driver_id = try std.fmt.parseInt(Driver.Id, params[1], 0);
+    const line_idx = try matchLine(lines, line_name);
+    const line: Line = lines[line_idx];
+    if (driver_id < 1 or driver_id > line.drivers.len) return error.InvalidDriver;
+    var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
+    defer info_msg.deinit();
+    info_msg.body = .{
+        .driver = .{
+            .line_id = @intCast(line.id),
+            .range = .{
+                .start_id = @intCast(driver_id),
+                .end_id = @intCast(driver_id),
+            },
+        },
+    };
+    const drivers = try sendRequest(
+        info_msg,
+        fba_allocator,
+        InfoResponse.Drivers,
+    );
+    defer drivers.deinit();
+    const driver = drivers.drivers.items[0];
+    _ = try api.nestedWrite(
+        "Driver",
+        driver,
         0,
         std.io.getStdOut().writer(),
     );
