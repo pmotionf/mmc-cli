@@ -2256,6 +2256,21 @@ fn sendCommandRequest(
         a,
         u32,
     );
+    defer {
+        var remove_command: CommandRequest = CommandRequest.init(fba_allocator);
+        defer remove_command.deinit();
+        remove_command.body = .{
+            .clear_command = .{ .command_id = command_id },
+        };
+        _ = sendRequest(
+            remove_command,
+            a,
+            bool,
+        ) catch |e| {
+            std.log.debug("{any}", .{@errorReturnTrace()});
+            std.log.info("{s}", .{@errorName(e)});
+        };
+    }
     var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
     defer info_msg.deinit();
     while (true) {
