@@ -106,15 +106,14 @@ pub fn init(c: Config) !void {
     try command.registry.put(.{
         .name = "CONNECT",
         .parameters = &[_]command.Command.Parameter{
-            .{ .name = "port", .optional = true },
-            .{ .name = "IP address", .optional = true },
+            .{ .name = "endpoint", .optional = true },
         },
         .short_description = "Connect program to the server.",
         .long_description =
         \\Attempt to connect the client application to the server. The IP address
         \\and the port should be provided in the configuration file. The port
         \\and IP address can be overwritten by providing the new port and IP
-        \\address to this command.
+        \\address by specifying the endpoint as "IP_ADDRESS:PORT".
         ,
         .execute = &clientConnect,
     });
@@ -772,25 +771,37 @@ fn clientConnect(params: [][]const u8) !void {
             try disconnect();
         }
     }
-    if (params[0].len != 0 and params[1].len == 0)
-        return error.MissingParameter;
-    if (params[1].len > 0) {
-        port = try std.fmt.parseInt(u16, params[0], 0);
-        if (IP_address.len != params[1].len) {
-            IP_address = try allocator.realloc(IP_address, params[1].len);
-        }
-        @memcpy(IP_address, params[1]);
+    var endpoint: struct { ip: []const u8, port: u16 } = .{
+        .ip = IP_address,
+        .port = port,
+    };
+    if (params[0].len != 0) {
+        var iterator = std.mem.tokenizeSequence(u8, params[0], ":");
+        endpoint.ip = iterator.next() orelse return error.MissingParameter;
+        if (endpoint.ip.len > 15) return error.InvalidIPAddress;
+        endpoint.port = try std.fmt.parseInt(
+            u16,
+            iterator.next() orelse return error.MissingParameter,
+            0,
+        );
     }
     std.log.info(
         "Trying to connect to {s}:{}",
-        .{ IP_address, port },
+        .{ endpoint.ip, endpoint.port },
     );
     main_socket = try network.connectToHost(
         allocator,
-        IP_address,
-        port,
+        endpoint.ip,
+        endpoint.port,
         .tcp,
     );
+    if (params[0].len > 0) {
+        port = endpoint.port;
+        if (IP_address.len != endpoint.ip.len) {
+            IP_address = try allocator.realloc(IP_address, endpoint.ip.len);
+        }
+        @memcpy(IP_address, endpoint.ip);
+    }
     if (main_socket) |s| {
         std.log.info(
             "Connected to {}",
