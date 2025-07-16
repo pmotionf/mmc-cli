@@ -1459,15 +1459,17 @@ fn clientCarrierAxis(params: [][]const u8) !void {
         InfoResponse.Carrier,
     );
     defer carrier.deinit();
-    std.log.info(
-        "Carrier {d} axis: {}",
-        .{ carrier.id, carrier.main_axis_id },
-    );
-    if (carrier.aux_axis_id == carrier.main_axis_id) return;
-    std.log.info(
-        "Carrier {d} axis: {}",
-        .{ carrier.id, carrier.aux_axis_id },
-    );
+    if (carrier.axis) |axis| {
+        std.log.info(
+            "Carrier {d} axis: {}",
+            .{ carrier.id, axis.first },
+        );
+        if (axis.second) |second|
+            std.log.info(
+                "Carrier {d} axis: {}",
+                .{ carrier.id, second },
+            );
+    }
 }
 
 fn clientHallStatus(params: [][]const u8) !void {
