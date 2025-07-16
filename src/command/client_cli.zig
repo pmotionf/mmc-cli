@@ -906,6 +906,7 @@ fn serverVersion(_: [][]const u8) !void {
         fba_allocator,
         CoreResponse.Server,
     );
+    defer fba.reset();
     const version = server.version.?;
     defer server.deinit();
     std.log.info(
@@ -926,6 +927,7 @@ fn APIVersion() !std.SemanticVersion {
         fba_allocator,
         CoreResponse.SemanticVersion,
     );
+    defer fba.reset();
     defer version.deinit();
     return .{
         .major = version.major,
@@ -944,6 +946,7 @@ fn getLineConfig() !void {
         fba_allocator,
         CoreResponse.LineConfig,
     );
+    defer fba.reset();
     defer response.deinit();
 
     const line_config = response.lines.items;
@@ -1027,6 +1030,7 @@ fn assertAPIVersion() !void {
         fba_allocator,
         CoreResponse.SemanticVersion,
     );
+    defer fba.reset();
     const cli_api_version = api.version;
     if (cli_api_version.major != server_api_version.major or
         cli_api_version.minor != server_api_version.minor)
@@ -1073,6 +1077,7 @@ fn clientAxisInfo(params: [][]const u8) !void {
         fba_allocator,
         InfoResponse.Axes,
     );
+    defer fba.reset();
     defer axes.deinit();
     const axis = axes.axes.items[0];
     _ = try api.nestedWrite(
@@ -1105,6 +1110,7 @@ fn clientDriverInfo(params: [][]const u8) !void {
         fba_allocator,
         InfoResponse.Drivers,
     );
+    defer fba.reset();
     defer drivers.deinit();
     const driver = drivers.drivers.items[0];
     _ = try api.nestedWrite(
@@ -1133,6 +1139,7 @@ fn clientCarrierInfo(params: [][]const u8) !void {
         fba_allocator,
         InfoResponse.Carrier,
     );
+    defer fba.reset();
     defer carrier.deinit();
     _ = try api.nestedWrite(
         "Carrier",
@@ -1209,6 +1216,7 @@ fn clientAxisCarrier(params: [][]const u8) !void {
             return;
         } else return e;
     };
+    defer fba.reset();
     defer carrier.deinit();
     std.log.info("Carrier {d} on axis {d}.\n", .{ carrier.id, axis_id });
     if (result_var.len > 0) {
@@ -1269,6 +1277,7 @@ fn clientCarrierID(params: [][]const u8) !void {
             fba_allocator,
             InfoResponse.Axes,
         );
+        defer fba.reset();
         for (response.axes.items) |axis| {
             if (axis.carrier_id == 0) continue;
             std.log.info(
@@ -1332,6 +1341,7 @@ fn clientAssertLocation(params: [][]const u8) !void {
         fba_allocator,
         InfoResponse.Carrier,
     );
+    defer fba.reset();
     const location: f32 = carrier.position;
     if (location < expected_location - location_thr or
         location > expected_location + location_thr)
@@ -1424,6 +1434,7 @@ fn clientCarrierLocation(params: [][]const u8) !void {
         fba_allocator,
         InfoResponse.Carrier,
     );
+    defer fba.reset();
     defer carrier.deinit();
     std.log.info(
         "Carrier {d} location: {d} mm",
@@ -1458,6 +1469,7 @@ fn clientCarrierAxis(params: [][]const u8) !void {
         fba_allocator,
         InfoResponse.Carrier,
     );
+    defer fba.reset();
     defer carrier.deinit();
     if (carrier.axis) |axis| {
         std.log.info(
@@ -1501,6 +1513,7 @@ fn clientHallStatus(params: [][]const u8) !void {
             fba_allocator,
             InfoResponse.Axes,
         );
+        defer fba.reset();
         defer response.deinit();
         const hall = response.axes.items[0].hall_alarm.?;
         std.log.info(
@@ -1526,6 +1539,7 @@ fn clientHallStatus(params: [][]const u8) !void {
             fba_allocator,
             InfoResponse.Axes,
         );
+        defer fba.reset();
         for (response.axes.items) |axis| {
             const hall = axis.hall_alarm.?;
             std.log.info(
@@ -1584,6 +1598,7 @@ fn clientAssertHall(params: [][]const u8) !void {
         fba_allocator,
         InfoResponse.Axes,
     );
+    defer fba.reset();
     defer response.deinit();
     const hall = response.axes.items[0].hall_alarm.?;
     switch (side) {
@@ -1707,6 +1722,7 @@ fn clientWaitIsolate(params: [][]const u8) !void {
             fba_allocator,
             InfoResponse.Carrier,
         );
+        defer fba.reset();
         defer carrier.deinit();
         if (carrier.state == .CARRIER_STATE_BACKWARD_ISOLATION_COMPLETED or
             carrier.state == .CARRIER_STATE_FORWARD_ISOLATION_COMPLETED) return;
@@ -1745,6 +1761,7 @@ fn clientWaitMoveCarrier(params: [][]const u8) !void {
             fba_allocator,
             InfoResponse.Carrier,
         );
+        defer fba.reset();
         defer carrier.deinit();
         if (carrier.state == .CARRIER_STATE_POS_MOVE_COMPLETED or
             carrier.state == .CARRIER_STATE_SPD_MOVE_COMPLETED) return;
@@ -2127,6 +2144,7 @@ fn clientCarrierWaitPull(params: [][]const u8) !void {
         ) catch |e| {
             if (e == error.CarrierNotFound) continue else return e;
         };
+        defer fba.reset();
         defer carrier.deinit();
         if (carrier.state == .CARRIER_STATE_PULL_FORWARD_COMPLETED or
             carrier.state == .CARRIER_STATE_PULL_BACKWARD_COMPLETED) return;
@@ -2211,6 +2229,7 @@ fn clientWaitAxisEmpty(params: [][]const u8) !void {
             fba_allocator,
             InfoResponse.Axes,
         );
+        defer fba.reset();
         defer response.deinit();
         const axis_info = response.axes.items[0];
         const carrier = axis_info.carrier_id;
