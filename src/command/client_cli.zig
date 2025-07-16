@@ -2120,11 +2120,13 @@ fn clientCarrierWaitPull(params: [][]const u8) !void {
                 .param = .{ .carrier_id = @intCast(carrier_id) },
             },
         };
-        const carrier = try sendRequest(
+        const carrier = sendRequest(
             info_msg,
             fba_allocator,
             InfoResponse.Carrier,
-        );
+        ) catch |e| {
+            if (e == error.CarrierNotFound) continue else return e;
+        };
         defer carrier.deinit();
         if (carrier.state == .CARRIER_STATE_PULL_FORWARD_COMPLETED or
             carrier.state == .CARRIER_STATE_PULL_BACKWARD_COMPLETED) return;
