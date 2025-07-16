@@ -16,70 +16,44 @@ const CircularBufferAlloc =
     @import("../circular_buffer.zig").CircularBufferAlloc;
 const command = @import("../command.zig");
 
-const LogLine = struct {
-    /// Flag if line is configured for logging or not
-    status: bool,
-    /// Specify which registers to log for each line
-    registers: std.EnumArray(RegisterType, bool),
-    /// Flag which stations to be logged based on axes provided by user
-    stations: [256]bool,
-};
-
-const RegisterType = enum { x, y, wr, ww };
-
-const RegisterTypeCap = enum { X, Y, Wr, Ww };
-
-const Registers = struct {
-    x: InfoResponse.RegisterX,
-    y: InfoResponse.RegisterY,
-    wr: InfoResponse.RegisterWr,
-    ww: InfoResponse.RegisterWw,
-};
-
-const LoggingRegisters = struct {
-    timestamp: f64,
-    /// The maximum number of stations is 64 * 4
-    registers: [64 * 4]Registers,
-};
-
 const Line = struct {
     index: Line.Index,
     id: Line.Id,
     axes: []Axis,
-    stations: []Station,
+    drivers: []Driver,
     name: []u8,
     velocity: u5,
     acceleration: u8,
 
-    pub const Index = Station.Index;
-    pub const Id = Station.Id;
+    pub const Index = Driver.Index;
+    pub const Id = Driver.Id;
 };
 
 const Axis = struct {
-    station: *const Station,
+    driver: *const Driver,
     index: Index,
     id: Id,
     pub const Index = struct {
         line: Axis.Index.Line,
-        station: Axis.Index.Station,
+        driver: Axis.Index.Driver,
 
         pub const Line = std.math.IntFittingRange(0, 64 * 4 * 3 - 1);
-        pub const Station = std.math.IntFittingRange(0, 2);
+        pub const Driver = std.math.IntFittingRange(0, 2);
     };
 
     pub const Id = struct {
         line: Axis.Id.Line,
-        station: Axis.Id.Station,
+        driver: Axis.Id.Driver,
 
         pub const Line = std.math.IntFittingRange(1, 64 * 4 * 3);
-        pub const Station = std.math.IntFittingRange(1, 3);
+        pub const Driver = std.math.IntFittingRange(1, 3);
     };
 };
 
-const Station = struct {
+const Driver = struct {
     line: *const Line,
-    index: Station.Index,
-    id: Station.Id,
+    index: Driver.Index,
+    id: Driver.Id,
     axes: []Axis,
 
     pub const Index = std.math.IntFittingRange(0, 64 * 4 - 1);
@@ -87,8 +61,6 @@ const Station = struct {
 };
 
 var lines: []Line = &.{};
-
-var log_lines: []LogLine = &.{};
 
 // TODO: Decide the value properly
 var fba_buffer: [1_024_000]u8 = undefined;
@@ -134,15 +106,14 @@ pub fn init(c: Config) !void {
     try command.registry.put(.{
         .name = "CONNECT",
         .parameters = &[_]command.Command.Parameter{
-            .{ .name = "port", .optional = true },
-            .{ .name = "IP address", .optional = true },
+            .{ .name = "endpoint", .optional = true },
         },
         .short_description = "Connect program to the server.",
         .long_description =
         \\Attempt to connect the client application to the server. The IP address
         \\and the port should be provided in the configuration file. The port
         \\and IP address can be overwritten by providing the new port and IP
-        \\address to this command.
+        \\address by specifying the endpoint as "IP_ADDRESS:PORT".
         ,
         .execute = &clientConnect,
     });
@@ -214,61 +185,44 @@ pub fn init(c: Config) !void {
     });
     errdefer command.registry.orderedRemove("GET_ACCELERATION");
     try command.registry.put(.{
-        .name = "PRINT_X",
+        .name = "PRINT_AXIS_INFO",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
             .{ .name = "axis" },
         },
-        .short_description = "Print the X register of a station.",
+        .short_description = "Print the axis information.",
         .long_description =
-        \\Print the X register of a station. The station X register to
-        \\be printed is determined by the provided axis.
+        \\Print the information tied to an axis.
         ,
-        .execute = &clientStationX,
+        .execute = &clientAxisInfo,
     });
-    errdefer command.registry.orderedRemove("PRINT_X");
+    errdefer command.registry.orderedRemove("PRINT_AXIS_INFO");
     try command.registry.put(.{
-        .name = "PRINT_Y",
+        .name = "PRINT_DRIVER_INFO",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "axis" },
+            .{ .name = "driver" },
         },
-        .short_description = "Print the Y register of a station.",
+        .short_description = "Print the driver information.",
         .long_description =
-        \\Print the Y register of a station. The station Y register to
-        \\be printed is determined by the provided axis.
+        \\Print the information tied to a driver.
         ,
-        .execute = &clientStationY,
+        .execute = &clientDriverInfo,
     });
-    errdefer command.registry.orderedRemove("PRINT_Y");
+    errdefer command.registry.orderedRemove("PRINT_DRIVER_INFO");
     try command.registry.put(.{
-        .name = "PRINT_WR",
+        .name = "PRINT_CARRIER_INFO",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "axis" },
+            .{ .name = "carrier" },
         },
-        .short_description = "Print the Wr register of a station.",
+        .short_description = "Print the carrier information.",
         .long_description =
-        \\Print the Wr register of a station. The station Wr register
-        \\to be printed is determined by the provided axis.
+        \\Print the information tied to a carrier.
         ,
-        .execute = &clientStationWr,
+        .execute = &clientCarrierInfo,
     });
-    errdefer command.registry.orderedRemove("PRINT_WR");
-    try command.registry.put(.{
-        .name = "PRINT_WW",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-        },
-        .short_description = "Print the Ww register of a station.",
-        .long_description =
-        \\Print the Ww register of a station. The station Ww register
-        \\to be printed is determined by the provided axis.
-        ,
-        .execute = &clientStationWw,
-    });
-    errdefer command.registry.orderedRemove("PRINT_WW");
+    errdefer command.registry.orderedRemove("PRINT_CARRIER_INFO");
     try command.registry.put(.{
         .name = "AXIS_CARRIER",
         .parameters = &[_]command.Command.Parameter{
@@ -411,15 +365,6 @@ pub fn init(c: Config) !void {
     });
     errdefer command.registry.orderedRemove("CLEAR_ERRORS");
     try command.registry.put(.{
-        .name = "RESET_MCL",
-        .short_description = "Reset all MCL registers.",
-        .long_description =
-        \\Reset all write registers (Y and Ww) on the server.
-        ,
-        .execute = &clientMclReset,
-    });
-    errdefer command.registry.orderedRemove("RESET_MCL");
-    try command.registry.put(.{
         .name = "CLEAR_CARRIER_INFO",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -437,7 +382,7 @@ pub fn init(c: Config) !void {
         .name = "RELEASE_AXIS_SERVO",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "axis" },
+            .{ .name = "axis", .optional = true },
         },
         .short_description = "Release the servo of a given axis.",
         .long_description =
@@ -554,11 +499,13 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{ .name = "destination axis" },
+            .{ .name = "disable cas", .optional = true },
         },
         .short_description = "Move carrier to target axis center.",
         .long_description =
         \\Move given carrier to the center of target axis. The carrier ID must be
-        \\currently recognized within the motion system.
+        \\currently recognized within the motion system. Provide "true" to disable
+        \\CAS (collision avoidance system) for the command.
         ,
         .execute = &clientCarrierPosMoveAxis,
     });
@@ -569,12 +516,14 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{ .name = "destination location" },
+            .{ .name = "disable cas", .optional = true },
         },
         .short_description = "Move carrier to target location.",
         .long_description =
         \\Move given carrier to target location. The carrier ID must be currently
         \\recognized within the motion system, and the target location must be
-        \\provided in millimeters as a whole or decimal number.
+        \\provided in millimeters as a whole or decimal number. Provide "true" to 
+        \\disable CAS (collision avoidance system) for the command.
         ,
         .execute = &clientCarrierPosMoveLocation,
     });
@@ -585,13 +534,15 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{ .name = "distance" },
+            .{ .name = "disable cas", .optional = true },
         },
         .short_description = "Move carrier by a distance.",
         .long_description =
         \\Move given carrier by a provided distance. The carrier ID must be
         \\currently recognized within the motion system, and the distance must
         \\be provided in millimeters as a whole or decimal number. The distance
-        \\may be negative for backward movement.
+        \\may be negative for backward movement. Provide "true" to disable
+        \\CAS (collision avoidance system) for the command.
         ,
         .execute = &clientCarrierPosMoveDistance,
     });
@@ -602,12 +553,14 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{ .name = "destination axis" },
+            .{ .name = "disable cas", .optional = true },
         },
         .short_description = "Move carrier to target axis center.",
         .long_description =
         \\Move given carrier to the center of target axis. The carrier ID must be
         \\currently recognized within the motion system. This command moves the
-        \\carrier with speed profile feedback.
+        \\carrier with speed profile feedback. Provide "true" to disable CAS 
+        \\(collision avoidance system) for the command.
         ,
         .execute = &clientCarrierSpdMoveAxis,
     });
@@ -618,13 +571,15 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{ .name = "destination location" },
+            .{ .name = "disable cas", .optional = true },
         },
         .short_description = "Move carrier to target location.",
         .long_description =
         \\Move given carrier to target location. The carrier ID must be currently
         \\recognized within the motion system, and the target location must be
         \\provided in millimeters as a whole or decimal number. This command
-        \\moves the carrier with speed profile feedback.
+        \\moves the carrier with speed profile feedback. Provide "true" to disable
+        \\CAS (collision avoidance system) for the command.
         ,
         .execute = &clientCarrierSpdMoveLocation,
     });
@@ -635,6 +590,7 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{ .name = "distance" },
+            .{ .name = "disable cas", .optional = true },
         },
         .short_description = "Move carrier by a distance.",
         .long_description =
@@ -642,7 +598,8 @@ pub fn init(c: Config) !void {
         \\currently recognized within the motion system, and the distance must
         \\be provided in millimeters as a whole or decimal number. The distance
         \\may be negative for backward movement. This command moves the carrier
-        \\with speed profile feedback.
+        \\with speed profile feedback. Provide "true" to disable CAS (collision 
+        \\avoidance system) for the command.
         ,
         .execute = &clientCarrierSpdMoveDistance,
     });
@@ -694,13 +651,15 @@ pub fn init(c: Config) !void {
             .{ .name = "axis" },
             .{ .name = "carrier" },
             .{ .name = "destination", .optional = true },
+            .{ .name = "disable cas", .optional = true },
         },
         .short_description = "Pull incoming carrier forward at axis.",
         .long_description =
         \\Pull incoming carrier forward at axis. The pulled carrier's new ID
         \\must also be provided. If a destination in millimeters is specified,
         \\the carrier will automatically move to the destination after pull is
-        \\completed.
+        \\completed. Provide "true" to disable CAS (collision avoidance system) 
+        \\for the command when the final destination is provided.
         ,
         .execute = &clientCarrierPullForward,
     });
@@ -712,13 +671,15 @@ pub fn init(c: Config) !void {
             .{ .name = "axis" },
             .{ .name = "carrier" },
             .{ .name = "destination", .optional = true },
+            .{ .name = "disable cas", .optional = true },
         },
         .short_description = "Pull incoming carrier backward at axis.",
         .long_description =
         \\Pull incoming carrier backward at axis. The pulled carrier's new ID
         \\must also be provided. If a destination in millimeters is specified,
         \\the carrier will automatically move to the destination after pull is
-        \\completed.
+        \\completed. Provide "true" to disable CAS (collision avoidance system) 
+        \\for the command when the final destination is provided.
         ,
         .execute = &clientCarrierPullBackward,
     });
@@ -745,7 +706,7 @@ pub fn init(c: Config) !void {
         .name = "STOP_PULL_CARRIER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "axis" },
+            .{ .name = "axis", .optional = true },
         },
         .short_description = "Stop active carrier pull at axis.",
         .long_description =
@@ -758,7 +719,7 @@ pub fn init(c: Config) !void {
         .name = "STOP_PUSH_CARRIER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "axis" },
+            .{ .name = "axis", .optional = true },
         },
         .short_description = "Stop active carrier push at axis.",
         .long_description =
@@ -785,83 +746,6 @@ pub fn init(c: Config) !void {
         .execute = &clientWaitAxisEmpty,
     });
     errdefer command.registry.orderedRemove("WAIT_AXIS_EMPTY");
-    try command.registry.put(.{
-        .name = "ADD_LOG_REGISTERS",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axes" },
-            .{ .name = "registers" },
-        },
-        .short_description = "Add registers logging configuration.",
-        .long_description =
-        \\Setup the logging configuration for the specified line. This will
-        \\overwrite the existing configuration for the specified line if any.
-        \\It will log registers based on the given "registers" parameter on the
-        \\station depending on the provided axes. Both "registers" and "axes"
-        \\shall be provided as comma-separated values:
-        \\
-        \\"ADD_LOG_REGISTERS line_name 1,4,7 x,y"
-        \\
-        \\Both "registers" and "axes" accept "all" as the parameter to log every
-        \\register and axes. The line configured for logging registers can be
-        \\evaluated by "STATUS_LOG_REGISTERS" command.
-        ,
-        .execute = &addLogRegisters,
-    });
-    errdefer command.registry.orderedRemove("ADD_LOG_REGISTERS");
-    try command.registry.put(.{
-        .name = "REMOVE_LOG_REGISTERS",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-        },
-        .short_description = "Remove the logging configuration for the specified line.",
-        .long_description =
-        \\Remove logging configuration for logging registers on the specified
-        \\line.
-        ,
-        .execute = &removeLogRegisters,
-    });
-    errdefer command.registry.orderedRemove("REMOVE_LOG_REGISTERS");
-    try command.registry.put(.{
-        .name = "RESET_LOG_REGISTERS",
-        .short_description = "Remove all logging configurations.",
-        .long_description =
-        \\Remove all logging configurations for logging registers for every
-        \\line.
-        ,
-        .execute = &resetLogRegisters,
-    });
-    errdefer command.registry.orderedRemove("RESET_LOG_REGISTERS");
-    try command.registry.put(.{
-        .name = "STATUS_LOG_REGISTERS",
-        .short_description = "Print the logging configurations entry.",
-        .long_description =
-        \\Print the logging configuration for each line (if any). The status is
-        \\given by "line_name:station_id:registers" with stations and registers
-        \\are a comma-separated string.
-        ,
-        .execute = &statusLogRegisters,
-    });
-    errdefer _ = command.registry.orderedRemove("STATUS_LOG_REGISTERS");
-    try command.registry.put(.{
-        .name = "START_LOG_REGISTERS",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "duration" },
-            .{ .name = "path", .optional = true },
-        },
-        .short_description = "Start the logging and save the file upon cancellation.",
-        .long_description =
-        \\Start the registers logging process. The log file will always contain
-        \\only the most recent data covering the specified duration (in seconds).
-        \\The Logging runs until cancelled manually (Ctrl+C). This command returns
-        \\an error if no lines have been configured to be logged. If no path is
-        \\provided, a default log file containing all register values will be
-        \\created in the current working directory as:
-        \\    "mmc-register-YYYY.MM.DD-HH.MM.SS.csv".
-        ,
-        .execute = &startLogRegisters,
-    });
-    errdefer _ = command.registry.orderedRemove("START_LOG_REGISTERS");
 }
 
 pub fn deinit() void {
@@ -887,25 +771,37 @@ fn clientConnect(params: [][]const u8) !void {
             try disconnect();
         }
     }
-    if (params[0].len != 0 and params[1].len == 0)
-        return error.MissingParameter;
-    if (params[1].len > 0) {
-        port = try std.fmt.parseInt(u16, params[0], 0);
-        if (IP_address.len != params[1].len) {
-            IP_address = try allocator.realloc(IP_address, params[1].len);
-        }
-        @memcpy(IP_address, params[1]);
+    var endpoint: struct { ip: []const u8, port: u16 } = .{
+        .ip = IP_address,
+        .port = port,
+    };
+    if (params[0].len != 0) {
+        var iterator = std.mem.tokenizeSequence(u8, params[0], ":");
+        endpoint.ip = iterator.next() orelse return error.MissingParameter;
+        if (endpoint.ip.len > 63) return error.InvalidIPAddress;
+        endpoint.port = try std.fmt.parseInt(
+            u16,
+            iterator.next() orelse return error.MissingParameter,
+            0,
+        );
     }
     std.log.info(
         "Trying to connect to {s}:{}",
-        .{ IP_address, port },
+        .{ endpoint.ip, endpoint.port },
     );
     main_socket = try network.connectToHost(
         allocator,
-        IP_address,
-        port,
+        endpoint.ip,
+        endpoint.port,
         .tcp,
     );
+    if (params[0].len > 0) {
+        port = endpoint.port;
+        if (IP_address.len != endpoint.ip.len) {
+            IP_address = try allocator.realloc(IP_address, endpoint.ip.len);
+        }
+        @memcpy(IP_address, endpoint.ip);
+    }
     if (main_socket) |s| {
         std.log.info(
             "Connected to {}",
@@ -935,13 +831,11 @@ fn disconnect() !void {
         for (lines) |line| {
             allocator.free(line.axes);
             allocator.free(line.name);
-            allocator.free(line.stations);
+            allocator.free(line.drivers);
         }
         allocator.free(lines);
-        allocator.free(log_lines);
         main_socket = null;
         lines = &.{};
-        log_lines = &.{};
     } else return error.ServerNotConnected;
 }
 
@@ -1012,6 +906,7 @@ fn serverVersion(_: [][]const u8) !void {
         fba_allocator,
         CoreResponse.Server,
     );
+    defer fba.reset();
     const version = server.version.?;
     defer server.deinit();
     std.log.info(
@@ -1032,6 +927,7 @@ fn APIVersion() !std.SemanticVersion {
         fba_allocator,
         CoreResponse.SemanticVersion,
     );
+    defer fba.reset();
     defer version.deinit();
     return .{
         .major = version.major,
@@ -1050,18 +946,18 @@ fn getLineConfig() !void {
         fba_allocator,
         CoreResponse.LineConfig,
     );
+    defer fba.reset();
     defer response.deinit();
 
     const line_config = response.lines.items;
     lines = try allocator.alloc(Line, line_config.len);
-    log_lines = try allocator.alloc(LogLine, lines.len);
     for (line_config, 0..) |line, line_idx| {
         lines[line_idx].axes = try allocator.alloc(
             Axis,
             @intCast(line.axes),
         );
-        lines[line_idx].stations = try allocator.alloc(
-            Station,
+        lines[line_idx].drivers = try allocator.alloc(
+            Driver,
             @intCast(@divFloor(line.axes - 1, 3) + 1),
         );
         lines[line_idx].name = try allocator.alloc(
@@ -1074,32 +970,29 @@ fn getLineConfig() !void {
         lines[line_idx].id = @intCast(line_idx + 1);
         var num_axes: usize = 0;
         @memcpy(lines[line_idx].name, line.name.getSlice());
-        for (0..@intCast(@divFloor(line.axes - 1, 3) + 1)) |station_idx| {
+        for (0..@intCast(@divFloor(line.axes - 1, 3) + 1)) |driver_idx| {
             const start_num_axes = num_axes;
             for (0..3) |local_axis_idx| {
                 lines[line_idx].axes[num_axes] = .{
-                    .station = &lines[line_idx].stations[station_idx],
+                    .driver = &lines[line_idx].drivers[driver_idx],
                     .index = .{
-                        .station = @intCast(local_axis_idx),
+                        .driver = @intCast(local_axis_idx),
                         .line = @intCast(num_axes),
                     },
                     .id = .{
-                        .station = @intCast(local_axis_idx + 1),
+                        .driver = @intCast(local_axis_idx + 1),
                         .line = @intCast(num_axes + 1),
                     },
                 };
                 num_axes += 1;
             }
-            lines[line_idx].stations[station_idx] = .{
+            lines[line_idx].drivers[driver_idx] = .{
                 .axes = lines[line_idx].axes[start_num_axes..num_axes],
                 .line = &lines[line_idx],
-                .index = @intCast(station_idx),
-                .id = @intCast(station_idx + 1),
+                .index = @intCast(driver_idx),
+                .id = @intCast(driver_idx + 1),
             };
         }
-        // Initializing logging registers
-        log_lines[line_idx].stations = .{false} ** 256;
-        log_lines[line_idx].status = false;
     }
     std.log.info(
         "Received the line configuration for the following line:",
@@ -1113,12 +1006,12 @@ fn getLineConfig() !void {
     }
     for (lines) |line| {
         std.log.debug(
-            "{s}:index {}:axes {}:stations {}:acc {}:speed {}",
+            "{s}:index {}:axes {}:drivers {}:acc {}:speed {}",
             .{
                 line.name,
                 line.index,
                 line.axes.len,
-                line.stations.len,
+                line.drivers.len,
                 line.acceleration,
                 line.velocity,
             },
@@ -1137,6 +1030,7 @@ fn assertAPIVersion() !void {
         fba_allocator,
         CoreResponse.SemanticVersion,
     );
+    defer fba.reset();
     const cli_api_version = api.version;
     if (cli_api_version.major != server_api_version.major or
         cli_api_version.minor != server_api_version.minor)
@@ -1161,9 +1055,103 @@ fn assertAPIVersion() !void {
     );
 }
 
+fn clientAxisInfo(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
+    const line_idx = try matchLine(lines, line_name);
+    const line: Line = lines[line_idx];
+    if (axis_id < 1 or axis_id > line.axes.len) return error.InvalidAxis;
+    var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
+    defer info_msg.deinit();
+    info_msg.body = .{
+        .axis = .{
+            .line_id = @intCast(line.id),
+            .range = .{
+                .start_id = @intCast(axis_id),
+                .end_id = @intCast(axis_id),
+            },
+        },
+    };
+    const axes = try sendRequest(
+        info_msg,
+        fba_allocator,
+        InfoResponse.Axes,
+    );
+    defer fba.reset();
+    defer axes.deinit();
+    const axis = axes.axes.items[0];
+    _ = try api.nestedWrite(
+        "Axis",
+        axis,
+        0,
+        std.io.getStdOut().writer(),
+    );
+}
+
+fn clientDriverInfo(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const driver_id = try std.fmt.parseInt(Driver.Id, params[1], 0);
+    const line_idx = try matchLine(lines, line_name);
+    const line: Line = lines[line_idx];
+    if (driver_id < 1 or driver_id > line.drivers.len) return error.InvalidDriver;
+    var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
+    defer info_msg.deinit();
+    info_msg.body = .{
+        .driver = .{
+            .line_id = @intCast(line.id),
+            .range = .{
+                .start_id = @intCast(driver_id),
+                .end_id = @intCast(driver_id),
+            },
+        },
+    };
+    const drivers = try sendRequest(
+        info_msg,
+        fba_allocator,
+        InfoResponse.Drivers,
+    );
+    defer fba.reset();
+    defer drivers.deinit();
+    const driver = drivers.drivers.items[0];
+    _ = try api.nestedWrite(
+        "Driver",
+        driver,
+        0,
+        std.io.getStdOut().writer(),
+    );
+}
+
+fn clientCarrierInfo(params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    const line_idx = try matchLine(lines, line_name);
+    const line: Line = lines[line_idx];
+    var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
+    defer info_msg.deinit();
+    info_msg.body = .{
+        .carrier = .{
+            .line_id = @intCast(line.id),
+            .param = .{ .carrier_id = @intCast(carrier_id) },
+        },
+    };
+    const carrier = try sendRequest(
+        info_msg,
+        fba_allocator,
+        InfoResponse.Carrier,
+    );
+    defer fba.reset();
+    defer carrier.deinit();
+    _ = try api.nestedWrite(
+        "Carrier",
+        carrier,
+        0,
+        std.io.getStdOut().writer(),
+    );
+}
+
 fn clientAutoInitialize(params: [][]const u8) !void {
     var init_lines = std.ArrayListAligned(
-        CommandRequest.AutoInitialize.Lines,
+        CommandRequest.AutoInitialize.Line,
         null,
     ).init(fba_allocator);
     defer init_lines.deinit();
@@ -1176,7 +1164,7 @@ fn clientAutoInitialize(params: [][]const u8) !void {
         while (iterator.next()) |line_name| {
             const line_idx = try matchLine(lines, line_name);
             const _line = lines[line_idx];
-            const line: CommandRequest.AutoInitialize.Lines = .{
+            const line: CommandRequest.AutoInitialize.Line = .{
                 .line_id = @intCast(_line.id),
                 .acceleration = @intCast(_line.acceleration),
                 .velocity = @intCast(_line.velocity),
@@ -1185,7 +1173,7 @@ fn clientAutoInitialize(params: [][]const u8) !void {
         }
     } else {
         for (lines) |_line| {
-            const line: CommandRequest.AutoInitialize.Lines = .{
+            const line: CommandRequest.AutoInitialize.Line = .{
                 .line_id = @intCast(_line.id),
                 .acceleration = @intCast(_line.acceleration),
                 .velocity = @intCast(_line.velocity),
@@ -1198,95 +1186,9 @@ fn clientAutoInitialize(params: [][]const u8) !void {
     command_msg.body = .{
         .auto_initialize = .{ .lines = init_lines },
     };
-    for (init_lines.items) |line| {
-        std.log.debug(
-            "id: {}, speed: {}, acceleration: {}",
-            .{ line.line_id, line.velocity, line.acceleration },
-        );
-    }
     const encoded = try command_msg.encode(fba_allocator);
     defer fba_allocator.free(encoded);
     try sendCommandRequest(command_msg, fba_allocator);
-}
-
-fn getRegister(
-    line_id: Line.Id,
-    station_id: Station.Id,
-    a: std.mem.Allocator,
-    comptime reg_type: RegisterTypeCap,
-) !@field(InfoResponse, std.fmt.comptimePrint(
-    "Register{s}",
-    .{@tagName(reg_type)},
-)) {
-    var info_msg: InfoRequest = InfoRequest.init(a);
-    defer info_msg.deinit();
-    comptime var _buf: [2]u8 = undefined;
-    const union_field_name = "register_" ++ comptime std.ascii.lowerString(
-        &_buf,
-        @tagName(reg_type),
-    );
-    info_msg.body = @unionInit(
-        InfoRequest.body_union,
-        union_field_name,
-        .{
-            .line_id = line_id,
-            .station_id = station_id,
-        },
-    );
-    return switch (reg_type) {
-        .X => try sendRequest(info_msg, fba_allocator, InfoResponse.RegisterX),
-        .Y => try sendRequest(info_msg, fba_allocator, InfoResponse.RegisterY),
-        .Wr => try sendRequest(info_msg, fba_allocator, InfoResponse.RegisterWr),
-        .Ww => try sendRequest(info_msg, fba_allocator, InfoResponse.RegisterWw),
-    };
-}
-
-fn clientStationX(params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
-    const line_idx = try matchLine(lines, line_name);
-    const line: Line = lines[line_idx];
-    if (axis_id < 1 or axis_id > line.axes.len) return error.InvalidAxis;
-    const axis = line.axes[axis_id - 1];
-    const station = axis.station;
-    const x = try getRegister(line.id, station.id, fba_allocator, .X);
-    _ = try api.nestedWrite("X", x, 0, std.io.getStdOut().writer());
-}
-
-fn clientStationY(params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
-    const line_idx = try matchLine(lines, line_name);
-    const line: Line = lines[line_idx];
-    if (axis_id < 1 or axis_id > line.axes.len) return error.InvalidAxis;
-    const axis = line.axes[axis_id - 1];
-    const station = axis.station;
-    const y = try getRegister(line.id, station.id, fba_allocator, .Y);
-    _ = try api.nestedWrite("Y", y, 0, std.io.getStdOut().writer());
-}
-
-fn clientStationWr(params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
-    const line_idx = try matchLine(lines, line_name);
-    const line: Line = lines[line_idx];
-    if (axis_id < 1 or axis_id > line.axes.len) return error.InvalidAxis;
-    const axis = line.axes[axis_id - 1];
-    const station = axis.station;
-    const wr = try getRegister(line.id, station.id, fba_allocator, .Wr);
-    _ = try api.nestedWrite("Wr", wr, 0, std.io.getStdOut().writer());
-}
-
-fn clientStationWw(params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
-    const line_idx = try matchLine(lines, line_name);
-    const line: Line = lines[line_idx];
-    if (axis_id < 1 or axis_id > line.axes.len) return error.InvalidAxis;
-    const axis = line.axes[axis_id - 1];
-    const station = axis.station;
-    const ww = try getRegister(line.id, station.id, fba_allocator, .Ww);
-    _ = try api.nestedWrite("Ww", ww, 0, std.io.getStdOut().writer());
 }
 
 fn clientAxisCarrier(params: [][]const u8) !void {
@@ -1314,6 +1216,7 @@ fn clientAxisCarrier(params: [][]const u8) !void {
             return;
         } else return e;
     };
+    defer fba.reset();
     defer carrier.deinit();
     std.log.info("Carrier {d} on axis {d}.\n", .{ carrier.id, axis_id });
     if (result_var.len > 0) {
@@ -1359,56 +1262,55 @@ fn clientCarrierID(params: [][]const u8) !void {
     var variable_count: usize = 1;
     for (line_idxs.items) |line_idx| {
         const line = lines[line_idx];
-        for (line.stations) |station| {
-            const wr: InfoResponse.RegisterWr = try getRegister(
-                line.id,
-                station.id,
-                fba_allocator,
-                .Wr,
+        var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
+        info_msg.body = .{
+            .axis = .{
+                .line_id = @intCast(line.id),
+                .range = .{
+                    .start_id = 1,
+                    .end_id = @intCast(line.axes.len),
+                },
+            },
+        };
+        const response = try sendRequest(
+            info_msg,
+            fba_allocator,
+            InfoResponse.Axes,
+        );
+        defer fba.reset();
+        for (response.axes.items) |axis| {
+            if (axis.carrier_id == 0) continue;
+            std.log.info(
+                "Carrier {d} on line {s} axis {d}",
+                .{ axis.carrier_id, line.name, axis.id },
             );
-            const _carrier = wr.carrier.?;
-            const ti = @typeInfo(@TypeOf(_carrier)).@"struct";
-            inline for (ti.fields, 0..) |field, axis_idx| {
-                const carrier: InfoResponse.RegisterWr.Carrier.Description =
-                    @field(_carrier, field.name).?;
-                if (carrier.id != 0) {
-                    std.log.info(
-                        "Carrier {d} on line {s} axis {d}",
-                        .{
-                            carrier.id,
-                            line.name,
-                            axis_idx + @as(usize, @intCast(station.index * 3)) + 1,
-                        },
-                    );
-                    if (result_var.len > 0) {
-                        var int_buf: [8]u8 = undefined;
-                        var var_buf: [36]u8 = undefined;
-                        const variable_key = try std.fmt.bufPrint(
-                            &var_buf,
-                            "{s}_{d}",
-                            .{ result_var, variable_count },
-                        );
-                        const variable_value = try std.fmt.bufPrint(
-                            &int_buf,
-                            "{d}",
-                            .{carrier.id},
-                        );
-                        var iterator = command.variables.iterator();
-                        var isValueExists: bool = false;
-                        while (iterator.next()) |entry| {
-                            if (std.mem.eql(u8, variable_value, entry.value_ptr.*)) {
-                                isValueExists = true;
-                                break;
-                            }
-                        }
-                        if (!isValueExists) {
-                            try command.variables.put(
-                                variable_key,
-                                variable_value,
-                            );
-                            variable_count += 1;
-                        }
+            if (result_var.len > 0) {
+                var int_buf: [8]u8 = undefined;
+                var var_buf: [36]u8 = undefined;
+                const variable_key = try std.fmt.bufPrint(
+                    &var_buf,
+                    "{s}_{d}",
+                    .{ result_var, variable_count },
+                );
+                const variable_value = try std.fmt.bufPrint(
+                    &int_buf,
+                    "{d}",
+                    .{axis.carrier_id},
+                );
+                var iterator = command.variables.iterator();
+                var isValueExists: bool = false;
+                while (iterator.next()) |entry| {
+                    if (std.mem.eql(u8, variable_value, entry.value_ptr.*)) {
+                        isValueExists = true;
+                        break;
                     }
+                }
+                if (!isValueExists) {
+                    try command.variables.put(
+                        variable_key,
+                        variable_value,
+                    );
+                    variable_count += 1;
                 }
             }
         }
@@ -1439,7 +1341,8 @@ fn clientAssertLocation(params: [][]const u8) !void {
         fba_allocator,
         InfoResponse.Carrier,
     );
-    const location: f32 = carrier.location;
+    defer fba.reset();
+    const location: f32 = carrier.position;
     if (location < expected_location - location_thr or
         location > expected_location + location_thr)
         return error.UnexpectedCarrierLocation;
@@ -1447,18 +1350,19 @@ fn clientAssertLocation(params: [][]const u8) !void {
 
 fn clientAxisReleaseServo(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
-
     const line_idx = try matchLine(lines, line_name);
     const line: Line = lines[line_idx];
-    if (axis_id < 1 or axis_id > line.axes.len) return error.InvalidAxis;
-    const axis = line.axes[axis_id - 1];
+    var axis_id: ?Axis.Id.Line = null;
+    if (params[1].len > 0) {
+        axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
+        if (axis_id.? < 1 or axis_id.? > line.axes.len) return error.InvalidAxis;
+    }
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
     defer command_msg.deinit();
     command_msg.body = .{
-        .release_axis_servo = .{
+        .release_control = .{
             .line_id = @intCast(line.id),
-            .axis_id = @intCast(axis.id.line),
+            .axis_id = if (axis_id) |axis| @intCast(axis) else null,
         },
     };
     try sendCommandRequest(command_msg, fba_allocator);
@@ -1478,7 +1382,10 @@ fn clientClearErrors(params: [][]const u8) !void {
     command_msg.body = .{
         .clear_errors = .{
             .line_id = @intCast(line.id),
-            .axis_id = if (axis_id) |id| @intCast(id) else null,
+            .driver_id = if (axis_id) |id|
+                @intCast(line.axes[id - 1].driver.id)
+            else
+                null,
         },
     };
     try sendCommandRequest(command_msg, fba_allocator);
@@ -1527,17 +1434,18 @@ fn clientCarrierLocation(params: [][]const u8) !void {
         fba_allocator,
         InfoResponse.Carrier,
     );
+    defer fba.reset();
     defer carrier.deinit();
     std.log.info(
         "Carrier {d} location: {d} mm",
-        .{ carrier.id, carrier.location },
+        .{ carrier.id, carrier.position },
     );
     if (result_var.len > 0) {
         var float_buf: [12]u8 = undefined;
         try command.variables.put(result_var, try std.fmt.bufPrint(
             &float_buf,
             "{d}",
-            .{carrier.location},
+            .{carrier.position},
         ));
     }
 }
@@ -1561,16 +1469,19 @@ fn clientCarrierAxis(params: [][]const u8) !void {
         fba_allocator,
         InfoResponse.Carrier,
     );
+    defer fba.reset();
     defer carrier.deinit();
-    std.log.info(
-        "Carrier {d} axis: {}",
-        .{ carrier.id, carrier.main_axis_id },
-    );
-    if (carrier.aux_axis_id == carrier.main_axis_id) return;
-    std.log.info(
-        "Carrier {d} axis: {}",
-        .{ carrier.id, carrier.aux_axis_id },
-    );
+    if (carrier.axis) |axis| {
+        std.log.info(
+            "Carrier {d} axis: {}",
+            .{ carrier.id, axis.first },
+        );
+        if (axis.second) |second|
+            std.log.info(
+                "Carrier {d} axis: {}",
+                .{ carrier.id, second },
+            );
+    }
 }
 
 fn clientHallStatus(params: [][]const u8) !void {
@@ -1589,17 +1500,22 @@ fn clientHallStatus(params: [][]const u8) !void {
     defer info_msg.deinit();
     if (axis_id) |axis| {
         info_msg.body = .{
-            .hall_alarm = .{
+            .axis = .{
                 .line_id = @intCast(line.id),
-                .axis_id = axis,
+                .range = .{
+                    .start_id = @intCast(axis),
+                    .end_id = @intCast(axis),
+                },
             },
         };
-        const hall = try sendRequest(
+        const response = try sendRequest(
             info_msg,
             fba_allocator,
-            InfoResponse.HallAlarm,
+            InfoResponse.Axes,
         );
-        defer hall.deinit();
+        defer fba.reset();
+        defer response.deinit();
+        const hall = response.axes.items[0].hall_alarm.?;
         std.log.info(
             "Axis {} Hall Sensor:\n\t BACK - {s}\n\t FRONT - {s}",
             .{
@@ -1609,23 +1525,27 @@ fn clientHallStatus(params: [][]const u8) !void {
             },
         );
     } else {
-        for (line.axes) |axis| {
-            info_msg.body = .{
-                .hall_alarm = .{
-                    .line_id = @intCast(line.id),
-                    .axis_id = @intCast(axis.id.line),
+        info_msg.body = .{
+            .axis = .{
+                .line_id = @intCast(line.id),
+                .range = .{
+                    .start_id = 1,
+                    .end_id = @intCast(line.axes.len),
                 },
-            };
-            const hall = try sendRequest(
-                info_msg,
-                fba_allocator,
-                InfoResponse.HallAlarm,
-            );
-            defer hall.deinit();
+            },
+        };
+        const response = try sendRequest(
+            info_msg,
+            fba_allocator,
+            InfoResponse.Axes,
+        );
+        defer fba.reset();
+        for (response.axes.items) |axis| {
+            const hall = axis.hall_alarm.?;
             std.log.info(
                 "Axis {} Hall Sensor:\n\t BACK - {s}\n\t FRONT - {s}",
                 .{
-                    axis.id.line,
+                    axis.id,
                     if (hall.back) "ON" else "OFF",
                     if (hall.front) "ON" else "OFF",
                 },
@@ -1665,17 +1585,22 @@ fn clientAssertHall(params: [][]const u8) !void {
     defer info_msg.deinit();
 
     info_msg.body = .{
-        .hall_alarm = .{
+        .axis = .{
             .line_id = @intCast(line.id),
-            .axis_id = @intCast(axis_id),
+            .range = .{
+                .start_id = @intCast(axis_id),
+                .end_id = @intCast(axis_id),
+            },
         },
     };
-    const hall = try sendRequest(
+    const response = try sendRequest(
         info_msg,
         fba_allocator,
-        InfoResponse.HallAlarm,
+        InfoResponse.Axes,
     );
-    defer hall.deinit();
+    defer fba.reset();
+    defer response.deinit();
+    const hall = response.axes.items[0].hall_alarm.?;
     switch (side) {
         .DIRECTION_BACKWARD => {
             if (hall.back != alarm_on) {
@@ -1689,15 +1614,6 @@ fn clientAssertHall(params: [][]const u8) !void {
         },
         else => return error.UnexpectedResponse,
     }
-}
-
-fn clientMclReset(_: [][]const u8) !void {
-    var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
-    defer command_msg.deinit();
-    command_msg.body = .{ .reset_mcl = .{} };
-    const encoded = try command_msg.encode(fba_allocator);
-    defer fba_allocator.free(encoded);
-    try sendCommandRequest(command_msg, fba_allocator);
 }
 
 fn clientCalibrate(params: [][]const u8) !void {
@@ -1746,7 +1662,7 @@ fn clientIsolate(params: [][]const u8) !void {
         try std.fmt.parseInt(u10, params[3], 0)
     else
         0;
-    const link_axis: Direction = link: {
+    const link_axis: ?Direction = link: {
         if (params[4].len > 0) {
             if (std.ascii.eqlIgnoreCase("next", params[4]) or
                 std.ascii.eqlIgnoreCase("right", params[4]))
@@ -1757,7 +1673,7 @@ fn clientIsolate(params: [][]const u8) !void {
             {
                 break :link .DIRECTION_BACKWARD;
             } else return error.InvalidIsolateLinkAxis;
-        } else break :link .DIRECTION_UNSPECIFIED;
+        } else break :link null;
     };
 
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
@@ -1806,9 +1722,10 @@ fn clientWaitIsolate(params: [][]const u8) !void {
             fba_allocator,
             InfoResponse.Carrier,
         );
+        defer fba.reset();
         defer carrier.deinit();
-        if (carrier.state == .STATE_BACKWARD_ISOLATION_COMPLETED or
-            carrier.state == .STATE_FORWARD_ISOLATION_COMPLETED) return;
+        if (carrier.state == .CARRIER_STATE_BACKWARD_ISOLATION_COMPLETED or
+            carrier.state == .CARRIER_STATE_FORWARD_ISOLATION_COMPLETED) return;
     }
 }
 
@@ -1844,9 +1761,10 @@ fn clientWaitMoveCarrier(params: [][]const u8) !void {
             fba_allocator,
             InfoResponse.Carrier,
         );
+        defer fba.reset();
         defer carrier.deinit();
-        if (carrier.state == .STATE_POS_MOVE_COMPLETED or
-            carrier.state == .STATE_SPD_MOVE_COMPLETED) return;
+        if (carrier.state == .CARRIER_STATE_POS_MOVE_COMPLETED or
+            carrier.state == .CARRIER_STATE_SPD_MOVE_COMPLETED) return;
     }
 }
 
@@ -1855,6 +1773,12 @@ fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
     const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
     const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[2], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
+    const disable_cas = if (params[3].len == 0)
+        false
+    else if (std.ascii.eqlIgnoreCase("true", params[3]))
+        true
+    else
+        return error.InvalidCasConfiguration;
 
     const line_idx = try matchLine(lines, line_name);
     const line = lines[line_idx];
@@ -1868,6 +1792,7 @@ fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
             .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .target = .{ .axis = @intCast(axis_id) },
+            .disable_cas = disable_cas,
             .control_kind = .CONTROL_POSITION,
         },
     };
@@ -1879,6 +1804,12 @@ fn clientCarrierPosMoveLocation(params: [][]const u8) !void {
     const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
+    const disable_cas = if (params[3].len == 0)
+        false
+    else if (std.ascii.eqlIgnoreCase("true", params[3]))
+        true
+    else
+        return error.InvalidCasConfiguration;
 
     const line_idx = try matchLine(lines, line_name);
     const line = lines[line_idx];
@@ -1891,6 +1822,7 @@ fn clientCarrierPosMoveLocation(params: [][]const u8) !void {
             .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .target = .{ .location = location },
+            .disable_cas = disable_cas,
             .control_kind = .CONTROL_POSITION,
         },
     };
@@ -1906,6 +1838,12 @@ fn clientCarrierPosMoveDistance(params: [][]const u8) !void {
         return;
     }
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
+    const disable_cas = if (params[3].len == 0)
+        false
+    else if (std.ascii.eqlIgnoreCase("true", params[3]))
+        true
+    else
+        return error.InvalidCasConfiguration;
     const line_idx = try matchLine(lines, line_name);
     const line = lines[line_idx];
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
@@ -1917,6 +1855,7 @@ fn clientCarrierPosMoveDistance(params: [][]const u8) !void {
             .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .target = .{ .distance = distance },
+            .disable_cas = disable_cas,
             .control_kind = .CONTROL_POSITION,
         },
     };
@@ -1933,6 +1872,12 @@ fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
         return error.InvalidAxis;
     }
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
+    const disable_cas = if (params[3].len == 0)
+        false
+    else if (std.ascii.eqlIgnoreCase("true", params[3]))
+        true
+    else
+        return error.InvalidCasConfiguration;
 
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
     defer command_msg.deinit();
@@ -1943,6 +1888,7 @@ fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
             .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .target = .{ .axis = @intCast(axis_id) },
+            .disable_cas = disable_cas,
             .control_kind = .CONTROL_VELOCITY,
         },
     };
@@ -1954,6 +1900,12 @@ fn clientCarrierSpdMoveLocation(params: [][]const u8) !void {
     const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
+    const disable_cas = if (params[3].len == 0)
+        false
+    else if (std.ascii.eqlIgnoreCase("true", params[3]))
+        true
+    else
+        return error.InvalidCasConfiguration;
 
     const line_idx = try matchLine(lines, line_name);
     const line = lines[line_idx];
@@ -1966,6 +1918,7 @@ fn clientCarrierSpdMoveLocation(params: [][]const u8) !void {
             .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .target = .{ .location = location },
+            .disable_cas = disable_cas,
             .control_kind = .CONTROL_VELOCITY,
         },
     };
@@ -1983,6 +1936,12 @@ fn clientCarrierSpdMoveDistance(params: [][]const u8) !void {
         return;
     }
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
+    const disable_cas = if (params[3].len == 0)
+        false
+    else if (std.ascii.eqlIgnoreCase("true", params[3]))
+        true
+    else
+        return error.InvalidCasConfiguration;
 
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
     defer command_msg.deinit();
@@ -1993,6 +1952,7 @@ fn clientCarrierSpdMoveDistance(params: [][]const u8) !void {
             .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .target = .{ .distance = distance },
+            .disable_cas = disable_cas,
             .control_kind = .CONTROL_VELOCITY,
         },
     };
@@ -2076,6 +2036,12 @@ fn clientCarrierPullForward(params: [][]const u8) !void {
     const line = lines[line_idx];
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     if (axis_id == 0 or axis_id > line.axes.len) return error.InvalidAxis;
+    const disable_cas = if (params[4].len == 0)
+        false
+    else if (std.ascii.eqlIgnoreCase("true", params[4]))
+        true
+    else
+        return error.InvalidCasConfiguration;
 
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
     defer command_msg.deinit();
@@ -2087,11 +2053,14 @@ fn clientCarrierPullForward(params: [][]const u8) !void {
             .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .direction = .DIRECTION_FORWARD,
-            .target = blk: {
-                if (destination) |location|
-                    break :blk .{ .location = location }
-                else
-                    break :blk null;
+            .transition = blk: {
+                if (destination) |loc| break :blk .{
+                    .control_kind = .CONTROL_POSITION,
+                    .disable_cas = disable_cas,
+                    .target = .{
+                        .location = loc,
+                    },
+                } else break :blk null;
             },
         },
     };
@@ -2112,6 +2081,12 @@ fn clientCarrierPullBackward(params: [][]const u8) !void {
     const line = lines[line_idx];
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     if (axis_id == 0 or axis_id > line.axes.len) return error.InvalidAxis;
+    const disable_cas = if (params[4].len == 0)
+        false
+    else if (std.ascii.eqlIgnoreCase("true", params[4]))
+        true
+    else
+        return error.InvalidCasConfiguration;
 
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
     defer command_msg.deinit();
@@ -2123,11 +2098,14 @@ fn clientCarrierPullBackward(params: [][]const u8) !void {
             .velocity = @intCast(lines[line_idx].velocity),
             .acceleration = @intCast(lines[line_idx].acceleration),
             .direction = .DIRECTION_BACKWARD,
-            .target = blk: {
-                if (destination) |location|
-                    break :blk .{ .location = location }
-                else
-                    break :blk null;
+            .transition = blk: {
+                if (destination) |loc| break :blk .{
+                    .control_kind = .CONTROL_POSITION,
+                    .disable_cas = disable_cas,
+                    .target = .{
+                        .location = loc,
+                    },
+                } else break :blk null;
             },
         },
     };
@@ -2159,31 +2137,36 @@ fn clientCarrierWaitPull(params: [][]const u8) !void {
                 .param = .{ .carrier_id = @intCast(carrier_id) },
             },
         };
-        const carrier = try sendRequest(
+        const carrier = sendRequest(
             info_msg,
             fba_allocator,
             InfoResponse.Carrier,
-        );
+        ) catch |e| {
+            if (e == error.CarrierNotFound) continue else return e;
+        };
+        defer fba.reset();
         defer carrier.deinit();
-        if (carrier.state == .STATE_PULL_FORWARD_COMPLETED or
-            carrier.state == .STATE_PULL_BACKWARD_COMPLETED) return;
+        if (carrier.state == .CARRIER_STATE_PULL_FORWARD_COMPLETED or
+            carrier.state == .CARRIER_STATE_PULL_BACKWARD_COMPLETED) return;
     }
 }
 
 fn clientCarrierStopPull(params: [][]const u8) !void {
     const line_name = params[0];
-    const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
     const line_idx = try matchLine(lines, line_name);
     const line = lines[line_idx];
-    if (axis_id == 0 or axis_id > line.axes.len) return error.InvalidAxis;
-
+    var axis_id: ?Axis.Id.Line = null;
+    if (params[1].len > 0) {
+        axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
+        if (axis_id.? < 1 or axis_id.? > line.axes.len) return error.InvalidAxis;
+    }
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
     defer command_msg.deinit();
 
     command_msg.body = .{
         .stop_pull_carrier = .{
             .line_id = @intCast(line.id),
-            .axis_id = @intCast(axis_id),
+            .axis_id = if (axis_id) |axis| @intCast(axis) else null,
         },
     };
     try sendCommandRequest(command_msg, fba_allocator);
@@ -2191,17 +2174,20 @@ fn clientCarrierStopPull(params: [][]const u8) !void {
 
 fn clientCarrierStopPush(params: [][]const u8) !void {
     const line_name = params[0];
-    const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
     const line_idx = try matchLine(lines, line_name);
     const line = lines[line_idx];
-    if (axis_id == 0 or axis_id > line.axes.len) return error.InvalidAxis;
+    var axis_id: ?Axis.Id.Line = null;
+    if (params[1].len > 0) {
+        axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
+        if (axis_id.? < 1 or axis_id.? > line.axes.len) return error.InvalidAxis;
+    }
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
     defer command_msg.deinit();
 
     command_msg.body = .{
         .stop_push_carrier = .{
             .line_id = @intCast(line.id),
-            .axis_id = @intCast(axis_id),
+            .axis_id = if (axis_id) |axis| @intCast(axis) else null,
         },
     };
     try sendCommandRequest(command_msg, fba_allocator);
@@ -2243,6 +2229,7 @@ fn clientWaitAxisEmpty(params: [][]const u8) !void {
             fba_allocator,
             InfoResponse.Axes,
         );
+        defer fba.reset();
         defer response.deinit();
         const axis_info = response.axes.items[0];
         const carrier = axis_info.carrier_id;
@@ -2253,467 +2240,6 @@ fn clientWaitAxisEmpty(params: [][]const u8) !void {
             !wait_pull and !wait_push)
         {
             break;
-        }
-    }
-}
-
-/// Add logging configuration for registers logging in the specified line
-fn addLogRegisters(params: [][]const u8) !void {
-    const line_name = params[0];
-    const line_idx = try matchLine(lines, line_name);
-    const line = lines[line_idx];
-
-    var log: LogLine = std.mem.zeroInit(LogLine, .{});
-
-    // Validate "axes" parameter
-    var axis_input_iterator = std.mem.tokenizeSequence(u8, params[1], ",");
-    while (axis_input_iterator.next()) |token| {
-        if (std.ascii.eqlIgnoreCase("all", token)) {
-            for (0..line.stations.len) |i| {
-                log.stations[i] = true;
-            }
-            break;
-        }
-        const axis_id = try std.fmt.parseInt(Axis.Id.Line, token, 0);
-
-        if (axis_id < 1 or axis_id > line.axes.len) {
-            return error.InvalidAxis;
-        }
-        const axis_index: usize = @intCast(axis_id - 1);
-        const station_index: usize = @intCast(axis_index / 3);
-        log.stations[station_index] = true;
-    }
-
-    // Validate "registers" parameter
-    var reg_input_iterator = std.mem.tokenizeSequence(u8, params[2], ",");
-    outer: while (reg_input_iterator.next()) |token| {
-        if (std.ascii.eqlIgnoreCase("all", token)) {
-            inline for (@typeInfo(RegisterType).@"enum".fields) |field| {
-                log.registers.set(@enumFromInt(field.value), true);
-            }
-            break;
-        }
-        inline for (@typeInfo(RegisterType).@"enum".fields) |field| {
-            if (std.ascii.eqlIgnoreCase(field.name, token)) {
-                log.registers.set(@enumFromInt(field.value), true);
-                continue :outer;
-            }
-        }
-        return error.InvalidRegister;
-    }
-    var info_buffer: [64]u8 = undefined;
-    const prefix = "Ready to log registers: ";
-    @memcpy(info_buffer[0..prefix.len], prefix);
-    var buf_len = prefix.len;
-
-    var register_iterator = log.registers.iterator();
-    while (register_iterator.next()) |reg_entry| {
-        if (!log.registers.get(reg_entry.key)) continue;
-        const reg_tag: []const u8 = @tagName(reg_entry.key);
-        @memcpy(
-            info_buffer[buf_len .. buf_len + reg_tag.len],
-            @tagName(reg_entry.key),
-        );
-        @memcpy(
-            info_buffer[buf_len + reg_tag.len .. buf_len + reg_tag.len + 1],
-            ",",
-        );
-        buf_len += reg_tag.len + 1;
-    }
-    std.log.info("{s}", .{info_buffer[0 .. buf_len - 1]});
-    log.status = true;
-    log_lines[line_idx] = log;
-}
-
-fn removeLogRegisters(params: [][]const u8) !void {
-    const line_name = params[0];
-    const line_idx = try matchLine(lines, line_name);
-
-    if (log_lines[line_idx].status == false) {
-        std.log.err("Line is not configured for logging yet", .{});
-        return;
-    }
-
-    log_lines[line_idx].status = false;
-}
-
-fn resetLogRegisters(_: [][]const u8) !void {
-    for (lines) |line| {
-        log_lines[line.index].status = false;
-    }
-}
-
-fn statusLogRegisters(_: [][]const u8) !void {
-    var buffer: [8192]u8 = undefined;
-    var buf_len: usize = 0;
-    // flag to indicate printing ","
-    var first = true;
-    for (lines) |line| {
-        // Section to print line name
-        if (log_lines[line.index].status == false) continue;
-        buf_len += (try std.fmt.bufPrint(
-            buffer[buf_len..],
-            "{s}:",
-            .{line.name},
-        )).len;
-        // Section to print station index
-        first = true;
-        for (0..log_lines[line.index].stations.len) |station_idx| {
-            if (log_lines[line.index].stations[station_idx] == false) continue;
-            if (!first) {
-                buf_len += (try std.fmt.bufPrint(
-                    buffer[buf_len..],
-                    "{s}",
-                    .{","},
-                )).len;
-            }
-            buf_len += std.fmt.formatIntBuf(
-                buffer[buf_len..],
-                station_idx + 1,
-                10,
-                .lower,
-                .{},
-            );
-            first = false;
-        }
-        buf_len += (try std.fmt.bufPrint(
-            buffer[buf_len..],
-            "{s}",
-            .{":"},
-        )).len;
-        // Section to print register
-        first = true;
-        var reg_iterator = log_lines[line.index].registers.iterator();
-        while (reg_iterator.next()) |reg_entry| {
-            if (reg_entry.value.* == false) continue;
-            if (!first) {
-                buf_len += (try std.fmt.bufPrint(
-                    buffer[buf_len..],
-                    "{s}",
-                    .{","},
-                )).len;
-            }
-            buf_len += (try std.fmt.bufPrint(
-                buffer[buf_len..],
-                "{s}",
-                .{@tagName(reg_entry.key)},
-            )).len;
-            first = false;
-        }
-        buf_len += (try std.fmt.bufPrint(
-            buffer[buf_len..],
-            "{s}",
-            .{"\n"},
-        )).len;
-    }
-    std.log.info("{s}", .{buffer[0..buf_len]});
-}
-
-fn startLogRegisters(params: [][]const u8) !void {
-    const log_duration = try std.fmt.parseFloat(f64, params[0]);
-    // Assumption: The registers value is updated every 3 ms
-    const logging_size_float =
-        log_duration * @as(f64, @floatFromInt(std.time.ms_per_s)) / 3.0;
-    if (std.math.isNan(logging_size_float) or
-        std.math.isInf(logging_size_float) or
-        !std.math.isFinite(logging_size_float)) return error.InvalidDuration;
-
-    const logging_size =
-        @as(usize, @intFromFloat(@round(logging_size_float)));
-
-    var log_registers_initialized = false;
-    for (lines) |line| {
-        if (log_lines[line.index].status == true) {
-            log_registers_initialized = true;
-            break;
-        }
-    }
-    if (!log_registers_initialized) {
-        std.log.err("Logging is not configured for any line", .{});
-        return;
-    }
-    const path = params[1];
-    var path_buffer: [512]u8 = undefined;
-    const file_path = if (path.len > 0) path else p: {
-        var timestamp: u64 = @intCast(std.time.timestamp());
-        timestamp += std.time.s_per_hour * 9;
-        const days_since_epoch: i32 = @intCast(timestamp / std.time.s_per_day);
-        const ymd =
-            chrono.date.YearMonthDay.fromDaysSinceUnixEpoch(days_since_epoch);
-        const time_day: u32 = @intCast(timestamp % std.time.s_per_day);
-        const time = try chrono.Time.fromNumSecondsFromMidnight(time_day, 0);
-
-        break :p try std.fmt.bufPrint(
-            &path_buffer,
-            "mmc-register-{}.{:0>2}.{:0>2}-{:0>2}.{:0>2}.{:0>2}.csv",
-            .{
-                ymd.year,
-                ymd.month.number(),
-                ymd.day,
-                time.hour(),
-                time.minute(),
-                time.second(),
-            },
-        );
-    };
-    std.log.info("The registers will be logged to {s}", .{file_path});
-    const log_file = try std.fs.cwd().createFile(file_path, .{});
-    defer log_file.close();
-
-    // _buf is used to print the title prefix with std.fmt.bufPrint()
-    var _buf: [1_024]u8 = undefined;
-
-    const log_writer = log_file.writer();
-    try log_writer.print("timestamp,", .{});
-
-    for (lines) |line| {
-        if (log_lines[line.index].status == false) continue;
-        for (0..256) |station_idx| {
-            if (log_lines[line.index].stations[station_idx] == false) continue;
-            var reg_iterator = log_lines[line.index].registers.iterator();
-            while (reg_iterator.next()) |reg_entry| {
-                const reg_type = @TypeOf(reg_entry.key);
-                inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
-                    if (@intFromEnum(reg_entry.key) == reg_enum.value and
-                        reg_entry.value.* == true)
-                    {
-                        try writeLoggingHeaders(
-                            log_writer,
-                            try std.fmt.bufPrint(
-                                &_buf,
-                                "{s}_station{d}_{s}",
-                                .{ line.name, station_idx + 1, reg_enum.name },
-                            ),
-                            "",
-                            @FieldType(
-                                Registers,
-                                reg_enum.name,
-                            ),
-                        );
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    var logging_data =
-        try CircularBufferAlloc(LoggingRegisters).initCapacity(
-            allocator,
-            logging_size,
-        );
-    defer logging_data.deinit();
-    const log_time_start = std.time.microTimestamp();
-    std.log.info("logging registers data..", .{});
-    var timer = try std.time.Timer.start();
-    while (true) {
-        command.checkCommandInterrupt() catch {
-            std.log.info("saving logging data..", .{});
-            break;
-        };
-        logging_data.writeItemOverwrite(logRegisters(
-            log_time_start,
-            &timer,
-        ) catch {
-            std.log.info("saving logging data..", .{});
-            break;
-        });
-    }
-    try logToString(
-        &logging_data,
-        log_writer,
-    );
-}
-
-/// Convert the logged binary data to string and save it to the logging file
-fn logToString(
-    logging_data: *CircularBufferAlloc(LoggingRegisters),
-    writer: std.fs.File.Writer,
-) !void {
-    while (logging_data.readItem()) |item| {
-        // Copy a newline in every logging data entry
-        try writer.writeByte('\n');
-        // write timestamp to the buffer
-        try writer.print("{d},", .{item.timestamp});
-
-        var reg_idx: usize = 0;
-        for (lines) |line| {
-            if (log_lines[line.index].status == false) continue;
-            for (0..256) |station_idx| {
-                if (log_lines[line.index].stations[station_idx] == false) continue;
-                var reg_iterator = log_lines[line.index].registers.iterator();
-                var command_code: InfoResponse.RegisterWw.CommandCode = .COMMAND_CODE_UNSPECIFIED;
-                while (reg_iterator.next()) |reg_entry| {
-                    const reg_type = @TypeOf(reg_entry.key);
-                    inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
-                        if (@intFromEnum(reg_entry.key) == reg_enum.value and
-                            reg_entry.value.* == true)
-                        {
-                            try registerValueToString(
-                                @field(
-                                    item.registers[reg_idx],
-                                    reg_enum.name,
-                                ),
-                                writer,
-                                &command_code,
-                            );
-                            reg_idx += 1;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// Write register values into the string
-fn registerValueToString(
-    parent: anytype,
-    writer: std.fs.File.Writer,
-    command_code: *InfoResponse.RegisterWw.CommandCode,
-) !void {
-    const parent_ti = @typeInfo(@TypeOf(parent)).@"struct";
-    inline for (parent_ti.fields) |child_field| {
-        if (comptime @typeInfo(child_field.type) == .optional and
-            @typeInfo(@typeInfo(child_field.type).optional.child) != .@"union")
-        {
-            try registerValueToString(
-                @field(parent, child_field.name).?,
-                writer,
-                command_code,
-            );
-        } else {
-            if (comptime @typeInfo(child_field.type) == .@"enum") {
-                const child_value = @field(parent, child_field.name);
-                if (child_field.type == InfoResponse.RegisterWw.CommandCode) {
-                    command_code.* = child_value;
-                }
-                try writer.print("{d},", .{@intFromEnum(child_value)});
-            } else if (@typeInfo(child_field.type) == .optional and
-                @typeInfo(@typeInfo(child_field.type).optional.child) == .@"union")
-            {
-                const child_value = @field(parent, child_field.name).?;
-                switch (child_value) {
-                    inline else => |_, tag| {
-                        std.log.debug("union tag {s}", .{@tagName(tag)});
-                        const union_val = @field(child_value, @tagName(tag));
-                        try writer.print("{d},", .{union_val});
-                    },
-                }
-            } else {
-                const child_value = @field(parent, child_field.name);
-                if (@typeInfo(@TypeOf(child_value)) == .float) {
-                    try writer.print("{d},", .{child_value});
-                } else try writer.print("{},", .{child_value});
-            }
-        }
-    }
-}
-
-/// Log the registers value. The registers value is logged in binary data, but
-/// saved into slice of bytes
-fn logRegisters(log_time_start: i64, timer: *std.time.Timer) !LoggingRegisters {
-    while (timer.read() < 3 * std.time.ns_per_ms) {}
-    const timestamp = @as(f64, @floatFromInt(std.time.microTimestamp() - log_time_start)) / 1_000_000;
-    timer.reset();
-    var result: LoggingRegisters = undefined;
-    result.timestamp = timestamp;
-
-    var reg_idx: usize = 0;
-    for (lines) |line| {
-        if (log_lines[line.index].status == false) continue;
-        for (line.stations) |station| {
-            if (log_lines[line.index].stations[station.index] == false) continue;
-            var reg_iterator = log_lines[line.index].registers.iterator();
-            while (reg_iterator.next()) |reg_entry| {
-                const reg_type = @TypeOf(reg_entry.key);
-                inline for (@typeInfo(reg_type).@"enum".fields) |reg_enum| {
-                    if (@intFromEnum(reg_entry.key) == reg_enum.value and
-                        reg_entry.value.* == true)
-                    {
-                        switch (reg_entry.key) {
-                            .x => {
-                                result.registers[reg_idx].x = try getRegister(
-                                    line.id,
-                                    station.id,
-                                    fba_allocator,
-                                    .X,
-                                );
-                            },
-                            .y => {
-                                result.registers[reg_idx].y = try getRegister(
-                                    line.id,
-                                    station.id,
-                                    fba_allocator,
-                                    .Y,
-                                );
-                            },
-                            .wr => {
-                                result.registers[reg_idx].wr = try getRegister(
-                                    line.id,
-                                    station.id,
-                                    fba_allocator,
-                                    .Wr,
-                                );
-                            },
-                            .ww => {
-                                result.registers[reg_idx].ww = try getRegister(
-                                    line.id,
-                                    station.id,
-                                    fba_allocator,
-                                    .Ww,
-                                );
-                            },
-                        }
-                        reg_idx += 1;
-                        break;
-                    }
-                }
-            }
-        }
-    }
-    return result;
-}
-
-/// Write the register field to a buffer. Return the number of bytes used.
-fn writeLoggingHeaders(
-    writer: anytype,
-    prefix: []const u8,
-    comptime parent: []const u8,
-    comptime ParentType: type,
-) !void {
-    inline for (@typeInfo(ParentType).@"struct".fields) |child_field| {
-        if (@typeInfo(child_field.type) == .optional and
-            @typeInfo(@typeInfo(child_field.type).optional.child) != .@"union")
-        {
-            if (parent.len == 0) {
-                try writeLoggingHeaders(
-                    writer,
-                    prefix,
-                    child_field.name,
-                    @typeInfo(child_field.type).optional.child,
-                );
-            } else {
-                try writeLoggingHeaders(
-                    writer,
-                    prefix,
-                    parent ++ "." ++ child_field.name,
-                    @typeInfo(child_field.type).optional.child,
-                );
-            }
-        } else {
-            if (parent.len == 0) {
-                try writer.print(
-                    "{s}_{s},",
-                    .{ prefix, child_field.name },
-                );
-            } else {
-                try writer.print(
-                    "{s}_{s},",
-                    .{ prefix, parent ++ "." ++ child_field.name },
-                );
-            }
         }
     }
 }
@@ -2764,12 +2290,27 @@ fn sendCommandRequest(
         a,
         u32,
     );
+    defer {
+        var remove_command: CommandRequest = CommandRequest.init(fba_allocator);
+        defer remove_command.deinit();
+        remove_command.body = .{
+            .clear_command = .{ .command_id = command_id },
+        };
+        _ = sendRequest(
+            remove_command,
+            a,
+            bool,
+        ) catch |e| {
+            std.log.debug("{any}", .{@errorReturnTrace()});
+            std.log.info("{s}", .{@errorName(e)});
+        };
+    }
     var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
     defer info_msg.deinit();
     while (true) {
         try command.checkCommandInterrupt();
         info_msg.body = .{
-            .command = .{ .command_id = command_id },
+            .command = .{ .id = command_id },
         };
         const command_status = try sendRequest(
             info_msg,
@@ -2778,7 +2319,7 @@ fn sendCommandRequest(
         );
         defer command_status.deinit();
         switch (command_status.status) {
-            .STATUS_PROCESSING, .STATUS_QUEUED => {}, // continue the loop
+            .STATUS_PROGRESSING, .STATUS_QUEUED => {}, // continue the loop
             .STATUS_COMPLETED => break,
             .STATUS_FAILED => {
                 return switch (command_status.error_response orelse return error.UnexpectedResponse) {
@@ -2825,8 +2366,20 @@ fn parseResponse(a: std.mem.Allocator, comptime T: type, msg: []const u8) !T {
                     .COMMAND_REQUEST_ERROR_OUT_OF_MEMORY => break :blk error.ServerRunningOutOfMemory,
                     .COMMAND_REQUEST_ERROR_MISSING_PARAMETER => break :blk error.MissingParameter,
                     .COMMAND_REQUEST_ERROR_INVALID_DIRECTION => break :blk error.InvalidDirection,
+                    .COMMAND_REQUEST_ERROR_INVALID_LOCATION => break :blk error.InvalidLocation,
+                    .COMMAND_REQUEST_ERROR_INVALID_DISTANCE => break :blk error.InvalidDistance,
+                    .COMMAND_REQUEST_ERROR_INVALID_CARRIER => break :blk error.InvalidCarrier,
+                    .COMMAND_REQUEST_ERROR_COMMAND_PROGRESSING => break :blk error.CommandProgressing,
+                    .COMMAND_REQUEST_ERROR_COMMAND_NOT_FOUND => break :blk error.CommandNotFound,
+                    .COMMAND_REQUEST_ERROR_MAXIMUM_AUTO_INITIALIZE_EXCEEDED => break :blk error.MaximumAutoInitializeExceeded,
+                    .COMMAND_REQUEST_ERROR_INVALID_DRIVER => break :blk error.InvalidDriver,
                     _ => unreachable,
                 }
+            },
+            .command_operation => |r| switch (r) {
+                .COMMAND_STATUS_UNSPECIFIED => break :blk error.UnexpectedResponse,
+                .COMMAND_STATUS_COMPLETED => if (T == bool) break :blk true else error.UnexpectedResponse,
+                _ => unreachable,
             },
         },
         .core => |core_response| switch (core_response.body.?) {
@@ -2849,13 +2402,14 @@ fn parseResponse(a: std.mem.Allocator, comptime T: type, msg: []const u8) !T {
                 .INFO_REQUEST_ERROR_UNSPECIFIED => error.UnexpectedResponse,
                 .INFO_REQUEST_ERROR_INVALID_LINE => error.InvalidLine,
                 .INFO_REQUEST_ERROR_INVALID_AXIS => error.InvalidAxis,
-                .INFO_REQUEST_ERROR_INVALID_STATION => error.InvalidStation,
+                .INFO_REQUEST_ERROR_INVALID_DRIVER => error.InvalidDriver,
                 .INFO_REQUEST_ERROR_CARRIER_NOT_FOUND => error.CarrierNotFound,
                 .INFO_REQUEST_ERROR_CC_LINK_DISCONNECTED => error.CCLinkDisconnected,
                 .INFO_REQUEST_ERROR_MISSING_PARAMETER => error.MissingParameter,
+                .INFO_REQUEST_ERROR_COMMAND_NOT_FOUND => error.CommandNotFound,
                 _ => unreachable,
             },
-            inline .axis, .station => |body_kind| if (@TypeOf(body_kind) == T)
+            inline .axis, .driver => |body_kind| if (@TypeOf(body_kind) == T)
                 try body_kind.dupe(allocator)
             else
                 return error.UnexpectedResponse,
