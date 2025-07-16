@@ -778,7 +778,7 @@ fn clientConnect(params: [][]const u8) !void {
     if (params[0].len != 0) {
         var iterator = std.mem.tokenizeSequence(u8, params[0], ":");
         endpoint.ip = iterator.next() orelse return error.MissingParameter;
-        if (endpoint.ip.len > 15) return error.InvalidIPAddress;
+        if (endpoint.ip.len > 63) return error.InvalidIPAddress;
         endpoint.port = try std.fmt.parseInt(
             u16,
             iterator.next() orelse return error.MissingParameter,
