@@ -757,6 +757,8 @@ fn deinitModules() void {
                     const f_type = @typeInfo(@field(@This(), fields[i].name));
                     if (comptime f_type != .void) {
                         @field(@This(), fields[i].name).deinit();
+                        const module = @field(Config.Module, fields[i].name);
+                        initialized_modules.set(module, false);
                     }
                 },
             }

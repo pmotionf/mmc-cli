@@ -2290,33 +2290,50 @@ fn sendCommandRequest(
         a,
         u32,
     );
-    defer {
-        var remove_command: CommandRequest = CommandRequest.init(fba_allocator);
-        defer remove_command.deinit();
-        remove_command.body = .{
-            .clear_command = .{ .command_id = command_id },
-        };
-        _ = sendRequest(
-            remove_command,
-            a,
-            bool,
-        ) catch |e| {
-            std.log.debug("{any}", .{@errorReturnTrace()});
-            std.log.info("{s}", .{@errorName(e)});
-        };
-    }
     var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
     defer info_msg.deinit();
     while (true) {
-        try command.checkCommandInterrupt();
+        command.checkCommandInterrupt() catch |e| {
+            var remove_command: CommandRequest = CommandRequest.init(fba_allocator);
+            defer remove_command.deinit();
+            remove_command.body = .{
+                .clear_command = .{ .command_id = command_id },
+            };
+            _ = sendRequest(
+                remove_command,
+                a,
+                bool,
+            ) catch |err| {
+                std.log.debug("{any}", .{@errorReturnTrace()});
+                std.log.info("{s}", .{@errorName(err)});
+            };
+            return e;
+        };
         info_msg.body = .{
             .command = .{ .id = command_id },
         };
-        const command_status = try sendRequest(
+        const command_status = sendRequest(
             info_msg,
             a,
             InfoResponse.Command,
-        );
+        ) catch |e| {
+            if (e == error.CommandStopped) {
+                var remove_command: CommandRequest = CommandRequest.init(fba_allocator);
+                defer remove_command.deinit();
+                remove_command.body = .{
+                    .clear_command = .{ .command_id = command_id },
+                };
+                _ = sendRequest(
+                    remove_command,
+                    a,
+                    bool,
+                ) catch |err| {
+                    std.log.debug("{any}", .{@errorReturnTrace()});
+                    std.log.info("{s}", .{@errorName(err)});
+                };
+                return e;
+            } else return e;
+        };
         defer command_status.deinit();
         switch (command_status.status) {
             .STATUS_PROGRESSING, .STATUS_QUEUED => {}, // continue the loop
