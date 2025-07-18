@@ -117,10 +117,10 @@ pub fn CircularBufferAlloc(comptime T: type) type {
     return struct {
         const Self = @This();
 
-        buffer: []T,
-        head: usize,
-        count: usize,
-        allocator: std.mem.Allocator,
+        buffer: []T = undefined,
+        head: usize = 0,
+        count: usize = 0,
+        allocator: std.mem.Allocator = undefined,
 
         /// Initialize circular buffer capacity. Capacity is not resizable.
         pub fn initCapacity(allocator: std.mem.Allocator, num: usize) !Self {
@@ -135,6 +135,8 @@ pub fn CircularBufferAlloc(comptime T: type) type {
 
         pub fn deinit(self: Self) void {
             self.allocator.free(self.buffer);
+            self.head = 0;
+            self.count = 0;
         }
 
         /// Writes item to tail of buffer. Errors if buffer is full. Does not

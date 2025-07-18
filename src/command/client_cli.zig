@@ -29,6 +29,8 @@ const Line = struct {
         carrier: u32,
     },
 
+    /// Maximum number of axis
+    pub const max = 64 * 4;
     pub const Index = Driver.Index;
     pub const Id = Driver.Id;
 };
@@ -37,11 +39,15 @@ const Axis = struct {
     driver: *const Driver,
     index: Index,
     id: Id,
+
+    /// Maximum number of axis
+    pub const max = 64 * 4 * 3;
+
     pub const Index = struct {
         line: Axis.Index.Line,
         driver: Axis.Index.Driver,
 
-        pub const Line = std.math.IntFittingRange(0, 64 * 4 * 3 - 1);
+        pub const Line = std.math.IntFittingRange(0, Axis.max - 1);
         pub const Driver = std.math.IntFittingRange(0, 2);
     };
 
@@ -49,7 +55,7 @@ const Axis = struct {
         line: Axis.Id.Line,
         driver: Axis.Id.Driver,
 
-        pub const Line = std.math.IntFittingRange(1, 64 * 4 * 3);
+        pub const Line = std.math.IntFittingRange(1, Axis.max);
         pub const Driver = std.math.IntFittingRange(1, 3);
     };
 };
@@ -60,10 +66,55 @@ const Driver = struct {
     id: Driver.Id,
     axes: []Axis,
 
-    pub const Index = std.math.IntFittingRange(0, 64 * 4 - 1);
-    pub const Id = std.math.IntFittingRange(1, 64 * 4);
+    /// Maximum number of driver
+    pub const max = 64 * 4;
+
+    pub const Index = std.math.IntFittingRange(0, Driver.max - 1);
+    pub const Id = std.math.IntFittingRange(1, Driver.max);
 };
 
+const Log = struct {
+    lines: []Log.Config = &.{},
+    data: CircularBufferAlloc(Data) = .{},
+    /// Logging configuration for each line. Only the latest configuration
+    /// will be used for logging process.
+    pub const Config = struct {
+        /// Line ID to be logged
+        line_id: Line.Id,
+        /// Flag for logging axis info for the line.
+        axis: bool = false,
+        /// Flag for logging driver info for the line.
+        driver: bool = false,
+        /// Flag for logging carrier info for the line.
+        carrier: bool = false,
+        /// Axis range to be logged of the line.
+        axis_id_range: struct {
+            start: Axis.Id.Line = 0,
+            end: Axis.Id.Line = 0,
+        },
+    };
+
+    pub const Data = struct {
+        timestamp: f64,
+        axes: [Axis.max]InfoResponse.Axes,
+        drivers: [Driver.max]InfoResponse.Drivers,
+        carriers: [Axis.max]InfoResponse.Carrier,
+    };
+
+    /// Initialize the memory for storing logging flag. Initialized by client_cli
+    /// arena allocator.
+    fn init(
+        line: std.math.IntFittingRange(0, Line.max - 1),
+    ) !Log {
+        return Log{
+            .lines = allocator.alloc(Log.Config, line),
+            .data = .{},
+        };
+    }
+    pub const Kind = enum { axis, driver, carrier };
+};
+
+var log: Log = .{};
 var lines: []Line = &.{};
 
 // TODO: Decide the value properly
@@ -749,6 +800,26 @@ pub fn init(c: Config) !void {
         .execute = &clientWaitAxisEmpty,
     });
     errdefer command.registry.orderedRemove("WAIT_AXIS_EMPTY");
+    try command.registry.put(.{
+        .name = "ADD_LOG_INFO",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "range" },
+            .{ .name = "kinds" },
+        },
+        .short_description = "Add info logging configuration.",
+        .long_description =
+        \\Add an info logging configuration. This command overwrites the existing
+        \\logging configuration for the specified line, if any. The "kinds" stands
+        \\for the kind of info to be logged, specified by either "driver", "axis",
+        \\or "carrier". "Kinds" can be provided as comma separated values, e.g.,
+        \\"driver,axis" for logging driver and axis info of the specified range. 
+        \\The range is the inclusive axis range, and shall be provided with 
+        \\colon separated value, e.g. "1:9" to log from axis 1 to 9.
+        ,
+        .execute = &clientAddLogInfo,
+    });
+    errdefer command.registry.orderedRemove("ADD_LOG_INFO");
 }
 
 pub fn deinit() void {
@@ -2295,6 +2366,47 @@ fn clientWaitAxisEmpty(params: [][]const u8) !void {
             break;
         }
     }
+}
+
+fn clientAddLogInfo(params: [][]const u8) !void {
+    const line_name = params[0];
+    const line_idx = try matchLine(lines, line_name);
+    const line = lines[line_idx];
+    var range_iterator = std.mem.tokenizeSequence(u8, params[1], ":");
+    var log_config: Log.Config = .{
+        .line_id = line.id,
+        .axis_id_range = .{
+            .start = try std.fmt.parseInt(
+                Axis.Id.Line,
+                range_iterator.next() orelse return error.MissingParameter,
+                0,
+            ),
+            .end = try std.fmt.parseInt(
+                Axis.Id.Line,
+                range_iterator.next() orelse return error.MissingParameter,
+                0,
+            ),
+        },
+    };
+    if (log_config.axis_id_range.start < 1 and
+        log_config.axis_id_range.start > Axis.max)
+        return error.InvalidAxis;
+    if (log_config.axis_id_range.end < 1 and
+        log_config.axis_id_range.end > Axis.max)
+        return error.InvalidAxis;
+    var kind_iterator = std.mem.tokenizeSequence(u8, params[2], ",");
+    while (kind_iterator.next()) |kind| {
+        const ti = @typeInfo(Log.Kind).@"enum";
+        var found = false;
+        inline for (ti.fields) |field| {
+            if (std.ascii.eqlIgnoreCase(field.name, kind)) {
+                @field(log_config, field.name) = true;
+                found = true;
+            }
+        }
+        if (found == false) return error.InvalidKind;
+    }
+    log.lines[line_idx] = log_config;
 }
 
 fn matchLine(_lines: []Line, name: []const u8) !usize {
