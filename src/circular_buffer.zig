@@ -133,7 +133,7 @@ pub fn CircularBufferAlloc(comptime T: type) type {
             };
         }
 
-        pub fn deinit(self: Self) void {
+        pub fn deinit(self: *Self) void {
             self.allocator.free(self.buffer);
             self.head = 0;
             self.count = 0;
