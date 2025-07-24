@@ -24,6 +24,10 @@ const Line = struct {
     name: []u8,
     velocity: u5,
     acceleration: u8,
+    length: struct {
+        axis: f32,
+        carrier: f32,
+    },
 
     pub const Index = Driver.Index;
     pub const Id = Driver.Id;
@@ -951,6 +955,7 @@ fn getLineConfig() !void {
 
     const line_config = response.lines.items;
     lines = try allocator.alloc(Line, line_config.len);
+    errdefer allocator.free(lines);
     for (line_config, 0..) |line, line_idx| {
         lines[line_idx].axes = try allocator.alloc(
             Axis,
@@ -968,6 +973,12 @@ fn getLineConfig() !void {
         lines[line_idx].velocity = 12;
         lines[line_idx].index = @intCast(line_idx);
         lines[line_idx].id = @intCast(line_idx + 1);
+        if (line.length) |length| {
+            lines[line_idx].length = .{
+                .axis = length.axis,
+                .carrier = length.carrier,
+            };
+        } else return error.MissingField;
         var num_axes: usize = 0;
         @memcpy(lines[line_idx].name, line.name.getSlice());
         for (0..@intCast(@divFloor(line.axes - 1, 3) + 1)) |driver_idx| {
@@ -1724,6 +1735,7 @@ fn clientWaitIsolate(params: [][]const u8) !void {
         );
         defer fba.reset();
         defer carrier.deinit();
+        std.log.info("carrier state on wait isolate: {s}", .{@tagName(carrier.state)});
         if (carrier.state == .CARRIER_STATE_BACKWARD_ISOLATION_COMPLETED or
             carrier.state == .CARRIER_STATE_FORWARD_ISOLATION_COMPLETED) return;
     }
@@ -1763,6 +1775,7 @@ fn clientWaitMoveCarrier(params: [][]const u8) !void {
         );
         defer fba.reset();
         defer carrier.deinit();
+        std.log.info("carrier state on wait move: {s}", .{@tagName(carrier.state)});
         if (carrier.state == .CARRIER_STATE_POS_MOVE_COMPLETED or
             carrier.state == .CARRIER_STATE_SPD_MOVE_COMPLETED) return;
     }
@@ -1974,6 +1987,7 @@ fn clientCarrierPushForward(params: [][]const u8) !void {
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
     defer command_msg.deinit();
     var command_axis: ?u32 = null;
+
     if (axis_id) |id| {
         if (id == 0 or id > line.axes.len) return error.InvalidAxis;
         command_axis = @intCast(id);
