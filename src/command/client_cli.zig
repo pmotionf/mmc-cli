@@ -1991,6 +1991,20 @@ fn clientCarrierPushForward(params: [][]const u8) !void {
     if (axis_id) |id| {
         if (id == 0 or id > line.axes.len) return error.InvalidAxis;
         command_axis = @intCast(id);
+        command_msg.body = .{
+            .move_carrier = .{
+                .line_id = @intCast(line.id),
+                .carrier_id = carrier_id,
+                .velocity = @intCast(lines[line_idx].velocity),
+                .acceleration = @intCast(lines[line_idx].acceleration),
+                .target = .{
+                    .location = line.length.axis * @as(f32, @floatFromInt(id - 1)) + 150.0,
+                },
+                .disable_cas = true,
+                .control_kind = .CONTROL_POSITION,
+            },
+        };
+        try sendCommandRequest(command_msg, fba_allocator);
     }
     command_msg.body = .{
         .push_carrier = .{
@@ -2023,6 +2037,20 @@ fn clientCarrierPushBackward(params: [][]const u8) !void {
     if (axis_id) |id| {
         if (id == 0 or id > line.axes.len) return error.InvalidAxis;
         command_axis = @intCast(id);
+        command_msg.body = .{
+            .move_carrier = .{
+                .line_id = @intCast(line.id),
+                .carrier_id = carrier_id,
+                .velocity = @intCast(lines[line_idx].velocity),
+                .acceleration = @intCast(lines[line_idx].acceleration),
+                .target = .{
+                    .location = line.length.axis * @as(f32, @floatFromInt(id - 1)) + 150.0,
+                },
+                .disable_cas = true,
+                .control_kind = .CONTROL_POSITION,
+            },
+        };
+        try sendCommandRequest(command_msg, fba_allocator);
     }
     command_msg.body = .{
         .push_carrier = .{
