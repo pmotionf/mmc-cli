@@ -25,8 +25,8 @@ const Line = struct {
     velocity: u5,
     acceleration: u8,
     length: struct {
-        axis: f32,
-        carrier: f32,
+        axis: u32,
+        carrier: u32,
     },
 
     pub const Index = Driver.Index;
@@ -975,9 +975,14 @@ fn getLineConfig() !void {
         lines[line_idx].id = @intCast(line_idx + 1);
         if (line.length) |length| {
             lines[line_idx].length = .{
-                .axis = length.axis,
-                .carrier = length.carrier,
+                .axis = @intFromFloat(length.axis * 1000),
+                .carrier = @intFromFloat(length.carrier * 1000),
             };
+            std.log.info("line {} axis length {} carrier length {}", .{
+                line_idx + 1,
+                lines[line_idx].length.axis,
+                lines[line_idx].length.carrier,
+            });
         } else return error.MissingField;
         var num_axes: usize = 0;
         @memcpy(lines[line_idx].name, line.name.getSlice());
@@ -1735,7 +1740,6 @@ fn clientWaitIsolate(params: [][]const u8) !void {
         );
         defer fba.reset();
         defer carrier.deinit();
-        std.log.info("carrier state on wait isolate: {s}", .{@tagName(carrier.state)});
         if (carrier.state == .CARRIER_STATE_BACKWARD_ISOLATION_COMPLETED or
             carrier.state == .CARRIER_STATE_FORWARD_ISOLATION_COMPLETED) return;
     }
@@ -1756,6 +1760,7 @@ fn clientWaitMoveCarrier(params: [][]const u8) !void {
     var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
     defer info_msg.deinit();
     while (true) {
+        defer fba.reset();
         if (timeout != 0 and
             wait_timer.read() > timeout * std.time.ns_per_ms)
             return error.WaitTimeout;
@@ -1768,14 +1773,17 @@ fn clientWaitMoveCarrier(params: [][]const u8) !void {
                 },
             },
         };
-        const carrier = try sendRequest(
+        const carrier = sendRequest(
             info_msg,
             fba_allocator,
             InfoResponse.Carrier,
-        );
-        defer fba.reset();
+        ) catch |e| {
+            switch (e) {
+                error.CarrierNotFound => continue,
+                else => return e,
+            }
+        };
         defer carrier.deinit();
-        std.log.info("carrier state on wait move: {s}", .{@tagName(carrier.state)});
         if (carrier.state == .CARRIER_STATE_POS_MOVE_COMPLETED or
             carrier.state == .CARRIER_STATE_SPD_MOVE_COMPLETED) return;
     }
@@ -1989,6 +1997,10 @@ fn clientCarrierPushForward(params: [][]const u8) !void {
     var command_axis: ?u32 = null;
 
     if (axis_id) |id| {
+        std.log.info("id: {}, target: {}", .{
+            id,
+            line.length.axis * (id - 1) + 150,
+        });
         if (id == 0 or id > line.axes.len) return error.InvalidAxis;
         command_axis = @intCast(id);
         command_msg.body = .{
@@ -1998,7 +2010,7 @@ fn clientCarrierPushForward(params: [][]const u8) !void {
                 .velocity = @intCast(lines[line_idx].velocity),
                 .acceleration = @intCast(lines[line_idx].acceleration),
                 .target = .{
-                    .location = line.length.axis * @as(f32, @floatFromInt(id - 1)) + 150.0,
+                    .location = @as(f32, @floatFromInt(line.length.axis * (id - 1))) + 150.0,
                 },
                 .disable_cas = true,
                 .control_kind = .CONTROL_POSITION,
@@ -2044,7 +2056,7 @@ fn clientCarrierPushBackward(params: [][]const u8) !void {
                 .velocity = @intCast(lines[line_idx].velocity),
                 .acceleration = @intCast(lines[line_idx].acceleration),
                 .target = .{
-                    .location = line.length.axis * @as(f32, @floatFromInt(id - 1)) + 150.0,
+                    .location = @as(f32, @floatFromInt(line.length.axis * (id - 1))) - 150.0,
                 },
                 .disable_cas = true,
                 .control_kind = .CONTROL_POSITION,
