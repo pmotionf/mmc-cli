@@ -8,7 +8,7 @@ const CircularBufferAlloc =
 var arena: std.heap.ArenaAllocator = undefined;
 var allocator: std.mem.Allocator = undefined;
 var line_names: [][]u8 = undefined;
-var line_speeds: []u5 = undefined;
+var line_speeds: []u6 = undefined;
 var line_accelerations: []u8 = undefined;
 
 const Direction = mcl.Direction;
@@ -59,7 +59,7 @@ pub fn init(c: Config) !void {
     try mcl.init(allocator, .{ .lines = c.lines });
 
     line_names = try allocator.alloc([]u8, c.line_names.len);
-    line_speeds = try allocator.alloc(u5, c.lines.len);
+    line_speeds = try allocator.alloc(u6, c.lines.len);
     line_accelerations = try allocator.alloc(u8, c.lines.len);
     log_lines = try allocator.alloc(LogLine, c.lines.len);
     for (0..c.lines.len) |i| {
@@ -112,7 +112,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Set the speed of carrier movement for a line. The line is referenced
         \\by its name. The speed must be greater than 0 and less than or equal
-        \\to 3.0 meters-per-second.
+        \\to 6.0 meters-per-second.
         ,
         .execute = &mclSetSpeed,
     });
@@ -127,7 +127,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Set the acceleration of carrier movement for a line. The line is
         \\referenced by its name. The acceleration must be greater than 0 and
-        \\less than or equal to 19.6 meters-per-second-squared.
+        \\less than or equal to 24.5 meters-per-second-squared.
         ,
         .execute = &mclSetAcceleration,
     });
@@ -1201,7 +1201,7 @@ fn mclWaitIsolate(params: [][]const u8) !void {
 fn mclSetSpeed(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_speed = try std.fmt.parseFloat(f32, params[1]);
-    if (carrier_speed <= 0.0 or carrier_speed > 3.0) return error.InvalidSpeed;
+    if (carrier_speed <= 0.0 or carrier_speed > 6.0) return error.InvalidSpeed;
 
     const line_idx: usize = try matchLine(line_names, line_name);
     line_speeds[line_idx] = @intFromFloat(carrier_speed * 10.0);
@@ -1214,7 +1214,7 @@ fn mclSetSpeed(params: [][]const u8) !void {
 fn mclSetAcceleration(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_acceleration = try std.fmt.parseFloat(f32, params[1]);
-    if (carrier_acceleration <= 0.0 or carrier_acceleration > 19.6)
+    if (carrier_acceleration <= 0.0 or carrier_acceleration > 24.5)
         return error.InvalidAcceleration;
 
     const line_idx: usize = try matchLine(line_names, line_name);
