@@ -22,7 +22,7 @@ const Line = struct {
     axes: []Axis,
     drivers: []Driver,
     name: []u8,
-    velocity: u5,
+    velocity: u6,
     acceleration: u8,
     length: struct {
         axis: u32,
@@ -141,7 +141,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Set the speed of carrier movement for a line. The line is referenced
         \\by its name. The speed must be greater than 0 and less than or equal
-        \\to 3.0 meters-per-second.
+        \\to 6.0 meters-per-second.
         ,
         .execute = &clientSetSpeed,
     });
@@ -156,7 +156,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Set the acceleration of carrier movement for a line. The line is
         \\referenced by its name. The acceleration must be greater than 0 and
-        \\less than or equal to 19.6 meters-per-second-squared.
+        \\less than or equal to 24.5 meters-per-second-squared.
         ,
         .execute = &clientSetAcceleration,
     });
@@ -169,7 +169,7 @@ pub fn init(c: Config) !void {
         .short_description = "Get the speed of carrier movement for a line.",
         .long_description =
         \\Get the speed of carrier movement for a line. The line is referenced
-        \\by its name. Acceleration is in meters-per-second-squared.
+        \\by name. Speed is in meters-per-second.
         ,
         .execute = &clientGetSpeed,
     });
@@ -182,8 +182,7 @@ pub fn init(c: Config) !void {
         .short_description = "Get the acceleration of carrier movement.",
         .long_description =
         \\Get the acceleration of carrier movement for a line. The line is
-        \\referenced by its name. The acceleration is a whole integer number
-        \\between 1 and 100, inclusive.
+        \\referenced by name. Acceleration is in meters-per-second-squared.
         ,
         .execute = &clientGetAcceleration,
     });
@@ -851,7 +850,7 @@ fn clientDisconnect(_: [][]const u8) !void {
 fn clientSetSpeed(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_speed = try std.fmt.parseFloat(f32, params[1]);
-    if (carrier_speed <= 0.0 or carrier_speed > 3.0) return error.InvalidSpeed;
+    if (carrier_speed <= 0.0 or carrier_speed > 6.0) return error.InvalidSpeed;
 
     const line_idx = try matchLine(lines, line_name);
     lines[line_idx].velocity = @intFromFloat(carrier_speed * 10.0);
@@ -864,7 +863,7 @@ fn clientSetSpeed(params: [][]const u8) !void {
 fn clientSetAcceleration(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_acceleration = try std.fmt.parseFloat(f32, params[1]);
-    if (carrier_acceleration <= 0.0 or carrier_acceleration > 19.6)
+    if (carrier_acceleration <= 0.0 or carrier_acceleration > 24.5)
         return error.InvalidAcceleration;
 
     const line_idx = try matchLine(lines, line_name);
