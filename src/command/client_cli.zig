@@ -77,7 +77,11 @@ const Driver = struct {
 
 const Log = struct {
     lines: []Log.Config = &.{},
+    duration: f64 = 0,
+    path: []const u8 = &.{},
     data: CircularBufferAlloc(Data) = .{},
+
+    pub const Kind = enum { axis, driver };
     /// Logging configuration for each line. Only the latest configuration
     /// will be used for logging process.
     pub const Config = struct {
@@ -103,22 +107,53 @@ const Log = struct {
         drivers: [Client.Driver.max]Data.Driver =
             [_]Data.Driver{std.mem.zeroInit(Data.Driver, .{})} ** Client.Driver.max,
 
+        pub const Axis = struct {
+            hall: struct { back: bool, front: bool },
+            motor_enabled: bool,
+            pulling: bool,
+            pushing: bool,
+            carrier: Data.Axis.Carrier,
+            errors: struct { overcurrent: bool },
+
+            pub const Carrier = struct {
+                id: Client.Axis.Id.Line,
+                position: f32,
+                state: InfoResponse.Carrier.Info.State,
+                cas: struct { enabled: bool, triggered: bool },
+            };
+        };
+
+        pub const Driver = struct {
+            connected: bool,
+            available: bool,
+            servo_enabled: bool,
+            stopped: bool,
+            paused: bool,
+            errors: struct {
+                control_loop_max_time_exceeded: bool,
+                power: struct { overvoltage: bool, undervoltage: bool },
+                inverter_overheat: bool,
+                comm: struct { from_prev: bool, from_next: bool },
+            },
+        };
+
         /// Parse raw axis info and error into this type. Write the data to
         /// the context and return the next data index.
         pub fn parseAxis(
             self: *Log.Data,
             infos: []InfoResponse.Axis.Info,
             errors: []InfoResponse.Axis.Error,
+            carriers: []InfoResponse.Carrier.Info,
             start_idx: usize,
         ) !usize {
             var index = start_idx;
             if (infos.len != errors.len) return error.InvalidMessage;
             for (infos, errors) |info, err| {
                 self.axes[index] = .{
-                    .motor_enabled = false,
-                    .pulling = false,
-                    .pushing = false,
-                    .carrier = std.mem.zeroInit(Data.Carrier, .{}),
+                    .motor_enabled = info.motor_enabled,
+                    .pulling = info.waiting_pull,
+                    .pushing = info.waiting_push,
+                    .carrier = std.mem.zeroInit(Data.Axis.Carrier, .{}),
                     .errors = .{
                         .overcurrent = err.overcurrent,
                     },
@@ -127,8 +162,29 @@ const Log = struct {
                         .front = hall.front,
                     } else return error.InvalidMessage,
                 };
-
                 index += 1;
+            }
+            for (carriers) |carrier| {
+                if (carrier.axis) |axis| {
+                    const ti = @typeInfo(@TypeOf(axis)).@"struct";
+                    inline for (ti.fields) |field| {
+                        const axis_idx = if (@typeInfo(field.type) == .optional) b: {
+                            if (@field(axis, field.name)) |idx|
+                                break :b idx - 1
+                            else
+                                break;
+                        } else @field(axis, field.name);
+                        self.axes[start_idx + axis_idx].carrier = .{
+                            .id = @intCast(carrier.id),
+                            .position = carrier.position,
+                            .state = carrier.state,
+                            .cas = if (carrier.cas) |cas| .{
+                                .enabled = cas.enabled,
+                                .triggered = cas.triggered,
+                            } else return error.InvalidMessage,
+                        };
+                    }
+                } else return error.InvalidMessage;
             }
             return index;
         }
@@ -196,49 +252,21 @@ const Log = struct {
                 } else return error.InvalidMessage;
             }
         }
-
-        pub const Axis = struct {
-            hall: struct { back: bool, front: bool },
-            motor_enabled: bool,
-            pulling: bool,
-            pushing: bool,
-            carrier: Data.Carrier,
-            errors: struct { overcurrent: bool },
-        };
-
-        pub const Driver = struct {
-            connected: bool,
-            available: bool,
-            servo_enabled: bool,
-            stopped: bool,
-            paused: bool,
-            errors: struct {
-                control_loop_max_time_exceeded: bool,
-                power: struct { overvoltage: bool, undervoltage: bool },
-                inverter_overheat: bool,
-                comm: struct { from_prev: bool, from_next: bool },
-            },
-        };
-
-        pub const Carrier = struct {
-            id: Client.Axis.Id.Line,
-            position: f32,
-            state: InfoResponse.Carrier.Info.State,
-            cas: struct { enabled: bool, triggered: bool },
-        };
     };
-
-    pub const Kind = enum { axis, driver, carrier };
 
     /// Initialize the memory for storing logging flag. Initialized by client_cli
     /// arena allocator.
-    fn init(
+    pub fn init(
         line: std.math.IntFittingRange(0, Line.max - 1),
     ) !Log {
         return Log{
-            .lines = allocator.alloc(Log.Config, line),
+            .lines = try allocator.alloc(Log.Config, line),
             .data = .{},
         };
+    }
+
+    fn deinit(self: *Log) void {
+        allocator.free(self.lines);
     }
 
     /// Request info and write the data to the log
@@ -246,36 +274,37 @@ const Log = struct {
         var data: Log.Data = .{};
         var axis_idx: usize = 0;
         var driver_idx: usize = 0;
-        var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
+        var info_msg: InfoRequest = InfoRequest.init(log_allocator);
         data.timestamp = timestamp;
         for (self.lines) |line| {
-            defer fba.reset();
+            defer log_fba.reset();
+            if (!line.axis and !line.driver) continue;
+            const start_axis = lines[line.id - 1].axes[line.axis_id_range.start - 1];
+            const end_axis = lines[line.id - 1].axes[line.axis_id_range.end - 1];
             info_msg.body = .{
                 .complete = .{
                     .line_id = @intCast(line.id),
                     .range = .{
-                        .start_id = @intCast(line.axis_id_range.start),
-                        .end_id = @intCast(line.axis_id_range.end),
+                        .start_id = @intCast(start_axis.driver.id),
+                        .end_id = @intCast(end_axis.driver.id),
                     },
                 },
             };
             const complete_info = try sendRequest(
                 info_msg,
-                fba_allocator,
+                log_allocator,
                 InfoResponse.Complete,
             );
             axis_idx = try data.parseAxis(
                 complete_info.axis_infos.items,
                 complete_info.axis_errors.items,
+                complete_info.carrier_infos.items,
                 axis_idx,
             );
             driver_idx = try data.parseDriver(
                 complete_info.driver_infos.items,
                 complete_info.driver_errors.items,
                 driver_idx,
-            );
-            try data.parseCarrier(
-                complete_info.carrier_infos.items,
             );
         }
         self.data.writeItemOverwrite(data);
@@ -307,12 +336,12 @@ const Log = struct {
             } else {
                 if (parent.len == 0)
                     try writer.print(
-                        "{s}_{s}",
+                        "{s}_{s},",
                         .{ prefix, field.name },
                     )
                 else
                     try writer.print(
-                        "{s}_{s}",
+                        "{s}_{s},",
                         .{ prefix, parent ++ "." ++ field.name },
                     );
             }
@@ -327,16 +356,16 @@ const Log = struct {
             else {
                 if (@typeInfo(field.type) == .optional) {
                     if (@field(parent, field.name)) |value|
-                        try writer.print("{d}", .{value})
+                        try writer.print("{d},", .{value})
                     else
-                        try writer.write("None");
+                        try writer.write("None,");
                 } else if (@typeInfo(field.type) == .@"enum") {
                     try writer.print(
-                        "{d}",
+                        "{d},",
                         .{@intFromEnum(@field(parent, field.name))},
                     );
                 } else try writer.print(
-                    "{d},",
+                    "{},",
                     .{@field(parent, field.name)},
                 );
             }
@@ -345,14 +374,17 @@ const Log = struct {
 
     fn write(writer: std.fs.File.Writer) !void {
         // Write header for the logging file
+        try writer.writeAll("timestamp,");
+        var num_of_drivers: usize = 0;
+        var num_of_axis: usize = 0;
         for (log.lines) |line| {
             var buf: [64]u8 = undefined;
+            if (!line.axis and !line.driver) continue;
+            const start_axis = lines[line.id - 1].axes[line.axis_id_range.start - 1];
+            const end_axis = lines[line.id - 1].axes[line.axis_id_range.end - 1];
             if (line.driver) {
-                // TODO: Where do we define the number of axis per driver?
-                const num_of_axis = 3;
-                const start_id = line.axis_id_range.start / num_of_axis;
-                const end_id = line.axis_id_range.end / num_of_axis;
-                for (start_id..end_id + 1) |id|
+                num_of_drivers += 1;
+                for (start_axis.driver.id..end_axis.driver.id + 1) |id|
                     try writeHeaders(
                         writer,
                         try std.fmt.bufPrint(
@@ -365,7 +397,8 @@ const Log = struct {
                     );
             }
             if (line.axis) {
-                for (line.axis_id_range.start..line.axis_id_range.end + 1) |id|
+                for (start_axis.id.line..end_axis.id.line + 1) |id| {
+                    num_of_axis += 1;
                     try writeHeaders(
                         writer,
                         try std.fmt.bufPrint(
@@ -376,24 +409,35 @@ const Log = struct {
                         "",
                         Log.Data.Axis,
                     );
+                }
             }
         }
         // Write the data to the logging file
         while (log.data.readItem()) |item| {
             try writer.writeByte('\n');
-            try writer.print("{d},", item.timestamp);
-            for (item.drivers) |driver| try writeValues(writer, driver);
-            for (item.axes) |axis| try writeValues(writer, axis);
+            try writer.print("{d},", .{item.timestamp});
+            for (0..num_of_drivers) |i| {
+                try writeValues(writer, item.drivers[i]);
+            }
+            for (0..num_of_axis) |i| {
+                try writeValues(writer, item.axes[i]);
+            }
         }
     }
 
     /// Handler for start the logging process
-    fn start(params: [][]const u8) !void {
-        const log_duration = try std.fmt.parseFloat(f64, params[0]);
+    fn start() !void {
+        errdefer {
+            log.duration = 0;
+            allocator.free(log.path);
+        }
+        defer {
+            std.log.debug("Logging stopped", .{});
+        }
         // Assumption: The register from mcl is updated every 3 ms;
         const mcl_update = 3;
         const logging_size_float =
-            log_duration * @as(f64, @floatFromInt(std.time.ms_per_s)) / mcl_update;
+            log.duration * @as(f64, @floatFromInt(std.time.ms_per_s)) / mcl_update;
         if (std.math.isNan(logging_size_float) or
             std.math.isInf(logging_size_float) or
             !std.math.isFinite(logging_size_float)) return error.InvalidDuration;
@@ -405,34 +449,8 @@ const Log = struct {
             }
         }
         if (!initialized) return error.NoConfiguredLogging;
-        const path = params[1];
-        var path_buffer: [512]u8 = undefined;
-        const file_path = if (path.len > 0) path else p: {
-            var timestamp: u64 = @intCast(std.time.timestamp());
-            timestamp += std.time.s_per_hour * 9;
-            const days_since_epoch: i32 = @intCast(timestamp / std.time.s_per_day);
-            const ymd =
-                chrono.date.YearMonthDay.fromDaysSinceUnixEpoch(days_since_epoch);
-            const time_day: u32 = @intCast(timestamp % std.time.s_per_day);
-            const time = try chrono.Time.fromNumSecondsFromMidnight(
-                time_day,
-                0,
-            );
-            break :p try std.fmt.bufPrint(
-                &path_buffer,
-                "mmc-register-{}.{:0>2}.{:0>2}-{:0>2}.{:0>2}.{:0>2}.csv",
-                .{
-                    ymd.year,
-                    ymd.month.number(),
-                    ymd.day,
-                    time.hour(),
-                    time.minute(),
-                    time.second(),
-                },
-            );
-        };
-        std.log.info("The registers will be logged to {s}", .{file_path});
-        const log_file = try std.fs.cwd().createFile(file_path, .{});
+        std.log.info("The registers will be logged to {s}", .{log.path});
+        const log_file = try std.fs.cwd().createFile(log.path, .{});
         defer log_file.close();
         const logging_size = @as(usize, @intFromFloat(logging_size_float));
         log.data = try CircularBufferAlloc(Log.Data).initCapacity(allocator, logging_size);
@@ -441,9 +459,13 @@ const Log = struct {
         while (true) {
             // Check if there is an error after the log started, including the
             // cancellation
+            // TODO: The following method require to CTRL+C twice. Find a better
+            //       solution.
+            command.checkCommandInterrupt() catch break;
             while (timer.read() < mcl_update * std.time.ns_per_ms) {}
             const timestamp = std.time.microTimestamp() - log_time_start;
-            try log.get(@floatFromInt(@divFloor(timestamp, std.time.ms_per_s)));
+            timer.reset();
+            log.get(@floatFromInt(@divFloor(timestamp, std.time.ms_per_s))) catch break;
         }
         const log_writer = log_file.writer();
         try write(log_writer);
@@ -458,6 +480,11 @@ var lines: []Line = &.{};
 var fba_buffer: [1_024_000]u8 = undefined;
 var fba = std.heap.FixedBufferAllocator.init(&fba_buffer);
 const fba_allocator = fba.allocator();
+
+// TODO: Calculate the memory required for logging
+var log_buffer: [1_024_000]u8 = undefined;
+var log_fba = std.heap.FixedBufferAllocator.init(&log_buffer);
+const log_allocator = log_fba.allocator();
 
 var arena: std.heap.ArenaAllocator = undefined;
 var allocator: std.mem.Allocator = undefined;
@@ -1148,11 +1175,11 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Add an info logging configuration. This command overwrites the existing
         \\logging configuration for the specified line, if any. The "kinds" stands
-        \\for the kind of info to be logged, specified by either "driver", "axis",
-        \\or "carrier". "Kinds" can be provided as comma separated values, e.g.,
-        \\"driver,axis" for logging driver and axis info of the specified range. 
-        \\The range is the inclusive axis range, and shall be provided with 
-        \\colon separated value, e.g. "1:9" to log from axis 1 to 9.
+        \\for the kind of info to be logged, specified by either "driver" or "axis". 
+        \\"Kinds" can be provided as comma separated values, e.g., "driver,axis" 
+        \\for logging driver and axis info of the specified range. The range is 
+        \\the inclusive axis range, and shall be provided with colon separated 
+        \\value, e.g. "1:9" to log from axis 1 to 9.
         ,
         .execute = &clientAddLogInfo,
     });
@@ -1162,7 +1189,6 @@ pub fn init(c: Config) !void {
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "duration" },
             .{ .name = "path", .optional = true },
-            .{ .name = "kinds" },
         },
         .short_description = "Add info logging configuration.",
         .long_description =
@@ -1379,9 +1405,12 @@ fn getLineConfig() !void {
     defer response.deinit();
 
     const line_config = response.lines.items;
+    log = try Log.init(@intCast(line_config.len));
+    errdefer log.deinit();
     lines = try allocator.alloc(Line, line_config.len);
     errdefer allocator.free(lines);
     for (line_config, 0..) |line, line_idx| {
+        log.lines[line_idx].id = @intCast(line_idx + 1);
         lines[line_idx].axes = try allocator.alloc(
             Axis,
             @intCast(line.axes),
@@ -1596,12 +1625,14 @@ fn clientCarrierInfo(params: [][]const u8) !void {
             .param = .{ .carrier_ids = .{ .ids = ids } },
         },
     };
-    const carrier = try sendRequest(
+    var carriers = try sendRequest(
         info_msg,
         fba_allocator,
         InfoResponse.Carriers,
     );
-
+    if (carriers.carriers.items.len != 1)
+        return error.InvalidMessage;
+    const carrier = carriers.carriers.pop() orelse return error.InvalidMessage;
     _ = try api.nestedWrite(
         "Carrier",
         carrier,
@@ -2813,7 +2844,37 @@ fn clientAddLogInfo(params: [][]const u8) !void {
 }
 
 fn clientStartLogInfo(params: [][]const u8) !void {
-    const log_thread = try std.Thread.spawn(.{}, Log.start, .{params});
+    errdefer {
+        log.duration = 0;
+        allocator.free(log.path);
+    }
+    log.duration = try std.fmt.parseFloat(f64, params[0]);
+    const path = params[1];
+    log.path = if (path.len > 0) path else p: {
+        var timestamp: u64 = @intCast(std.time.timestamp());
+        timestamp += std.time.s_per_hour * 9;
+        const days_since_epoch: i32 = @intCast(timestamp / std.time.s_per_day);
+        const ymd =
+            chrono.date.YearMonthDay.fromDaysSinceUnixEpoch(days_since_epoch);
+        const time_day: u32 = @intCast(timestamp % std.time.s_per_day);
+        const time = try chrono.Time.fromNumSecondsFromMidnight(
+            time_day,
+            0,
+        );
+        break :p try std.fmt.allocPrint(
+            allocator,
+            "mmc-register-{}.{:0>2}.{:0>2}-{:0>2}.{:0>2}.{:0>2}.csv",
+            .{
+                ymd.year,
+                ymd.month.number(),
+                ymd.day,
+                time.hour(),
+                time.minute(),
+                time.second(),
+            },
+        );
+    };
+    const log_thread = try std.Thread.spawn(.{}, Log.start, .{});
     log_thread.detach();
 }
 
@@ -2935,12 +2996,6 @@ fn parseResponse(a: std.mem.Allocator, comptime T: type, msg: []const u8) !T {
         try api.mmc_msg.Response.decode(msg, a);
 
     defer response.deinit();
-    switch (response.body.?) {
-        .command => std.log.debug("{any}", .{response.body.?.command}),
-        .core => std.log.debug("{any}", .{response.body.?.core}),
-        .info => std.log.debug("{any}", .{response.body.?.info}),
-        .request_error => std.log.debug("{any}", .{response.body.?.request_error}),
-    }
     return switch (response.body.?) {
         .command => |command_response| blk: switch (command_response.body.?) {
             .command_id => |r| if (@TypeOf(r) == T) break :blk r else error.UnexpectedResponse,
@@ -2999,7 +3054,17 @@ fn parseResponse(a: std.mem.Allocator, comptime T: type, msg: []const u8) !T {
                 .INFO_REQUEST_ERROR_COMMAND_NOT_FOUND => error.CommandNotFound,
                 _ => unreachable,
             },
-            inline .axis, .driver => |body_kind| if (@TypeOf(body_kind) == T)
+            inline .axis,
+            .axis_info,
+            .axis_error,
+            .driver,
+            .driver_info,
+            .driver_error,
+            .extensive_info,
+            .extensive_error,
+            .complete,
+            .carrier,
+            => |body_kind| if (@TypeOf(body_kind) == T)
                 try body_kind.dupe(allocator)
             else
                 return error.UnexpectedResponse,
@@ -3036,7 +3101,7 @@ fn isSocketEventOccurred(socket: network.Socket, event: i16, timeout: i32) !bool
     if (status == 0)
         return false
     else {
-        std.log.debug("revents: {}", .{poll_fd[0].revents});
+        // std.log.debug("revents: {}", .{poll_fd[0].revents});
         // POLL.HUP: the peer gracefully close the socket
         if (poll_fd[0].revents & std.posix.POLL.HUP == std.posix.POLL.HUP)
             return error.ConnectionResetByPeer
@@ -3092,10 +3157,10 @@ fn receive(socket: network.Socket, a: std.mem.Allocator) ![]const u8 {
         try disconnect();
         return error.ConnectionClosed;
     }
-    std.log.debug(
-        "received msg: {any}, length: {}",
-        .{ buffer[0..msg_size], msg_size },
-    );
+    // std.log.debug(
+    //     "received msg: {any}, length: {}",
+    //     .{ buffer[0..msg_size], msg_size },
+    // );
     return a.dupe(u8, buffer[0..msg_size]);
 }
 
@@ -3116,8 +3181,8 @@ fn send(socket: network.Socket, msg: []const u8) !void {
         try disconnect();
         return e;
     };
-    std.log.debug(
-        "sent msg: {any}, length: {}",
-        .{ msg, msg.len },
-    );
+    // std.log.debug(
+    //     "sent msg: {any}, length: {}",
+    //     .{ msg, msg.len },
+    // );
 }
