@@ -170,7 +170,6 @@ const Log = struct {
                     inline for (ti.fields) |field| {
                         const axis_idx = if (@typeInfo(field.type) == .optional) b: {
                             if (@field(axis, field.name)) |idx| {
-                                std.log.debug("second axis: {}", .{idx});
                                 break :b idx - 1;
                             } else break;
                         } else @field(axis, field.name) - 1;
@@ -300,17 +299,19 @@ const Log = struct {
                 InfoResponse.Complete,
                 sock,
             );
-            axis_idx = try data.parseAxis(
-                complete_info.axis_infos.items,
-                complete_info.axis_errors.items,
-                complete_info.carrier_infos.items,
-                axis_idx,
-            );
-            driver_idx = try data.parseDriver(
-                complete_info.driver_infos.items,
-                complete_info.driver_errors.items,
-                driver_idx,
-            );
+            if (line.axis)
+                axis_idx = try data.parseAxis(
+                    complete_info.axis_infos.items,
+                    complete_info.axis_errors.items,
+                    complete_info.carrier_infos.items,
+                    axis_idx,
+                );
+            if (line.driver)
+                driver_idx = try data.parseDriver(
+                    complete_info.driver_infos.items,
+                    complete_info.driver_errors.items,
+                    driver_idx,
+                );
         }
         self.data.writeItemOverwrite(data);
     }
@@ -481,17 +482,23 @@ const Log = struct {
         var timer = try std.time.Timer.start();
         while (true) {
             // Check if there is an error after the log started, including the
-            // cancellation
-            // TODO: The following method require to CTRL+C twice. Find a better
-            //       solution.
-            command.checkCommandInterrupt() catch break;
+            // command cancellation.
+            command.checkError() catch |e| {
+                std.log.debug("{s}", .{@errorName(e)});
+                std.log.debug("{any}", .{@errorReturnTrace()});
+                break;
+            };
             while (timer.read() < mcl_update * std.time.ns_per_ms) {}
             const timestamp = std.time.microTimestamp() - log_time_start;
             timer.reset();
             log.get(
                 @floatFromInt(@divFloor(timestamp, std.time.ms_per_s)),
                 socket,
-            ) catch break;
+            ) catch |e| {
+                std.log.debug("{s}", .{@errorName(e)});
+                std.log.debug("{any}", .{@errorReturnTrace()});
+                break;
+            };
         }
         const log_writer = log_file.writer();
         try write(log_writer);
