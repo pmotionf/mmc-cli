@@ -1590,13 +1590,13 @@ fn clientAxisInfo(params: [][]const u8) !void {
         return error.InvalidMessage;
     const info = axes.axis_infos.items[0];
     const err = axes.axis_errors.items[0];
-    _ = try api.nestedWrite(
+    _ = try nestedWrite(
         "Axis info",
         info,
         0,
         std.io.getStdOut().writer(),
     );
-    _ = try api.nestedWrite(
+    _ = try nestedWrite(
         "Axis error",
         err,
         0,
@@ -1632,13 +1632,13 @@ fn clientDriverInfo(params: [][]const u8) !void {
         return error.InvalidMessage;
     const info = drivers.driver_infos.items[0];
     const err = drivers.driver_errors.items[0];
-    _ = try api.nestedWrite(
+    _ = try nestedWrite(
         "Driver info",
         info,
         0,
         std.io.getStdOut().writer(),
     );
-    _ = try api.nestedWrite(
+    _ = try nestedWrite(
         "Driver error",
         err,
         0,
@@ -1673,7 +1673,7 @@ fn clientCarrierInfo(params: [][]const u8) !void {
     if (carriers.carriers.items.len != 1)
         return error.InvalidMessage;
     const carrier = carriers.carriers.pop() orelse return error.InvalidMessage;
-    _ = try api.nestedWrite(
+    _ = try nestedWrite(
         "Carrier",
         carrier,
         0,
@@ -3222,6 +3222,97 @@ fn parseResponse(a: std.mem.Allocator, comptime T: type, msg: []const u8) !T {
     };
 }
 
+pub fn nestedWrite(
+    name: []const u8,
+    val: anytype,
+    indent: usize,
+    writer: anytype,
+) !usize {
+    var written_bytes: usize = 0;
+    const ti = @typeInfo(@TypeOf(val));
+    switch (ti) {
+        .optional => {
+            if (val) |v| {
+                written_bytes += try nestedWrite(
+                    name,
+                    v,
+                    indent,
+                    writer,
+                );
+            } else {
+                try writer.writeBytesNTimes("    ", indent);
+                written_bytes += 4 * indent;
+                try writer.print("{s}: ", .{name});
+                written_bytes += name.len + 2;
+                try writer.print("None,\n", .{});
+                written_bytes += std.fmt.count("None,\n", .{});
+            }
+        },
+        .@"struct" => {
+            try writer.writeBytesNTimes("    ", indent);
+            written_bytes += 4 * indent;
+            try writer.print("{s}: {{\n", .{name});
+            written_bytes += name.len + 4;
+            inline for (ti.@"struct".fields) |field| {
+                if (field.name[0] == '_') {
+                    continue;
+                }
+                written_bytes += try nestedWrite(
+                    field.name,
+                    @field(val, field.name),
+                    indent + 1,
+                    writer,
+                );
+            }
+            try writer.writeBytesNTimes("    ", indent);
+            written_bytes += 4 * indent;
+            try writer.writeAll("},\n");
+            written_bytes += 3;
+        },
+        .bool, .int => {
+            try writer.writeBytesNTimes("    ", indent);
+            written_bytes += 4 * indent;
+            try writer.print("{s}: ", .{name});
+            written_bytes += name.len + 2;
+            try writer.print("{},\n", .{val});
+            written_bytes += std.fmt.count("{},\n", .{val});
+        },
+        .float => {
+            try writer.writeBytesNTimes("    ", indent);
+            written_bytes += 4 * indent;
+            try writer.print("{s}: ", .{name});
+            written_bytes += name.len + 2;
+            try writer.print("{d},\n", .{val});
+            written_bytes += std.fmt.count("{d},\n", .{val});
+        },
+        .@"enum" => {
+            try writer.writeBytesNTimes("    ", indent);
+            written_bytes += 4 * indent;
+            try writer.print("{s}: ", .{name});
+            written_bytes += name.len + 2;
+            try writer.print("{s},\n", .{@tagName(val)});
+            written_bytes += std.fmt.count("{s},\n", .{@tagName(val)});
+        },
+        .@"union" => {
+            switch (val) {
+                inline else => |_, tag| {
+                    const union_val = @field(val, @tagName(tag));
+                    try writer.writeBytesNTimes("    ", indent);
+                    written_bytes += 4 * indent;
+                    try writer.print("{s}: ", .{name});
+                    written_bytes += name.len + 2;
+                    try writer.print("{d},\n", .{union_val});
+                    written_bytes += std.fmt.count("{d},\n", .{union_val});
+                },
+            }
+        },
+        else => {
+            unreachable;
+        },
+    }
+    return written_bytes;
+}
+
 /// Check whether the socket has event flag occurred. Timeout is in milliseconds
 /// unit.
 fn isSocketEventOccurred(socket: network.Socket, event: i16, timeout: i32) !bool {
@@ -3322,8 +3413,4 @@ fn send(socket: network.Socket, msg: []const u8) !void {
         try disconnect();
         return e;
     };
-    // std.log.debug(
-    //     "sent msg: {any}, length: {}",
-    //     .{ msg, msg.len },
-    // );
 }
