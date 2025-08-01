@@ -311,6 +311,7 @@ const Log = struct {
                     system.carrier_infos.items,
                     axis_idx,
                 );
+
             if (line.driver)
                 driver_idx = try data.parseDriver(
                     system.driver_infos.items,
@@ -394,8 +395,8 @@ const Log = struct {
             const start_axis = lines[line.id - 1].axes[line.axis_id_range.start - 1];
             const end_axis = lines[line.id - 1].axes[line.axis_id_range.end - 1];
             if (line.driver) {
-                num_of_drivers += 1;
-                for (start_axis.driver.id..end_axis.driver.id + 1) |id|
+                for (start_axis.driver.id..end_axis.driver.id + 1) |id| {
+                    num_of_drivers += 1;
                     try writeHeaders(
                         writer,
                         try std.fmt.bufPrint(
@@ -406,6 +407,7 @@ const Log = struct {
                         "",
                         Log.Data.Driver,
                     );
+                }
             }
             if (line.axis) {
                 for (start_axis.id.line..end_axis.id.line + 1) |id| {
@@ -423,6 +425,7 @@ const Log = struct {
                 }
             }
         }
+        std.log.debug("driver: {}, axis: {}", .{ num_of_drivers, num_of_axis });
         // Write the data to the logging file
         while (log.data.readItem()) |item| {
             try writer.writeByte('\n');
@@ -3222,7 +3225,7 @@ fn parseResponse(a: std.mem.Allocator, comptime T: type, msg: []const u8) !T {
             else
                 error.UnexpectedResponse,
             inline .server, .line_config => |r| if (@TypeOf(r) == T)
-                try r.dupe(allocator)
+                try r.dupe(a)
             else
                 error.UnexpectedResponse,
         },
@@ -3239,7 +3242,7 @@ fn parseResponse(a: std.mem.Allocator, comptime T: type, msg: []const u8) !T {
                 _ => unreachable,
             },
             inline .system, .commands => |body_kind| if (@TypeOf(body_kind) == T)
-                try body_kind.dupe(allocator)
+                try body_kind.dupe(a)
             else
                 return error.UnexpectedResponse,
         },
