@@ -86,18 +86,16 @@ const Log = struct {
     /// will be used for logging process.
     pub const Config = struct {
         /// Line ID to be logged
-        id: Line.Id,
+        id: Line.Id = 0,
         /// Flag for logging axis info for the line.
         axis: bool = false,
         /// Flag for logging driver info for the line.
         driver: bool = false,
-        /// Flag for logging carrier info for the line.
-        carrier: bool = false,
         /// Axis range to be logged of the line.
         axis_id_range: struct {
             start: Axis.Id.Line = 0,
             end: Axis.Id.Line = 0,
-        },
+        } = .{},
     };
 
     pub const Data = struct {
@@ -169,10 +167,11 @@ const Log = struct {
                     const ti = @typeInfo(@TypeOf(axis)).@"struct";
                     inline for (ti.fields) |field| {
                         const axis_idx = if (@typeInfo(field.type) == .optional) b: {
-                            if (@field(axis, field.name)) |idx| {
-                                break :b idx - 1;
+                            if (@field(axis, field.name)) |id| {
+                                break :b id - 1;
                             } else break;
                         } else @field(axis, field.name) - 1;
+                        // std.log.debug("pos: {}", .{carrier.position});
                         self.axes[start_idx + axis_idx].carrier = .{
                             .id = @intCast(carrier.id),
                             .position = carrier.position,
@@ -441,13 +440,33 @@ const Log = struct {
 
     /// Handler for start the logging process
     fn start() !void {
-        errdefer {
+        defer {
             log.duration = 0;
             allocator.free(log.path);
-        }
-        defer {
             std.log.debug("Logging stopped", .{});
         }
+        // Assumption: The register from mcl is updated every 3 ms;
+        const mcl_update = 3;
+        const logging_size_float =
+            log.duration * @as(f64, @floatFromInt(std.time.ms_per_s)) / mcl_update;
+        if (std.math.isNan(logging_size_float) or
+            std.math.isInf(logging_size_float) or
+            !std.math.isFinite(logging_size_float)) return error.InvalidDuration;
+        var initialized = false;
+        for (log.lines) |line| {
+            if (line.axis or line.driver) {
+                initialized = true;
+                break;
+            }
+        }
+        if (!initialized) return error.NoConfiguredLogging;
+        std.log.info("The registers will be logged to {s}", .{log.path});
+        const log_file = try std.fs.cwd().createFile(log.path, .{});
+        defer log_file.close();
+        const logging_size = @as(usize, @intFromFloat(logging_size_float));
+        log.data = try CircularBufferAlloc(Log.Data).initCapacity(allocator, logging_size);
+        const log_time_start = std.time.microTimestamp();
+        var timer = try std.time.Timer.start();
         const endpoint = if (main_socket) |main|
             try main.getRemoteEndPoint()
         else
@@ -466,28 +485,6 @@ const Log = struct {
             .tcp,
         );
         defer if (socket) |s| s.close();
-        // Assumption: The register from mcl is updated every 3 ms;
-        const mcl_update = 3;
-        const logging_size_float =
-            log.duration * @as(f64, @floatFromInt(std.time.ms_per_s)) / mcl_update;
-        if (std.math.isNan(logging_size_float) or
-            std.math.isInf(logging_size_float) or
-            !std.math.isFinite(logging_size_float)) return error.InvalidDuration;
-        var initialized = false;
-        for (log.lines) |line| {
-            if (line.axis or line.carrier or line.driver) {
-                initialized = true;
-                break;
-            }
-        }
-        if (!initialized) return error.NoConfiguredLogging;
-        std.log.info("The registers will be logged to {s}", .{log.path});
-        const log_file = try std.fs.cwd().createFile(log.path, .{});
-        defer log_file.close();
-        const logging_size = @as(usize, @intFromFloat(logging_size_float));
-        log.data = try CircularBufferAlloc(Log.Data).initCapacity(allocator, logging_size);
-        const log_time_start = std.time.microTimestamp();
-        var timer = try std.time.Timer.start();
         // TODO: This approach make checkError cannot be used by other thread.
         //       Find a better approach.
         // Remove any previous detected error.
@@ -1212,18 +1209,19 @@ pub fn init(c: Config) !void {
         .name = "ADD_LOG_INFO",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "range" },
-            .{ .name = "kinds" },
+            .{ .name = "kinds", .optional = true },
+            .{ .name = "range", .optional = true },
         },
         .short_description = "Add info logging configuration.",
         .long_description =
         \\Add an info logging configuration. This command overwrites the existing
         \\logging configuration for the specified line, if any. The "kinds" stands
-        \\for the kind of info to be logged, specified by either "driver" or "axis". 
-        \\"Kinds" can be provided as comma separated values, e.g., "driver,axis" 
-        \\for logging driver and axis info of the specified range. The range is 
-        \\the inclusive axis range, and shall be provided with colon separated 
-        \\value, e.g. "1:9" to log from axis 1 to 9.
+        \\for the kind of info to be logged, specified by either "driver", "axis", 
+        \\or "all" to log both driver and axis info. The range is the inclusive 
+        \\axis range, and shall be provided with colon separated value, e.g. "1:9"
+        \\to log from axis 1 to 9. Leaving the range will log every axis on the 
+        \\line. Not providing both range and kinds removes the logging 
+        \\configuration for that line.  
         ,
         .execute = &clientAddLogInfo,
     });
@@ -2988,42 +2986,80 @@ fn clientWaitAxisEmpty(params: [][]const u8) !void {
 fn clientAddLogInfo(params: [][]const u8) !void {
     const line_name = params[0];
     const line_idx = try matchLine(lines, line_name);
-    const line = lines[line_idx];
-    var range_iterator = std.mem.tokenizeSequence(u8, params[1], ":");
-    var log_config: Log.Config = .{
-        .id = line.id,
-        .axis_id_range = .{
-            .start = try std.fmt.parseInt(
-                Axis.Id.Line,
-                range_iterator.next() orelse return error.MissingParameter,
-                0,
-            ),
-            .end = try std.fmt.parseInt(
-                Axis.Id.Line,
-                range_iterator.next() orelse return error.MissingParameter,
-                0,
-            ),
-        },
-    };
-    if (log_config.axis_id_range.start < 1 and
-        log_config.axis_id_range.start > Axis.max)
-        return error.InvalidAxis;
-    if (log_config.axis_id_range.end < 1 and
-        log_config.axis_id_range.end > Axis.max)
-        return error.InvalidAxis;
-    var kind_iterator = std.mem.tokenizeSequence(u8, params[2], ",");
-    while (kind_iterator.next()) |kind| {
-        const ti = @typeInfo(Log.Kind).@"enum";
-        var found = false;
+    const kind = params[1];
+    if (kind.len > 0) {
+        const line = lines[line_idx];
+        var log_config = Log.Config{ .id = line.id };
+        const range = params[2];
+        if (range.len > 0) {
+            var range_iterator = std.mem.tokenizeSequence(u8, range, ":");
+            log_config.axis_id_range = .{
+                .start = try std.fmt.parseInt(
+                    Axis.Id.Line,
+                    range_iterator.next() orelse return error.MissingParameter,
+                    0,
+                ),
+                .end = try std.fmt.parseInt(
+                    Axis.Id.Line,
+                    range_iterator.next() orelse return error.MissingParameter,
+                    0,
+                ),
+            };
+        } else {
+            log_config.axis_id_range = .{ .start = 1, .end = @intCast(line.axes.len) };
+        }
+        if ((log_config.axis_id_range.start < 1 and
+            log_config.axis_id_range.start > line.axes.len) or
+            (log_config.axis_id_range.end < 1 and
+                log_config.axis_id_range.end > line.axes.len))
+            return error.InvalidAxis;
+        if (std.ascii.eqlIgnoreCase("all", kind)) {
+            log_config.axis = true;
+            log_config.driver = true;
+        } else {
+            const ti = @typeInfo(Log.Kind).@"enum";
+            inline for (ti.fields) |field| {
+                if (std.ascii.eqlIgnoreCase(field.name, kind)) {
+                    @field(log_config, field.name) = true;
+                }
+            }
+            if (!log_config.axis and !log_config.driver)
+                return error.InvalidKind;
+        }
+        log.lines[line_idx] = log_config;
+    } else {
+        log.lines[line_idx] = .{};
+    }
+    // Show the current logging configuration status
+    std.log.info("Logging configuration:", .{});
+    const stdout = std.io.getStdOut().writer();
+    for (log.lines) |line| {
+        if (line.id == 0) continue;
+        try stdout.print("Line {s}:", .{lines[line.id - 1].name});
+        const ti = @typeInfo(@TypeOf(line)).@"struct";
+        var set = false;
         inline for (ti.fields) |field| {
-            if (std.ascii.eqlIgnoreCase(field.name, kind)) {
-                @field(log_config, field.name) = true;
-                found = true;
+            if (@typeInfo(field.type) != .bool) {
+                // Skip
+            } else if (@field(line, field.name)) {
+                if (set) try stdout.writeAll(",");
+                try stdout.print(" {s}", .{field.name});
+                set = true;
             }
         }
-        if (found == false) return error.InvalidKind;
+        const range = log.lines[line_idx].axis_id_range;
+        if (range.start == range.end)
+            try stdout.print(" (axis {})", .{range.start})
+        else
+            try stdout.print(
+                " (axis {} to {})",
+                .{
+                    log.lines[line_idx].axis_id_range.start,
+                    log.lines[line_idx].axis_id_range.end,
+                },
+            );
+        try stdout.writeByte('\n');
     }
-    log.lines[line_idx] = log_config;
 }
 
 fn clientStartLogInfo(params: [][]const u8) !void {
@@ -3158,7 +3194,6 @@ fn sendCommandRequest(
         };
         defer commands.deinit();
         const comm = commands.commands.pop() orelse return error.InvalidMessage;
-        std.log.debug("{}", .{comm});
         switch (comm.status) {
             .STATUS_PROGRESSING, .STATUS_QUEUED => {}, // continue the loop
             .STATUS_COMPLETED => break,
