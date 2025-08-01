@@ -118,7 +118,7 @@ const Log = struct {
             pub const Carrier = struct {
                 id: Client.Axis.Id.Line,
                 position: f32,
-                state: InfoResponse.Carrier.Info.State,
+                state: InfoResponse.System.Carrier.Info.State,
                 cas: struct { enabled: bool, triggered: bool },
             };
         };
@@ -141,9 +141,9 @@ const Log = struct {
         /// the context and return the next data index.
         pub fn parseAxis(
             self: *Log.Data,
-            infos: []InfoResponse.Axis.Info,
-            errors: []InfoResponse.Axis.Error,
-            carriers: []InfoResponse.Carrier.Info,
+            infos: []InfoResponse.System.Axis.Info,
+            errors: []InfoResponse.System.Axis.Error,
+            carriers: []InfoResponse.System.Carrier.Info,
             start_idx: usize,
         ) !usize {
             var index = start_idx;
@@ -192,8 +192,8 @@ const Log = struct {
         /// the context and return the next data index.
         pub fn parseDriver(
             self: *Log.Data,
-            infos: []InfoResponse.Driver.Info,
-            errors: []InfoResponse.Driver.Error,
+            infos: []InfoResponse.System.Driver.Info,
+            errors: []InfoResponse.System.Driver.Error,
             start_idx: usize,
         ) !usize {
             var index = start_idx;
@@ -226,7 +226,7 @@ const Log = struct {
         /// the context and return the next data index.
         pub fn parseCarrier(
             self: *Log.Data,
-            infos: []InfoResponse.Carrier.Info,
+            infos: []InfoResponse.System.Carrier.Info,
         ) !void {
             for (infos) |info| {
                 if (info.axis) |axis| {
@@ -285,31 +285,36 @@ const Log = struct {
             const start_axis = lines[line.id - 1].axes[line.axis_id_range.start - 1];
             const end_axis = lines[line.id - 1].axes[line.axis_id_range.end - 1];
             info_msg.body = .{
-                .complete = .{
+                .system = .{
                     .line_id = @intCast(line.id),
-                    .range = .{
-                        .start_id = @intCast(start_axis.driver.id),
-                        .end_id = @intCast(end_axis.driver.id),
+                    .driver = true,
+                    .axis = true,
+                    .carrier = true,
+                    .source = .{
+                        .driver_range = .{
+                            .start_id = @intCast(start_axis.driver.id),
+                            .end_id = @intCast(end_axis.driver.id),
+                        },
                     },
                 },
             };
-            const complete_info = try sendRequest(
+            const system = try sendRequest(
                 info_msg,
                 log_allocator,
-                InfoResponse.Complete,
+                InfoResponse.System,
                 sock,
             );
             if (line.axis)
                 axis_idx = try data.parseAxis(
-                    complete_info.axis_infos.items,
-                    complete_info.axis_errors.items,
-                    complete_info.carrier_infos.items,
+                    system.axis_infos.items,
+                    system.axis_errors.items,
+                    system.carrier_infos.items,
                     axis_idx,
                 );
             if (line.driver)
                 driver_idx = try data.parseDriver(
-                    complete_info.driver_infos.items,
-                    complete_info.driver_errors.items,
+                    system.driver_infos.items,
+                    system.driver_errors.items,
                     driver_idx,
                 );
         }
@@ -1468,7 +1473,7 @@ fn getLineConfig() !void {
                 .axis = @intFromFloat(length.axis * 1000),
                 .carrier = @intFromFloat(length.carrier * 1000),
             };
-            std.log.info("line {} axis length {} carrier length {}", .{
+            std.log.debug("line {} axis length {} carrier length {}", .{
                 line_idx + 1,
                 lines[line_idx].length.axis,
                 lines[line_idx].length.carrier,
@@ -1571,25 +1576,30 @@ fn clientAxisInfo(params: [][]const u8) !void {
     if (axis_id < 1 or axis_id > line.axes.len) return error.InvalidAxis;
     var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
     info_msg.body = .{
-        .axis = .{
+        .system = .{
             .line_id = @intCast(line.id),
-            .range = .{
-                .start_id = @intCast(axis_id),
-                .end_id = @intCast(axis_id),
+            .axis = true,
+            .source = .{
+                .axis_range = .{
+                    .start_id = @intCast(axis_id),
+                    .end_id = @intCast(axis_id),
+                },
             },
         },
     };
-    const axes = try sendRequest(
+    const system = try sendRequest(
         info_msg,
         fba_allocator,
-        InfoResponse.AxesComplete,
+        InfoResponse.System,
         main_socket,
     );
-    if (axes.axis_infos.items.len != axes.axis_errors.items.len and
-        axes.axis_infos.items.len != 1)
+    const axis_infos = system.axis_infos;
+    const axis_errors = system.axis_errors;
+    if (axis_infos.items.len != axis_errors.items.len and
+        axis_infos.items.len != 1)
         return error.InvalidMessage;
-    const info = axes.axis_infos.items[0];
-    const err = axes.axis_errors.items[0];
+    const info = axis_infos.items[0];
+    const err = axis_errors.items[0];
     _ = try nestedWrite(
         "Axis info",
         info,
@@ -1613,25 +1623,30 @@ fn clientDriverInfo(params: [][]const u8) !void {
     if (driver_id < 1 or driver_id > line.drivers.len) return error.InvalidDriver;
     var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
     info_msg.body = .{
-        .driver = .{
+        .system = .{
             .line_id = @intCast(line.id),
-            .range = .{
-                .start_id = @intCast(driver_id),
-                .end_id = @intCast(driver_id),
+            .driver = true,
+            .source = .{
+                .driver_range = .{
+                    .start_id = @intCast(driver_id),
+                    .end_id = @intCast(driver_id),
+                },
             },
         },
     };
-    const drivers = try sendRequest(
+    const system = try sendRequest(
         info_msg,
         fba_allocator,
-        InfoResponse.DriversComplete,
+        InfoResponse.System,
         main_socket,
     );
-    if (drivers.driver_infos.items.len != drivers.driver_errors.items.len and
-        drivers.driver_errors.items.len != 1)
+    const driver_infos = system.driver_infos;
+    const driver_errors = system.driver_errors;
+    if (driver_infos.items.len != driver_errors.items.len and
+        driver_errors.items.len != 1)
         return error.InvalidMessage;
-    const info = drivers.driver_infos.items[0];
-    const err = drivers.driver_errors.items[0];
+    const info = driver_infos.items[0];
+    const err = driver_errors.items[0];
     _ = try nestedWrite(
         "Driver info",
         info,
@@ -1659,20 +1674,22 @@ fn clientCarrierInfo(params: [][]const u8) !void {
     ).init(fba_allocator);
     try ids.append(carrier_id);
     info_msg.body = .{
-        .carrier = .{
+        .system = .{
             .line_id = @intCast(line.id),
-            .param = .{ .carrier_ids = .{ .ids = ids } },
+            .carrier = true,
+            .source = .{ .carriers = .{ .ids = ids } },
         },
     };
-    var carriers = try sendRequest(
+    const system = try sendRequest(
         info_msg,
         fba_allocator,
-        InfoResponse.Carriers,
+        InfoResponse.System,
         main_socket,
     );
-    if (carriers.carriers.items.len != 1)
+    var carriers = system.carrier_infos;
+    if (carriers.items.len != 1)
         return error.InvalidMessage;
-    const carrier = carriers.carriers.pop() orelse return error.InvalidMessage;
+    const carrier = carriers.pop() orelse return error.InvalidMessage;
     _ = try nestedWrite(
         "Carrier",
         carrier,
@@ -1735,18 +1752,21 @@ fn clientAxisCarrier(params: [][]const u8) !void {
     if (axis_id < 1 or axis_id > line.axes.len) return error.InvalidAxis;
     var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
     info_msg.body = .{
-        .carrier = .{
+        .system = .{
             .line_id = @intCast(line.id),
-            .param = .{ .range = .{
-                .start_id = @intCast(axis_id),
-                .end_id = @intCast(axis_id),
-            } },
+            .carrier = true,
+            .source = .{
+                .axis_range = .{
+                    .start_id = @intCast(axis_id),
+                    .end_id = @intCast(axis_id),
+                },
+            },
         },
     };
-    var response = sendRequest(
+    const system = sendRequest(
         info_msg,
         fba_allocator,
-        InfoResponse.Carriers,
+        InfoResponse.System,
         main_socket,
     ) catch |e| {
         if (e == error.CarrierNotFound) {
@@ -1754,9 +1774,10 @@ fn clientAxisCarrier(params: [][]const u8) !void {
             return;
         } else return e;
     };
-    if (response.line_id != line.id)
+    if (system.line_id != line.id)
         return error.InvalidResponse;
-    const carrier = response.carriers.pop() orelse return error.InvalidResponse;
+    var carriers = system.carrier_infos;
+    const carrier = carriers.pop() orelse return error.InvalidResponse;
     std.log.info("Carrier {d} on axis {d}.\n", .{ carrier.id, axis_id });
     if (result_var.len > 0) {
         var int_buf: [8]u8 = undefined;
@@ -1803,20 +1824,23 @@ fn clientCarrierID(params: [][]const u8) !void {
         const line = lines[line_idx];
         var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
         info_msg.body = .{
-            .axis_info = .{
+            .system = .{
                 .line_id = @intCast(line.id),
+                .axis = true,
+                .source = null,
             },
         };
-        const response = try sendRequest(
+        const system = try sendRequest(
             info_msg,
             fba_allocator,
-            InfoResponse.AxesInfo,
+            InfoResponse.System,
             main_socket,
         );
+        const axis_infos = system.axis_infos;
 
-        if (response.axis_infos.items.len != line.axes.len)
+        if (axis_infos.items.len != line.axes.len)
             return error.InvalidResponse;
-        for (response.axis_infos.items) |axis| {
+        for (axis_infos.items) |axis| {
             if (axis.carrier_id == 0) continue;
             std.log.info(
                 "Carrier {d} on line {s} axis {d}",
@@ -1874,20 +1898,22 @@ fn clientAssertLocation(params: [][]const u8) !void {
     try ids.append(carrier_id);
     var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
     info_msg.body = .{
-        .carrier = .{
+        .system = .{
             .line_id = @intCast(line.id),
-            .param = .{ .carrier_ids = .{ .ids = ids } },
+            .carrier = true,
+            .source = .{ .carriers = .{ .ids = ids } },
         },
     };
-    var response = try sendRequest(
+    const system = try sendRequest(
         info_msg,
         fba_allocator,
-        InfoResponse.Carriers,
+        InfoResponse.System,
         main_socket,
     );
-    if (response.line_id != line.id)
+    var carriers = system.carrier_infos;
+    if (system.line_id != line.id)
         return error.InvalidResponse;
-    const carrier = response.carriers.pop() orelse return error.InvalidResponse;
+    const carrier = carriers.pop() orelse return error.InvalidResponse;
     const location = carrier.position;
     if (location < expected_location - location_thr or
         location > expected_location + location_thr)
@@ -1986,20 +2012,22 @@ fn clientCarrierLocation(params: [][]const u8) !void {
     try ids.append(carrier_id);
     var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
     info_msg.body = .{
-        .carrier = .{
+        .system = .{
             .line_id = @intCast(line.id),
-            .param = .{ .carrier_ids = .{ .ids = ids } },
+            .carrier = true,
+            .source = .{ .carriers = .{ .ids = ids } },
         },
     };
-    var response = try sendRequest(
+    const system = try sendRequest(
         info_msg,
         fba_allocator,
-        InfoResponse.Carriers,
+        InfoResponse.System,
         main_socket,
     );
-    if (response.line_id != line.id)
+    if (system.line_id != line.id)
         return error.InvalidResponse;
-    const carrier = response.carriers.pop() orelse return error.InvalidResponse;
+    var carriers = system.carrier_infos;
+    const carrier = carriers.pop() orelse return error.InvalidResponse;
     std.log.info(
         "Carrier {d} location: {d} mm",
         .{ carrier.id, carrier.position },
@@ -2028,29 +2056,31 @@ fn clientCarrierAxis(params: [][]const u8) !void {
     try ids.append(carrier_id);
     var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
     info_msg.body = .{
-        .carrier = .{
+        .system = .{
             .line_id = @intCast(line.id),
-            .param = .{ .carrier_ids = .{ .ids = ids } },
+            .carrier = true,
+            .source = .{ .carriers = .{ .ids = ids } },
         },
     };
-    var response = try sendRequest(
+    const system = try sendRequest(
         info_msg,
         fba_allocator,
-        InfoResponse.Carriers,
+        InfoResponse.System,
         main_socket,
     );
-    if (response.line_id != line.id)
+    if (system.line_id != line.id)
         return error.InvalidResponse;
-    const carrier = response.carriers.pop() orelse return error.InvalidResponse;
+    var carriers = system.carrier_infos;
+    const carrier = carriers.pop() orelse return error.InvalidResponse;
     if (carrier.axis) |axis| {
         std.log.info(
             "Carrier {d} axis: {}",
-            .{ carrier.id, axis.first },
+            .{ carrier.id, axis.main },
         );
-        if (axis.second) |second|
+        if (axis.auxiliary) |aux|
             std.log.info(
                 "Carrier {d} axis: {}",
-                .{ carrier.id, second },
+                .{ carrier.id, aux },
             );
     }
 }
@@ -2072,47 +2102,52 @@ fn clientHallStatus(params: [][]const u8) !void {
     defer info_msg.deinit();
     if (axis_id) |id| {
         info_msg.body = .{
-            .axis = .{
+            .system = .{
                 .line_id = @intCast(line.id),
-                .range = .{
-                    .start_id = @intCast(id),
-                    .end_id = @intCast(id),
+                .axis = true,
+                .source = .{
+                    .axis_range = .{
+                        .start_id = @intCast(id),
+                        .end_id = @intCast(id),
+                    },
                 },
             },
         };
-        var response = try sendRequest(
+        var system = try sendRequest(
             info_msg,
             fba_allocator,
-            InfoResponse.AxesInfo,
+            InfoResponse.System,
             main_socket,
         );
-        if (response.line_id != line.id) return error.InvalidResponse;
-        const axis = response.axis_infos.pop() orelse return error.InvalidResponse;
+        if (system.line_id != line.id) return error.InvalidResponse;
+        const axis = system.axis_infos.pop() orelse return error.InvalidResponse;
         const hall = axis.hall_alarm orelse return error.InvalidResponse;
         std.log.info(
             "Axis {} Hall Sensor:\n\t BACK - {s}\n\t FRONT - {s}",
             .{
-                axis,
+                axis.id,
                 if (hall.back) "ON" else "OFF",
                 if (hall.front) "ON" else "OFF",
             },
         );
     } else {
         info_msg.body = .{
-            .axis = .{
+            .system = .{
                 .line_id = @intCast(line.id),
+                .axis = true,
+                .source = null,
             },
         };
-        var response = try sendRequest(
+        var system = try sendRequest(
             info_msg,
             fba_allocator,
-            InfoResponse.AxesInfo,
+            InfoResponse.System,
             main_socket,
         );
-        if (response.line_id != line.id and
-            response.axis_infos.items.len != line.axes.len)
+        if (system.line_id != line.id and
+            system.axis_infos.items.len != line.axes.len)
             return error.InvalidResponse;
-        while (response.axis_infos.pop()) |axis| {
+        while (system.axis_infos.pop()) |axis| {
             const hall = axis.hall_alarm orelse return error.InvalidResponse;
             std.log.info(
                 "Axis {} Hall Sensor:\n\t BACK - {s}\n\t FRONT - {s}",
@@ -2158,22 +2193,25 @@ fn clientAssertHall(params: [][]const u8) !void {
     defer info_msg.deinit();
 
     info_msg.body = .{
-        .axis = .{
+        .system = .{
             .line_id = @intCast(line.id),
-            .range = .{
-                .start_id = @intCast(axis_id),
-                .end_id = @intCast(axis_id),
+            .axis = true,
+            .source = .{
+                .axis_range = .{
+                    .start_id = @intCast(axis_id),
+                    .end_id = @intCast(axis_id),
+                },
             },
         },
     };
-    var response = try sendRequest(
+    var system = try sendRequest(
         info_msg,
         fba_allocator,
-        InfoResponse.AxesInfo,
+        InfoResponse.System,
         main_socket,
     );
-    if (response.line_id != line.id) return error.InvalidResponse;
-    const axis = response.axis_infos.pop() orelse return error.InvalidResponse;
+    if (system.line_id != line.id) return error.InvalidResponse;
+    const axis = system.axis_infos.pop() orelse return error.InvalidResponse;
     const hall = axis.hall_alarm orelse return error.InvalidResponse;
     switch (side) {
         .DIRECTION_BACKWARD => {
@@ -2302,22 +2340,22 @@ fn clientWaitIsolate(params: [][]const u8) !void {
         ).init(fba_allocator);
         try ids.append(carrier_id);
         info_msg.body = .{
-            .carrier = .{
+            .system = .{
                 .line_id = @intCast(line.id),
-                .param = .{ .carrier_ids = .{ .ids = ids } },
+                .carrier = true,
+                .source = .{ .carriers = .{ .ids = ids } },
             },
         };
-        var response = try sendRequest(
+        var system = try sendRequest(
             info_msg,
             fba_allocator,
-            InfoResponse.Carriers,
+            InfoResponse.System,
             main_socket,
         );
-        if (response.line_id != line.id)
+        if (system.line_id != line.id)
             return error.InvalidResponse;
-        const carrier = response.carriers.pop() orelse return error.InvalidResponse;
-        if (carrier.state == .CARRIER_STATE_BACKWARD_ISOLATION_COMPLETED or
-            carrier.state == .CARRIER_STATE_FORWARD_ISOLATION_COMPLETED) return;
+        const carrier = system.carrier_infos.pop() orelse return error.InvalidResponse;
+        if (carrier.state == .CARRIER_STATE_ISOLATE_COMPLETED) return;
     }
 }
 
@@ -2347,22 +2385,22 @@ fn clientWaitMoveCarrier(params: [][]const u8) !void {
         ).init(fba_allocator);
         try ids.append(carrier_id);
         info_msg.body = .{
-            .carrier = .{
+            .system = .{
                 .line_id = @intCast(line.id),
-                .param = .{ .carrier_ids = .{ .ids = ids } },
+                .carrier = true,
+                .source = .{ .carriers = .{ .ids = ids } },
             },
         };
-        var response = try sendRequest(
+        var system = try sendRequest(
             info_msg,
             fba_allocator,
-            InfoResponse.Carriers,
+            InfoResponse.System,
             main_socket,
         );
-        if (response.line_id != line.id)
+        if (system.line_id != line.id)
             return error.InvalidResponse;
-        const carrier = response.carriers.pop() orelse return error.InvalidResponse;
-        if (carrier.state == .CARRIER_STATE_POS_MOVE_COMPLETED or
-            carrier.state == .CARRIER_STATE_SPD_MOVE_COMPLETED) return;
+        const carrier = system.carrier_infos.pop() orelse return error.InvalidResponse;
+        if (carrier.state == .CARRIER_STATE_MOVE_COMPLETED) return;
     }
 }
 
@@ -2817,22 +2855,22 @@ fn clientCarrierWaitPull(params: [][]const u8) !void {
         ).init(fba_allocator);
         try ids.append(carrier_id);
         info_msg.body = .{
-            .carrier = .{
+            .system = .{
                 .line_id = @intCast(line.id),
-                .param = .{ .carrier_ids = .{ .ids = ids } },
+                .carrier = true,
+                .source = .{ .carriers = .{ .ids = ids } },
             },
         };
-        var response = try sendRequest(
+        var system = try sendRequest(
             info_msg,
             fba_allocator,
-            InfoResponse.Carriers,
+            InfoResponse.System,
             main_socket,
         );
-        if (response.line_id != line.id)
+        if (system.line_id != line.id)
             return error.InvalidResponse;
-        const carrier = response.carriers.pop() orelse return error.InvalidResponse;
-        if (carrier.state == .CARRIER_STATE_PULL_FORWARD_COMPLETED or
-            carrier.state == .CARRIER_STATE_PULL_BACKWARD_COMPLETED) return;
+        const carrier = system.carrier_infos.pop() orelse return error.InvalidResponse;
+        if (carrier.state == .CARRIER_STATE_PULL_COMPLETED) return;
     }
 }
 
@@ -2910,22 +2948,25 @@ fn clientWaitAxisEmpty(params: [][]const u8) !void {
         try command.checkCommandInterrupt();
         var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
         info_msg.body = .{
-            .axis = .{
+            .system = .{
                 .line_id = @intCast(line.id),
-                .range = .{
-                    .start_id = @intCast(axis.id.line),
-                    .end_id = @intCast(axis.id.line),
+                .axis = true,
+                .source = .{
+                    .axis_range = .{
+                        .start_id = @intCast(axis.id.line),
+                        .end_id = @intCast(axis.id.line),
+                    },
                 },
             },
         };
-        var response = try sendRequest(
+        var system = try sendRequest(
             info_msg,
             fba_allocator,
-            InfoResponse.AxesInfo,
+            InfoResponse.System,
             main_socket,
         );
-        if (response.line_id != line.id) return error.InvalidResponse;
-        const axis_info = response.axis_infos.pop() orelse return error.InvalidResponse;
+        if (system.line_id != line.id) return error.InvalidResponse;
+        const axis_info = system.axis_infos.pop() orelse return error.InvalidResponse;
         const carrier = axis_info.carrier_id;
         const axis_alarms = axis_info.hall_alarm orelse return error.InvalidResponse;
         const wait_push = axis_info.waiting_push;
@@ -3062,11 +3103,11 @@ fn sendCommandRequest(
         u32,
         s,
     );
-    var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
+    var info_msg: InfoRequest = InfoRequest.init(a);
     defer info_msg.deinit();
     while (true) {
         command.checkCommandInterrupt() catch |e| {
-            var remove_command: CommandRequest = CommandRequest.init(fba_allocator);
+            var remove_command: CommandRequest = CommandRequest.init(a);
             defer remove_command.deinit();
             remove_command.body = .{
                 .clear_command = .{ .command_id = command_id },
@@ -3085,14 +3126,14 @@ fn sendCommandRequest(
         info_msg.body = .{
             .command = .{ .id = command_id },
         };
-        const command_status = sendRequest(
+        var commands = sendRequest(
             info_msg,
             a,
-            InfoResponse.Command,
+            InfoResponse.Commands,
             s,
         ) catch |e| {
             if (e == error.CommandStopped) {
-                var remove_command: CommandRequest = CommandRequest.init(fba_allocator);
+                var remove_command: CommandRequest = CommandRequest.init(a);
                 defer remove_command.deinit();
                 remove_command.body = .{
                     .clear_command = .{ .command_id = command_id },
@@ -3109,12 +3150,14 @@ fn sendCommandRequest(
                 return e;
             } else return e;
         };
-        defer command_status.deinit();
-        switch (command_status.status) {
+        defer commands.deinit();
+        const comm = commands.commands.pop() orelse return error.InvalidMessage;
+        std.log.debug("{}", .{comm});
+        switch (comm.status) {
             .STATUS_PROGRESSING, .STATUS_QUEUED => {}, // continue the loop
             .STATUS_COMPLETED => break,
             .STATUS_FAILED => {
-                return switch (command_status.error_response orelse return error.UnexpectedResponse) {
+                return switch (comm.error_response orelse return error.UnexpectedResponse) {
                     .ERROR_KIND_CARRIER_ALREADY_EXISTS => error.CarrierAlreadyExists,
                     .ERROR_KIND_CARRIER_NOT_FOUND => error.CarrierNotFound,
                     .ERROR_KIND_HOMING_FAILED => error.HomingFailed,
@@ -3195,22 +3238,8 @@ fn parseResponse(a: std.mem.Allocator, comptime T: type, msg: []const u8) !T {
                 .INFO_REQUEST_ERROR_COMMAND_NOT_FOUND => error.CommandNotFound,
                 _ => unreachable,
             },
-            inline .axis,
-            .axis_info,
-            .axis_error,
-            .driver,
-            .driver_info,
-            .driver_error,
-            .extensive_info,
-            .extensive_error,
-            .complete,
-            .carrier,
-            => |body_kind| if (@TypeOf(body_kind) == T)
+            inline .system, .commands => |body_kind| if (@TypeOf(body_kind) == T)
                 try body_kind.dupe(allocator)
-            else
-                return error.UnexpectedResponse,
-            inline else => |body_kind| if (@TypeOf(body_kind) == T)
-                body_kind
             else
                 return error.UnexpectedResponse,
         },
