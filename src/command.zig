@@ -482,7 +482,7 @@ pub fn queueClear() void {
 }
 
 /// Checks if the `stop` flag is set, and if so returns an error.
-pub fn checkCommandInterrupt() !void {
+pub fn checkCommandInterrupt() error{CommandStopped}!void {
     if (stop.load(.monotonic)) {
         defer stop.store(false, .monotonic);
         queueClear();
@@ -491,7 +491,7 @@ pub fn checkCommandInterrupt() !void {
 }
 
 /// Checks if the `err` flag is set, and if so returns an error.
-pub fn checkError() !void {
+pub fn checkError() error{ErrorDetected}!void {
     if (err.load(.monotonic)) {
         defer err.store(false, .monotonic);
         return error.ErrorDetected;

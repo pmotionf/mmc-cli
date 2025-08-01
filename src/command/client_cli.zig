@@ -488,6 +488,10 @@ const Log = struct {
         log.data = try CircularBufferAlloc(Log.Data).initCapacity(allocator, logging_size);
         const log_time_start = std.time.microTimestamp();
         var timer = try std.time.Timer.start();
+        // TODO: This approach make checkError cannot be used by other thread.
+        //       Find a better approach.
+        // Remove any previous detected error.
+        command.checkError() catch {};
         while (true) {
             // Check if there is an error after the log started, including the
             // command cancellation.
@@ -505,7 +509,6 @@ const Log = struct {
             ) catch |e| {
                 std.log.debug("{s}", .{@errorName(e)});
                 std.log.debug("{any}", .{@errorReturnTrace()});
-                break;
             };
         }
         const log_writer = log_file.writer();
@@ -1317,7 +1320,7 @@ fn clientConnect(params: [][]const u8) !void {
 }
 
 /// Free all memory EXCEPT the IP_Address, so that client can reconnect
-fn disconnect() !void {
+fn disconnect() error{ServerNotConnected}!void {
     if (main_socket) |s| {
         std.log.info(
             "Disconnecting from server {s}:{}",
@@ -1336,7 +1339,7 @@ fn disconnect() !void {
 }
 
 /// Serve as a callback of a `DISCONNECT` command, requires parameter.
-fn clientDisconnect(_: [][]const u8) !void {
+fn clientDisconnect(_: [][]const u8) error{ServerNotConnected}!void {
     try disconnect();
 }
 
