@@ -1266,6 +1266,20 @@ pub fn init(c: Config) !void {
         .execute = &clientStatusLogInfo,
     });
     errdefer command.registry.orderedRemove("STATUS_LOG_INFO");
+    try command.registry.put(.{
+        .name = "PRINT_ERRORS",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line" },
+            .{ .name = "axis", .optional = true },
+        },
+        .short_description = "Print axis and driver errors.",
+        .long_description =
+        \\Print axis and driver errors on a line, if any. Providing axis 
+        \\prints axis and driver errors on the specified axis only, if any.
+        ,
+        .execute = &clientShowError,
+    });
+    errdefer command.registry.orderedRemove("PRINT_ERRORS");
 }
 
 pub fn deinit() void {
@@ -1592,6 +1606,86 @@ fn assertAPIVersion() !void {
             cli_api_version.patch,
         },
     );
+}
+
+fn clientShowError(params: [][]const u8) !void {
+    defer fba.reset();
+    const line_name: []const u8 = params[0];
+    const line_idx = try matchLine(lines, line_name);
+    const line: Line = lines[line_idx];
+    const source: InfoRequest.System.source_union = .{
+        .axis_range = b: {
+            if (params[1].len > 0) {
+                const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
+                if (axis_id < 1 or axis_id > line.axes.len) return error.InvalidAxis;
+                break :b .{ .start_id = axis_id, .end_id = axis_id };
+            } else {
+                const start = line.axes[0].id.line;
+                const end = line.axes[line.axes.len - 1].id.line;
+                break :b .{ .start_id = start, .end_id = end };
+            }
+        },
+    };
+    var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
+    info_msg.body = .{
+        .system = .{
+            .line_id = @intCast(line.id),
+            .axis = true,
+            .driver = true,
+            .source = source,
+        },
+    };
+    const system = try sendRequest(
+        info_msg,
+        fba_allocator,
+        InfoResponse.System,
+        main_socket,
+    );
+    const axis_errors = system.axis_errors;
+    if (axis_errors.items.len !=
+        source.axis_range.end_id - source.axis_range.start_id + 1)
+        return error.InvalidMessage;
+    const driver_errors = system.driver_errors;
+    if (driver_errors.items.len !=
+        (source.axis_range.end_id - 1) / 3 - (source.axis_range.start_id - 1) / 3 + 1)
+        return error.InvalidMessage;
+    for (axis_errors.items) |axis_err| {
+        try printError(axis_err, .axis);
+    }
+    for (driver_errors.items) |driver_err| {
+        try printError(driver_err, .driver);
+    }
+}
+
+fn printError(err: anytype, comptime kind: enum { axis, driver }) !void {
+    const stdout = std.io.getStdOut().writer();
+    const ti = @typeInfo(@TypeOf(err)).@"struct";
+    {
+        var has_id = false;
+        inline for (ti.fields) |field| {
+            if (std.mem.eql(u8, field.name, "id")) has_id = true;
+        }
+        if (!has_id) return error.InvalidResponse;
+    }
+    inline for (ti.fields) |field| {
+        if (@typeInfo(field.type) == .@"struct") {
+            const child = @field(err, field.name);
+            const inner_ti = @typeInfo(field.type).@"struct";
+            inline for (inner_ti.fields) |inner| {
+                if (@field(child, inner.name))
+                    try stdout.print(
+                        "{s}.{s} on {s} {}",
+                        .{ field.name, inner.name, @tagName(kind), err.id },
+                    );
+            }
+        } else if (@typeInfo(field.type) != .bool) {
+            // no op if the field is not a boolean
+        } else if (@field(err, field.name))
+            try stdout.print(
+                "{s} on {s} {}",
+                .{ field.name, @tagName(kind), err.id },
+            );
+    }
 }
 
 fn clientAxisInfo(params: [][]const u8) !void {
