@@ -839,6 +839,16 @@ pub fn init(c: Config) !void {
     });
     errdefer command.registry.orderedRemove("CLEAR_CARRIER_INFO");
     try command.registry.put(.{
+        .name = "RESET_SYSTEM",
+        .short_description = "Reset the system state.",
+        .long_description =
+        \\Clear any carrier and errors occurred across the system. In addition,
+        \\reset any push and pull state on every axis.
+        ,
+        .execute = &clientResetSystem,
+    });
+    errdefer command.registry.orderedRemove("CLEAR_CARRIER_INFO");
+    try command.registry.put(.{
         .name = "RELEASE_AXIS_SERVO",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -2022,6 +2032,23 @@ fn clientClearCarrierInfo(params: [][]const u8) !void {
         fba_allocator,
         main_socket,
     );
+}
+
+fn clientResetSystem(_: [][]const u8) !void {
+    for (lines) |line| {
+        var command_msg = CommandRequest{
+            .body = .{
+                .clear_carrier_info = .{ .line_id = line.id },
+            },
+        };
+        try sendCommandRequest(command_msg, fba_allocator, main_socket);
+        command_msg.body = .{ .clear_errors = .{ .line_id = line.id } };
+        try sendCommandRequest(command_msg, fba_allocator, main_socket);
+        command_msg.body = .{ .stop_push_carrier = .{ .line_id = line.id } };
+        try sendCommandRequest(command_msg, fba_allocator, main_socket);
+        command_msg.body = .{ .stop_pull_carrier = .{ .line_id = line.id } };
+        try sendCommandRequest(command_msg, fba_allocator, main_socket);
+    }
 }
 
 fn clientCarrierLocation(params: [][]const u8) !void {
