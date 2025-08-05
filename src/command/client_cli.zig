@@ -443,7 +443,6 @@ const Log = struct {
         defer {
             log.duration = 0;
             allocator.free(log.path);
-            std.log.debug("Logging stopped", .{});
         }
         // Assumption: The register from mcl is updated every 3 ms;
         const mcl_update = 3;
@@ -465,6 +464,7 @@ const Log = struct {
         defer log_file.close();
         const logging_size = @as(usize, @intFromFloat(logging_size_float));
         log.data = try CircularBufferAlloc(Log.Data).initCapacity(allocator, logging_size);
+        defer log.data.deinit();
         const log_time_start = std.time.microTimestamp();
         var timer = try std.time.Timer.start();
         const endpoint = if (main_socket) |main|
@@ -489,6 +489,7 @@ const Log = struct {
         //       Find a better approach.
         // Remove any previous detected error.
         command.checkError() catch {};
+        defer std.log.debug("Logging stopped", .{});
         while (true) {
             // Check if there is an error after the log started, including the
             // command cancellation.
