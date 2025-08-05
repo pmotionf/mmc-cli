@@ -1243,6 +1243,15 @@ pub fn init(c: Config) !void {
         .execute = &clientStartLogInfo,
     });
     errdefer command.registry.orderedRemove("START_LOG_INFO");
+    try command.registry.put(.{
+        .name = "STATUS_LOG_INFO",
+        .short_description = "Show the logging configuration(s).",
+        .long_description =
+        \\Show the logging configuration for each line, if any.
+        ,
+        .execute = &clientStatusLogInfo,
+    });
+    errdefer command.registry.orderedRemove("STATUS_LOG_INFO");
 }
 
 pub fn deinit() void {
@@ -3031,35 +3040,7 @@ fn clientAddLogInfo(params: [][]const u8) !void {
         log.lines[line_idx] = .{};
     }
     // Show the current logging configuration status
-    std.log.info("Logging configuration:", .{});
-    const stdout = std.io.getStdOut().writer();
-    for (log.lines) |line| {
-        if (line.id == 0) continue;
-        try stdout.print("Line {s}:", .{lines[line.id - 1].name});
-        const ti = @typeInfo(@TypeOf(line)).@"struct";
-        var set = false;
-        inline for (ti.fields) |field| {
-            if (@typeInfo(field.type) != .bool) {
-                // Skip
-            } else if (@field(line, field.name)) {
-                if (set) try stdout.writeAll(",");
-                try stdout.print(" {s}", .{field.name});
-                set = true;
-            }
-        }
-        const range = log.lines[line_idx].axis_id_range;
-        if (range.start == range.end)
-            try stdout.print(" (axis {})", .{range.start})
-        else
-            try stdout.print(
-                " (axis {} to {})",
-                .{
-                    log.lines[line_idx].axis_id_range.start,
-                    log.lines[line_idx].axis_id_range.end,
-                },
-            );
-        try stdout.writeByte('\n');
-    }
+    try clientStatusLogInfo(&[_][]u8{});
 }
 
 fn clientStartLogInfo(params: [][]const u8) !void {
@@ -3095,6 +3076,39 @@ fn clientStartLogInfo(params: [][]const u8) !void {
     };
     const log_thread = try std.Thread.spawn(.{}, Log.start, .{});
     log_thread.detach();
+}
+
+fn clientStatusLogInfo(_: [][]const u8) !void {
+    // Show the current logging configuration status
+    std.log.info("Logging configuration:", .{});
+    const stdout = std.io.getStdOut().writer();
+    for (log.lines) |line| {
+        if (!line.axis and !line.driver) continue;
+        try stdout.print("Line {s}:", .{lines[line.id - 1].name});
+        const ti = @typeInfo(@TypeOf(line)).@"struct";
+        var set = false;
+        inline for (ti.fields) |field| {
+            if (@typeInfo(field.type) != .bool) {
+                // Skip
+            } else if (@field(line, field.name)) {
+                if (set) try stdout.writeAll(",");
+                try stdout.print(" {s}", .{field.name});
+                set = true;
+            }
+        }
+        const range = line.axis_id_range;
+        if (range.start == range.end)
+            try stdout.print(" (axis {})", .{range.start})
+        else
+            try stdout.print(
+                " (axis {} to {})",
+                .{
+                    line.axis_id_range.start,
+                    line.axis_id_range.end,
+                },
+            );
+        try stdout.writeByte('\n');
+    }
 }
 
 fn matchLine(_lines: []Line, name: []const u8) !usize {
