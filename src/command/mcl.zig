@@ -820,7 +820,7 @@ fn mclStationX(params: [][]const u8) !void {
     const station_index: Station.Index = @intCast(axis / 3);
     try line.stations[station_index].pollX();
 
-    std.log.info("{}", .{line.stations[station_index].x});
+    std.log.info("{f}", .{line.stations[station_index].x});
 }
 
 fn mclStationY(params: [][]const u8) !void {
@@ -839,7 +839,7 @@ fn mclStationY(params: [][]const u8) !void {
     const station_index: Station.Index = @intCast(axis / 3);
     try line.stations[station_index].pollY();
 
-    std.log.info("{}", .{line.stations[station_index].y});
+    std.log.info("{f}", .{line.stations[station_index].y});
 }
 
 fn mclStationWr(params: [][]const u8) !void {
@@ -858,7 +858,7 @@ fn mclStationWr(params: [][]const u8) !void {
     const station_index: Station.Index = @intCast(axis / 3);
     try line.stations[station_index].pollWr();
 
-    std.log.info("{}", .{line.stations[station_index].wr});
+    std.log.info("{f}", .{line.stations[station_index].wr});
 }
 
 fn mclStationWw(params: [][]const u8) !void {
@@ -877,7 +877,7 @@ fn mclStationWw(params: [][]const u8) !void {
     const station_index: Station.Index = @intCast(axis / 3);
     try line.stations[station_index].pollWw();
 
-    std.log.info("{}", .{line.stations[station_index].ww});
+    std.log.info("{f}", .{line.stations[station_index].ww});
 }
 
 fn mclAxisCarrier(params: [][]const u8) !void {
@@ -2194,7 +2194,7 @@ fn statusLogRegisters(_: [][]const u8) !void {
                     .{","},
                 )).len;
             }
-            buf_len += std.fmt.formatIntBuf(
+            buf_len += std.fmt.printInt(
                 buffer[buf_len..],
                 station_idx + 1,
                 10,
@@ -2288,8 +2288,10 @@ fn startLogRegisters(params: [][]const u8) !void {
     // _buf is used to print the title prefix with std.fmt.bufPrint()
     var _buf: [1_024]u8 = undefined;
 
-    const log_writer = log_file.writer();
-    try log_writer.print("timestamp,", .{});
+    var log_buf: [4096]u8 = undefined;
+    var log_writer = log_file.writer(&log_buf);
+    defer log_writer.interface.flush() catch {};
+    try log_writer.interface.print("timestamp,", .{});
 
     for (line_names) |line_name| {
         const line_idx = try matchLine(line_names, line_name);
@@ -2304,7 +2306,7 @@ fn startLogRegisters(params: [][]const u8) !void {
                         reg_entry.value.* == true)
                     {
                         try writeLoggingHeaders(
-                            log_writer,
+                            &log_writer.interface,
                             try std.fmt.bufPrint(
                                 &_buf,
                                 "{s}_station{d}_{s}",
@@ -2343,7 +2345,7 @@ fn startLogRegisters(params: [][]const u8) !void {
     }
     try logToString(
         &logging_data,
-        log_writer,
+        &log_writer.interface,
     );
     defer logging_data.deinit();
 }
@@ -2351,7 +2353,7 @@ fn startLogRegisters(params: [][]const u8) !void {
 /// Convert the logged binary data to string and save it to the logging file
 fn logToString(
     logging_data: *CircularBufferAlloc(LoggingRegisters),
-    writer: std.fs.File.Writer,
+    writer: *std.Io.Writer,
 ) !void {
     while (logging_data.readItem()) |item| {
         // Copy a newline in every logging data entry
@@ -2394,7 +2396,7 @@ fn logToString(
 // Write register values into the string
 fn registerValueToString(
     parent: anytype,
-    writer: std.fs.File.Writer,
+    writer: *std.Io.Writer,
     command_code: *mcl.registers.Ww.Command,
 ) !void {
     var binary_buf_idx: usize = 0;
@@ -2512,7 +2514,7 @@ fn logRegisters(log_time_start: i64, timer: *std.time.Timer) !LoggingRegisters {
 
 /// Write the register field to a buffer. Return the number of bytes used.
 fn writeLoggingHeaders(
-    writer: anytype,
+    writer: *std.Io.Writer,
     prefix: []const u8,
     comptime parent: []const u8,
     comptime ParentType: type,
@@ -2669,6 +2671,7 @@ fn testWriteLoggingHeaders(
 
 test "writeLoggingHeaders" {
     const ti = @typeInfo(mcl.registers).@"struct";
+    @setEvalBranchQuota(40_000);
     inline for (ti.decls) |decl| {
         // only taking the registers declaration
         if (comptime decl.name.len > 2) continue;
@@ -2695,11 +2698,10 @@ test "writeLoggingHeaders" {
             }
         }
         var buffer: [expected.len]u8 = undefined;
-        var stream = std.io.fixedBufferStream(&buffer);
-        const writer = stream.writer();
+        var writer: std.Io.Writer = .fixed(&buffer);
 
         writeLoggingHeaders(
-            writer,
+            &writer,
             std.fmt.comptimePrint("{s}", .{decl.name}),
             "",
             register,

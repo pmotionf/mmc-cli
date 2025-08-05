@@ -79,9 +79,11 @@ pub fn build(b: *std.Build) !void {
 
     const exe = b.addExecutable(.{
         .name = "mmc-cli",
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     try setupModule(b, exe.root_module, setup_options);
     if (target.result.os.tag == .windows and mcl) {
@@ -109,9 +111,11 @@ pub fn build(b: *std.Build) !void {
 
     const check_exe = b.addExecutable(.{
         .name = "mmc-cli",
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     try setupModule(b, check_exe.root_module, setup_options);
     if (target.result.os.tag == .windows and mcl) {
@@ -130,11 +134,11 @@ pub fn build(b: *std.Build) !void {
 
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
-    const unit_tests = b.addTest(.{
+    const unit_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
-    });
+    }) });
     try setupModule(b, unit_tests.root_module, setup_options);
     if (target.result.os.tag == .windows and mcl) {
         const mcl_mock = b.lazyDependency("mcl", .{

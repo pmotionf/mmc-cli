@@ -38,13 +38,15 @@ pub fn parse(allocator: std.mem.Allocator, f: std.fs.File) !Config {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const a = arena.allocator();
-    const f_reader = f.reader();
-    var json_reader = std.json.reader(a, f_reader);
+
+    var f_reader_buf: [4096]u8 = undefined;
+    var f_reader = f.reader(&f_reader_buf);
+    var reader: std.json.Reader = .init(a, &f_reader.interface);
 
     const _result = try std.json.parseFromTokenSource(
         Parse,
         allocator,
-        &json_reader,
+        &reader,
         .{},
     );
 

@@ -222,21 +222,26 @@ pub fn logFn(
     const prefix2 = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
 
     if (log_file) |f| {
-        var bw = std.io.bufferedWriter(f.writer());
-        const writer = bw.writer();
-        writer.print(level_txt ++ prefix2 ++ format ++ "\n", args) catch return;
-        bw.flush() catch return;
+        var writer_buf: [4096]u8 = undefined;
+        var writer = f.writer(&writer_buf);
+        writer.interface.print(
+            level_txt ++ prefix2 ++ format ++ "\n",
+            args,
+        ) catch return;
+        writer.interface.flush() catch return;
     }
 
-    const stderr = std.io.getStdErr().writer();
-    var bw = std.io.bufferedWriter(stderr);
-    const writer = bw.writer();
+    var stderr_buf: [4096]u8 = undefined;
+    var stderr = std.fs.File.stderr().writer(&stderr_buf);
 
     std.debug.lockStdErr();
     defer std.debug.unlockStdErr();
     nosuspend {
-        writer.print(level_txt ++ prefix2 ++ format ++ "\n", args) catch return;
-        bw.flush() catch return;
+        stderr.interface.print(
+            level_txt ++ prefix2 ++ format ++ "\n",
+            args,
+        ) catch return;
+        stderr.interface.flush() catch return;
     }
 }
 
@@ -746,9 +751,10 @@ fn timerRead(_: [][]const u8) !void {
 fn file(params: [][]const u8) !void {
     var f = try std.fs.cwd().openFile(params[0], .{});
     defer f.close();
-    var reader = f.reader();
-    var buf: [std.fs.max_path_bytes + 512]u8 = undefined;
-    while (try reader.readUntilDelimiterOrEof(&buf, '\n')) |_line| {
+    var reader_buf: [std.fs.max_path_bytes + 512]u8 = undefined;
+    var reader = f.reader(&reader_buf);
+    while (true) {
+        const _line = try reader.interface.takeDelimiterExclusive('\n');
         try checkCommandInterrupt();
         const line = std.mem.trimLeft(
             u8,
@@ -926,8 +932,8 @@ fn setLog(params: [][]const u8) !void {
 }
 
 fn clear(_: [][]const u8) !void {
-    const stdout = std.io.getStdOut().writer();
-    try stdout.writeAll("\x1bc");
+    var stdout = std.fs.File.stdout().writer(&.{});
+    try stdout.interface.writeAll("\x1bc");
 }
 
 fn exit(_: [][]const u8) !void {
