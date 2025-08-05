@@ -1209,19 +1209,18 @@ pub fn init(c: Config) !void {
         .name = "ADD_LOG_INFO",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "kinds", .optional = true },
+            .{ .name = "kind" },
             .{ .name = "range", .optional = true },
         },
         .short_description = "Add info logging configuration.",
         .long_description =
         \\Add an info logging configuration. This command overwrites the existing
-        \\logging configuration for the specified line, if any. The "kinds" stands
+        \\logging configuration for the specified line, if any. The "kind" stands
         \\for the kind of info to be logged, specified by either "driver", "axis", 
         \\or "all" to log both driver and axis info. The range is the inclusive 
         \\axis range, and shall be provided with colon separated value, e.g. "1:9"
         \\to log from axis 1 to 9. Leaving the range will log every axis on the 
-        \\line. Not providing both range and kinds removes the logging 
-        \\configuration for that line.  
+        \\line.  
         ,
         .execute = &clientAddLogInfo,
     });
@@ -1243,6 +1242,20 @@ pub fn init(c: Config) !void {
         .execute = &clientStartLogInfo,
     });
     errdefer command.registry.orderedRemove("START_LOG_INFO");
+    try command.registry.put(.{
+        .name = "REMOVE_LOG_INFO",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line", .optional = true },
+        },
+        .short_description = "Remove the logging configuration.",
+        .long_description =
+        \\Remove logging configuration for logging info. Providing a line removes
+        \\the logging configuration for the specified line. Otherwise, removes
+        \\the logging configurations for all lines.
+        ,
+        .execute = &clientRemoveLogInfo,
+    });
+    errdefer command.registry.orderedRemove("REMOVE_LOG_INFO");
     try command.registry.put(.{
         .name = "STATUS_LOG_INFO",
         .short_description = "Show the logging configuration(s).",
@@ -2996,49 +3009,46 @@ fn clientAddLogInfo(params: [][]const u8) !void {
     const line_name = params[0];
     const line_idx = try matchLine(lines, line_name);
     const kind = params[1];
-    if (kind.len > 0) {
-        const line = lines[line_idx];
-        var log_config = Log.Config{ .id = line.id };
-        const range = params[2];
-        if (range.len > 0) {
-            var range_iterator = std.mem.tokenizeSequence(u8, range, ":");
-            log_config.axis_id_range = .{
-                .start = try std.fmt.parseInt(
-                    Axis.Id.Line,
-                    range_iterator.next() orelse return error.MissingParameter,
-                    0,
-                ),
-                .end = try std.fmt.parseInt(
-                    Axis.Id.Line,
-                    range_iterator.next() orelse return error.MissingParameter,
-                    0,
-                ),
-            };
-        } else {
-            log_config.axis_id_range = .{ .start = 1, .end = @intCast(line.axes.len) };
-        }
-        if ((log_config.axis_id_range.start < 1 and
-            log_config.axis_id_range.start > line.axes.len) or
-            (log_config.axis_id_range.end < 1 and
-                log_config.axis_id_range.end > line.axes.len))
-            return error.InvalidAxis;
-        if (std.ascii.eqlIgnoreCase("all", kind)) {
-            log_config.axis = true;
-            log_config.driver = true;
-        } else {
-            const ti = @typeInfo(Log.Kind).@"enum";
-            inline for (ti.fields) |field| {
-                if (std.ascii.eqlIgnoreCase(field.name, kind)) {
-                    @field(log_config, field.name) = true;
-                }
-            }
-            if (!log_config.axis and !log_config.driver)
-                return error.InvalidKind;
-        }
-        log.lines[line_idx] = log_config;
+    if (kind.len == 0) return error.MissingParameter;
+    const line = lines[line_idx];
+    var log_config = Log.Config{ .id = line.id };
+    const range = params[2];
+    if (range.len > 0) {
+        var range_iterator = std.mem.tokenizeSequence(u8, range, ":");
+        log_config.axis_id_range = .{
+            .start = try std.fmt.parseInt(
+                Axis.Id.Line,
+                range_iterator.next() orelse return error.MissingParameter,
+                0,
+            ),
+            .end = try std.fmt.parseInt(
+                Axis.Id.Line,
+                range_iterator.next() orelse return error.MissingParameter,
+                0,
+            ),
+        };
     } else {
-        log.lines[line_idx] = .{};
+        log_config.axis_id_range = .{ .start = 1, .end = @intCast(line.axes.len) };
     }
+    if ((log_config.axis_id_range.start < 1 and
+        log_config.axis_id_range.start > line.axes.len) or
+        (log_config.axis_id_range.end < 1 and
+            log_config.axis_id_range.end > line.axes.len))
+        return error.InvalidAxis;
+    if (std.ascii.eqlIgnoreCase("all", kind)) {
+        log_config.axis = true;
+        log_config.driver = true;
+    } else {
+        const ti = @typeInfo(Log.Kind).@"enum";
+        inline for (ti.fields) |field| {
+            if (std.ascii.eqlIgnoreCase(field.name, kind)) {
+                @field(log_config, field.name) = true;
+            }
+        }
+        if (!log_config.axis and !log_config.driver)
+            return error.InvalidKind;
+    }
+    log.lines[line_idx] = log_config;
     // Show the current logging configuration status
     try clientStatusLogInfo(&[_][]u8{});
 }
@@ -3109,6 +3119,20 @@ fn clientStatusLogInfo(_: [][]const u8) !void {
             );
         try stdout.writeByte('\n');
     }
+}
+
+fn clientRemoveLogInfo(params: [][]const u8) !void {
+    if (params[0].len > 0) {
+        const line_name = params[0];
+        const line_idx = try matchLine(lines, line_name);
+        log.lines[line_idx] = .{};
+    } else {
+        for (log.lines) |*line| {
+            line.* = .{};
+        }
+    }
+    // Show the current logging configuration status
+    try clientStatusLogInfo(&[_][]u8{});
 }
 
 fn matchLine(_lines: []Line, name: []const u8) !usize {
