@@ -172,11 +172,7 @@ fn setupModule(
     }
     switch (options.target.result.os.tag) {
         .windows => {
-            const zigwin32 = b.lazyDependency("zigwin32", .{});
-            if (zigwin32) |zwin32| {
-                mod.addImport("win32", zwin32.module("win32"));
-            }
-
+            mod.linkSystemLibrary("kernel32", .{});
             mod.linkSystemLibrary("ws2_32", .{});
             mod.linkSystemLibrary("user32", .{});
         },

@@ -21,11 +21,6 @@
             .url = "https://github.com/pmotionf/mmc-api/archive/f3ff5c6.tar.gz",
             .hash = "mmc_api-0.3.1-P5raR0ELAQAvQpGuaeskMKOwWVa_122a5AgFMcVdm2tO",
         },
-        .zigwin32 = .{
-            .url = "https://github.com/marlersoft/zigwin32/archive/d21b419.tar.gz",
-            .hash = "zigwin32-25.0.28-preview-AAAAAI0J-wP-8_KKo4Yjr33XLhVhlJmeagGUedByaOnX",
-            .lazy = true,
-        },
         .soem = .{
             .url = "https://github.com/pmotionf/SOEM/archive/585c7df.tar.gz",
             .hash = "soem-1.4.0-hMH6Q_P5DQBDCNya1vgaPwxaZNes36mTcce9K7X4DV5k",
