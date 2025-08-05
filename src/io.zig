@@ -30,40 +30,39 @@ pub fn init() !void {
             try std.posix.tcsetattr(stdin, .NOW, attr);
         },
         .windows => {
-            const console = @import("win32").system.console;
             const stdin = std.io.getStdIn().handle;
 
             if (IsValidCodePage(65001) == 0) {
                 return error.Utf8CodePageNotInstalled;
             }
             // Set input/output codepages to UTF-8
-            if (console.SetConsoleOutputCP(65001) == 0) {
+            if (SetConsoleOutputCP(65001) == 0) {
                 return std.os.windows.unexpectedError(
                     std.os.windows.GetLastError(),
                 );
             }
-            if (console.SetConsoleCP(65001) == 0) {
+            if (SetConsoleCP(65001) == 0) {
                 return std.os.windows.unexpectedError(
                     std.os.windows.GetLastError(),
                 );
             }
 
-            var mode: console.CONSOLE_MODE = undefined;
-            if (console.GetConsoleMode(stdin, &mode) == 0) {
+            var mode: CONSOLE_MODE = undefined;
+            if (GetConsoleMode(stdin, &mode) == 0) {
                 return std.os.windows.unexpectedError(
                     std.os.windows.GetLastError(),
                 );
             }
             original_canonical_context = mode;
 
-            mode.ENABLE_LINE_INPUT = 0;
-            mode.ENABLE_ECHO_INPUT = 0;
-            mode.ENABLE_VIRTUAL_TERMINAL_INPUT = 1;
-            mode.ENABLE_MOUSE_INPUT = 0;
-            mode.ENABLE_WINDOW_INPUT = 0;
+            mode.ENABLE_LINE_INPUT = false;
+            mode.ENABLE_ECHO_INPUT = false;
+            mode.ENABLE_VIRTUAL_TERMINAL_INPUT = true;
+            mode.ENABLE_MOUSE_INPUT = false;
+            mode.ENABLE_WINDOW_INPUT = false;
             // Necessary to have terminal handle Ctrl-C.
-            mode.ENABLE_PROCESSED_INPUT = 1;
-            if (console.SetConsoleMode(stdin, mode) == 0) {
+            mode.ENABLE_PROCESSED_INPUT = true;
+            if (SetConsoleMode(stdin, mode) == 0) {
                 return std.os.windows.unexpectedError(
                     std.os.windows.GetLastError(),
                 );
@@ -86,9 +85,8 @@ pub fn deinit() void {
             ) catch {};
         },
         .windows => {
-            const console = @import("win32").system.console;
             const stdin = std.io.getStdIn().handle;
-            _ = console.SetConsoleMode(stdin, original_canonical_context);
+            _ = SetConsoleMode(stdin, original_canonical_context);
         },
         else => @compileError("unsupported OS"),
     }
@@ -278,23 +276,19 @@ pub const clipboard = struct {
     pub fn get(buffer: []u8) ![]u8 {
         switch (comptime builtin.os.tag) {
             .windows => {
-                const win32 = @import("win32").system;
-                const de = win32.data_exchange;
-                const ss = win32.system_services;
-                const mem = win32.memory;
-                if (de.OpenClipboard(null) != 0) {
-                    defer _ = de.CloseClipboard();
-                    if (de.IsClipboardFormatAvailable(
-                        @intFromEnum(ss.CF_UNICODETEXT),
+                if (OpenClipboard(null) != 0) {
+                    defer _ = CloseClipboard();
+                    if (IsClipboardFormatAvailable(
+                        @intFromEnum(CLIPBOARD_FORMATS.UNICODETEXT),
                     ) != 0) {
-                        const cp_handle = de.GetClipboardData(
-                            @intFromEnum(ss.CF_UNICODETEXT),
+                        const cp_handle = GetClipboardData(
+                            @intFromEnum(CLIPBOARD_FORMATS.UNICODETEXT),
                         );
                         if (cp_handle) |handle| {
-                            if (mem.GlobalLock(
+                            if (GlobalLock(
                                 @bitCast(@intFromPtr(handle)),
                             )) |data| {
-                                defer _ = mem.GlobalUnlock(
+                                defer _ = GlobalUnlock(
                                     @bitCast(@intFromPtr(handle)),
                                 );
                                 const wtf16: [*:0]u16 =
@@ -329,9 +323,8 @@ pub const event = struct {
                 return std.posix.poll(&fds, 0);
             },
             .windows => {
-                const console = @import("win32").system.console;
                 var num_events: u32 = undefined;
-                if (console.GetNumberOfConsoleInputEvents(
+                if (GetNumberOfConsoleInputEvents(
                     std.io.getStdIn().handle,
                     &num_events,
                 ) == 0) {
@@ -352,10 +345,9 @@ pub const event = struct {
                 return stdin.readByte();
             },
             .windows => {
-                const console = @import("win32").system.console;
                 var buf: [1]u8 = undefined;
                 var chars_read: u32 = 0;
-                if (console.ReadConsoleA(
+                if (ReadConsoleA(
                     std.io.getStdIn().handle,
                     &buf,
                     1,
@@ -384,12 +376,18 @@ pub const event = struct {
                 return try std.posix.poll(&fds, 0) > 0;
             },
             .windows => {
-                const threading = @import("win32").system.threading;
                 const stdin_handle = std.io.getStdIn().handle;
-                return threading.WaitForSingleObject(
+                std.os.windows.WaitForSingleObject(
                     stdin_handle,
                     0,
-                ) == std.os.windows.WAIT_OBJECT_0;
+                ) catch |e| switch (e) {
+                    error.Unexpected => return std.os.windows.unexpectedError(
+                        std.os.windows.GetLastError(),
+                    ),
+                    error.WaitAbandoned, error.WaitTimeOut => return false,
+                    else => return e,
+                };
+                return true;
             },
             else => @compileError("unsupported OS"),
         }
@@ -828,13 +826,99 @@ pub const Event = union(enum) {
 
 const OriginalCanonicalContext = switch (builtin.os.tag) {
     .linux => std.os.linux.termios,
-    .windows => @import("win32").system.console.CONSOLE_MODE,
+    .windows => CONSOLE_MODE,
     else => @compileError("unsupported OS"),
 };
 
 extern "kernel32" fn IsValidCodePage(
     cp: std.os.windows.UINT,
 ) callconv(.winapi) std.os.windows.BOOL;
+extern "kernel32" fn SetConsoleCP(
+    wCodePageID: std.os.windows.UINT,
+) callconv(.winapi) std.os.windows.BOOL;
+extern "kernel32" fn SetConsoleOutputCP(
+    wCodePageID: std.os.windows.UINT,
+) callconv(.winapi) std.os.windows.BOOL;
+extern "kernel32" fn GetConsoleMode(
+    hConsoleHandle: std.os.windows.HANDLE,
+    lpMode: *CONSOLE_MODE,
+) callconv(.winapi) std.os.windows.BOOL;
+extern "kernel32" fn SetConsoleMode(
+    hConsoleHandle: std.os.windows.HANDLE,
+    lpMode: CONSOLE_MODE,
+) callconv(.winapi) std.os.windows.BOOL;
+extern "kernel32" fn GetNumberOfConsoleInputEvents(
+    hConsoleInput: std.os.windows.HANDLE,
+    lpcNumberOfEvents: *std.os.windows.DWORD,
+) callconv(.winapi) std.os.windows.BOOL;
+extern "kernel32" fn ReadConsoleA(
+    hConsoleInput: std.os.windows.HANDLE,
+    lpBuffer: std.os.windows.LPVOID,
+    nNumberOfCharsToRead: std.os.windows.DWORD,
+    lpcNumberOfEvents: *std.os.windows.DWORD,
+    pInputControl: ?std.os.windows.LPVOID,
+) callconv(.winapi) std.os.windows.BOOL;
+extern "kernel32" fn GlobalLock(
+    hMem: isize,
+) callconv(.winapi) ?std.os.windows.LPVOID;
+extern "kernel32" fn GlobalUnlock(
+    hMem: isize,
+) callconv(.winapi) std.os.windows.BOOL;
+
+extern "user32" fn OpenClipboard(
+    hWndNewOwner: ?std.os.windows.HWND,
+) callconv(.winapi) std.os.windows.BOOL;
+extern "user32" fn CloseClipboard() callconv(.winapi) std.os.windows.BOOL;
+extern "user32" fn IsClipboardFormatAvailable(
+    format: std.os.windows.UINT,
+) callconv(.winapi) std.os.windows.BOOL;
+extern "user32" fn GetClipboardData(
+    uFormat: std.os.windows.UINT,
+) callconv(.winapi) ?std.os.windows.HANDLE;
+
+const CONSOLE_MODE = packed struct(std.os.windows.DWORD) {
+    ENABLE_PROCESSED_INPUT: bool,
+    ENABLE_LINE_INPUT: bool,
+    ENABLE_ECHO_INPUT: bool,
+    ENABLE_WINDOW_INPUT: bool,
+    ENABLE_MOUSE_INPUT: bool,
+    ENABLE_INSERT_MODE: bool,
+    ENABLE_QUICK_EDIT_MODE: bool,
+    ENABLE_EXTENDED_FLAGS: bool,
+    ENABLE_AUTO_POSITION: bool,
+    ENABLE_VIRTUAL_TERMINAL_INPUT: bool,
+    _: u22 = 0,
+};
+
+const CLIPBOARD_FORMATS = enum(u32) {
+    TEXT = 1,
+    BITMAP = 2,
+    METAFILEPICT = 3,
+    SYLK = 4,
+    DIF = 5,
+    TIFF = 6,
+    OEMTEXT = 7,
+    DIB = 8,
+    PALETTE = 9,
+    PENDATA = 10,
+    RIFF = 11,
+    WAVE = 12,
+    UNICODETEXT = 13,
+    ENHMETAFILE = 14,
+    HDROP = 15,
+    LOCALE = 16,
+    DIBV5 = 17,
+    MAX = 18,
+    OWNERDISPLAY = 128,
+    DSPTEXT = 129,
+    DSPBITMAP = 130,
+    DSPMETAFILEPICT = 131,
+    DSPENHMETAFILE = 142,
+    PRIVATEFIRST = 512,
+    PRIVATELAST = 767,
+    GDIOBJFIRST = 768,
+    GDIOBJLAST = 1023,
+};
 
 /// Terminal input escape sequences.
 const escape_sequences: std.StaticStringMap(Event) = .initComptime(.{
