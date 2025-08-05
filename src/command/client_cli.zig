@@ -322,7 +322,7 @@ const Log = struct {
     }
 
     fn writeHeaders(
-        writer: std.fs.File.Writer,
+        writer: *std.Io.Writer,
         prefix: []const u8,
         comptime parent: []const u8,
         comptime Parent: type,
@@ -359,7 +359,7 @@ const Log = struct {
         }
     }
 
-    fn writeValues(writer: std.fs.File.Writer, parent: anytype) !void {
+    fn writeValues(writer: *std.Io.Writer, parent: anytype) !void {
         const parent_ti = @typeInfo(@TypeOf(parent)).@"struct";
         inline for (parent_ti.fields) |field| {
             if (@typeInfo(field.type) == .@"struct")
@@ -383,7 +383,7 @@ const Log = struct {
         }
     }
 
-    fn write(writer: std.fs.File.Writer) !void {
+    fn write(writer: *std.Io.Writer) !void {
         // Write header for the logging file
         try writer.writeAll("timestamp,");
         var num_of_drivers: usize = 0;
@@ -509,8 +509,10 @@ const Log = struct {
                 std.log.debug("{any}", .{@errorReturnTrace()});
             };
         }
-        const log_writer = log_file.writer();
-        try write(log_writer);
+        var write_buf: [4096]u8 = undefined;
+        var log_writer = log_file.writer(&write_buf);
+        try write(&log_writer.interface);
+        try log_writer.interface.flush();
         std.log.info("Logging data is saved successfully.", .{});
     }
 };
@@ -992,7 +994,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Move given carrier to target location. The carrier ID must be currently
         \\recognized within the motion system, and the target location must be
-        \\provided in millimeters as a whole or decimal number. Provide "true" to 
+        \\provided in millimeters as a whole or decimal number. Provide "true" to
         \\disable CAS (collision avoidance system) for the command.
         ,
         .execute = &clientCarrierPosMoveLocation,
@@ -1029,7 +1031,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Move given carrier to the center of target axis. The carrier ID must be
         \\currently recognized within the motion system. This command moves the
-        \\carrier with speed profile feedback. Provide "true" to disable CAS 
+        \\carrier with speed profile feedback. Provide "true" to disable CAS
         \\(collision avoidance system) for the command.
         ,
         .execute = &clientCarrierSpdMoveAxis,
@@ -1068,7 +1070,7 @@ pub fn init(c: Config) !void {
         \\currently recognized within the motion system, and the distance must
         \\be provided in millimeters as a whole or decimal number. The distance
         \\may be negative for backward movement. This command moves the carrier
-        \\with speed profile feedback. Provide "true" to disable CAS (collision 
+        \\with speed profile feedback. Provide "true" to disable CAS (collision
         \\avoidance system) for the command.
         ,
         .execute = &clientCarrierSpdMoveDistance,
@@ -1128,7 +1130,7 @@ pub fn init(c: Config) !void {
         \\Pull incoming carrier forward at axis. The pulled carrier's new ID
         \\must also be provided. If a destination in millimeters is specified,
         \\the carrier will automatically move to the destination after pull is
-        \\completed. Provide "true" to disable CAS (collision avoidance system) 
+        \\completed. Provide "true" to disable CAS (collision avoidance system)
         \\for the command when the final destination is provided.
         ,
         .execute = &clientCarrierPullForward,
@@ -1148,7 +1150,7 @@ pub fn init(c: Config) !void {
         \\Pull incoming carrier backward at axis. The pulled carrier's new ID
         \\must also be provided. If a destination in millimeters is specified,
         \\the carrier will automatically move to the destination after pull is
-        \\completed. Provide "true" to disable CAS (collision avoidance system) 
+        \\completed. Provide "true" to disable CAS (collision avoidance system)
         \\for the command when the final destination is provided.
         ,
         .execute = &clientCarrierPullBackward,
@@ -1227,11 +1229,11 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Add an info logging configuration. This command overwrites the existing
         \\logging configuration for the specified line, if any. The "kind" stands
-        \\for the kind of info to be logged, specified by either "driver", "axis", 
-        \\or "all" to log both driver and axis info. The range is the inclusive 
+        \\for the kind of info to be logged, specified by either "driver", "axis",
+        \\or "all" to log both driver and axis info. The range is the inclusive
         \\axis range, and shall be provided with colon separated value, e.g. "1:9"
-        \\to log from axis 1 to 9. Leaving the range will log every axis on the 
-        \\line.  
+        \\to log from axis 1 to 9. Leaving the range will log every axis on the
+        \\line.
         ,
         .execute = &clientAddLogInfo,
     });
@@ -1245,10 +1247,10 @@ pub fn init(c: Config) !void {
         .short_description = "Add info logging configuration.",
         .long_description =
         \\Start the info logging process. The log file contains only the most
-        \\recent data covering the specified duration (in seconds). The logging 
+        \\recent data covering the specified duration (in seconds). The logging
         \\runs until error occurs or is cancelled by executing "STOP_LOGGING".
-        \\If no path is provided, a default log file will be created in the 
-        \\current working directory as: "mmc-logging-YYYY.MM.DD-HH.MM.SS.csv". 
+        \\If no path is provided, a default log file will be created in the
+        \\current working directory as: "mmc-logging-YYYY.MM.DD-HH.MM.SS.csv".
         ,
         .execute = &clientStartLogInfo,
     });
@@ -1284,7 +1286,7 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Print axis and driver errors.",
         .long_description =
-        \\Print axis and driver errors on a line, if any. Providing axis 
+        \\Print axis and driver errors on a line, if any. Providing axis
         \\prints axis and driver errors on the specified axis only, if any.
         ,
         .execute = &clientShowError,
@@ -1330,7 +1332,7 @@ fn clientConnect(params: [][]const u8) !void {
         );
     }
     std.log.info(
-        "Trying to connect to {s}:{}",
+        "Trying to connect to {s}:{d}",
         .{ endpoint.ip, endpoint.port },
     );
     main_socket = try network.connectToHost(
@@ -1348,7 +1350,7 @@ fn clientConnect(params: [][]const u8) !void {
     }
     if (main_socket) |s| {
         std.log.info(
-            "Connected to {}",
+            "Connected to {f}",
             .{try s.getRemoteEndPoint()},
         );
         getLineConfig() catch |e| {
@@ -1560,12 +1562,14 @@ fn getLineConfig() !void {
         "Received the line configuration for the following line:",
         .{},
     );
-    const stdout = std.io.getStdOut().writer();
+    var stdout_buf: [4096]u8 = undefined;
+    var stdout = std.fs.File.stdout().writer(&stdout_buf);
     for (lines) |line| {
-        try stdout.writeByte('\t');
-        try stdout.writeAll(line.name);
-        try stdout.writeByte('\n');
+        try stdout.interface.writeByte('\t');
+        try stdout.interface.writeAll(line.name);
+        try stdout.interface.writeByte('\n');
     }
+    try stdout.interface.flush();
     for (lines) |line| {
         std.log.debug(
             "{s}:index {}:axes {}:drivers {}:acc {}:speed {}",
@@ -1668,7 +1672,9 @@ fn clientShowError(params: [][]const u8) !void {
 }
 
 fn printError(err: anytype, comptime kind: enum { axis, driver }) !void {
-    const stdout = std.io.getStdOut().writer();
+    var stdout_buf: [4096]u8 = undefined;
+    var stdout = std.fs.File.stdout().writer(&stdout_buf);
+    defer stdout.interface.flush() catch {};
     const ti = @typeInfo(@TypeOf(err)).@"struct";
     {
         var has_id = false;
@@ -1683,7 +1689,7 @@ fn printError(err: anytype, comptime kind: enum { axis, driver }) !void {
             const inner_ti = @typeInfo(field.type).@"struct";
             inline for (inner_ti.fields) |inner| {
                 if (@field(child, inner.name))
-                    try stdout.print(
+                    try stdout.interface.print(
                         "{s}.{s} on {s} {}",
                         .{ field.name, inner.name, @tagName(kind), err.id },
                     );
@@ -1691,7 +1697,7 @@ fn printError(err: anytype, comptime kind: enum { axis, driver }) !void {
         } else if (@typeInfo(field.type) != .bool) {
             // no op if the field is not a boolean
         } else if (@field(err, field.name))
-            try stdout.print(
+            try stdout.interface.print(
                 "{s} on {s} {}",
                 .{ field.name, @tagName(kind), err.id },
             );
@@ -1731,18 +1737,11 @@ fn clientAxisInfo(params: [][]const u8) !void {
         return error.InvalidMessage;
     const info = axis_infos.items[0];
     const err = axis_errors.items[0];
-    _ = try nestedWrite(
-        "Axis info",
-        info,
-        0,
-        std.io.getStdOut().writer(),
-    );
-    _ = try nestedWrite(
-        "Axis error",
-        err,
-        0,
-        std.io.getStdOut().writer(),
-    );
+    var stdout_buf: [4096]u8 = undefined;
+    var stdout = std.fs.File.stdout().writer(&stdout_buf);
+    _ = try nestedWrite("Axis info", info, 0, &stdout.interface);
+    _ = try nestedWrite("Axis error", err, 0, &stdout.interface);
+    try stdout.interface.flush();
 }
 
 fn clientDriverInfo(params: [][]const u8) !void {
@@ -1778,18 +1777,11 @@ fn clientDriverInfo(params: [][]const u8) !void {
         return error.InvalidMessage;
     const info = driver_infos.items[0];
     const err = driver_errors.items[0];
-    _ = try nestedWrite(
-        "Driver info",
-        info,
-        0,
-        std.io.getStdOut().writer(),
-    );
-    _ = try nestedWrite(
-        "Driver error",
-        err,
-        0,
-        std.io.getStdOut().writer(),
-    );
+    var stdout_buf: [4096]u8 = undefined;
+    var stdout = std.fs.File.stdout().writer(&stdout_buf);
+    _ = try nestedWrite("Driver info", info, 0, &stdout.interface);
+    _ = try nestedWrite("Driver error", err, 0, &stdout.interface);
+    try stdout.interface.flush();
 }
 
 fn clientCarrierInfo(params: [][]const u8) !void {
@@ -1821,12 +1813,10 @@ fn clientCarrierInfo(params: [][]const u8) !void {
     if (carriers.items.len != 1)
         return error.InvalidMessage;
     const carrier = carriers.pop() orelse return error.InvalidMessage;
-    _ = try nestedWrite(
-        "Carrier",
-        carrier,
-        0,
-        std.io.getStdOut().writer(),
-    );
+    var stdout_buf: [4096]u8 = undefined;
+    var stdout = std.fs.File.stdout().writer(&stdout_buf);
+    _ = try nestedWrite("Carrier", carrier, 0, &stdout.interface);
+    try stdout.interface.flush();
 }
 
 fn clientAutoInitialize(params: [][]const u8) !void {
@@ -3213,33 +3203,35 @@ fn clientStartLogInfo(params: [][]const u8) !void {
 fn clientStatusLogInfo(_: [][]const u8) !void {
     // Show the current logging configuration status
     std.log.info("Logging configuration:", .{});
-    const stdout = std.io.getStdOut().writer();
+    var stdout_buf: [4096]u8 = undefined;
+    var stdout = std.fs.File.stdout().writer(&stdout_buf);
+    defer stdout.interface.flush() catch {};
     for (log.lines) |line| {
         if (!line.axis and !line.driver) continue;
-        try stdout.print("Line {s}:", .{lines[line.id - 1].name});
+        try stdout.interface.print("Line {s}:", .{lines[line.id - 1].name});
         const ti = @typeInfo(@TypeOf(line)).@"struct";
         var set = false;
         inline for (ti.fields) |field| {
             if (@typeInfo(field.type) != .bool) {
                 // Skip
             } else if (@field(line, field.name)) {
-                if (set) try stdout.writeAll(",");
-                try stdout.print(" {s}", .{field.name});
+                if (set) try stdout.interface.writeByte(',');
+                try stdout.interface.print(" {s}", .{field.name});
                 set = true;
             }
         }
         const range = line.axis_id_range;
         if (range.start == range.end)
-            try stdout.print(" (axis {})", .{range.start})
+            try stdout.interface.print(" (axis {d})", .{range.start})
         else
-            try stdout.print(
-                " (axis {} to {})",
+            try stdout.interface.print(
+                " (axis {d} to {d})",
                 .{
                     line.axis_id_range.start,
                     line.axis_id_range.end,
                 },
             );
-        try stdout.writeByte('\n');
+        try stdout.interface.writeByte('\n');
     }
 }
 
@@ -3456,7 +3448,7 @@ pub fn nestedWrite(
     name: []const u8,
     val: anytype,
     indent: usize,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !usize {
     var written_bytes: usize = 0;
     const ti = @typeInfo(@TypeOf(val));
@@ -3470,7 +3462,7 @@ pub fn nestedWrite(
                     writer,
                 );
             } else {
-                try writer.writeBytesNTimes("    ", indent);
+                try writer.splatBytesAll("    ", indent);
                 written_bytes += 4 * indent;
                 try writer.print("{s}: ", .{name});
                 written_bytes += name.len + 2;
@@ -3479,7 +3471,7 @@ pub fn nestedWrite(
             }
         },
         .@"struct" => {
-            try writer.writeBytesNTimes("    ", indent);
+            try writer.splatBytesAll("    ", indent);
             written_bytes += 4 * indent;
             try writer.print("{s}: {{\n", .{name});
             written_bytes += name.len + 4;
@@ -3494,13 +3486,13 @@ pub fn nestedWrite(
                     writer,
                 );
             }
-            try writer.writeBytesNTimes("    ", indent);
+            try writer.splatBytesAll("    ", indent);
             written_bytes += 4 * indent;
             try writer.writeAll("},\n");
             written_bytes += 3;
         },
         .bool, .int => {
-            try writer.writeBytesNTimes("    ", indent);
+            try writer.splatBytesAll("    ", indent);
             written_bytes += 4 * indent;
             try writer.print("{s}: ", .{name});
             written_bytes += name.len + 2;
@@ -3508,7 +3500,7 @@ pub fn nestedWrite(
             written_bytes += std.fmt.count("{},\n", .{val});
         },
         .float => {
-            try writer.writeBytesNTimes("    ", indent);
+            try writer.splatBytesAll("    ", indent);
             written_bytes += 4 * indent;
             try writer.print("{s}: ", .{name});
             written_bytes += name.len + 2;
@@ -3516,7 +3508,7 @@ pub fn nestedWrite(
             written_bytes += std.fmt.count("{d},\n", .{val});
         },
         .@"enum" => {
-            try writer.writeBytesNTimes("    ", indent);
+            try writer.splatBytesAll("    ", indent);
             written_bytes += 4 * indent;
             try writer.print("{s}: ", .{name});
             written_bytes += name.len + 2;
@@ -3527,7 +3519,7 @@ pub fn nestedWrite(
             switch (val) {
                 inline else => |_, tag| {
                     const union_val = @field(val, @tagName(tag));
-                    try writer.writeBytesNTimes("    ", indent);
+                    try writer.splatBytesAll("    ", indent);
                     written_bytes += 4 * indent;
                     try writer.print("{s}: ", .{name});
                     written_bytes += name.len + 2;
@@ -3639,7 +3631,8 @@ fn send(socket: network.Socket, msg: []const u8) !void {
         try disconnect();
         return sock_err;
     }
-    socket.writer().writeAll(msg) catch |e| {
+    var writer = socket.writer(&.{});
+    writer.interface.writeAll(msg) catch |e| {
         try disconnect();
         return e;
     };

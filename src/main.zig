@@ -16,15 +16,15 @@ var prompt: Prompt = .{};
 
 fn stopCommandWindows(
     dwCtrlType: std.os.windows.DWORD,
-) callconv(std.os.windows.WINAPI) std.os.windows.BOOL {
+) callconv(.winapi) std.os.windows.BOOL {
     if (dwCtrlType == std.os.windows.CTRL_C_EVENT) {
         command.stop.store(true, .monotonic);
-        std.io.getStdIn().sync() catch {};
+        std.fs.File.stdin().sync() catch {};
     }
     return 1;
 }
 
-fn stopCommandLinux(_: c_int) callconv(.C) void {
+fn stopCommandLinux(_: c_int) callconv(.c) void {
     command.stop.store(true, .monotonic);
 }
 

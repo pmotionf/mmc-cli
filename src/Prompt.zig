@@ -38,8 +38,8 @@ pub fn handler(ctx: *Prompt) void {
     ctx.history.clear();
     ctx.clear();
 
-    var buffered_out = std.io.bufferedWriter(std.io.getStdOut().writer());
-    const stdout = buffered_out.writer();
+    var stdout_buf: [4096]u8 = undefined;
+    var stdout = std.fs.File.stdout().writer(&stdout_buf);
 
     var prev_disable: bool = true;
     main: while (!ctx.close.load(.monotonic)) {
@@ -47,15 +47,15 @@ pub fn handler(ctx: *Prompt) void {
             prev_disable = true;
             continue :main;
         }
-        defer buffered_out.flush() catch {};
+        defer stdout.interface.flush() catch {};
 
         // Print prompt once on enable.
         if (prev_disable) {
-            std.time.sleep(std.time.ns_per_ms * 10);
-            stdout.writeAll(
+            std.Thread.sleep(std.time.ns_per_ms * 10);
+            stdout.interface.writeAll(
                 "Please enter a command (HELP for info):\n",
             ) catch continue :main;
-            buffered_out.flush() catch continue :main;
+            stdout.interface.flush() catch continue :main;
         }
         prev_disable = false;
 
@@ -160,12 +160,13 @@ pub fn handler(ctx: *Prompt) void {
                                     // command start.
                                     ctx.cursor.moveEnd();
                                     io.cursor.moveColumn(
-                                        stdout.any(),
+                                        &stdout.interface,
                                         ctx.cursor.visible + 1,
                                     ) catch continue :main;
-                                    stdout.writeByte('\n') catch
+                                    stdout.interface.writeByte('\n') catch
                                         continue :main;
-                                    buffered_out.flush() catch continue :main;
+                                    stdout.interface.flush() catch
+                                        continue :main;
 
                                     command.enqueue(ctx.input) catch
                                         continue :main;
@@ -390,7 +391,7 @@ pub fn handler(ctx: *Prompt) void {
         ctx.complete_partial_start = start_completion;
 
         // Clear input line to prepare for writing
-        stdout.writeAll("\x1B[2K\r") catch continue :main;
+        stdout.interface.writeAll("\x1B[2K\r") catch continue :main;
 
         // Parse and print syntax highlighted input
         var last_frag_start: ?usize = null; // Last start byte != ' '.
@@ -401,7 +402,7 @@ pub fn handler(ctx: *Prompt) void {
                     if (ctx.complete_partial_start) |cvs| {
                         if (cvs == start and ctx.complete_selection != null) {
                             io.style.set(
-                                stdout.any(),
+                                &stdout.interface,
                                 .{ .underline = true },
                             ) catch continue :main;
                         }
@@ -409,11 +410,12 @@ pub fn handler(ctx: *Prompt) void {
                     const fragment = ctx.input[start..i];
                     for (command.registry.values()) |com| {
                         if (std.ascii.eqlIgnoreCase(com.name, fragment)) {
-                            io.style.set(stdout.any(), .{
+                            io.style.set(&stdout.interface, .{
                                 .fg = .{ .named = .green },
                             }) catch continue :main;
-                            defer io.style.reset(stdout.any()) catch {};
-                            stdout.writeAll(fragment) catch continue :main;
+                            defer io.style.reset(&stdout.interface) catch {};
+                            stdout.interface.writeAll(fragment) catch
+                                continue :main;
                             break;
                         }
                     } else {
@@ -424,16 +426,19 @@ pub fn handler(ctx: *Prompt) void {
                                 var_entry.key_ptr.*,
                                 fragment,
                             )) {
-                                io.style.set(stdout.any(), .{
+                                io.style.set(&stdout.interface, .{
                                     .fg = .{ .named = .magenta },
                                 }) catch continue :main;
-                                defer io.style.reset(stdout.any()) catch {};
-                                stdout.writeAll(fragment) catch
+                                defer io.style.reset(
+                                    &stdout.interface,
+                                ) catch {};
+                                stdout.interface.writeAll(fragment) catch
                                     continue :main;
                                 break;
                             }
                         } else {
-                            stdout.writeAll(fragment) catch continue :main;
+                            stdout.interface.writeAll(fragment) catch
+                                continue :main;
                         }
                     }
                 }
@@ -446,16 +451,17 @@ pub fn handler(ctx: *Prompt) void {
                         if (ctx.complete.prefix.len > completed_len) {
                             const suggestion =
                                 ctx.complete.prefix[completed_len..];
-                            io.style.set(stdout.any(), .{
+                            io.style.set(&stdout.interface, .{
                                 .fg = .{ .lut = .grayscale(12) },
                             }) catch continue :main;
-                            defer io.style.reset(stdout.any()) catch {};
-                            stdout.writeAll(suggestion) catch continue :main;
+                            defer io.style.reset(&stdout.interface) catch {};
+                            stdout.interface.writeAll(suggestion) catch
+                                continue :main;
                         }
                     }
                 }
 
-                stdout.writeByte(' ') catch continue :main;
+                stdout.interface.writeByte(' ') catch continue :main;
             } else if (last_frag_start == null) {
                 last_frag_start = i;
             }
@@ -465,7 +471,7 @@ pub fn handler(ctx: *Prompt) void {
                 if (ctx.complete_partial_start) |cvs| {
                     if (cvs == start and ctx.complete_selection != null) {
                         io.style.set(
-                            stdout.any(),
+                            &stdout.interface,
                             .{ .underline = true },
                         ) catch continue :main;
                     }
@@ -473,26 +479,29 @@ pub fn handler(ctx: *Prompt) void {
                 const fragment = ctx.input[start..];
                 for (command.registry.values()) |com| {
                     if (std.ascii.eqlIgnoreCase(com.name, fragment)) {
-                        io.style.set(stdout.any(), .{
+                        io.style.set(&stdout.interface, .{
                             .fg = .{ .named = .green },
                         }) catch continue :main;
-                        defer io.style.reset(stdout.any()) catch {};
-                        stdout.writeAll(fragment) catch continue :main;
+                        defer io.style.reset(&stdout.interface) catch {};
+                        stdout.interface.writeAll(fragment) catch
+                            continue :main;
                         break;
                     }
                 } else {
                     var it = command.variables.iterator();
                     while (it.next()) |var_entry| {
                         if (std.mem.eql(u8, var_entry.key_ptr.*, fragment)) {
-                            io.style.set(stdout.any(), .{
+                            io.style.set(&stdout.interface, .{
                                 .fg = .{ .named = .magenta },
                             }) catch continue :main;
-                            defer io.style.reset(stdout.any()) catch {};
-                            stdout.writeAll(fragment) catch continue :main;
+                            defer io.style.reset(&stdout.interface) catch {};
+                            stdout.interface.writeAll(fragment) catch
+                                continue :main;
                             break;
                         }
                     } else {
-                        stdout.writeAll(fragment) catch continue :main;
+                        stdout.interface.writeAll(fragment) catch
+                            continue :main;
                     }
                 }
             }
@@ -503,11 +512,12 @@ pub fn handler(ctx: *Prompt) void {
                     if (ctx.complete.prefix.len > completed_len) {
                         const suggestion =
                             ctx.complete.prefix[completed_len..];
-                        io.style.set(stdout.any(), .{
+                        io.style.set(&stdout.interface, .{
                             .fg = .{ .lut = .grayscale(12) },
                         }) catch continue :main;
-                        defer io.style.reset(stdout.any()) catch {};
-                        stdout.writeAll(suggestion) catch continue :main;
+                        defer io.style.reset(&stdout.interface) catch {};
+                        stdout.interface.writeAll(suggestion) catch
+                            continue :main;
                     }
                 }
             }
@@ -517,17 +527,17 @@ pub fn handler(ctx: *Prompt) void {
         if (ctx.history.selection) |*selection| {
             const hist_item = selection.slice();
             if (hist_item.len > ctx.input.len) {
-                io.style.set(stdout.any(), .{
+                io.style.set(&stdout.interface, .{
                     .fg = .{ .lut = .grayscale(12) },
                     .underline = true,
                 }) catch continue :main;
-                defer io.style.reset(stdout.any()) catch {};
-                stdout.writeAll(hist_item[ctx.input.len..]) catch
+                defer io.style.reset(&stdout.interface) catch {};
+                stdout.interface.writeAll(hist_item[ctx.input.len..]) catch
                     continue :main;
             }
         }
 
-        io.cursor.moveColumn(stdout.any(), ctx.cursor.visible + 1) catch
+        io.cursor.moveColumn(&stdout.interface, ctx.cursor.visible + 1) catch
             continue :main;
     }
 }

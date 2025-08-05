@@ -10,7 +10,7 @@ var original_canonical_context: OriginalCanonicalContext = undefined;
 pub fn init() !void {
     switch (comptime builtin.os.tag) {
         .linux => {
-            const stdin = std.io.getStdIn().handle;
+            const stdin = std.fs.File.stdin().handle;
             var attr = try std.posix.tcgetattr(stdin);
             original_canonical_context = attr;
 
@@ -30,7 +30,7 @@ pub fn init() !void {
             try std.posix.tcsetattr(stdin, .NOW, attr);
         },
         .windows => {
-            const stdin = std.io.getStdIn().handle;
+            const stdin = std.fs.File.stdin().handle;
 
             if (IsValidCodePage(65001) == 0) {
                 return error.Utf8CodePageNotInstalled;
@@ -77,7 +77,7 @@ pub fn init() !void {
 pub fn deinit() void {
     switch (comptime builtin.os.tag) {
         .linux => {
-            const stdin = std.io.getStdIn().handle;
+            const stdin = std.fs.File.stdin().handle;
             std.posix.tcsetattr(
                 stdin,
                 .NOW,
@@ -85,7 +85,7 @@ pub fn deinit() void {
             ) catch {};
         },
         .windows => {
-            const stdin = std.io.getStdIn().handle;
+            const stdin = std.fs.File.stdin().handle;
             _ = SetConsoleMode(stdin, original_canonical_context);
         },
         else => @compileError("unsupported OS"),
@@ -178,7 +178,7 @@ pub const Style = struct {
 };
 
 pub const style = struct {
-    pub fn set(writer: std.io.AnyWriter, s: Style) !void {
+    pub fn set(writer: *std.Io.Writer, s: Style) !void {
         if (s.fg) |color| {
             switch (color) {
                 .default => try writer.writeAll("\x1B[39m"),
@@ -260,14 +260,14 @@ pub const style = struct {
             }
         }
     }
-    pub fn reset(writer: std.io.AnyWriter) !void {
+    pub fn reset(writer: *std.Io.Writer) !void {
         try writer.writeAll("\x1B[0m");
     }
 };
 
 pub const cursor = struct {
     /// Move cursor to provided column.
-    pub fn moveColumn(writer: std.io.AnyWriter, column: usize) !void {
+    pub fn moveColumn(writer: *std.Io.Writer, column: usize) !void {
         try writer.print("\x1B[{d}G", .{column});
     }
 };
@@ -316,7 +316,7 @@ pub const event = struct {
         switch (comptime builtin.os.tag) {
             .linux => {
                 var fds: [1]std.posix.pollfd = .{.{
-                    .fd = std.io.getStdIn().handle,
+                    .fd = std.fs.File.stdin().handle,
                     .events = std.posix.POLL.IN,
                     .revents = undefined,
                 }};
@@ -325,7 +325,7 @@ pub const event = struct {
             .windows => {
                 var num_events: u32 = undefined;
                 if (GetNumberOfConsoleInputEvents(
-                    std.io.getStdIn().handle,
+                    std.fs.File.stdin().handle,
                     &num_events,
                 ) == 0) {
                     return std.os.windows.unexpectedError(
@@ -341,14 +341,15 @@ pub const event = struct {
     fn readByte() !u8 {
         switch (comptime builtin.os.tag) {
             .linux => {
-                const stdin = std.io.getStdIn().reader();
-                return stdin.readByte();
+                var stdin_buf: [1]u8 = undefined;
+                var stdin = std.fs.File.stdin().reader(&stdin_buf);
+                return stdin.interface.takeByte();
             },
             .windows => {
                 var buf: [1]u8 = undefined;
                 var chars_read: u32 = 0;
                 if (ReadConsoleA(
-                    std.io.getStdIn().handle,
+                    std.fs.File.stdin().handle,
                     &buf,
                     1,
                     &chars_read,
@@ -369,14 +370,14 @@ pub const event = struct {
         switch (comptime builtin.target.os.tag) {
             .linux => {
                 var fds: [1]std.posix.pollfd = .{.{
-                    .fd = std.io.getStdIn().handle,
+                    .fd = std.fs.File.stdin().handle,
                     .events = std.posix.POLL.IN,
                     .revents = undefined,
                 }};
                 return try std.posix.poll(&fds, 0) > 0;
             },
             .windows => {
-                const stdin_handle = std.io.getStdIn().handle;
+                const stdin_handle = std.fs.File.stdin().handle;
                 std.os.windows.WaitForSingleObject(
                     stdin_handle,
                     0,
