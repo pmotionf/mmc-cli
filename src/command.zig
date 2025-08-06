@@ -815,7 +815,9 @@ fn loadConfig(params: [][]const u8) !void {
 
                     var home_dir = try std.fs.cwd().openDir(home_path, .{});
                     defer home_dir.close();
-                    break :b try home_dir.openDir(".config", .{});
+                    var config_root = try home_dir.openDir(".config", .{});
+                    defer config_root.close();
+                    break :b try config_root.openDir("mmc-cli", .{});
                 },
                 .linux => b: {
                     var path_buf: [std.fs.max_path_bytes]u8 = undefined;
@@ -834,13 +836,15 @@ fn loadConfig(params: [][]const u8) !void {
                     );
                     var home_dir = try std.fs.cwd().openDir(home_path, .{});
                     defer home_dir.close();
-                    break :b try home_dir.openDir(".config", .{});
+                    var config_root = try home_dir.openDir(".config", .{});
+                    defer config_root.close();
+                    break :b try config_root.openDir("mmc-cli", .{});
                 },
                 else => return error.UnsupportedOs,
             };
 
             break :config_local try config_dir.openFile(
-                "mmc_cli_config.json",
+                "config.json",
                 .{},
             );
         };
