@@ -740,6 +740,8 @@ fn backspace(self: *Prompt) void {
 fn clear(self: *Prompt) void {
     self.history.selection = null;
     self.input = &.{};
+    self.complete_partial_start = null;
+    self.complete_selection = null;
     self.cursor = .{
         .raw = 0,
         .visible = 0,
