@@ -145,7 +145,7 @@ const Log = struct {
             start_idx: usize,
         ) !usize {
             var index = start_idx;
-            if (infos.len != errors.len) return error.InvalidMessage;
+            if (infos.len != errors.len) return error.InvalidResponse;
             for (infos, errors) |info, err| {
                 self.axes[index] = .{
                     .motor_enabled = info.motor_enabled,
@@ -158,7 +158,7 @@ const Log = struct {
                     .hall = if (info.hall_alarm) |hall| .{
                         .back = hall.back,
                         .front = hall.front,
-                    } else return error.InvalidMessage,
+                    } else return error.InvalidResponse,
                 };
                 index += 1;
             }
@@ -178,10 +178,10 @@ const Log = struct {
                             .cas = if (carrier.cas) |cas| .{
                                 .enabled = cas.enabled,
                                 .triggered = cas.triggered,
-                            } else return error.InvalidMessage,
+                            } else return error.InvalidResponse,
                         };
                     }
-                } else return error.InvalidMessage;
+                } else return error.InvalidResponse;
             }
             return index;
         }
@@ -195,7 +195,7 @@ const Log = struct {
             start_idx: usize,
         ) !usize {
             var index = start_idx;
-            if (infos.len != errors.len) return error.InvalidMessage;
+            if (infos.len != errors.len) return error.InvalidResponse;
             for (infos, errors) |info, err| {
                 self.drivers[index] = .{
                     .connected = info.connected,
@@ -209,11 +209,11 @@ const Log = struct {
                         .comm = if (err.communication_error) |comm_err| .{
                             .from_prev = comm_err.from_prev,
                             .from_next = comm_err.from_next,
-                        } else return error.InvalidMessage,
+                        } else return error.InvalidResponse,
                         .power = if (err.power_error) |power_err| .{
                             .overvoltage = power_err.overvoltage,
                             .undervoltage = power_err.undervoltage,
-                        } else return error.InvalidMessage,
+                        } else return error.InvalidResponse,
                     },
                 };
                 index += 1;
@@ -243,10 +243,10 @@ const Log = struct {
                             .cas = if (info.cas) |cas| .{
                                 .enabled = cas.enabled,
                                 .triggered = cas.triggered,
-                            } else return error.InvalidMessage,
+                            } else return error.InvalidResponse,
                         };
                     }
-                } else return error.InvalidMessage;
+                } else return error.InvalidResponse;
             }
         }
     };
@@ -1651,11 +1651,11 @@ fn clientShowError(params: [][]const u8) !void {
     const axis_errors = system.axis_errors;
     if (axis_errors.items.len !=
         source.axis_range.end_id - source.axis_range.start_id + 1)
-        return error.InvalidMessage;
+        return error.InvalidResponse;
     const driver_errors = system.driver_errors;
     if (driver_errors.items.len !=
         (source.axis_range.end_id - 1) / 3 - (source.axis_range.start_id - 1) / 3 + 1)
-        return error.InvalidMessage;
+        return error.InvalidResponse;
     for (axis_errors.items) |axis_err| {
         try printError(axis_err, .axis);
     }
@@ -1727,7 +1727,7 @@ fn clientAxisInfo(params: [][]const u8) !void {
     const axis_errors = system.axis_errors;
     if (axis_infos.items.len != axis_errors.items.len and
         axis_infos.items.len != 1)
-        return error.InvalidMessage;
+        return error.InvalidResponse;
     const info = axis_infos.items[0];
     const err = axis_errors.items[0];
     var stdout_buf: [4096]u8 = undefined;
@@ -1767,7 +1767,7 @@ fn clientDriverInfo(params: [][]const u8) !void {
     const driver_errors = system.driver_errors;
     if (driver_infos.items.len != driver_errors.items.len and
         driver_errors.items.len != 1)
-        return error.InvalidMessage;
+        return error.InvalidResponse;
     const info = driver_infos.items[0];
     const err = driver_errors.items[0];
     var stdout_buf: [4096]u8 = undefined;
@@ -1803,9 +1803,8 @@ fn clientCarrierInfo(params: [][]const u8) !void {
         main_socket,
     );
     var carriers = system.carrier_infos;
-    if (carriers.items.len != 1)
-        return error.InvalidMessage;
-    const carrier = carriers.pop() orelse return error.InvalidMessage;
+    if (carriers.items.len > 1) return error.InvalidResponse;
+    const carrier = carriers.pop() orelse return error.CarrierNotFound;
     var stdout_buf: [4096]u8 = undefined;
     var stdout = std.fs.File.stdout().writer(&stdout_buf);
     _ = try nestedWrite("Carrier", carrier, 0, &stdout.interface);
@@ -3338,7 +3337,8 @@ fn sendCommandRequest(
             } else return e;
         };
         defer commands.deinit();
-        const comm = commands.commands.pop() orelse return error.InvalidMessage;
+        if (commands.commands.items.len > 1) return error.InvalidResponse;
+        const comm = commands.commands.pop() orelse return error.InvalidResponse;
         switch (comm.status) {
             .STATUS_PROGRESSING, .STATUS_QUEUED => {}, // continue the loop
             .STATUS_COMPLETED => break,
