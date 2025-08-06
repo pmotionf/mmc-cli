@@ -2222,8 +2222,8 @@ fn statusLogRegisters(_: [][]const u8) !void {
             }
             buf_len += (try std.fmt.bufPrint(
                 buffer[buf_len..],
-                "{s}",
-                .{@tagName(reg_entry.key)},
+                "{t}",
+                .{reg_entry.key},
             )).len;
             first = false;
         }
@@ -2706,11 +2706,11 @@ test "writeLoggingHeaders" {
             "",
             register,
         ) catch |e| {
-            std.log.err("{s}", .{@errorName(e)});
+            std.log.err("{t}", .{e});
             return e;
         };
         std.testing.expectEqualStrings(&buffer, expected) catch |e| {
-            std.log.err("{s}", .{@errorName(e)});
+            std.log.err("{t}", .{e});
             return e;
         };
     }
