@@ -171,7 +171,6 @@ const Log = struct {
                                 break :b id - 1;
                             } else break;
                         } else @field(axis, field.name) - 1;
-                        // std.log.debug("pos: {}", .{carrier.position});
                         self.axes[start_idx + axis_idx].carrier = .{
                             .id = @intCast(carrier.id),
                             .position = carrier.position,
@@ -367,7 +366,7 @@ const Log = struct {
             else {
                 if (@typeInfo(field.type) == .optional) {
                     if (@field(parent, field.name)) |value|
-                        try writer.print("{d},", .{value})
+                        try writer.print("{},", .{value})
                     else
                         try writer.write("None,");
                 } else if (@typeInfo(field.type) == .@"enum") {
@@ -424,7 +423,6 @@ const Log = struct {
                 }
             }
         }
-        std.log.debug("driver: {}, axis: {}", .{ num_of_drivers, num_of_axis });
         // Write the data to the logging file
         while (log.data.readItem()) |item| {
             try writer.writeByte('\n');
@@ -475,7 +473,7 @@ const Log = struct {
         const ipv4 = endpoint.address.ipv4.value;
         const addr = try std.fmt.bufPrint(
             &addr_buf,
-            "{}.{}.{}.{}",
+            "{d}.{d}.{d}.{d}",
             .{ ipv4[0], ipv4[1], ipv4[2], ipv4[3] },
         );
         const socket: ?network.Socket = try network.connectToHost(
@@ -494,8 +492,8 @@ const Log = struct {
             // Check if there is an error after the log started, including the
             // command cancellation.
             command.checkError() catch |e| {
-                std.log.debug("{s}", .{@errorName(e)});
-                std.log.debug("{any}", .{@errorReturnTrace()});
+                std.log.debug("{t}", .{e});
+                std.log.debug("{?f}", .{@errorReturnTrace()});
                 break;
             };
             while (timer.read() < mcl_update * std.time.ns_per_ms) {}
@@ -505,8 +503,8 @@ const Log = struct {
                 @floatFromInt(@divFloor(timestamp, std.time.ms_per_s)),
                 socket,
             ) catch |e| {
-                std.log.debug("{s}", .{@errorName(e)});
-                std.log.debug("{any}", .{@errorReturnTrace()});
+                std.log.debug("{t}", .{e});
+                std.log.debug("{?f}", .{@errorReturnTrace()});
             };
         }
         var write_buf: [4096]u8 = undefined;
@@ -1301,7 +1299,7 @@ pub fn deinit() void {
 }
 
 fn clientConnect(params: [][]const u8) !void {
-    std.log.debug("{}", .{params.len});
+    std.log.debug("{d}", .{params.len});
     if (main_socket) |socket| {
         if (isSocketEventOccurred(
             socket,
@@ -1313,7 +1311,7 @@ fn clientConnect(params: [][]const u8) !void {
             else
                 try disconnect();
         } else |e| {
-            std.log.err("{s}", .{@errorName(e)});
+            std.log.err("{t}", .{e});
             try disconnect();
         }
     }
@@ -1354,11 +1352,11 @@ fn clientConnect(params: [][]const u8) !void {
             .{try s.getRemoteEndPoint()},
         );
         getLineConfig() catch |e| {
-            std.log.err("{s}", .{@errorName(e)});
+            std.log.err("{t}", .{e});
             return try disconnect();
         };
         assertAPIVersion() catch |e| {
-            std.log.err("{s}", .{@errorName(e)});
+            std.log.err("{t}", .{e});
             return try disconnect();
         };
     } else {
@@ -1370,7 +1368,7 @@ fn clientConnect(params: [][]const u8) !void {
 fn disconnect() error{ServerNotConnected}!void {
     if (main_socket) |s| {
         std.log.info(
-            "Disconnecting from server {s}:{}",
+            "Disconnecting from server {s}:{d}",
             .{ IP_address, port },
         );
         s.close();
@@ -1526,11 +1524,6 @@ fn getLineConfig() !void {
                 .axis = @intFromFloat(length.axis * 1000),
                 .carrier = @intFromFloat(length.carrier * 1000),
             };
-            std.log.debug("line {} axis length {} carrier length {}", .{
-                line_idx + 1,
-                lines[line_idx].length.axis,
-                lines[line_idx].length.carrier,
-            });
         } else return error.MissingField;
         var num_axes: usize = 0;
         @memcpy(lines[line_idx].name, line.name.getSlice());
@@ -1690,16 +1683,16 @@ fn printError(err: anytype, comptime kind: enum { axis, driver }) !void {
             inline for (inner_ti.fields) |inner| {
                 if (@field(child, inner.name))
                     try stdout.interface.print(
-                        "{s}.{s} on {s} {}",
-                        .{ field.name, inner.name, @tagName(kind), err.id },
+                        "{s}.{s} on {t} {d}",
+                        .{ field.name, inner.name, kind, err.id },
                     );
             }
         } else if (@typeInfo(field.type) != .bool) {
             // no op if the field is not a boolean
         } else if (@field(err, field.name))
             try stdout.interface.print(
-                "{s} on {s} {}",
-                .{ field.name, @tagName(kind), err.id },
+                "{s} on {t} {d}",
+                .{ field.name, kind, err.id },
             );
     }
 }
@@ -3312,8 +3305,8 @@ fn sendCommandRequest(
                 bool,
                 s,
             ) catch |err| {
-                std.log.debug("{any}", .{@errorReturnTrace()});
-                std.log.info("{s}", .{@errorName(err)});
+                std.log.debug("{?f}", .{@errorReturnTrace()});
+                std.log.info("{t}", .{err});
             };
             return e;
         };
@@ -3338,8 +3331,8 @@ fn sendCommandRequest(
                     bool,
                     s,
                 ) catch |err| {
-                    std.log.debug("{any}", .{@errorReturnTrace()});
-                    std.log.info("{s}", .{@errorName(err)});
+                    std.log.debug("{?f}", .{@errorReturnTrace()});
+                    std.log.info("{t}", .{err});
                 };
                 return e;
             } else return e;
@@ -3512,8 +3505,8 @@ pub fn nestedWrite(
             written_bytes += 4 * indent;
             try writer.print("{s}: ", .{name});
             written_bytes += name.len + 2;
-            try writer.print("{s},\n", .{@tagName(val)});
-            written_bytes += std.fmt.count("{s},\n", .{@tagName(val)});
+            try writer.print("{t},\n", .{val});
+            written_bytes += std.fmt.count("{t},\n", .{val});
         },
         .@"union" => {
             switch (val) {

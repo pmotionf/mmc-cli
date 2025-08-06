@@ -88,8 +88,8 @@ pub fn main() !void {
         }
 
         command.execute() catch |e| {
-            std.log.err("{s}", .{@errorName(e)});
-            std.log.debug("{any}", .{@errorReturnTrace()});
+            std.log.err("{t}", .{e});
+            std.log.debug("{?f}", .{@errorReturnTrace()});
             command.queueClear();
             command.err.store(true, .monotonic);
             continue :command_loop;
