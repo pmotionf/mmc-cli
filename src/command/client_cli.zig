@@ -136,16 +136,16 @@ const Log = struct {
         };
 
         /// Parse raw axis info and error into this type. Write the data to
-        /// the context and return the next data index.
+        /// the context and return the next data index. Data are guaranteed
+        /// to not have a null field for any optional.
         pub fn parseAxis(
             self: *Log.Data,
             infos: []InfoResponse.System.Axis.Info,
             errors: []InfoResponse.System.Axis.Error,
             carriers: []InfoResponse.System.Carrier.Info,
             start_idx: usize,
-        ) !usize {
+        ) usize {
             var index = start_idx;
-            if (infos.len != errors.len) return error.InvalidResponse;
             for (infos, errors) |info, err| {
                 self.axes[index] = .{
                     .motor_enabled = info.motor_enabled,
@@ -155,47 +155,45 @@ const Log = struct {
                     .errors = .{
                         .overcurrent = err.overcurrent,
                     },
-                    .hall = if (info.hall_alarm) |hall| .{
-                        .back = hall.back,
-                        .front = hall.front,
-                    } else return error.InvalidResponse,
+                    .hall = .{
+                        .back = info.hall_alarm.?.back,
+                        .front = info.hall_alarm.?.front,
+                    },
                 };
                 index += 1;
             }
             for (carriers) |carrier| {
-                if (carrier.axis) |axis| {
-                    const ti = @typeInfo(@TypeOf(axis)).@"struct";
-                    inline for (ti.fields) |field| {
-                        const axis_idx = if (@typeInfo(field.type) == .optional) b: {
-                            if (@field(axis, field.name)) |id| {
-                                break :b id - 1;
-                            } else break;
-                        } else @field(axis, field.name) - 1;
-                        self.axes[start_idx + axis_idx].carrier = .{
-                            .id = @intCast(carrier.id),
-                            .position = carrier.position,
-                            .state = carrier.state,
-                            .cas = if (carrier.cas) |cas| .{
-                                .enabled = cas.enabled,
-                                .triggered = cas.triggered,
-                            } else return error.InvalidResponse,
-                        };
-                    }
-                } else return error.InvalidResponse;
+                const axis = carrier.axis.?;
+                const ti = @typeInfo(@TypeOf(axis)).@"struct";
+                inline for (ti.fields) |field| {
+                    const axis_idx = if (@typeInfo(field.type) == .optional) b: {
+                        if (@field(axis, field.name)) |id| {
+                            break :b id - 1;
+                        } else break;
+                    } else @field(axis, field.name) - 1;
+                    self.axes[start_idx + axis_idx].carrier = .{
+                        .id = @intCast(carrier.id),
+                        .position = carrier.position,
+                        .state = carrier.state,
+                        .cas = .{
+                            .enabled = carrier.cas.?.enabled,
+                            .triggered = carrier.cas.?.triggered,
+                        },
+                    };
+                }
             }
             return index;
         }
-        // TODO: Error returned from here must clear the log data
         /// Parse raw driver info and error into this type. Write the data to
-        /// the context and return the next data index.
+        /// the context and return the next data index. Data are guaranteed
+        /// to not have a null field for any optional.
         pub fn parseDriver(
             self: *Log.Data,
             infos: []InfoResponse.System.Driver.Info,
             errors: []InfoResponse.System.Driver.Error,
             start_idx: usize,
-        ) !usize {
+        ) usize {
             var index = start_idx;
-            if (infos.len != errors.len) return error.InvalidResponse;
             for (infos, errors) |info, err| {
                 self.drivers[index] = .{
                     .connected = info.connected,
@@ -206,48 +204,19 @@ const Log = struct {
                     .errors = .{
                         .control_loop_max_time_exceeded = err.control_loop_time_exceeded,
                         .inverter_overheat = err.inverter_overheat,
-                        .comm = if (err.communication_error) |comm_err| .{
-                            .from_prev = comm_err.from_prev,
-                            .from_next = comm_err.from_next,
-                        } else return error.InvalidResponse,
-                        .power = if (err.power_error) |power_err| .{
-                            .overvoltage = power_err.overvoltage,
-                            .undervoltage = power_err.undervoltage,
-                        } else return error.InvalidResponse,
+                        .comm = .{
+                            .from_prev = err.communication_error.?.from_prev,
+                            .from_next = err.communication_error.?.from_next,
+                        },
+                        .power = .{
+                            .overvoltage = err.power_error.?.overvoltage,
+                            .undervoltage = err.power_error.?.undervoltage,
+                        },
                     },
                 };
                 index += 1;
             }
             return index;
-        }
-        /// Parse raw carrier info into this type. Write the data to
-        /// the context and return the next data index.
-        pub fn parseCarrier(
-            self: *Log.Data,
-            infos: []InfoResponse.System.Carrier.Info,
-        ) !void {
-            for (infos) |info| {
-                if (info.axis) |axis| {
-                    const ti = @typeInfo(@TypeOf(axis)).@"struct";
-                    inline for (ti.fields) |field| {
-                        const index = if (@typeInfo(field.type) == .optional) b: {
-                            if (@field(axis, field.name)) |idx|
-                                break :b idx
-                            else
-                                break;
-                        } else @field(axis, field.name);
-                        self.axes[index].carrier = .{
-                            .id = @intCast(info.id),
-                            .position = info.position,
-                            .state = info.state,
-                            .cas = if (info.cas) |cas| .{
-                                .enabled = cas.enabled,
-                                .triggered = cas.triggered,
-                            } else return error.InvalidResponse,
-                        };
-                    }
-                } else return error.InvalidResponse;
-            }
         }
     };
 
@@ -302,18 +271,54 @@ const Log = struct {
                 InfoResponse.System,
                 sock,
             );
+            var axis_infos: []InfoResponse.System.Axis.Info = &.{};
+            var axis_errors: []InfoResponse.System.Axis.Error = &.{};
+            var driver_infos: []InfoResponse.System.Driver.Info = &.{};
+            var driver_errors: []InfoResponse.System.Driver.Error = &.{};
+            var carrier_infos: []InfoResponse.System.Carrier.Info = &.{};
+            // Validate response
+            if (system.line_id != line.id) return error.InvalidResponse;
+            if (line.axis) {
+                axis_infos = system.axis_infos.items;
+                axis_errors = system.axis_errors.items;
+                carrier_infos = system.carrier_infos.items;
+                const axes = line.axis_id_range.end - line.axis_id_range.start + 1;
+                if (axis_infos.len != axis_errors.len or axis_infos.len != axes)
+                    return error.InvalidResponse;
+                for (axis_infos, axis_errors) |info, err| {
+                    try validateResponse(info);
+                    try validateResponse(err);
+                }
+                for (carrier_infos) |carrier| try validateResponse(carrier);
+            }
+            if (line.driver) {
+                driver_infos = system.driver_infos.items;
+                driver_errors = system.driver_errors.items;
+                const start_driver =
+                    lines[line.id - 1].axes[line.axis_id_range.start - 1].driver;
+                const end_driver =
+                    lines[line.id - 1].axes[line.axis_id_range.end - 1].driver;
+                const drivers = end_driver.id - start_driver.id + 1;
+                if (driver_infos.len != driver_errors.len or
+                    driver_infos.len != drivers) return error.InvalidResponse;
+                for (driver_infos, driver_errors) |info, err| {
+                    try validateResponse(info);
+                    try validateResponse(err);
+                }
+            }
+            // Parse the response
             if (line.axis)
-                axis_idx = try data.parseAxis(
-                    system.axis_infos.items,
-                    system.axis_errors.items,
-                    system.carrier_infos.items,
+                axis_idx = data.parseAxis(
+                    axis_infos,
+                    axis_errors,
+                    carrier_infos,
                     axis_idx,
                 );
 
             if (line.driver)
-                driver_idx = try data.parseDriver(
-                    system.driver_infos.items,
-                    system.driver_errors.items,
+                driver_idx = data.parseDriver(
+                    driver_infos,
+                    driver_errors,
                     driver_idx,
                 );
         }
@@ -505,10 +510,15 @@ const Log = struct {
             ) catch |e| {
                 std.log.debug("{t}", .{e});
                 std.log.debug("{?f}", .{@errorReturnTrace()});
+                // NOTE: Should the main thread be notified to stop any running
+                //       command? Example use case: When execute a file, if the
+                //       logging failed, it is hard to notice that the logging
+                //       is finished while keep executing commands.
+                break;
             };
         }
-        var write_buf: [4096]u8 = undefined;
-        var log_writer = log_file.writer(&write_buf);
+        // var write_buf: [4096]u8 = undefined;
+        var log_writer = log_file.writer(&.{});
         try write(&log_writer.interface);
         try log_writer.interface.flush();
         std.log.info("Logging data is saved successfully.", .{});
@@ -1502,6 +1512,7 @@ fn getLineConfig() !void {
     lines = try allocator.alloc(Line, line_config.len);
     errdefer allocator.free(lines);
     for (line_config, 0..) |line, line_idx| {
+        try validateResponse(line);
         log.lines[line_idx].id = @intCast(line_idx + 1);
         lines[line_idx].axes = try allocator.alloc(
             Axis,
@@ -1519,12 +1530,10 @@ fn getLineConfig() !void {
         lines[line_idx].velocity = 12;
         lines[line_idx].index = @intCast(line_idx);
         lines[line_idx].id = @intCast(line_idx + 1);
-        if (line.length) |length| {
-            lines[line_idx].length = .{
-                .axis = @intFromFloat(length.axis * 1000),
-                .carrier = @intFromFloat(length.carrier * 1000),
-            };
-        } else return error.MissingField;
+        lines[line_idx].length = .{
+            .axis = @intFromFloat(line.length.?.axis * 1000),
+            .carrier = @intFromFloat(line.length.?.carrier * 1000),
+        };
         var num_axes: usize = 0;
         @memcpy(lines[line_idx].name, line.name.getSlice());
         for (0..@intCast(@divFloor(line.axes - 1, 3) + 1)) |driver_idx| {
@@ -1656,6 +1665,13 @@ fn clientShowError(params: [][]const u8) !void {
     if (driver_errors.items.len !=
         (source.axis_range.end_id - 1) / 3 - (source.axis_range.start_id - 1) / 3 + 1)
         return error.InvalidResponse;
+    // Validate no null before starts printing
+    for (axis_errors.items) |axis_err| {
+        try validateResponse(axis_err);
+    }
+    for (driver_errors.items) |driver_err| {
+        try validateResponse(driver_err);
+    }
     for (axis_errors.items) |axis_err| {
         try printError(axis_err, .axis);
     }
@@ -1730,6 +1746,8 @@ fn clientAxisInfo(params: [][]const u8) !void {
         return error.InvalidResponse;
     const info = axis_infos.items[0];
     const err = axis_errors.items[0];
+    try validateResponse(info);
+    try validateResponse(err);
     var stdout_buf: [4096]u8 = undefined;
     var stdout = std.fs.File.stdout().writer(&stdout_buf);
     _ = try nestedWrite("Axis info", info, 0, &stdout.interface);
@@ -1770,6 +1788,8 @@ fn clientDriverInfo(params: [][]const u8) !void {
         return error.InvalidResponse;
     const info = driver_infos.items[0];
     const err = driver_errors.items[0];
+    try validateResponse(info);
+    try validateResponse(err);
     var stdout_buf: [4096]u8 = undefined;
     var stdout = std.fs.File.stdout().writer(&stdout_buf);
     _ = try nestedWrite("Driver info", info, 0, &stdout.interface);
@@ -1805,6 +1825,7 @@ fn clientCarrierInfo(params: [][]const u8) !void {
     var carriers = system.carrier_infos;
     if (carriers.items.len > 1) return error.InvalidResponse;
     const carrier = carriers.pop() orelse return error.CarrierNotFound;
+    try validateResponse(carrier);
     var stdout_buf: [4096]u8 = undefined;
     var stdout = std.fs.File.stdout().writer(&stdout_buf);
     _ = try nestedWrite("Carrier", carrier, 0, &stdout.interface);
@@ -2213,7 +2234,7 @@ fn clientCarrierAxis(params: [][]const u8) !void {
                 "Carrier {d} axis: {}",
                 .{ carrier.id, aux },
             );
-    }
+    } else return error.InvalidResponse;
 }
 
 fn clientHallStatus(params: [][]const u8) !void {
@@ -2268,7 +2289,7 @@ fn clientHallStatus(params: [][]const u8) !void {
                 .source = null,
             },
         };
-        var system = try sendRequest(
+        const system = try sendRequest(
             info_msg,
             fba_allocator,
             InfoResponse.System,
@@ -2277,14 +2298,16 @@ fn clientHallStatus(params: [][]const u8) !void {
         if (system.line_id != line.id and
             system.axis_infos.items.len != line.axes.len)
             return error.InvalidResponse;
-        while (system.axis_infos.pop()) |axis| {
-            const hall = axis.hall_alarm orelse return error.InvalidResponse;
+        // Validate response before starts printing
+        for (system.axis_infos.items) |axis| try validateResponse(axis);
+        // Starts printing hall status
+        for (system.axis_infos.items) |axis| {
             std.log.info(
                 "Axis {} Hall Sensor:\n\t BACK - {s}\n\t FRONT - {s}",
                 .{
                     axis.id,
-                    if (hall.back) "ON" else "OFF",
-                    if (hall.front) "ON" else "OFF",
+                    if (axis.hall_alarm.?.back) "ON" else "OFF",
+                    if (axis.hall_alarm.?.front) "ON" else "OFF",
                 },
             );
         }
@@ -3631,4 +3654,85 @@ fn send(socket: network.Socket, msg: []const u8) !void {
         try disconnect();
         return e;
     };
+}
+
+/// Zig-protobuf cast the message into an optional for a struct or union type.
+/// Validate the optional struct and union is not null.
+fn validateResponse(item: anytype) error{InvalidResponse}!void {
+    const ti = @typeInfo(@TypeOf(item));
+    switch (ti) {
+        .@"struct" => {
+            inline for (ti.@"struct".fields) |field| {
+                if (@typeInfo(field.type) == .optional) {
+                    const opt_ti = @typeInfo(field.type).optional;
+                    switch (@typeInfo(opt_ti.child)) {
+                        .@"struct" => {
+                            if (@field(item, field.name) == null)
+                                return error.InvalidResponse
+                            else
+                                try validateResponse(@field(item, field.name).?);
+                        },
+                        .@"union" => {
+                            if (@field(item, field.name) == null)
+                                return error.InvalidResponse
+                            else
+                                try validateResponse(@field(item, field.name).?);
+                        },
+                        // Ignore other child type. Shall be validated on the caller site
+                        else => {},
+                    }
+                }
+            }
+        },
+        .@"union" => {
+            switch (item) {
+                else => |active| {
+                    const active_ti = @typeInfo(@TypeOf(active));
+                    switch (active_ti) {
+                        .optional => {
+                            switch (@typeInfo(active_ti.optional.child)) {
+                                .@"struct" => {
+                                    if (active == null)
+                                        return error.InvalidResponse
+                                    else
+                                        try validateResponse(active.?);
+                                },
+                                .@"union" => {
+                                    if (active == null)
+                                        return error.InvalidResponse
+                                    else
+                                        try validateResponse(active.?);
+                                },
+                                // Ignore other child type. Shall be validated on the caller site
+                                else => {},
+                            }
+                        },
+                        else => {},
+                    }
+                },
+            }
+        },
+        inline else => @compileError("Item is not a struct or union"),
+    }
+}
+
+test validateResponse {
+    // The lowest level test
+    var item = InfoResponse.System.Axis.Info.init(std.testing.allocator);
+    try std.testing.expectError(
+        error.InvalidResponse,
+        validateResponse(item),
+    );
+    item.hall_alarm = .{};
+    try validateResponse(item);
+    // Info level test
+    var info = InfoResponse.init(std.testing.allocator);
+    try std.testing.expectError(
+        error.InvalidResponse,
+        validateResponse(info),
+    );
+    info.body = .{
+        .system = .init(std.testing.allocator),
+    };
+    try validateResponse(info);
 }
