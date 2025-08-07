@@ -31,7 +31,7 @@ const Line = struct {
         carrier: u32,
     },
 
-    /// Maximum number of axis
+    /// Maximum number of line
     pub const max = 64 * 4;
     pub const Index = Driver.Index;
     pub const Id = Driver.Id;
@@ -527,11 +527,6 @@ const Log = struct {
 
 var log: Log = .{};
 var lines: []Line = &.{};
-
-// TODO: Decide the value properly
-var fba_buffer: [1_024_000]u8 = undefined;
-var fba = std.heap.FixedBufferAllocator.init(&fba_buffer);
-const fba_allocator = fba.allocator();
 
 // TODO: Calculate the memory required for logging
 var log_buffer: [1_024_000]u8 = undefined;
@@ -1452,18 +1447,16 @@ fn clientGetAcceleration(params: [][]const u8) !void {
 }
 
 fn serverVersion(_: [][]const u8) !void {
-    var core_msg: CoreRequest = CoreRequest.init(fba_allocator);
-    defer core_msg.deinit();
-    core_msg.kind = .CORE_REQUEST_KIND_SERVER_INFO;
+    const core_msg = CoreRequest{
+        .kind = .CORE_REQUEST_KIND_SERVER_INFO,
+    };
     const server = try sendRequest(
         core_msg,
-        fba_allocator,
+        null,
         CoreResponse.Server,
         main_socket,
     );
-    defer fba.reset();
     const version = server.version orelse return error.InvalidResponse;
-    defer server.deinit();
     std.log.info(
         "MMC Server Version: {d}.{d}.{d}\n",
         .{ version.major, version.minor, version.patch },
@@ -1474,17 +1467,15 @@ fn serverVersion(_: [][]const u8) !void {
 /// Request api version used by the server. Called inside connect function and
 /// return the API version.
 fn APIVersion() !std.SemanticVersion {
-    var core_msg: CoreRequest = CoreRequest.init(fba_allocator);
-    defer core_msg.deinit();
-    core_msg.kind = .CORE_REQUEST_KIND_API_VERSION;
+    const core_msg = CoreRequest{
+        .kind = .CORE_REQUEST_KIND_API_VERSION,
+    };
     const version = try sendRequest(
         core_msg,
-        fba_allocator,
+        null,
         CoreResponse.SemanticVersion,
         main_socket,
     );
-    defer fba.reset();
-    defer version.deinit();
     return .{
         .major = version.major,
         .minor = version.minor,
@@ -1494,18 +1485,19 @@ fn APIVersion() !std.SemanticVersion {
 
 /// Request line configurataion from the server. Called inside connect command
 fn getLineConfig() !void {
-    var core_msg: CoreRequest = CoreRequest.init(fba_allocator);
-    defer core_msg.deinit();
-    core_msg.kind = .CORE_REQUEST_KIND_LINE_CONFIG;
+    const max_line_name = 64;
+    var buffer: [
+        (@sizeOf(CoreResponse.LineConfig.Line) + max_line_name) * Line.max
+    ]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const fba_allocator = fba.allocator();
+    const core_msg = CoreRequest{ .kind = .CORE_REQUEST_KIND_LINE_CONFIG };
     const response = try sendRequest(
         core_msg,
         fba_allocator,
         CoreResponse.LineConfig,
         main_socket,
     );
-    defer fba.reset();
-    defer response.deinit();
-
     const line_config = response.lines.items;
     log = try Log.init(@intCast(line_config.len));
     errdefer log.deinit();
@@ -1590,16 +1582,13 @@ fn getLineConfig() !void {
 /// Assert that the API versions used in mmc-cli and mmc server are identical
 /// for major and minor version
 fn assertAPIVersion() !void {
-    var core_msg: CoreRequest = CoreRequest.init(fba_allocator);
-    defer core_msg.deinit();
-    core_msg.kind = .CORE_REQUEST_KIND_API_VERSION;
+    const core_msg = CoreRequest{ .kind = .CORE_REQUEST_KIND_API_VERSION };
     const server_api_version = try sendRequest(
         core_msg,
-        fba_allocator,
+        null,
         CoreResponse.SemanticVersion,
         main_socket,
     );
-    defer fba.reset();
     const cli_api_version = api.version;
     if (cli_api_version.major != server_api_version.major or
         cli_api_version.minor != server_api_version.minor)
@@ -1625,7 +1614,14 @@ fn assertAPIVersion() !void {
 }
 
 fn clientShowError(params: [][]const u8) !void {
-    defer fba.reset();
+    var buffer: [
+        @sizeOf(InfoResponse.System.Axis.Error) +
+            @sizeOf(InfoResponse.System.Driver.Error)
+    ]u8 = undefined;
+    @compileLog("ShowError", @sizeOf(InfoResponse.System.Axis.Error) +
+        @sizeOf(InfoResponse.System.Driver.Error));
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const fba_allocator = fba.allocator();
     const line_name: []const u8 = params[0];
     const line_idx = try matchLine(lines, line_name);
     const line: Line = lines[line_idx];
@@ -1642,15 +1638,14 @@ fn clientShowError(params: [][]const u8) !void {
             }
         },
     };
-    var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
-    info_msg.body = .{
+    const info_msg = InfoRequest{ .body = .{
         .system = .{
             .line_id = @intCast(line.id),
             .axis = true,
             .driver = true,
             .source = source,
         },
-    };
+    } };
     const system = try sendRequest(
         info_msg,
         fba_allocator,
@@ -1714,21 +1709,29 @@ fn printError(err: anytype, comptime kind: enum { axis, driver }) !void {
 }
 
 fn clientAxisInfo(params: [][]const u8) !void {
-    defer fba.reset();
+    var buffer: [
+        (@sizeOf(InfoResponse.System.Axis.Info) +
+            @sizeOf(InfoResponse.System.Axis.Error))
+    ]u8 = undefined;
+    @compileLog("AxisInfo", (@sizeOf(InfoResponse.System.Axis.Info) +
+        @sizeOf(InfoResponse.System.Axis.Error)));
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const fba_allocator = fba.allocator();
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
     const line_idx = try matchLine(lines, line_name);
     const line: Line = lines[line_idx];
     if (axis_id < 1 or axis_id > line.axes.len) return error.InvalidAxis;
-    var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
-    info_msg.body = .{
-        .system = .{
-            .line_id = @intCast(line.id),
-            .axis = true,
-            .source = .{
-                .axis_range = .{
-                    .start_id = @intCast(axis_id),
-                    .end_id = @intCast(axis_id),
+    const info_msg: InfoRequest = InfoRequest{
+        .body = .{
+            .system = .{
+                .line_id = @intCast(line.id),
+                .axis = true,
+                .source = .{
+                    .axis_range = .{
+                        .start_id = @intCast(axis_id),
+                        .end_id = @intCast(axis_id),
+                    },
                 },
             },
         },
@@ -1756,21 +1759,29 @@ fn clientAxisInfo(params: [][]const u8) !void {
 }
 
 fn clientDriverInfo(params: [][]const u8) !void {
-    defer fba.reset();
+    var buffer: [
+        (@sizeOf(InfoResponse.System.Driver.Info) +
+            @sizeOf(InfoResponse.System.Driver.Error))
+    ]u8 = undefined;
+    @compileLog("DriverInfo", (@sizeOf(InfoResponse.System.Driver.Info) +
+        @sizeOf(InfoResponse.System.Driver.Error)));
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const fba_allocator = fba.allocator();
     const line_name: []const u8 = params[0];
     const driver_id = try std.fmt.parseInt(Driver.Id, params[1], 0);
     const line_idx = try matchLine(lines, line_name);
     const line: Line = lines[line_idx];
     if (driver_id < 1 or driver_id > line.drivers.len) return error.InvalidDriver;
-    var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
-    info_msg.body = .{
-        .system = .{
-            .line_id = @intCast(line.id),
-            .driver = true,
-            .source = .{
-                .driver_range = .{
-                    .start_id = @intCast(driver_id),
-                    .end_id = @intCast(driver_id),
+    const info_msg = InfoRequest{
+        .body = .{
+            .system = .{
+                .line_id = @intCast(line.id),
+                .driver = true,
+                .source = .{
+                    .driver_range = .{
+                        .start_id = @intCast(driver_id),
+                        .end_id = @intCast(driver_id),
+                    },
                 },
             },
         },
@@ -1798,24 +1809,27 @@ fn clientDriverInfo(params: [][]const u8) !void {
 }
 
 fn clientCarrierInfo(params: [][]const u8) !void {
-    defer fba.reset();
+    var buffer: [@sizeOf(InfoResponse.System.Carrier.Info) + @sizeOf(u32)]u8 =
+        undefined;
+    @compileLog("CarrierInfo", @sizeOf(InfoResponse.System.Carrier.Info) + @sizeOf(u32));
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const fba_allocator = fba.allocator();
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     const line_idx = try matchLine(lines, line_name);
     const line: Line = lines[line_idx];
-    var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
-    var ids = std.ArrayListAligned(
-        u32,
-        null,
-    ).init(fba_allocator);
-    try ids.append(carrier_id);
-    info_msg.body = .{
+    var ids: [1]u32 = .{carrier_id};
+    const info_msg = InfoRequest{ .body = .{
         .system = .{
             .line_id = @intCast(line.id),
             .carrier = true,
-            .source = .{ .carriers = .{ .ids = ids } },
+            .source = .{
+                .carriers = .{
+                    .ids = .fromOwnedSlice(fba_allocator, &ids),
+                },
+            },
         },
-    };
+    } };
     const system = try sendRequest(
         info_msg,
         fba_allocator,
@@ -1833,7 +1847,11 @@ fn clientCarrierInfo(params: [][]const u8) !void {
 }
 
 fn clientAutoInitialize(params: [][]const u8) !void {
-    defer fba.reset();
+    var buffer: [@sizeOf(CommandRequest.AutoInitialize.Line) * Line.max]u8 =
+        undefined;
+    @compileLog("AutoInitialize", @sizeOf(CommandRequest.AutoInitialize.Line) * Line.max);
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const fba_allocator = fba.allocator();
     var init_lines = std.ArrayListAligned(
         CommandRequest.AutoInitialize.Line,
         null,
@@ -1864,28 +1882,32 @@ fn clientAutoInitialize(params: [][]const u8) !void {
             try init_lines.append(line);
         }
     }
-    var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
-    defer command_msg.deinit();
-    command_msg.body = .{
-        .auto_initialize = .{ .lines = init_lines },
-    };
+    const command_msg: CommandRequest = CommandRequest{ .body = .{
+        .auto_initialize = .{
+            .lines = .fromOwnedSlice(
+                fba_allocator,
+                try init_lines.toOwnedSlice(),
+            ),
+        },
+    } };
     try sendCommandRequest(
         command_msg,
-        fba_allocator,
         main_socket,
     );
 }
 
 fn clientAxisCarrier(params: [][]const u8) !void {
-    defer fba.reset();
+    var buffer: [@sizeOf(InfoResponse.System.Carrier.Info)]u8 = undefined;
+    @compileLog("AxisCarrier", @sizeOf(InfoResponse.Commands.Command));
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const fba_allocator = fba.allocator();
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
     const result_var: []const u8 = params[2];
     const line_idx = try matchLine(lines, line_name);
     const line: Line = lines[line_idx];
     if (axis_id < 1 or axis_id > line.axes.len) return error.InvalidAxis;
-    var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
-    info_msg.body = .{
+    const info_msg = InfoRequest{ .body = .{
         .system = .{
             .line_id = @intCast(line.id),
             .carrier = true,
@@ -1896,7 +1918,7 @@ fn clientAxisCarrier(params: [][]const u8) !void {
                 },
             },
         },
-    };
+    } };
     const system = sendRequest(
         info_msg,
         fba_allocator,
@@ -1923,7 +1945,11 @@ fn clientAxisCarrier(params: [][]const u8) !void {
 }
 
 fn clientCarrierID(params: [][]const u8) !void {
-    defer fba.reset();
+    var buffer: [@sizeOf(InfoResponse.System.Carrier) + @sizeOf(Line.Index)]u8 =
+        undefined;
+    @compileLog("CarrierID", @sizeOf(InfoResponse.System.Carrier) + @sizeOf(Line.Index));
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const fba_allocator = fba.allocator();
     var line_name_iterator = std.mem.tokenizeSequence(
         u8,
         params[0],
@@ -1932,7 +1958,7 @@ fn clientCarrierID(params: [][]const u8) !void {
     const result_var: []const u8 = params[1];
     if (result_var.len > 32) return error.PrefixTooLong;
 
-    // Validate line names, avoid heap allocation
+    // Validate line names
     var line_counter: usize = 0;
     while (line_name_iterator.next()) |line_name| {
         if (matchLine(lines, line_name)) |_| {
@@ -1944,7 +1970,7 @@ fn clientCarrierID(params: [][]const u8) !void {
     }
 
     var line_idxs =
-        std.ArrayList(usize).init(fba_allocator);
+        std.ArrayList(Line.Index).init(fba_allocator);
     line_name_iterator.reset();
     while (line_name_iterator.next()) |line_name| {
         try line_idxs.append(@intCast(try matchLine(
@@ -1956,20 +1982,20 @@ fn clientCarrierID(params: [][]const u8) !void {
     var variable_count: usize = 1;
     for (line_idxs.items) |line_idx| {
         const line = lines[line_idx];
-        var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
-        info_msg.body = .{
+        const info_msg = InfoRequest{ .body = .{
             .system = .{
                 .line_id = @intCast(line.id),
                 .axis = true,
                 .source = null,
             },
-        };
+        } };
         const system = try sendRequest(
             info_msg,
             fba_allocator,
             InfoResponse.System,
             main_socket,
         );
+        defer system.deinit();
         const axis_infos = system.axis_infos;
 
         if (axis_infos.items.len != line.axes.len)
@@ -2014,7 +2040,11 @@ fn clientCarrierID(params: [][]const u8) !void {
 }
 
 fn clientAssertLocation(params: [][]const u8) !void {
-    defer fba.reset();
+    var buffer: [@sizeOf(InfoResponse.System.Carrier) + @sizeOf(u32)]u8 =
+        undefined;
+    @compileLog("AssertCarrierLocation", @sizeOf(InfoResponse.System.Carrier) + @sizeOf(u32));
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const fba_allocator = fba.allocator();
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     const expected_location: f32 = try std.fmt.parseFloat(f32, params[2]);
@@ -2025,19 +2055,16 @@ fn clientAssertLocation(params: [][]const u8) !void {
         1.0;
     const line_idx = try matchLine(lines, line_name);
     const line = lines[line_idx];
-    var ids = std.ArrayListAligned(
-        u32,
-        null,
-    ).init(fba_allocator);
-    try ids.append(carrier_id);
-    var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
-    info_msg.body = .{
+    var ids: [1]u32 = .{carrier_id};
+    const info_msg: InfoRequest = InfoRequest{ .body = .{
         .system = .{
             .line_id = @intCast(line.id),
             .carrier = true,
-            .source = .{ .carriers = .{ .ids = ids } },
+            .source = .{ .carriers = .{
+                .ids = .fromOwnedSlice(fba_allocator, &ids),
+            } },
         },
-    };
+    } };
     const system = try sendRequest(
         info_msg,
         fba_allocator,
@@ -2064,17 +2091,14 @@ fn clientAxisReleaseServo(params: [][]const u8) !void {
         if (axis < 1 or axis > line.axes.len) return error.InvalidAxis;
         axis_id = axis;
     }
-    var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
-    defer command_msg.deinit();
-    command_msg.body = .{
+    const command_msg = CommandRequest{ .body = .{
         .release_control = .{
             .line_id = @intCast(line.id),
             .axis_id = if (axis_id) |axis| @intCast(axis) else null,
         },
-    };
+    } };
     try sendCommandRequest(
         command_msg,
-        fba_allocator,
         main_socket,
     );
 }
@@ -2089,9 +2113,7 @@ fn clientClearErrors(params: [][]const u8) !void {
         if (axis < 1 or axis > line.axes.len) return error.InvalidAxis;
         axis_id = axis;
     }
-    var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
-    defer command_msg.deinit();
-    command_msg.body = .{
+    const command_msg = CommandRequest{ .body = .{
         .clear_errors = .{
             .line_id = @intCast(line.id),
             .driver_id = if (axis_id) |id|
@@ -2099,10 +2121,9 @@ fn clientClearErrors(params: [][]const u8) !void {
             else
                 null,
         },
-    };
+    } };
     try sendCommandRequest(
         command_msg,
-        fba_allocator,
         main_socket,
     );
 }
@@ -2117,17 +2138,14 @@ fn clientClearCarrierInfo(params: [][]const u8) !void {
         if (axis < 1 or axis > line.axes.len) return error.InvalidAxis;
         axis_id = axis;
     }
-    var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
-    defer command_msg.deinit();
-    command_msg.body = .{
+    const command_msg: CommandRequest = CommandRequest{ .body = .{
         .clear_carrier_info = .{
             .line_id = @intCast(line.id),
             .axis_id = if (axis_id) |id| @intCast(id) else null,
         },
-    };
+    } };
     try sendCommandRequest(
         command_msg,
-        fba_allocator,
         main_socket,
     );
 }
@@ -2139,45 +2157,44 @@ fn clientResetSystem(_: [][]const u8) !void {
                 .clear_carrier_info = .{ .line_id = line.id },
             },
         };
-        try sendCommandRequest(command_msg, fba_allocator, main_socket);
+        try sendCommandRequest(command_msg, main_socket);
         command_msg.body = .{ .clear_errors = .{ .line_id = line.id } };
-        try sendCommandRequest(command_msg, fba_allocator, main_socket);
+        try sendCommandRequest(command_msg, main_socket);
         command_msg.body = .{ .stop_push_carrier = .{ .line_id = line.id } };
-        try sendCommandRequest(command_msg, fba_allocator, main_socket);
+        try sendCommandRequest(command_msg, main_socket);
         command_msg.body = .{ .stop_pull_carrier = .{ .line_id = line.id } };
-        try sendCommandRequest(command_msg, fba_allocator, main_socket);
+        try sendCommandRequest(command_msg, main_socket);
     }
 }
 
 fn clientCarrierLocation(params: [][]const u8) !void {
-    defer fba.reset();
+    var buffer: [@sizeOf(InfoResponse.System.Carrier) + @sizeOf(u32)]u8 = undefined;
+    @compileLog("CarrierLocation", @sizeOf(InfoResponse.System.Carrier) + @sizeOf(u32));
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const fba_allocator = fba.allocator();
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     const result_var: []const u8 = params[2];
     const line_idx = try matchLine(lines, line_name);
     const line = lines[line_idx];
-    var ids = std.ArrayListAligned(
-        u32,
-        null,
-    ).init(fba_allocator);
-    try ids.append(carrier_id);
-    var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
-    info_msg.body = .{
+    var ids: [1]u32 = .{carrier_id};
+    const info_msg: InfoRequest = InfoRequest{ .body = .{
         .system = .{
             .line_id = @intCast(line.id),
             .carrier = true,
-            .source = .{ .carriers = .{ .ids = ids } },
+            .source = .{ .carriers = .{
+                .ids = .fromOwnedSlice(fba_allocator, &ids),
+            } },
         },
-    };
+    } };
     const system = try sendRequest(
         info_msg,
-        fba_allocator,
+        null,
         InfoResponse.System,
         main_socket,
     );
-    if (system.line_id != line.id)
-        return error.InvalidResponse;
+    if (system.line_id != line.id) return error.InvalidResponse;
     var carriers = system.carrier_infos;
     const carrier = carriers.pop() orelse return error.InvalidResponse;
     std.log.info(
@@ -2195,25 +2212,25 @@ fn clientCarrierLocation(params: [][]const u8) !void {
 }
 
 fn clientCarrierAxis(params: [][]const u8) !void {
-    defer fba.reset();
+    var buffer: [@sizeOf(InfoResponse.System.Carrier) + @sizeOf(u32)]u8 = undefined;
+    @compileLog("CarrierAxis", @sizeOf(InfoResponse.System.Carrier) + @sizeOf(u32));
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const fba_allocator = fba.allocator();
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     const line_idx = try matchLine(lines, line_name);
     const line = lines[line_idx];
-    var ids = std.ArrayListAligned(
-        u32,
-        null,
-    ).init(fba_allocator);
-    try ids.append(carrier_id);
-    var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
-    info_msg.body = .{
+    var ids: [1]u32 = .{carrier_id};
+    const info_msg: InfoRequest = InfoRequest{ .body = .{
         .system = .{
             .line_id = @intCast(line.id),
             .carrier = true,
-            .source = .{ .carriers = .{ .ids = ids } },
+            .source = .{ .carriers = .{
+                .ids = .fromOwnedSlice(fba_allocator, &ids),
+            } },
         },
-    };
+    } };
     const system = try sendRequest(
         info_msg,
         fba_allocator,
@@ -2238,7 +2255,10 @@ fn clientCarrierAxis(params: [][]const u8) !void {
 }
 
 fn clientHallStatus(params: [][]const u8) !void {
-    defer fba.reset();
+    var buffer: [@sizeOf(InfoResponse.System.Axis.Info) * Axis.max]u8 = undefined;
+    @compileLog("HallStatus", @sizeOf(InfoResponse.System.Axis.Info));
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const fba_allocator = fba.allocator();
     const line_name: []const u8 = params[0];
     var axis_id: ?Axis.Id.Line = null;
     const line_idx = try matchLine(lines, line_name);
@@ -2249,10 +2269,8 @@ fn clientHallStatus(params: [][]const u8) !void {
         axis_id = axis;
     }
 
-    var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
-    defer info_msg.deinit();
     if (axis_id) |id| {
-        info_msg.body = .{
+        const info_msg: InfoRequest = InfoRequest{ .body = .{
             .system = .{
                 .line_id = @intCast(line.id),
                 .axis = true,
@@ -2263,7 +2281,7 @@ fn clientHallStatus(params: [][]const u8) !void {
                     },
                 },
             },
-        };
+        } };
         var system = try sendRequest(
             info_msg,
             fba_allocator,
@@ -2282,13 +2300,13 @@ fn clientHallStatus(params: [][]const u8) !void {
             },
         );
     } else {
-        info_msg.body = .{
+        const info_msg: InfoRequest = InfoRequest{ .body = .{
             .system = .{
                 .line_id = @intCast(line.id),
                 .axis = true,
                 .source = null,
             },
-        };
+        } };
         const system = try sendRequest(
             info_msg,
             fba_allocator,
@@ -2315,7 +2333,10 @@ fn clientHallStatus(params: [][]const u8) !void {
 }
 
 fn clientAssertHall(params: [][]const u8) !void {
-    defer fba.reset();
+    var buffer: [@sizeOf(InfoResponse.System.Axis.Info)]u8 = undefined;
+    @compileLog("AssertHall", @sizeOf(InfoResponse.System.Axis.Info));
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const fba_allocator = fba.allocator();
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
     const side: Direction =
@@ -2342,10 +2363,7 @@ fn clientAssertHall(params: [][]const u8) !void {
         } else return error.InvalidHallAlarmState;
     }
 
-    var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
-    defer info_msg.deinit();
-
-    info_msg.body = .{
+    const info_msg = InfoRequest{ .body = .{
         .system = .{
             .line_id = @intCast(line.id),
             .axis = true,
@@ -2356,7 +2374,7 @@ fn clientAssertHall(params: [][]const u8) !void {
                 },
             },
         },
-    };
+    } };
     var system = try sendRequest(
         info_msg,
         fba_allocator,
@@ -2385,14 +2403,11 @@ fn clientCalibrate(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try matchLine(lines, line_name);
     const line = lines[line_idx];
-    var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
-    defer command_msg.deinit();
-    command_msg.body = .{
+    const command_msg: CommandRequest = .{ .body = .{
         .calibrate = .{ .line_id = @intCast(line.id) },
-    };
+    } };
     try sendCommandRequest(
         command_msg,
-        fba_allocator,
         main_socket,
     );
 }
@@ -2401,14 +2416,11 @@ fn clientSetLineZero(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try matchLine(lines, line_name);
     const line = lines[line_idx];
-    var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
-    defer command_msg.deinit();
-    command_msg.body = .{
+    const command_msg: CommandRequest = .{ .body = .{
         .set_line_zero = .{ .line_id = @intCast(line.id) },
-    };
+    } };
     try sendCommandRequest(
         command_msg,
-        fba_allocator,
         main_socket,
     );
 }
@@ -2449,9 +2461,7 @@ fn clientIsolate(params: [][]const u8) !void {
         } else break :link null;
     };
 
-    var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
-    defer command_msg.deinit();
-    command_msg.body = .{
+    const command_msg: CommandRequest = .{ .body = .{
         .isolate_carrier = .{
             .line_id = @intCast(line.id),
             .axis_id = @intCast(axis_id),
@@ -2459,15 +2469,18 @@ fn clientIsolate(params: [][]const u8) !void {
             .link_axis = link_axis,
             .direction = dir,
         },
-    };
+    } };
     try sendCommandRequest(
         command_msg,
-        fba_allocator,
         main_socket,
     );
 }
 
 fn clientWaitIsolate(params: [][]const u8) !void {
+    var buffer: [@sizeOf(InfoResponse.System.Carrier)]u8 = undefined;
+    @compileLog("waitIsolate", @sizeOf(InfoResponse.System.Carrier));
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const fba_allocator = fba.allocator();
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     const timeout = if (params[2].len > 0)
@@ -2478,33 +2491,31 @@ fn clientWaitIsolate(params: [][]const u8) !void {
 
     const line_idx = try matchLine(lines, line_name);
     const line = lines[line_idx];
+    var ids: [1]u32 = .{carrier_id};
+    const info_msg: InfoRequest = .{
+        .body = .{
+            .system = .{
+                .line_id = @intCast(line.id),
+                .carrier = true,
+                .source = .{ .carriers = .{
+                    .ids = .fromOwnedSlice(fba_allocator, &ids),
+                } },
+            },
+        },
+    };
     var wait_timer = try std.time.Timer.start();
-    var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
-    defer info_msg.deinit();
     while (true) {
-        defer fba.reset();
         if (timeout != 0 and
             wait_timer.read() > timeout * std.time.ns_per_ms)
             return error.WaitTimeout;
         try command.checkCommandInterrupt();
-        var ids = std.ArrayListAligned(
-            u32,
-            null,
-        ).init(fba_allocator);
-        try ids.append(carrier_id);
-        info_msg.body = .{
-            .system = .{
-                .line_id = @intCast(line.id),
-                .carrier = true,
-                .source = .{ .carriers = .{ .ids = ids } },
-            },
-        };
         var system = try sendRequest(
             info_msg,
             fba_allocator,
             InfoResponse.System,
             main_socket,
         );
+        defer system.deinit();
         if (system.line_id != line.id)
             return error.InvalidResponse;
         const carrier = system.carrier_infos.pop() orelse return error.InvalidResponse;
@@ -3277,10 +3288,17 @@ fn matchLine(_lines: []Line, name: []const u8) !usize {
 fn sendRequest(
     /// `body` type should be one of CoreRequest, CommandRequest, or InfoRequest
     body: anytype,
-    a: std.mem.Allocator,
+    /// Request that require allocator can provide the allocator
+    req_allocator: ?std.mem.Allocator,
     comptime T: type,
     socket: ?network.Socket,
 ) !T {
+    // TODO: Decide the value properly. Learn how the protobuf manage the message.
+    // NOTE: The biggest message size is requesting for all system info. Try to
+    //       calculate that one.
+    var fba_buffer: [1_024_000]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&fba_buffer);
+    const a = fba.allocator();
     const s = if (socket) |_s| _s else return error.ServerNotConnected;
     var encoded: []u8 = undefined;
     if (@TypeOf(body) == CoreRequest) {
@@ -3299,33 +3317,33 @@ fn sendRequest(
     try send(s, encoded);
     const rep = try receive(s, a);
     defer a.free(rep);
-    return try parseResponse(a, T, rep);
+    return try parseResponse(req_allocator, T, rep);
 }
 
 /// Send a command request and wait for its response to arrive
 fn sendCommandRequest(
     command_msg: CommandRequest,
-    a: std.mem.Allocator,
     s: ?network.Socket,
 ) !void {
     const command_id = try sendRequest(
         command_msg,
-        a,
+        null,
         u32,
         s,
     );
-    var info_msg: InfoRequest = InfoRequest.init(a);
-    defer info_msg.deinit();
+    var buffer: [@sizeOf(InfoResponse.Commands.Command)]u8 = undefined;
+    @compileLog("SendCommandRequest", @sizeOf(InfoResponse.Commands.Command));
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const fba_allocator = fba.allocator();
     while (true) {
+        defer fba.reset();
         command.checkCommandInterrupt() catch |e| {
-            var remove_command: CommandRequest = CommandRequest.init(a);
-            defer remove_command.deinit();
-            remove_command.body = .{
+            const remove_command = CommandRequest{ .body = .{
                 .clear_command = .{ .command_id = command_id },
-            };
+            } };
             _ = sendRequest(
                 remove_command,
-                a,
+                null,
                 bool,
                 s,
             ) catch |err| {
@@ -3334,24 +3352,22 @@ fn sendCommandRequest(
             };
             return e;
         };
-        info_msg.body = .{
+        const info_msg = InfoRequest{ .body = .{
             .command = .{ .id = command_id },
-        };
+        } };
         var commands = sendRequest(
             info_msg,
-            a,
+            fba_allocator,
             InfoResponse.Commands,
             s,
         ) catch |e| {
             if (e == error.CommandStopped) {
-                var remove_command: CommandRequest = CommandRequest.init(a);
-                defer remove_command.deinit();
-                remove_command.body = .{
+                const remove_command = CommandRequest{ .body = .{
                     .clear_command = .{ .command_id = command_id },
-                };
+                } };
                 _ = sendRequest(
                     remove_command,
-                    a,
+                    null,
                     bool,
                     s,
                 ) catch |err| {
@@ -3361,7 +3377,6 @@ fn sendCommandRequest(
                 return e;
             } else return e;
         };
-        defer commands.deinit();
         if (commands.commands.items.len > 1) return error.InvalidResponse;
         const comm = commands.commands.pop() orelse return error.InvalidResponse;
         switch (comm.status) {
@@ -3376,6 +3391,8 @@ fn sendCommandRequest(
                     .ERROR_KIND_INVALID_COMMAND => error.InvalidCommand,
                     .ERROR_KIND_INVALID_PARAMETER => error.InvalidParameter,
                     .ERROR_KIND_INVALID_SYSTEM_STATE => error.InvalidSystemState,
+                    .ERROR_KIND_CC_LINK_DISCONNECTED => error.CcLinkDisconnected,
+                    .ERROR_KIND_OUT_OF_MEMORY => error.SystemOOM,
                     else => error.UnexpectedResponse,
                 };
             },
