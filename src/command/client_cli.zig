@@ -1452,7 +1452,7 @@ fn serverVersion(_: [][]const u8) !void {
         main_socket,
     );
     defer fba.reset();
-    const version = server.version.?;
+    const version = server.version orelse return error.InvalidResponse;
     defer server.deinit();
     std.log.info(
         "MMC Server Version: {d}.{d}.{d}\n",
@@ -2039,8 +2039,9 @@ fn clientAxisReleaseServo(params: [][]const u8) !void {
     const line: Line = lines[line_idx];
     var axis_id: ?Axis.Id.Line = null;
     if (params[1].len > 0) {
-        axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
-        if (axis_id.? < 1 or axis_id.? > line.axes.len) return error.InvalidAxis;
+        const axis = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
+        if (axis < 1 or axis > line.axes.len) return error.InvalidAxis;
+        axis_id = axis;
     }
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
     defer command_msg.deinit();
@@ -2063,8 +2064,9 @@ fn clientClearErrors(params: [][]const u8) !void {
     const line = lines[line_idx];
     var axis_id: ?Axis.Id.Line = null;
     if (params[1].len > 0) {
-        axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
-        if (axis_id.? < 1 or axis_id.? > line.axes.len) return error.InvalidAxis;
+        const axis = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
+        if (axis < 1 or axis > line.axes.len) return error.InvalidAxis;
+        axis_id = axis;
     }
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
     defer command_msg.deinit();
@@ -2090,10 +2092,9 @@ fn clientClearCarrierInfo(params: [][]const u8) !void {
     const line = lines[line_idx];
     var axis_id: ?Axis.Id.Line = null;
     if (params[1].len > 0) {
-        axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
-        if (axis_id.? < 1 or axis_id.? > line.axes.len) {
-            return error.InvalidAxis;
-        }
+        const axis = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
+        if (axis < 1 or axis > line.axes.len) return error.InvalidAxis;
+        axis_id = axis;
     }
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
     defer command_msg.deinit();
@@ -2222,10 +2223,9 @@ fn clientHallStatus(params: [][]const u8) !void {
     const line_idx = try matchLine(lines, line_name);
     const line: Line = lines[line_idx];
     if (params[1].len > 0) {
-        axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
-        if (axis_id.? < 1 or axis_id.? > line.axes.len) {
-            return error.InvalidAxis;
-        }
+        const axis = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
+        if (axis < 1 or axis > line.axes.len) return error.InvalidAxis;
+        axis_id = axis;
     }
 
     var info_msg: InfoRequest = InfoRequest.init(fba_allocator);
@@ -3010,8 +3010,9 @@ fn clientCarrierStopPull(params: [][]const u8) !void {
     const line = lines[line_idx];
     var axis_id: ?Axis.Id.Line = null;
     if (params[1].len > 0) {
-        axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
-        if (axis_id.? < 1 or axis_id.? > line.axes.len) return error.InvalidAxis;
+        const axis = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
+        if (axis < 1 or axis > line.axes.len) return error.InvalidAxis;
+        axis_id = axis;
     }
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
     defer command_msg.deinit();
@@ -3035,8 +3036,9 @@ fn clientCarrierStopPush(params: [][]const u8) !void {
     const line = lines[line_idx];
     var axis_id: ?Axis.Id.Line = null;
     if (params[1].len > 0) {
-        axis_id = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
-        if (axis_id.? < 1 or axis_id.? > line.axes.len) return error.InvalidAxis;
+        const axis = try std.fmt.parseInt(Axis.Id.Line, params[1], 0);
+        if (axis < 1 or axis > line.axes.len) return error.InvalidAxis;
+        axis_id = axis;
     }
     var command_msg: CommandRequest = CommandRequest.init(fba_allocator);
     defer command_msg.deinit();
@@ -3366,8 +3368,8 @@ fn parseResponse(a: std.mem.Allocator, comptime T: type, msg: []const u8) !T {
         try api.mmc_msg.Response.decode(msg, a);
 
     defer response.deinit();
-    return switch (response.body.?) {
-        .command => |command_response| blk: switch (command_response.body.?) {
+    return switch (response.body orelse return error.InvalidResponse) {
+        .command => |command_response| blk: switch (command_response.body orelse return error.InvalidResponse) {
             .command_id => |r| if (@TypeOf(r) == T) break :blk r else error.UnexpectedResponse,
             .request_error => |r| {
                 switch (r) {
@@ -3397,7 +3399,7 @@ fn parseResponse(a: std.mem.Allocator, comptime T: type, msg: []const u8) !T {
                 _ => unreachable,
             },
         },
-        .core => |core_response| switch (core_response.body.?) {
+        .core => |core_response| switch (core_response.body orelse return error.InvalidResponse) {
             .request_error => |r| switch (r) {
                 .CORE_REQUEST_ERROR_UNSPECIFIED => error.UnexpectedResponse,
                 .CORE_REQUEST_ERROR_REQUEST_UNKNOWN => error.RequestUnknown,
@@ -3412,7 +3414,7 @@ fn parseResponse(a: std.mem.Allocator, comptime T: type, msg: []const u8) !T {
             else
                 error.UnexpectedResponse,
         },
-        .info => |info_response| switch (info_response.body.?) {
+        .info => |info_response| switch (info_response.body orelse return error.InvalidResponse) {
             .request_error => |r| switch (r) {
                 .INFO_REQUEST_ERROR_UNSPECIFIED => error.UnexpectedResponse,
                 .INFO_REQUEST_ERROR_INVALID_LINE => error.InvalidLine,
@@ -3522,7 +3524,7 @@ pub fn nestedWrite(
             }
         },
         else => {
-            unreachable;
+            error.InvalidValueType;
         },
     }
     return written_bytes;
