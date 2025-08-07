@@ -1796,12 +1796,13 @@ fn clientCarrierInfo(params: [][]const u8) !void {
     const line: Line = lines[line_idx];
     var info_msg: InfoRequest = InfoRequest.init(allocator);
     defer info_msg.deinit();
-    var ids = std.ArrayListAligned(
+    var ids: std.ArrayListAligned(
         u32,
         null,
-    ).init(allocator);
+    ) = .init(allocator);
     defer ids.deinit();
     try ids.append(carrier_id);
+    std.log.debug("IDs: {any}", .{ids.items});
     info_msg.body = .{
         .system = .{
             .line_id = @intCast(line.id),
@@ -1809,6 +1810,10 @@ fn clientCarrierInfo(params: [][]const u8) !void {
             .source = .{ .carriers = .{ .ids = ids } },
         },
     };
+    std.log.debug(
+        "IDs: {any}",
+        .{info_msg.body.?.system.source.?.carriers.ids.items},
+    );
     const system = try sendRequest(
         info_msg,
         allocator,
@@ -3282,18 +3287,31 @@ fn sendRequest(
 ) !T {
     const s = if (socket) |_s| _s else return error.ServerNotConnected;
     var encoded: []u8 = undefined;
+    std.log.debug("Message: {any}", .{body});
     if (@TypeOf(body) == CoreRequest) {
         const _msg: api.mmc_msg.Request = .{ .body = .{ .core = body } };
         encoded = try _msg.encode(a);
     }
     if (@TypeOf(body) == InfoRequest) {
         const _msg: api.mmc_msg.Request = .{ .body = .{ .info = body } };
+        switch (body.body.?) {
+            .system => |*sys| {
+                switch (sys.source.?) {
+                    .carriers => |*cars| {
+                        std.log.debug("Message contents: {any}", .{cars});
+                    },
+                    else => {},
+                }
+            },
+            else => {},
+        }
         encoded = try _msg.encode(a);
     }
     if (@TypeOf(body) == CommandRequest) {
         const _msg: api.mmc_msg.Request = .{ .body = .{ .command = body } };
         encoded = try _msg.encode(a);
     }
+    std.log.debug("Message bytes: {any}", .{encoded});
     defer a.free(encoded);
     try send(s, encoded);
     const rep = try receive(s, a);
