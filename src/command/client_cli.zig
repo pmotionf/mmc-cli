@@ -3345,6 +3345,7 @@ fn sendCommandRequest(
             if (e == error.CommandStopped) {
                 var remove_command: CommandRequest = CommandRequest.init(a);
                 defer remove_command.deinit();
+                std.log.debug("Command {d} stopped", .{command_id});
                 remove_command.body = .{
                     .clear_command = .{ .command_id = command_id },
                 };
@@ -3365,7 +3366,10 @@ fn sendCommandRequest(
         const comm = commands.commands.pop() orelse return error.InvalidResponse;
         switch (comm.status) {
             .STATUS_PROGRESSING, .STATUS_QUEUED => {}, // continue the loop
-            .STATUS_COMPLETED => break,
+            .STATUS_COMPLETED => {
+                // TODO: Remove command from history
+                break;
+            },
             .STATUS_FAILED => {
                 return switch (comm.error_response orelse return error.UnexpectedResponse) {
                     .ERROR_KIND_CARRIER_ALREADY_EXISTS => error.CarrierAlreadyExists,
