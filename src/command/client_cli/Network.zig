@@ -1,0 +1,153 @@
+const Network = @This();
+
+const std = @import("std");
+const network = @import("network");
+const command = @import("../../command.zig");
+const client = @import("../client_cli.zig");
+
+socket: ?network.Socket,
+endpoint: Endpoint,
+
+pub const Endpoint = struct {
+    ip: []u8,
+    port: u16,
+};
+
+/// Connect the client to the server. Call deinit to close the connection
+pub fn connect(allocator: std.mem.Allocator, endpoint: Endpoint) !Network {
+    var result: Network = undefined;
+    errdefer result.deinit(allocator);
+    result.socket = try network.connectToHost(
+        allocator,
+        endpoint.ip,
+        endpoint.port,
+        .tcp,
+    );
+    result.endpoint.ip = try allocator.alloc(u8, endpoint.ip.len);
+    @memcpy(result.endpoint.ip, endpoint.ip);
+    result.endpoint.port = endpoint.port;
+    return result;
+}
+
+/// Close the socket
+pub fn close(self: *Network) error{ServerNotConnected}!void {
+    if (self.socket) |socket| {
+        defer std.log.info(
+            "Disconnected from server {s}:{d}",
+            .{ self.endpoint.ip, self.endpoint.port },
+        );
+        socket.close();
+        self.socket = null;
+    } else return error.ServerNotConnected;
+}
+
+/// Clear the memory allocated for Network
+pub fn deinit(self: *Network, allocator: std.mem.Allocator) void {
+    allocator.free(self.endpoint.ip);
+    self.endpoint.port = 0;
+    if (self.socket) |_| self.close() catch {};
+}
+
+pub fn send(self: *Network, msg: []const u8) !void {
+    if (self.socket) |socket| {
+        // check if the socket can write without blocking
+        while (self.isSocketEventOccurred(
+            std.posix.POLL.OUT,
+            0,
+        )) |socket_status| {
+            if (socket_status) break;
+            try command.checkCommandInterrupt();
+        } else |sock_err| {
+            try self.close();
+            return sock_err;
+        }
+        var writer = socket.writer(&.{});
+        defer writer.interface.flush() catch {};
+        writer.interface.writeAll(msg) catch |e| {
+            try self.close();
+            return e;
+        };
+    } else return error.ServerNotConnected;
+}
+
+/// Non-blocking receive from socket
+pub fn receive(self: *Network, allocator: std.mem.Allocator) ![]const u8 {
+    if (self.socket) |socket| {
+        // Check if the socket can read without blocking.
+        // TODO: Calculate the maximum required buffer for receiving the current
+        //       api's response.
+        var buf: [8192]u8 = undefined;
+        while (self.isSocketEventOccurred(
+            std.posix.POLL.IN,
+            0,
+        )) |socket_status| {
+            // This step is required for reading from socket as the socket
+            // may still receive some message from server. This message is no
+            // longer valuable, thus ignored in the catch.
+            command.checkCommandInterrupt() catch |e| {
+                if (self.isSocketEventOccurred(
+                    std.posix.POLL.IN,
+                    500,
+                )) |_socket_status| {
+                    if (_socket_status)
+                        // Remove any incoming messages, if any.
+                        _ = socket.receive(&buf) catch {
+                            try self.close();
+                        };
+                    return e;
+                } else |sock_err| {
+                    try self.close();
+                    return sock_err;
+                }
+            };
+            if (socket_status) break;
+        } else |sock_err| {
+            try self.close();
+            return sock_err;
+        }
+        const msg_size = socket.receive(&buf) catch |e| {
+            try self.close();
+            return e;
+        };
+        // msg_size value 0 means the connection is gracefully closed
+        if (msg_size == 0) {
+            try self.close();
+            return error.ConnectionClosed;
+        }
+        return allocator.dupe(u8, buf[0..msg_size]);
+    } else return error.ServerNotConnected;
+}
+
+/// Check whether the socket has event flag occurred. Timeout is in milliseconds
+/// unit.
+pub fn isSocketEventOccurred(self: *Network, event: i16, timeout: i32) !bool {
+    if (self.socket) |socket| {
+        const fd: std.posix.pollfd = .{
+            .fd = socket.internal,
+            .events = event,
+            .revents = 0,
+        };
+        var poll_fd: [1]std.posix.pollfd = .{fd};
+        // check whether the expected socket event happen
+        const status = std.posix.poll(
+            &poll_fd,
+            timeout,
+        ) catch |e| {
+            try self.close();
+            return e;
+        };
+        if (status == 0)
+            return false
+        else {
+            // POLL.HUP: the peer gracefully close the socket
+            if (poll_fd[0].revents & std.posix.POLL.HUP == std.posix.POLL.HUP)
+                return error.ConnectionResetByPeer
+            else if (poll_fd[0].revents & std.posix.POLL.ERR == std.posix.POLL.ERR)
+                return error.ConnectionError
+            else if (poll_fd[0].revents & std.posix.POLL.NVAL == std.posix.POLL.NVAL)
+                return error.InvalidSocket
+            else
+                return true;
+        }
+    } else return error.ServerNotConnected;
+}
