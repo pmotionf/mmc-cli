@@ -317,7 +317,7 @@ pub const response = struct {
                                     inline for (inner_ti.fields) |inner| {
                                         if (@field(child, inner.name))
                                             try writer.print(
-                                                "{s}.{s} on axis {d}",
+                                                "{s}.{s} on axis {d}\n",
                                                 .{
                                                     field.name,
                                                     inner.name,
@@ -329,7 +329,7 @@ pub const response = struct {
                                 .bool => {
                                     if (@field(axis_err, field.name))
                                         try writer.print(
-                                            "{s} on axis {d}",
+                                            "{s} on axis {d}\n",
                                             .{ field.name, axis_err.id },
                                         );
                                 },
@@ -406,7 +406,7 @@ pub const response = struct {
                                     inline for (inner_ti.fields) |inner| {
                                         if (@field(child, inner.name))
                                             try writer.print(
-                                                "{s}.{s} on axis {d}",
+                                                "{s}.{s} on driver {d}\n",
                                                 .{
                                                     field.name,
                                                     inner.name,
@@ -418,7 +418,7 @@ pub const response = struct {
                                 .bool => {
                                     if (@field(driver_err, field.name))
                                         try writer.print(
-                                            "{s} on axis {d}",
+                                            "{s} on axis {d}\n",
                                             .{ field.name, driver_err.id },
                                         );
                                 },

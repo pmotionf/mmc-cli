@@ -239,16 +239,29 @@ pub fn showError(params: [][]const u8) !void {
         msg,
     );
     defer system.deinit();
-    const axis_errors = system.axis_errors;
-    if (axis_errors.items.len !=
-        source.?.end_id - source.?.start_id + 1)
-        return error.InvalidResponse;
-    const driver_errors = system.driver_errors;
-    if (driver_errors.items.len !=
-        (source.?.end_id - 1) / 3 - (source.?.start_id - 1) / 3 + 1)
-        return error.InvalidResponse;
+    var axis_errors = system.axis_errors;
+    var driver_errors = system.driver_errors;
+    if (source) |_| {
+        if (axis_errors.items.len != 1) return error.InvalidResponse;
+        if (driver_errors.items.len != 1) return error.InvalidResponse;
+    } else {
+        if (axis_errors.items.len != line.axes.len) return error.InvalidResponse;
+        if (driver_errors.items.len != line.drivers.len)
+            return error.InvalidResponse;
+    }
     var stdout = std.fs.File.stdout().writer(&.{});
     const writer = &stdout.interface;
+    if (source) |_| {
+        try api.response.info.system.axis.err.printActive(
+            axis_errors.pop().?,
+            writer,
+        );
+        try api.response.info.system.driver.err.printActive(
+            driver_errors.pop().?,
+            writer,
+        );
+        return;
+    }
     for (axis_errors.items) |err| {
         try api.response.info.system.axis.err.printActive(
             err,
