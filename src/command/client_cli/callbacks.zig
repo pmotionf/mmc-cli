@@ -6,7 +6,7 @@ const api = @import("api.zig");
 const client = @import("../client_cli.zig");
 const command = @import("../../command.zig");
 
-pub fn clientConnect(params: [][]const u8) !void {
+pub fn connect(params: [][]const u8) !void {
     if (client.net.socket) |_| {
         if (client.net.isSocketEventOccurred(
             std.posix.POLL.IN | std.posix.POLL.OUT,
@@ -120,11 +120,11 @@ pub fn clientConnect(params: [][]const u8) !void {
 }
 
 /// Serve as a callback of a `DISCONNECT` command, requires parameter.
-pub fn clientDisconnect(_: [][]const u8) error{ServerNotConnected}!void {
+pub fn disconnect(_: [][]const u8) error{ServerNotConnected}!void {
     try client.disconnect();
 }
 
-pub fn clientSetSpeed(params: [][]const u8) !void {
+pub fn setSpeed(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_speed = try std.fmt.parseFloat(f32, params[1]);
     if (carrier_speed <= 0.0 or carrier_speed > 6.0) return error.InvalidSpeed;
@@ -137,7 +137,7 @@ pub fn clientSetSpeed(params: [][]const u8) !void {
     });
 }
 
-pub fn clientSetAcceleration(params: [][]const u8) !void {
+pub fn setAcceleration(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_acceleration = try std.fmt.parseFloat(f32, params[1]);
     if (carrier_acceleration <= 0.0 or carrier_acceleration > 24.5)
@@ -151,7 +151,7 @@ pub fn clientSetAcceleration(params: [][]const u8) !void {
     });
 }
 
-pub fn clientGetSpeed(params: [][]const u8) !void {
+pub fn getSpeed(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
 
     const line_idx = try client.matchLine(line_name);
@@ -164,7 +164,7 @@ pub fn clientGetSpeed(params: [][]const u8) !void {
     );
 }
 
-pub fn clientGetAcceleration(params: [][]const u8) !void {
+pub fn getAcceleration(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
 
     const line_idx = try client.matchLine(line_name);
@@ -201,7 +201,7 @@ pub fn serverVersion(_: [][]const u8) !void {
     );
 }
 
-pub fn clientShowError(params: [][]const u8) !void {
+pub fn showError(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -263,7 +263,7 @@ pub fn clientShowError(params: [][]const u8) !void {
     }
 }
 
-pub fn clientAxisInfo(params: [][]const u8) !void {
+pub fn axisInfo(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(client.Axis.Id.Line, params[1], 0);
     const line_idx = try client.matchLine(line_name);
@@ -306,7 +306,7 @@ pub fn clientAxisInfo(params: [][]const u8) !void {
     try api.response.info.system.axis.err.print(err, writer);
 }
 
-pub fn clientDriverInfo(params: [][]const u8) !void {
+pub fn driverInfo(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const driver_id = try std.fmt.parseInt(client.Driver.Id, params[1], 0);
     const line_idx = try client.matchLine(line_name);
@@ -348,7 +348,7 @@ pub fn clientDriverInfo(params: [][]const u8) !void {
     try api.response.info.system.driver.err.print(err, writer);
 }
 
-pub fn clientCarrierInfo(params: [][]const u8) !void {
+pub fn carrierInfo(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     const line_idx = try client.matchLine(line_name);
@@ -384,7 +384,7 @@ pub fn clientCarrierInfo(params: [][]const u8) !void {
     try api.response.info.system.carrier.print(carrier, writer);
 }
 
-pub fn clientAutoInitialize(params: [][]const u8) !void {
+pub fn autoInitialize(params: [][]const u8) !void {
     var init_lines = std.ArrayListAligned(
         api.api.command_msg.Request.AutoInitialize.Line,
         null,
@@ -423,7 +423,7 @@ pub fn clientAutoInitialize(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
-pub fn clientAxisCarrier(params: [][]const u8) !void {
+pub fn axisCarrier(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(client.Axis.Id.Line, params[1], 0);
     const result_var: []const u8 = params[2];
@@ -467,7 +467,7 @@ pub fn clientAxisCarrier(params: [][]const u8) !void {
     }
 }
 
-pub fn clientCarrierID(params: [][]const u8) !void {
+pub fn carrierID(params: [][]const u8) !void {
     var line_name_iterator = std.mem.tokenizeSequence(
         u8,
         params[0],
@@ -559,7 +559,7 @@ pub fn clientCarrierID(params: [][]const u8) !void {
     }
 }
 
-pub fn clientAssertLocation(params: [][]const u8) !void {
+pub fn assertLocation(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     const expected_location: f32 = try std.fmt.parseFloat(f32, params[2]);
@@ -604,7 +604,7 @@ pub fn clientAssertLocation(params: [][]const u8) !void {
         return error.UnexpectedCarrierLocation;
 }
 
-pub fn clientAxisReleaseServo(params: [][]const u8) !void {
+pub fn releaseServo(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -632,7 +632,7 @@ pub fn clientAxisReleaseServo(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
-pub fn clientClearErrors(params: [][]const u8) !void {
+pub fn clearErrors(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -659,7 +659,7 @@ pub fn clientClearErrors(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
-pub fn clientClearCarrierInfo(params: [][]const u8) !void {
+pub fn clearCarrierInfo(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -683,7 +683,7 @@ pub fn clientClearCarrierInfo(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
-pub fn clientResetSystem(_: [][]const u8) !void {
+pub fn resetSystem(_: [][]const u8) !void {
     for (client.lines) |line| {
         {
             const msg = try api.request.command.clear_carriers.encode(
@@ -724,7 +724,7 @@ pub fn clientResetSystem(_: [][]const u8) !void {
     }
 }
 
-pub fn clientCarrierLocation(params: [][]const u8) !void {
+pub fn carrierLocation(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
@@ -773,7 +773,7 @@ pub fn clientCarrierLocation(params: [][]const u8) !void {
     }
 }
 
-pub fn clientCarrierAxis(params: [][]const u8) !void {
+pub fn carrierAxis(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
@@ -820,7 +820,7 @@ pub fn clientCarrierAxis(params: [][]const u8) !void {
     } else return error.InvalidResponse;
 }
 
-pub fn clientHallStatus(params: [][]const u8) !void {
+pub fn hallStatus(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     var axis_id: ?client.Axis.Id.Line = null;
     const line_idx = try client.matchLine(line_name);
@@ -903,7 +903,7 @@ pub fn clientHallStatus(params: [][]const u8) !void {
     }
 }
 
-pub fn clientAssertHall(params: [][]const u8) !void {
+pub fn assertHall(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(client.Axis.Id.Line, params[1], 0);
     const side: api.api.command_msg.Direction =
@@ -971,7 +971,7 @@ pub fn clientAssertHall(params: [][]const u8) !void {
     }
 }
 
-pub fn clientCalibrate(params: [][]const u8) !void {
+pub fn calibrate(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -986,7 +986,7 @@ pub fn clientCalibrate(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
-pub fn clientSetLineZero(params: [][]const u8) !void {
+pub fn setLineZero(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -1001,7 +1001,7 @@ pub fn clientSetLineZero(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
-pub fn clientIsolate(params: [][]const u8) !void {
+pub fn isolate(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id: u16 = try std.fmt.parseInt(client.Axis.Id.Line, params[1], 0);
 
@@ -1053,7 +1053,7 @@ pub fn clientIsolate(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
-pub fn clientWaitIsolate(params: [][]const u8) !void {
+pub fn waitIsolate(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     const timeout = if (params[2].len > 0)
@@ -1073,7 +1073,7 @@ pub fn clientWaitIsolate(params: [][]const u8) !void {
     );
 }
 
-pub fn clientWaitMoveCarrier(params: [][]const u8) !void {
+pub fn waitMoveCarrier(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     const timeout = if (params[2].len > 0)
@@ -1093,7 +1093,7 @@ pub fn clientWaitMoveCarrier(params: [][]const u8) !void {
     );
 }
 
-pub fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
+pub fn carrierPosMoveAxis(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
     const axis_id = try std.fmt.parseInt(
@@ -1129,7 +1129,7 @@ pub fn clientCarrierPosMoveAxis(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
-pub fn clientCarrierPosMoveLocation(params: [][]const u8) !void {
+pub fn carrierPosMoveLocation(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
@@ -1161,7 +1161,7 @@ pub fn clientCarrierPosMoveLocation(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
-pub fn clientCarrierPosMoveDistance(params: [][]const u8) !void {
+pub fn carrierPosMoveDistance(params: [][]const u8) !void {
     const line_name = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     const distance = try std.fmt.parseFloat(f32, params[2]);
@@ -1192,7 +1192,7 @@ pub fn clientCarrierPosMoveDistance(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
-pub fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
+pub fn carrierSpdMoveAxis(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
     const axis_id = try std.fmt.parseInt(client.Axis.Id.Line, params[2], 0);
@@ -1223,7 +1223,7 @@ pub fn clientCarrierSpdMoveAxis(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
-pub fn clientCarrierSpdMoveLocation(params: [][]const u8) !void {
+pub fn carrierSpdMoveLocation(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
@@ -1255,7 +1255,7 @@ pub fn clientCarrierSpdMoveLocation(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
-pub fn clientCarrierSpdMoveDistance(params: [][]const u8) !void {
+pub fn carrierSpdMoveDistance(params: [][]const u8) !void {
     const line_name = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     const distance = try std.fmt.parseFloat(f32, params[2]);
@@ -1286,7 +1286,7 @@ pub fn clientCarrierSpdMoveDistance(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
-pub fn clientCarrierPushForward(params: [][]const u8) !void {
+pub fn carrierPushForward(params: [][]const u8) !void {
     const line_name = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
@@ -1340,7 +1340,7 @@ pub fn clientCarrierPushForward(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
-pub fn clientCarrierPushBackward(params: [][]const u8) !void {
+pub fn carrierPushBackward(params: [][]const u8) !void {
     const line_name = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
@@ -1394,7 +1394,7 @@ pub fn clientCarrierPushBackward(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
-pub fn clientCarrierPullForward(params: [][]const u8) !void {
+pub fn carrierPullForward(params: [][]const u8) !void {
     const line_name = params[0];
     const axis_id = try std.fmt.parseInt(client.Axis.Id.Line, params[1], 0);
     const carrier_id = try std.fmt.parseInt(u10, params[2], 0);
@@ -1439,7 +1439,7 @@ pub fn clientCarrierPullForward(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
-pub fn clientCarrierPullBackward(params: [][]const u8) !void {
+pub fn carrierPullBackward(params: [][]const u8) !void {
     const line_name = params[0];
     const axis_id = try std.fmt.parseInt(client.Axis.Id.Line, params[1], 0);
     const carrier_id = try std.fmt.parseInt(u10, params[2], 0);
@@ -1485,7 +1485,7 @@ pub fn clientCarrierPullBackward(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
-pub fn clientCarrierWaitPull(params: [][]const u8) !void {
+pub fn carrierWaitPull(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     const timeout = if (params[2].len > 0)
@@ -1505,7 +1505,7 @@ pub fn clientCarrierWaitPull(params: [][]const u8) !void {
     );
 }
 
-pub fn clientCarrierStopPull(params: [][]const u8) !void {
+pub fn carrierStopPull(params: [][]const u8) !void {
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -1529,7 +1529,7 @@ pub fn clientCarrierStopPull(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
-pub fn clientCarrierStopPush(params: [][]const u8) !void {
+pub fn carrierStopPush(params: [][]const u8) !void {
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -1552,7 +1552,7 @@ pub fn clientCarrierStopPush(params: [][]const u8) !void {
     }
 }
 
-pub fn clientWaitAxisEmpty(params: [][]const u8) !void {
+pub fn waitAxisEmpty(params: [][]const u8) !void {
     const line_name = params[0];
     const axis_id = try std.fmt.parseInt(client.Axis.Id.Line, params[1], 0);
     const timeout = if (params[2].len > 0)
@@ -1569,7 +1569,7 @@ pub fn clientWaitAxisEmpty(params: [][]const u8) !void {
     );
 }
 
-pub fn clientAddLogInfo(params: [][]const u8) !void {
+pub fn addLogInfo(params: [][]const u8) !void {
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
     const kind = params[1];
@@ -1616,7 +1616,7 @@ pub fn clientAddLogInfo(params: [][]const u8) !void {
     try client.log.status();
 }
 
-pub fn clientStartLogInfo(params: [][]const u8) !void {
+pub fn startLogInfo(params: [][]const u8) !void {
     errdefer client.log.reset(client.allocator);
     const duration = try std.fmt.parseFloat(f64, params[0]);
     const path = params[1];
@@ -1652,11 +1652,11 @@ pub fn clientStartLogInfo(params: [][]const u8) !void {
     log_thread.detach();
 }
 
-pub fn clientStatusLogInfo(_: [][]const u8) !void {
+pub fn statusLogInfo(_: [][]const u8) !void {
     try client.log.status();
 }
 
-pub fn clientRemoveLogInfo(params: [][]const u8) !void {
+pub fn removeLogInfo(params: [][]const u8) !void {
     if (params[0].len > 0) {
         const line_name = params[0];
         const line_idx = try client.matchLine(line_name);

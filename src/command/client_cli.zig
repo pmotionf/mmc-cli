@@ -61,7 +61,7 @@ pub fn init(c: Config) !void {
         \\and IP address can be overwritten by providing the new port and IP
         \\address by specifying the endpoint as "IP_ADDRESS:PORT".
         ,
-        .execute = &callbacks.clientConnect,
+        .execute = &callbacks.connect,
     });
     errdefer command.registry.orderedRemove("CONNECT");
     try command.registry.put(.{
@@ -70,7 +70,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\End connection with the mmc server.
         ,
-        .execute = &callbacks.clientDisconnect,
+        .execute = &callbacks.disconnect,
     });
     errdefer command.registry.orderedRemove("DISCONNECT");
     try command.registry.put(.{
@@ -85,7 +85,7 @@ pub fn init(c: Config) !void {
         \\by its name. The speed must be greater than 0 and less than or equal
         \\to 6.0 meters-per-second.
         ,
-        .execute = &callbacks.clientSetSpeed,
+        .execute = &callbacks.setSpeed,
     });
     errdefer command.registry.orderedRemove("SET_SPEED");
     try command.registry.put(.{
@@ -100,7 +100,7 @@ pub fn init(c: Config) !void {
         \\referenced by its name. The acceleration must be greater than 0 and
         \\less than or equal to 24.5 meters-per-second-squared.
         ,
-        .execute = &callbacks.clientSetAcceleration,
+        .execute = &callbacks.setAcceleration,
     });
     errdefer command.registry.orderedRemove("SET_ACCELERATION");
     try command.registry.put(.{
@@ -113,7 +113,7 @@ pub fn init(c: Config) !void {
         \\Get the speed of carrier movement for a line. The line is referenced
         \\by name. Speed is in meters-per-second.
         ,
-        .execute = &callbacks.clientGetSpeed,
+        .execute = &callbacks.getSpeed,
     });
     errdefer command.registry.orderedRemove("GET_SPEED");
     try command.registry.put(.{
@@ -126,7 +126,7 @@ pub fn init(c: Config) !void {
         \\Get the acceleration of carrier movement for a line. The line is
         \\referenced by name. Acceleration is in meters-per-second-squared.
         ,
-        .execute = &callbacks.clientGetAcceleration,
+        .execute = &callbacks.getAcceleration,
     });
     errdefer command.registry.orderedRemove("GET_ACCELERATION");
     try command.registry.put(.{
@@ -139,7 +139,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Print the information tied to an axis.
         ,
-        .execute = &callbacks.clientAxisInfo,
+        .execute = &callbacks.axisInfo,
     });
     errdefer command.registry.orderedRemove("PRINT_AXIS_INFO");
     try command.registry.put(.{
@@ -152,7 +152,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Print the information tied to a driver.
         ,
-        .execute = &callbacks.clientDriverInfo,
+        .execute = &callbacks.driverInfo,
     });
     errdefer command.registry.orderedRemove("PRINT_DRIVER_INFO");
     try command.registry.put(.{
@@ -165,7 +165,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Print the information tied to a carrier.
         ,
-        .execute = &callbacks.clientCarrierInfo,
+        .execute = &callbacks.carrierInfo,
     });
     errdefer command.registry.orderedRemove("PRINT_CARRIER_INFO");
     try command.registry.put(.{
@@ -185,7 +185,7 @@ pub fn init(c: Config) !void {
         \\If a result variable name was provided, also store the carrier ID in
         \\the variable.
         ,
-        .execute = &callbacks.clientAxisCarrier,
+        .execute = &callbacks.axisCarrier,
     });
     errdefer _ = command.registry.orderedRemove("AXIS_CARRIER");
     try command.registry.put(.{
@@ -208,7 +208,7 @@ pub fn init(c: Config) !void {
         \\variable name: prefix_[num], e.g., prefix_1 and prefix_2 if two carriers
         \\exist on the provided line(s).
         ,
-        .execute = &callbacks.clientCarrierID,
+        .execute = &callbacks.carrierID,
     });
     errdefer command.registry.orderedRemove("CARRIER_ID");
     try command.registry.put(.{
@@ -225,7 +225,7 @@ pub fn init(c: Config) !void {
         \\within the threshold. The default threshold value is 1 mm. Both the
         \\location and threshold must be provided in millimeters.
         ,
-        .execute = &callbacks.clientAssertLocation,
+        .execute = &callbacks.assertLocation,
     });
     errdefer command.registry.orderedRemove("ASSERT_CARRIER_LOCATION");
     try command.registry.put(.{
@@ -245,7 +245,7 @@ pub fn init(c: Config) !void {
         \\the provided line. If a result variable name is provided, then store
         \\the carrier's location in the variable.
         ,
-        .execute = &callbacks.clientCarrierLocation,
+        .execute = &callbacks.carrierLocation,
     });
     errdefer command.registry.orderedRemove("CARRIER_LOCATION");
     try command.registry.put(.{
@@ -259,7 +259,7 @@ pub fn init(c: Config) !void {
         \\Print a given carrier's axis if it is currently recognized in the
         \\provided line.
         ,
-        .execute = &callbacks.clientCarrierAxis,
+        .execute = &callbacks.carrierAxis,
     });
     errdefer command.registry.orderedRemove("CARRIER_AXIS");
     try command.registry.put(.{
@@ -274,7 +274,7 @@ pub fn init(c: Config) !void {
         \\sensors in that axis will be listed. Otherwise, all active hall
         \\sensors in the line will be listed.
         ,
-        .execute = &callbacks.clientHallStatus,
+        .execute = &callbacks.hallStatus,
     });
     errdefer command.registry.orderedRemove("HALL_STATUS");
     try command.registry.put(.{
@@ -292,7 +292,7 @@ pub fn init(c: Config) !void {
         \\"front"). Can optionally specify the expected hall alarm state as
         \\"off" or "on"; if not specified, will default to "on".
         ,
-        .execute = &callbacks.clientAssertHall,
+        .execute = &callbacks.assertHall,
     });
     errdefer command.registry.orderedRemove("ASSERT_HALL");
     try command.registry.put(.{
@@ -306,7 +306,7 @@ pub fn init(c: Config) !void {
         \\Clear driver errors of specified axis. If no axis is provided, clear
         \\driver errors of all axis.
         ,
-        .execute = &callbacks.clientClearErrors,
+        .execute = &callbacks.clearErrors,
     });
     errdefer command.registry.orderedRemove("CLEAR_ERRORS");
     try command.registry.put(.{
@@ -320,7 +320,7 @@ pub fn init(c: Config) !void {
         \\Clear carrier information at specified axis. If no axis is provided,
         \\clear carrier information at all axis
         ,
-        .execute = &callbacks.clientClearCarrierInfo,
+        .execute = &callbacks.clearCarrierInfo,
     });
     errdefer command.registry.orderedRemove("CLEAR_CARRIER_INFO");
     try command.registry.put(.{
@@ -330,7 +330,7 @@ pub fn init(c: Config) !void {
         \\Clear any carrier and errors occurred across the system. In addition,
         \\reset any push and pull state on every axis.
         ,
-        .execute = &callbacks.clientResetSystem,
+        .execute = &callbacks.resetSystem,
     });
     errdefer command.registry.orderedRemove("CLEAR_CARRIER_INFO");
     try command.registry.put(.{
@@ -339,13 +339,14 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "axis", .optional = true },
         },
-        .short_description = "Release the servo of a given axis.",
+        .short_description = "Release the servo of axis.",
         .long_description =
         \\Release the servo of a given axis, allowing for free carrier movement.
         \\This command should be run before carriers move within or exit from
-        \\the system due to external influence.
+        \\the system due to external influence. If no axis is given, release the
+        \\servo of all axis on the line. 
         ,
-        .execute = &callbacks.clientAxisReleaseServo,
+        .execute = &callbacks.releaseServo,
     });
     errdefer command.registry.orderedRemove("RELEASE_AXIS_SERVO");
     try command.registry.put(.{
@@ -360,7 +361,7 @@ pub fn init(c: Config) !void {
         \\initialize all unisolated carriers for all lines. Multiple lines should
         \\be separated by comma, e.g. "AUTO_INITIALIZE front,back"
         ,
-        .execute = &callbacks.clientAutoInitialize,
+        .execute = &callbacks.autoInitialize,
     });
     errdefer command.registry.orderedRemove("AUTO_INITIALIZE");
     try command.registry.put(.{
@@ -374,7 +375,7 @@ pub fn init(c: Config) !void {
         \\at the start of the line such that the first axis has both hall
         \\alarms active.
         ,
-        .execute = &callbacks.clientCalibrate,
+        .execute = &callbacks.calibrate,
     });
     errdefer command.registry.orderedRemove("CALIBRATE");
     try command.registry.put(.{
@@ -388,7 +389,7 @@ pub fn init(c: Config) !void {
         \\position. Aforementioned carrier must be located at first axis of
         \\system line.
         ,
-        .execute = &callbacks.clientSetLineZero,
+        .execute = &callbacks.setLineZero,
     });
     errdefer command.registry.orderedRemove("SET_LINE_ZERO");
     try command.registry.put(.{
@@ -409,7 +410,7 @@ pub fn init(c: Config) !void {
         \\can also be linked for isolation movement. Linked axis parameter
         \\values must be one of "prev", "next", "left", or "right".
         ,
-        .execute = &callbacks.clientIsolate,
+        .execute = &callbacks.isolate,
     });
     errdefer command.registry.orderedRemove("ISOLATE");
     try command.registry.put(.{
@@ -427,7 +428,7 @@ pub fn init(c: Config) !void {
         \\the specified timeout duration. The timeout must be provided in
         \\milliseconds.
         ,
-        .execute = &callbacks.clientWaitIsolate,
+        .execute = &callbacks.waitIsolate,
     });
     errdefer command.registry.orderedRemove("WAIT_ISOLATE");
     try command.registry.put(.{
@@ -445,7 +446,7 @@ pub fn init(c: Config) !void {
         \\the specified timeout duration. The timeout must be provided in
         \\milliseconds.
         ,
-        .execute = &callbacks.clientWaitMoveCarrier,
+        .execute = &callbacks.waitMoveCarrier,
     });
     errdefer command.registry.orderedRemove("WAIT_MOVE_CARRIER");
     try command.registry.put(.{
@@ -462,7 +463,7 @@ pub fn init(c: Config) !void {
         \\currently recognized within the motion system. Provide "true" to disable
         \\CAS (collision avoidance system) for the command.
         ,
-        .execute = &callbacks.clientCarrierPosMoveAxis,
+        .execute = &callbacks.carrierPosMoveAxis,
     });
     errdefer command.registry.orderedRemove("MOVE_CARRIER_AXIS");
     try command.registry.put(.{
@@ -480,7 +481,7 @@ pub fn init(c: Config) !void {
         \\provided in millimeters as a whole or decimal number. Provide "true" to
         \\disable CAS (collision avoidance system) for the command.
         ,
-        .execute = &callbacks.clientCarrierPosMoveLocation,
+        .execute = &callbacks.carrierPosMoveLocation,
     });
     errdefer command.registry.orderedRemove("MOVE_CARRIER_LOCATION");
     try command.registry.put(.{
@@ -499,7 +500,7 @@ pub fn init(c: Config) !void {
         \\may be negative for backward movement. Provide "true" to disable
         \\CAS (collision avoidance system) for the command.
         ,
-        .execute = &callbacks.clientCarrierPosMoveDistance,
+        .execute = &callbacks.carrierPosMoveDistance,
     });
     errdefer command.registry.orderedRemove("MOVE_CARRIER_DISTANCE");
     try command.registry.put(.{
@@ -517,7 +518,7 @@ pub fn init(c: Config) !void {
         \\carrier with speed profile feedback. Provide "true" to disable CAS
         \\(collision avoidance system) for the command.
         ,
-        .execute = &callbacks.clientCarrierSpdMoveAxis,
+        .execute = &callbacks.carrierSpdMoveAxis,
     });
     errdefer command.registry.orderedRemove("SPD_MOVE_CARRIER_AXIS");
     try command.registry.put(.{
@@ -536,7 +537,7 @@ pub fn init(c: Config) !void {
         \\moves the carrier with speed profile feedback. Provide "true" to disable
         \\CAS (collision avoidance system) for the command.
         ,
-        .execute = &callbacks.clientCarrierSpdMoveLocation,
+        .execute = &callbacks.carrierSpdMoveLocation,
     });
     errdefer command.registry.orderedRemove("SPD_MOVE_CARRIER_LOCATION");
     try command.registry.put(.{
@@ -556,7 +557,7 @@ pub fn init(c: Config) !void {
         \\with speed profile feedback. Provide "true" to disable CAS (collision
         \\avoidance system) for the command.
         ,
-        .execute = &callbacks.clientCarrierSpdMoveDistance,
+        .execute = &callbacks.carrierSpdMoveDistance,
     });
     errdefer command.registry.orderedRemove("SPD_MOVE_CARRIER_DISTANCE");
     try command.registry.put(.{
@@ -576,7 +577,7 @@ pub fn init(c: Config) !void {
         \\at the given axis; otherwise, the carrier will be pushed immediately
         \\from its current position.
         ,
-        .execute = &callbacks.clientCarrierPushForward,
+        .execute = &callbacks.carrierPushForward,
     });
     errdefer command.registry.orderedRemove("PUSH_CARRIER_FORWARD");
     try command.registry.put(.{
@@ -596,7 +597,7 @@ pub fn init(c: Config) !void {
         \\at the given axis; otherwise, the carrier will be pushed immediately
         \\from its current position.
         ,
-        .execute = &callbacks.clientCarrierPushBackward,
+        .execute = &callbacks.carrierPushBackward,
     });
     errdefer command.registry.orderedRemove("PUSH_CARRIER_BACKWARD");
     try command.registry.put(.{
@@ -616,7 +617,7 @@ pub fn init(c: Config) !void {
         \\completed. Provide "true" to disable CAS (collision avoidance system)
         \\for the command when the final destination is provided.
         ,
-        .execute = &callbacks.clientCarrierPullForward,
+        .execute = &callbacks.carrierPullForward,
     });
     errdefer command.registry.orderedRemove("PULL_CARRIER_FORWARD");
     try command.registry.put(.{
@@ -636,7 +637,7 @@ pub fn init(c: Config) !void {
         \\completed. Provide "true" to disable CAS (collision avoidance system)
         \\for the command when the final destination is provided.
         ,
-        .execute = &callbacks.clientCarrierPullBackward,
+        .execute = &callbacks.carrierPullBackward,
     });
     errdefer command.registry.orderedRemove("PULL_CARRIER_BACKWARD");
     try command.registry.put(.{
@@ -654,7 +655,7 @@ pub fn init(c: Config) !void {
         \\takes longer than the specified timeout duration. The timeout must be
         \\provided in milliseconds.
         ,
-        .execute = &callbacks.clientCarrierWaitPull,
+        .execute = &callbacks.carrierWaitPull,
     });
     errdefer command.registry.orderedRemove("WAIT_PULL_CARRIER");
     try command.registry.put(.{
@@ -667,7 +668,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Stop active carrier pull at axis.
         ,
-        .execute = &callbacks.clientCarrierStopPull,
+        .execute = &callbacks.carrierStopPull,
     });
     errdefer command.registry.orderedRemove("STOP_PULL_CARRIER");
     try command.registry.put(.{
@@ -680,7 +681,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Stop active carrier push at axis.
         ,
-        .execute = &callbacks.clientCarrierStopPush,
+        .execute = &callbacks.carrierStopPush,
     });
     errdefer command.registry.orderedRemove("STOP_PUSH_CARRIER");
     try command.registry.put(.{
@@ -698,7 +699,7 @@ pub fn init(c: Config) !void {
         \\action takes longer than the specified timeout duration. The timeout
         \\must be provided in milliseconds.
         ,
-        .execute = &callbacks.clientWaitAxisEmpty,
+        .execute = &callbacks.waitAxisEmpty,
     });
     errdefer command.registry.orderedRemove("WAIT_AXIS_EMPTY");
     try command.registry.put(.{
@@ -718,7 +719,7 @@ pub fn init(c: Config) !void {
         \\to log from axis 1 to 9. Leaving the range will log every axis on the
         \\line.
         ,
-        .execute = &callbacks.clientAddLogInfo,
+        .execute = &callbacks.addLogInfo,
     });
     errdefer command.registry.orderedRemove("ADD_LOG_INFO");
     try command.registry.put(.{
@@ -735,7 +736,7 @@ pub fn init(c: Config) !void {
         \\If no path is provided, a default log file will be created in the
         \\current working directory as: "mmc-logging-YYYY.MM.DD-HH.MM.SS.csv".
         ,
-        .execute = &callbacks.clientStartLogInfo,
+        .execute = &callbacks.startLogInfo,
     });
     errdefer command.registry.orderedRemove("START_LOG_INFO");
     try command.registry.put(.{
@@ -749,7 +750,7 @@ pub fn init(c: Config) !void {
         \\the logging configuration for the specified line. Otherwise, removes
         \\the logging configurations for all lines.
         ,
-        .execute = &callbacks.clientRemoveLogInfo,
+        .execute = &callbacks.removeLogInfo,
     });
     errdefer command.registry.orderedRemove("REMOVE_LOG_INFO");
     try command.registry.put(.{
@@ -758,7 +759,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Show the logging configuration for each line, if any.
         ,
-        .execute = &callbacks.clientStatusLogInfo,
+        .execute = &callbacks.statusLogInfo,
     });
     errdefer command.registry.orderedRemove("STATUS_LOG_INFO");
     try command.registry.put(.{
@@ -772,7 +773,7 @@ pub fn init(c: Config) !void {
         \\Print axis and driver errors on a line, if any. Providing axis
         \\prints axis and driver errors on the specified axis only, if any.
         ,
-        .execute = &callbacks.clientShowError,
+        .execute = &callbacks.showError,
     });
     errdefer command.registry.orderedRemove("PRINT_ERRORS");
 }
