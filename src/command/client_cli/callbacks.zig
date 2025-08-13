@@ -1064,7 +1064,7 @@ pub fn waitIsolate(params: [][]const u8) !void {
 
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    try client.Carrier.waitState(
+    try client.carrier.waitState(
         client.allocator,
         line.id,
         carrier_id,
@@ -1084,7 +1084,7 @@ pub fn waitMoveCarrier(params: [][]const u8) !void {
 
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    try client.Carrier.waitState(
+    try client.carrier.waitState(
         client.allocator,
         line.id,
         carrier_id,
@@ -1496,7 +1496,7 @@ pub fn carrierWaitPull(params: [][]const u8) !void {
 
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    try client.Carrier.waitState(
+    try client.carrier.waitState(
         client.allocator,
         line.id,
         carrier_id,

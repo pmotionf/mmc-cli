@@ -12,7 +12,7 @@ pub const Driver = @import("client_cli/Driver.zig");
 pub const Axis = @import("client_cli/Axis.zig");
 pub const Log = @import("client_cli/Log.zig");
 pub const Network = @import("client_cli/Network.zig");
-pub const Carrier = @import("client_cli/Carrier.zig");
+pub const carrier = @import("client_cli/carrier.zig");
 const api = @import("client_cli/api.zig");
 const callbacks = @import("client_cli/callbacks.zig");
 

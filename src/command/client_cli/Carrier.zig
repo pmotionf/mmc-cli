@@ -1,15 +1,8 @@
-const Carrier = @This();
-
 const std = @import("std");
 const client = @import("../client_cli.zig");
 const command = @import("../../command.zig");
 const api = @import("api.zig");
 const SystemResponse = api.api.info_msg.Response.System;
-
-id: Id,
-position: f32,
-state: SystemResponse.Carrier.Info.State,
-cas: struct { enabled: bool, triggered: bool },
 
 pub const max = 2048;
 pub const Id = std.math.IntFittingRange(1, max);
