@@ -28,6 +28,10 @@ pub fn init(
     index: Index,
     config: Config.Line,
 ) !void {
+    std.debug.print(
+        "axis len: {}\ncarrier len: {}\nname: {s}\naxes: {}\n",
+        .{ config.length.?.axis, config.length.?.carrier, config.name.getSlice(), config.axes },
+    );
     self.index = index;
     self.id = index + 1;
     self.acceleration = 78;

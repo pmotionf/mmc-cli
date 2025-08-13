@@ -38,11 +38,11 @@ pub fn connect(params: [][]const u8) !void {
         "Trying to connect to {s}:{d}",
         .{ endpoint.ip, endpoint.port },
     );
-    client.net = try client.Network.connect(
+    try client.net.connect(
         client.allocator,
         endpoint,
     );
-    errdefer client.net.deinit(client.allocator);
+    errdefer client.net.close() catch {};
     std.log.info(
         "Connected to {f}",
         .{try client.net.socket.?.getRemoteEndPoint()},
@@ -111,12 +111,15 @@ pub fn connect(params: [][]const u8) !void {
         try stdout.interface.writeByte('\n');
         try stdout.interface.flush();
     }
-    // Initialize memory for logging
+    // Initialize memory for logging configuration
     client.log = try client.Log.init(
         client.allocator,
-        @intCast(client.lines.len),
+        client.lines,
         client.net.endpoint,
     );
+    for (client.log.configs, client.lines) |*config, line| {
+        try config.init(client.allocator, line.id, line.name);
+    }
 }
 
 /// Serve as a callback of a `DISCONNECT` command, requires parameter.
@@ -348,6 +351,7 @@ pub fn driverInfo(params: [][]const u8) !void {
         client.allocator,
         msg,
     );
+    defer system.deinit();
     var driver_infos = system.driver_infos;
     var driver_errors = system.driver_errors;
     if (driver_infos.items.len != driver_errors.items.len and
@@ -366,18 +370,17 @@ pub fn carrierInfo(params: [][]const u8) !void {
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    var ids = [1]u32{carrier_id};
     {
+        var ids = std.ArrayListAligned(u32, null).init(client.allocator);
+        defer ids.deinit();
+        try ids.append(carrier_id);
         const msg = try api.request.info.system.encode(
             client.allocator,
             .{
                 .line_id = @intCast(line.id),
                 .carrier = true,
                 .source = .{
-                    .carriers = .{ .ids = .fromOwnedSlice(
-                        client.allocator,
-                        &ids,
-                    ) },
+                    .carriers = .{ .ids = ids },
                 },
             },
         );
@@ -385,10 +388,12 @@ pub fn carrierInfo(params: [][]const u8) !void {
         try client.net.send(msg);
     }
     const msg = try client.net.receive(client.allocator);
+    defer client.allocator.free(msg);
     const system = try api.response.info.system.decode(
         client.allocator,
         msg,
     );
+    defer system.deinit();
     var carriers = system.carrier_infos;
     if (carriers.items.len > 1) return error.InvalidResponse;
     const carrier = carriers.pop() orelse return error.CarrierNotFound;
@@ -583,18 +588,17 @@ pub fn assertLocation(params: [][]const u8) !void {
         1.0;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    var ids = [1]u32{carrier_id};
     {
+        var ids = std.ArrayListAligned(u32, null).init(client.allocator);
+        defer ids.deinit();
+        try ids.append(carrier_id);
         const msg = try api.request.info.system.encode(
             client.allocator,
             .{
                 .line_id = @intCast(line.id),
                 .carrier = true,
                 .source = .{
-                    .carriers = .{ .ids = .fromOwnedSlice(
-                        client.allocator,
-                        &ids,
-                    ) },
+                    .carriers = .{ .ids = ids },
                 },
             },
         );
@@ -744,18 +748,17 @@ pub fn carrierLocation(params: [][]const u8) !void {
     const result_var: []const u8 = params[2];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    var ids = [1]u32{carrier_id};
     {
+        var ids = std.ArrayListAligned(u32, null).init(client.allocator);
+        defer ids.deinit();
+        try ids.append(carrier_id);
         const msg = try api.request.info.system.encode(
             client.allocator,
             .{
                 .line_id = @intCast(line.id),
                 .carrier = true,
                 .source = .{
-                    .carriers = .{ .ids = .fromOwnedSlice(
-                        client.allocator,
-                        &ids,
-                    ) },
+                    .carriers = .{ .ids = ids },
                 },
             },
         );
@@ -792,18 +795,17 @@ pub fn carrierAxis(params: [][]const u8) !void {
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    var ids = [1]u32{carrier_id};
     {
+        var ids = std.ArrayListAligned(u32, null).init(client.allocator);
+        defer ids.deinit();
+        try ids.append(carrier_id);
         const msg = try api.request.info.system.encode(
             client.allocator,
             .{
                 .line_id = @intCast(line.id),
                 .carrier = true,
                 .source = .{
-                    .carriers = .{ .ids = .fromOwnedSlice(
-                        client.allocator,
-                        &ids,
-                    ) },
+                    .carriers = .{ .ids = ids },
                 },
             },
         );
@@ -1588,11 +1590,11 @@ pub fn addLogInfo(params: [][]const u8) !void {
     const kind = params[1];
     if (kind.len == 0) return error.MissingParameter;
     const line = client.lines[line_idx];
-    var log_config = client.Log.Config{ .id = line.id };
     const range = params[2];
+    var log_range: client.Log.Config.Range = undefined;
     if (range.len > 0) {
         var range_iterator = std.mem.tokenizeSequence(u8, range, ":");
-        log_config.axis_id_range = .{
+        log_range = .{
             .start = try std.fmt.parseInt(
                 client.Axis.Id.Line,
                 range_iterator.next() orelse return error.MissingParameter,
@@ -1605,32 +1607,35 @@ pub fn addLogInfo(params: [][]const u8) !void {
             ),
         };
     } else {
-        log_config.axis_id_range = .{ .start = 1, .end = @intCast(line.axes.len) };
+        log_range = .{ .start = 1, .end = @intCast(line.axes.len) };
     }
-    if ((log_config.axis_id_range.start < 1 and
-        log_config.axis_id_range.start > line.axes.len) or
-        (log_config.axis_id_range.end < 1 and
-            log_config.axis_id_range.end > line.axes.len))
+    if ((log_range.start < 1 and
+        log_range.start > line.axes.len) or
+        (log_range.end < 1 and
+            log_range.end > line.axes.len))
         return error.InvalidAxis;
-    if (std.ascii.eqlIgnoreCase("all", kind)) {
-        log_config.axis = true;
-        log_config.driver = true;
-    } else {
-        const ti = @typeInfo(client.Log.Kind).@"enum";
-        inline for (ti.fields) |field| {
-            if (std.ascii.eqlIgnoreCase(field.name, kind)) {
-                @field(log_config, field.name) = true;
-            }
-        }
-        if (!log_config.axis and !log_config.driver)
-            return error.InvalidKind;
-    }
-    client.log.configs[line_idx] = log_config;
+    if (std.ascii.eqlIgnoreCase("all", kind) or
+        std.ascii.eqlIgnoreCase("axis", kind) or
+        std.ascii.eqlIgnoreCase("driver", kind))
+    {} else return error.InvalidKind;
+    client.log.configs[line_idx].axis =
+        if (std.ascii.eqlIgnoreCase("all", kind) or
+        std.ascii.eqlIgnoreCase("axis", kind))
+            true
+        else
+            false;
+    client.log.configs[line_idx].driver =
+        if (std.ascii.eqlIgnoreCase("all", kind) or
+        std.ascii.eqlIgnoreCase("driver", kind))
+            true
+        else
+            false;
+    client.log.configs[line_idx].axis_id_range = log_range;
     try client.log.status();
 }
 
 pub fn startLogInfo(params: [][]const u8) !void {
-    errdefer client.log.reset(client.allocator);
+    errdefer client.log.reset();
     const duration = try std.fmt.parseFloat(f64, params[0]);
     const path = params[1];
     client.log.path = if (path.len > 0) path else p: {
@@ -1673,10 +1678,10 @@ pub fn removeLogInfo(params: [][]const u8) !void {
     if (params[0].len > 0) {
         const line_name = params[0];
         const line_idx = try client.matchLine(line_name);
-        client.log.configs[line_idx] = .{};
+        client.log.configs[line_idx].deinit(client.log.allocator);
     } else {
-        for (client.log.configs) |*line| {
-            line.* = .{};
+        for (client.log.configs) |*config| {
+            config.deinit(client.log.allocator);
         }
     }
     try client.log.status();
@@ -1711,6 +1716,7 @@ fn waitCommandReceived(allocator: std.mem.Allocator) !void {
             allocator,
             resp,
         );
+        defer decoded.deinit();
         if (decoded.commands.items.len > 1) return error.InvalidResponse;
         if (decoded.commands.pop()) |comm| {
             switch (comm.status) {

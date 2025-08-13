@@ -2,7 +2,6 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const chrono = @import("chrono");
-const network = @import("network");
 
 const CircularBufferAlloc =
     @import("../circular_buffer.zig").CircularBufferAlloc;
@@ -18,23 +17,28 @@ const callbacks = @import("client_cli/callbacks.zig");
 
 pub var lines: []Line = &.{};
 pub var log: Log = undefined;
-pub var net: Network = undefined;
+pub var net: Network = .init();
 
 var arena: std.heap.ArenaAllocator = undefined;
 pub var allocator: std.mem.Allocator = undefined;
 
+pub var log_allocator: std.mem.Allocator = undefined;
 pub const Config = struct {
     IP_address: []u8,
     port: u16,
 };
 
-pub fn init(c: Config) !void {
-    arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    errdefer arena.deinit();
-    allocator = arena.allocator();
+var debug_allocator = std.heap.DebugAllocator(.{}){};
 
-    try network.init();
-    errdefer network.deinit();
+pub fn init(c: Config) !void {
+    arena = std.heap.ArenaAllocator.init(std.heap.smp_allocator);
+    errdefer arena.deinit();
+    allocator = if (builtin.mode == .Debug)
+        debug_allocator.allocator()
+    else
+        arena.allocator();
+    try Network.network.init();
+    errdefer Network.network.deinit();
     net.endpoint.ip = try allocator.alloc(u8, c.IP_address.len);
     @memcpy(net.endpoint.ip, c.IP_address);
     net.endpoint.port = c.port;
@@ -781,20 +785,28 @@ pub fn init(c: Config) !void {
 pub fn deinit() void {
     disconnect() catch {};
     net.deinit(allocator);
-    arena.deinit();
-    network.deinit();
+    Network.network.deinit();
+    if (debug_allocator.detectLeaks()) {
+        std.log.debug("Leaks detected", .{});
+    } else {
+        arena.deinit();
+    }
 }
 
 /// Free all memory EXCEPT the endpoint, so that client can reconnect to the
 /// latest server.
 pub fn disconnect() error{ServerNotConnected}!void {
+    // Wait until the log finish storing log data and cleanup
+    while (Log.start.load(.monotonic)) {
+        // std.debug.print("waiting deinit", .{});
+    }
+    log.deinit();
     try net.close();
     for (lines) |*line| {
         line.deinit(allocator);
     }
     allocator.free(lines);
     lines = &.{};
-    log.deinit(allocator);
 }
 
 pub fn matchLine(name: []const u8) !usize {

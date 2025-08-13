@@ -510,28 +510,20 @@ pub const response = struct {
             /// Parse system response to fit the logging data
             pub fn toLog(
                 system_resp: api.info_msg.Response.System,
-                result: *Log.Data.Line,
+                result: *Log.Data,
             ) !void {
                 const axis_infos = system_resp.axis_infos;
                 const axis_errors = system_resp.axis_errors;
                 const driver_infos = system_resp.driver_infos;
                 const driver_errors = system_resp.driver_errors;
                 const carriers = system_resp.carrier_infos;
-                // Validate that response length match the result length
-                if (axis_infos.items.len != axis_errors.items.len or
-                    axis_infos.items.len != result.axes.len)
-                    return error.InvalidResponse;
-                if (driver_infos.items.len != driver_errors.items.len or
-                    driver_infos.items.len != result.drivers.len)
-                    return error.InvalidResponse;
                 // Parse axes information response
-                var index: usize = 0;
                 for (
                     axis_infos.items,
                     axis_errors.items,
                 ) |axis_info, axis_err| {
                     if (axis_info.id != axis_err.id) return error.InvalidResponse;
-                    result.axes[index] = .{
+                    result.axes[axis_info.id - 1] = .{
                         .id = @intCast(axis_info.id),
                         .hall = .{
                             .front = axis_info.hall_alarm.?.front,
@@ -548,7 +540,6 @@ pub const response = struct {
                             .{},
                         ),
                     };
-                    index += 1;
                 }
                 // Parse carrier information response to axis.carrier
                 for (carriers.items) |_carrier| {
@@ -571,12 +562,11 @@ pub const response = struct {
                         };
                     }
                 }
-                // Parse drivers information response
                 for (
                     driver_infos.items,
                     driver_errors.items,
                 ) |driver_info, driver_err| {
-                    result.drivers[index] = .{
+                    result.drivers[driver_info.id] = .{
                         .id = @intCast(driver_info.id),
                         .connected = driver_info.connected,
                         .available = driver_info.available,
@@ -596,10 +586,10 @@ pub const response = struct {
                             },
                         },
                     };
-                    index += 1;
                 }
             }
         };
+
         fn error_handler(err: api.info_msg.Response.RequestErrorKind) anyerror {
             return switch (err) {
                 .INFO_REQUEST_ERROR_UNSPECIFIED => error.InvalidResponse,

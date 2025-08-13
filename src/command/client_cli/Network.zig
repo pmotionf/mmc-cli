@@ -1,7 +1,7 @@
 const Network = @This();
 
 const std = @import("std");
-const network = @import("network");
+pub const network = @import("network");
 const command = @import("../../command.zig");
 const client = @import("../client_cli.zig");
 
@@ -13,20 +13,41 @@ pub const Endpoint = struct {
     port: u16,
 };
 
-/// Connect the client to the server. Call deinit to close the connection
-pub fn connect(allocator: std.mem.Allocator, endpoint: Endpoint) !Network {
-    var result: Network = undefined;
-    errdefer result.deinit(allocator);
-    result.socket = try network.connectToHost(
+/// Initialize the empty Network variable
+pub fn init() Network {
+    return .{
+        .endpoint = .{
+            .ip = &.{},
+            .port = 0,
+        },
+        .socket = null,
+    };
+}
+
+/// Connect the client to the server. Call deinit to close the connection and
+/// clear memory allocated for the IP. Call close to only close the connection.
+pub fn connect(
+    self: *Network,
+    allocator: std.mem.Allocator,
+    endpoint: Endpoint,
+) !void {
+    // Try to connect with the given endpoint
+    const socket = try network.connectToHost(
         allocator,
         endpoint.ip,
         endpoint.port,
         .tcp,
     );
-    result.endpoint.ip = try allocator.alloc(u8, endpoint.ip.len);
-    @memcpy(result.endpoint.ip, endpoint.ip);
-    result.endpoint.port = endpoint.port;
-    return result;
+    // Replace the ip if the current ip is different to the provided one
+    if (!std.mem.eql(u8, self.endpoint.ip, endpoint.ip)) {
+        self.endpoint.ip = try client.allocator.realloc(
+            self.endpoint.ip,
+            endpoint.ip.len,
+        );
+        @memcpy(self.endpoint.ip, endpoint.ip);
+    }
+    self.endpoint.port = endpoint.port;
+    self.socket = socket;
 }
 
 /// Close the socket
@@ -43,9 +64,10 @@ pub fn close(self: *Network) error{ServerNotConnected}!void {
 
 /// Clear the memory allocated for Network
 pub fn deinit(self: *Network, allocator: std.mem.Allocator) void {
-    allocator.free(self.endpoint.ip);
-    self.endpoint.port = 0;
     if (self.socket) |_| self.close() catch {};
+    allocator.free(self.endpoint.ip);
+    self.endpoint.ip = &.{};
+    self.endpoint.port = 0;
 }
 
 pub fn send(self: *Network, msg: []const u8) !void {

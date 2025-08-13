@@ -460,12 +460,12 @@ pub fn init() !void {
 }
 
 pub fn deinit() void {
+    deinitModules();
     stop.store(true, .monotonic);
     defer stop.store(false, .monotonic);
     variables.deinit();
     queueClear();
     command_queue_lock = undefined;
-    deinitModules();
     registry.deinit();
     arena.deinit();
 }

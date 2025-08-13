@@ -14,22 +14,16 @@ pub fn waitState(
     state: SystemResponse.Carrier.Info.State,
     timeout: u64,
 ) !void {
-    var ids = [1]u32{id};
-    const _ids = std.ArrayListAligned(
-        u32,
-        null,
-    ).fromOwnedSlice(
-        allocator,
-        &ids,
-    );
-    defer _ids.deinit();
+    var ids = std.ArrayListAligned(u32, null).init(client.allocator);
+    defer ids.deinit();
+    try ids.append(id);
     const msg = try api.request.info.system.encode(
         allocator,
         .{
             .line_id = line_id,
             .carrier = true,
             .source = .{
-                .carriers = .{ .ids = _ids },
+                .carriers = .{ .ids = ids },
             },
         },
     );
