@@ -754,7 +754,12 @@ fn file(params: [][]const u8) !void {
     var reader_buf: [std.fs.max_path_bytes + 512]u8 = undefined;
     var reader = f.reader(&reader_buf);
     while (true) {
-        const _line = try reader.interface.takeDelimiterExclusive('\n');
+        const _line = reader.interface.takeDelimiterExclusive('\n') catch |e| {
+            switch (e) {
+                error.EndOfStream => break,
+                else => return e,
+            }
+        };
         try checkCommandInterrupt();
         const line = std.mem.trimLeft(
             u8,
