@@ -5,7 +5,7 @@ const CircularBufferAlloc =
     @import("../../circular_buffer.zig").CircularBufferAlloc;
 const api_helper = @import("api.zig");
 const SystemResponse = api_helper.api.info_msg.Response.System;
-const client = @import("../client_cli.zig");
+const client = @import("../mmc_client.zig");
 const command = @import("../../command.zig");
 const Network = @import("Network.zig");
 const main = @import("../../main.zig");

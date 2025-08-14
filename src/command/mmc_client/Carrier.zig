@@ -1,5 +1,5 @@
 const std = @import("std");
-const client = @import("../client_cli.zig");
+const client = @import("../mmc_client.zig");
 const command = @import("../../command.zig");
 const api = @import("api.zig");
 const SystemResponse = api.api.info_msg.Response.System;

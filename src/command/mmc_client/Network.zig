@@ -3,7 +3,7 @@ const Network = @This();
 const std = @import("std");
 pub const network = @import("network");
 const command = @import("../../command.zig");
-const client = @import("../client_cli.zig");
+const client = @import("../mmc_client.zig");
 
 socket: ?network.Socket,
 endpoint: Endpoint,

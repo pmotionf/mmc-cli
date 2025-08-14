@@ -3,7 +3,7 @@ const builtin = @import("builtin");
 
 const chrono = @import("chrono");
 const api = @import("api.zig");
-const client = @import("../client_cli.zig");
+const client = @import("../mmc_client.zig");
 const command = @import("../../command.zig");
 
 pub fn connect(params: [][]const u8) !void {

@@ -16,8 +16,8 @@ const config = @import("config");
 const mcl = if (config.mcl) @import("command/mcl.zig") else void;
 const return_demo2 =
     if (config.return_demo2) @import("command/return_demo2.zig") else void;
-const client_cli =
-    if (config.mmc_client) @import("command/client_cli.zig") else void;
+const mmc_client =
+    if (config.mmc_client) @import("command/mmc_client.zig") else void;
 const mes07 = if (config.mes07) @import("command/mes07.zig") else void;
 
 const Config = @import("Config.zig");
