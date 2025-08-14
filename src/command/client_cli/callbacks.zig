@@ -485,7 +485,7 @@ pub fn axisCarrier(params: [][]const u8) !void {
     }
 }
 
-pub fn carrierID(params: [][]const u8) !void {
+pub fn carrierId(params: [][]const u8) !void {
     var line_name_iterator = std.mem.tokenizeSequence(
         u8,
         params[0],

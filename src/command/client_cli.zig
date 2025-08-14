@@ -212,7 +212,7 @@ pub fn init(c: Config) !void {
         \\variable name: prefix_[num], e.g., prefix_1 and prefix_2 if two carriers
         \\exist on the provided line(s).
         ,
-        .execute = &callbacks.carrierID,
+        .execute = &callbacks.carrierId,
     });
     errdefer command.registry.orderedRemove("CARRIER_ID");
     try command.registry.put(.{
