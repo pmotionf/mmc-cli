@@ -8,13 +8,10 @@ const Log = @import("Log.zig");
 
 pub const api = @import("mmc-api");
 
-// TODO: If client.zig's configuration has been updated, validate all values
-//       with the configuration
 pub const response = struct {
     pub const core = struct {
         pub const line_config = struct {
-            /// Decode and validate the response. Caller shall free the
-            /// allocated memory.
+            /// Decode the response. Caller shall free the allocated memory.
             pub fn decode(
                 allocator: std.mem.Allocator,
                 msg: []const u8,
@@ -30,21 +27,7 @@ pub const response = struct {
                     },
                     .core => |core_resp| switch (core_resp.body orelse
                         return error.InvalidResponse) {
-                        .line_config => |config| {
-                            if (config.lines.items.len > Line.max)
-                                return error.InvalidLineConfig;
-                            for (config.lines.items) |line| {
-                                if (line.axes > std.math.maxInt(Axis.Id.Line))
-                                    return error.InvalidAxesResponse;
-                                if (line.length) |length| {
-                                    if (length.axis == 0 and length.carrier == 0)
-                                        return error.InvalidLengthResponse;
-                                } else return error.MissingConfiguration;
-                                if (line.name.getSlice().len == 0)
-                                    return error.MissingConfiguration;
-                            }
-                            return config;
-                        },
+                        .line_config => |config| return config,
                         .request_error => |req_err| {
                             return core.error_handler(req_err);
                         },
@@ -55,7 +38,7 @@ pub const response = struct {
             }
         };
         pub const api_version = struct {
-            /// Decode and validate the response.
+            /// Decode the response.
             pub fn decode(
                 allocator: std.mem.Allocator,
                 msg: []const u8,
@@ -71,11 +54,7 @@ pub const response = struct {
                     },
                     .core => |core_resp| switch (core_resp.body orelse
                         return error.InvalidResponse) {
-                        .api_version => |api_ver| {
-                            if (api_ver.major == 0 and api_ver.minor == 0 and
-                                api_ver.patch == 0) return error.InvalidVersionResponse;
-                            return api_ver;
-                        },
+                        .api_version => |api_ver| return api_ver,
                         .request_error => |req_err| {
                             return core.error_handler(req_err);
                         },
@@ -86,8 +65,7 @@ pub const response = struct {
             }
         };
         pub const server = struct {
-            /// Decode and validate the response. Caller shall free the
-            /// allocated memory.
+            /// Decode the response. Caller shall free the allocated memory.
             pub fn decode(
                 allocator: std.mem.Allocator,
                 msg: []const u8,
@@ -103,14 +81,7 @@ pub const response = struct {
                     },
                     .core => |core_resp| switch (core_resp.body orelse
                         return error.InvalidResponse) {
-                        .server => |server_resp| {
-                            if (server_resp.version) |version| {
-                                if (version.major == 0 and version.minor == 0 and
-                                    version.patch == 0) return error.InvalidVersionResponse;
-                            } else return error.MissingConfiguration;
-                            if (server_resp.name.getSlice().len == 0) return error.InvalidServerName;
-                            return server_resp;
-                        },
+                        .server => |server_resp| return server_resp,
                         .request_error => |req_err| {
                             return core.error_handler(req_err);
                         },
@@ -130,7 +101,7 @@ pub const response = struct {
     };
     pub const command = struct {
         pub const id = struct {
-            /// Decode and validate the response.
+            /// Decode the response.
             pub fn decode(allocator: std.mem.Allocator, msg: []const u8) !u32 {
                 const decoded = try api.mmc_msg.Response.decode(
                     msg,
@@ -212,8 +183,7 @@ pub const response = struct {
     };
     pub const info = struct {
         pub const commands = struct {
-            /// Decode and validate the response. Caller shall free the
-            /// allocated memory.
+            /// Decode the response. Caller shall free the allocated memory.
             pub fn decode(
                 allocator: std.mem.Allocator,
                 msg: []const u8,
@@ -230,14 +200,6 @@ pub const response = struct {
                     .info => |info_resp| switch (info_resp.body orelse
                         return error.InvalidResponse) {
                         .commands => |commands_resp| {
-                            if (commands_resp.commands.items.len == 0) return error.InvalidResponse;
-                            for (commands_resp.commands.items) |comm| {
-                                if (comm.id == 0 or comm.id > 4096)
-                                    return error.InvalidCommandId;
-                                if (comm.status == .STATUS_FAILED and
-                                    comm.error_response == null)
-                                    return error.MissingFailureKind;
-                            }
                             return commands_resp;
                         },
                         .request_error => |req_err| {
@@ -252,18 +214,6 @@ pub const response = struct {
         pub const system = struct {
             pub const axis = struct {
                 pub const info = struct {
-                    pub fn validate(
-                        axis_info: api.info_msg.Response.System.Axis.Info,
-                    ) !void {
-                        if (axis_info.id == 0 or
-                            axis_info.id > Axis.max.line)
-                            return error.InvalidAxisResponse;
-                        if (axis_info.hall_alarm == null)
-                            return error.InvalidAxisResponse;
-                        if (axis_info.carrier_id > 2048)
-                            return error.InvalidAxisResponse;
-                    }
-
                     /// Print all axis information into the screen
                     pub fn print(
                         axis_info: api.info_msg.Response.System.Axis.Info,
@@ -279,13 +229,6 @@ pub const response = struct {
                     }
                 };
                 pub const err = struct {
-                    pub fn validate(
-                        axis_err: api.info_msg.Response.System.Axis.Error,
-                    ) !void {
-                        if (axis_err.id == 0 or
-                            axis_err.id > Axis.max.line)
-                            return error.InvalidAxisResponse;
-                    }
                     /// Print all axis information into the screen
                     pub fn print(
                         axis_err: api.info_msg.Response.System.Axis.Error,
@@ -342,13 +285,6 @@ pub const response = struct {
             };
             pub const driver = struct {
                 pub const info = struct {
-                    pub fn validate(
-                        driver_info: api.info_msg.Response.System.Driver.Info,
-                    ) !void {
-                        if (driver_info.id == 0 or
-                            driver_info.id > Driver.max)
-                            return error.InvalidDriverResponse;
-                    }
                     /// Print all axis information into the screen
                     pub fn print(
                         driver_info: api.info_msg.Response.System.Driver.Info,
@@ -364,17 +300,6 @@ pub const response = struct {
                     }
                 };
                 pub const err = struct {
-                    pub fn validate(
-                        driver_err: api.info_msg.Response.System.Driver.Error,
-                    ) !void {
-                        if (driver_err.id == 0 or
-                            driver_err.id > Driver.max)
-                            return error.InvalidDriverResponse;
-                        if (driver_err.communication_error == null)
-                            return error.InvalidDriverResponse;
-                        if (driver_err.power_error == null)
-                            return error.InvalidDriverResponse;
-                    }
                     /// Print all axis information into the screen
                     pub fn print(
                         driver_err: api.info_msg.Response.System.Driver.Error,
@@ -430,22 +355,6 @@ pub const response = struct {
                 };
             };
             pub const carrier = struct {
-                pub fn validate(
-                    carrier_info: api.info_msg.Response.System.Carrier.Info,
-                ) !void {
-                    if (carrier_info.id == 0 or carrier_info.id > 2048)
-                        return error.InvalidCarrierResponse;
-                    if (carrier_info.cas == null)
-                        return error.InvalidCarrierResponse;
-                    if (carrier_info.axis) |_axis| {
-                        if (_axis.main == 0 or _axis.main > Axis.max.line)
-                            return error.InvalidCarrierResponse;
-                        if (_axis.auxiliary) |aux| {
-                            if (aux == 0 or aux > Axis.max.line)
-                                return error.InvalidCarrierResponse;
-                        }
-                    } else return error.InvalidCarrierResponse;
-                }
                 /// Print all axis information into the screen
                 pub fn print(
                     carrier_info: api.info_msg.Response.System.Carrier.Info,
@@ -460,8 +369,7 @@ pub const response = struct {
                     try writer.flush();
                 }
             };
-            /// Decode and validate the response. Caller shall free the
-            /// allocated memory.
+            /// Decode the response. Caller shall free the allocated memory.
             pub fn decode(
                 allocator: std.mem.Allocator,
                 msg: []const u8,
@@ -477,27 +385,7 @@ pub const response = struct {
                     },
                     .info => |info_resp| switch (info_resp.body orelse
                         return error.InvalidResponse) {
-                        .system => |system_resp| {
-                            if (system_resp.line_id == 0 or
-                                system_resp.line_id > Line.max)
-                                return error.InvalidLineResponse;
-                            for (system_resp.axis_errors.items) |axis_err| {
-                                try axis.err.validate(axis_err);
-                            }
-                            for (system_resp.axis_infos.items) |axis_info| {
-                                try axis.info.validate(axis_info);
-                            }
-                            for (system_resp.driver_infos.items) |driver_info| {
-                                try driver.info.validate(driver_info);
-                            }
-                            for (system_resp.driver_errors.items) |driver_err| {
-                                try driver.err.validate(driver_err);
-                            }
-                            for (system_resp.carrier_infos.items) |carrier_info| {
-                                try carrier.validate(carrier_info);
-                            }
-                            return system_resp;
-                        },
+                        .system => |system_resp| return system_resp,
                         .request_error => |req_err| {
                             return info.error_handler(req_err);
                         },

@@ -242,6 +242,7 @@ pub fn showError(params: [][]const u8) !void {
         msg,
     );
     defer system.deinit();
+    if (system.line_id != line.id) return error.InvalidResponse;
     var axis_errors = system.axis_errors;
     var driver_errors = system.driver_errors;
     if (source) |_| {
@@ -309,6 +310,7 @@ pub fn axisInfo(params: [][]const u8) !void {
         msg,
     );
     defer system.deinit();
+    if (system.line_id != line.id) return error.InvalidResponse;
     var axis_infos = system.axis_infos;
     var axis_errors = system.axis_errors;
     if (axis_infos.items.len != axis_errors.items.len and
@@ -352,6 +354,7 @@ pub fn driverInfo(params: [][]const u8) !void {
         msg,
     );
     defer system.deinit();
+    if (system.line_id != line.id) return error.InvalidResponse;
     var driver_infos = system.driver_infos;
     var driver_errors = system.driver_errors;
     if (driver_infos.items.len != driver_errors.items.len and
@@ -394,6 +397,7 @@ pub fn carrierInfo(params: [][]const u8) !void {
         msg,
     );
     defer system.deinit();
+    if (system.line_id != line.id) return error.InvalidResponse;
     var carriers = system.carrier_infos;
     if (carriers.items.len > 1) return error.InvalidResponse;
     const carrier = carriers.pop() orelse return error.CarrierNotFound;
@@ -535,6 +539,7 @@ pub fn carrierId(params: [][]const u8) !void {
             msg,
         );
         defer system.deinit();
+        if (system.line_id != line.id) return error.InvalidResponse;
         const axis_infos = system.axis_infos;
         if (axis_infos.items.len != line.axes.len)
             return error.InvalidResponse;
@@ -612,6 +617,7 @@ pub fn assertLocation(params: [][]const u8) !void {
         msg,
     );
     defer system.deinit();
+    if (system.line_id != line.id) return error.InvalidResponse;
     var carriers = system.carrier_infos;
     if (system.line_id != line.id) return error.InvalidResponse;
     const carrier = carriers.pop() orelse return error.InvalidResponse;
@@ -1569,19 +1575,53 @@ pub fn carrierStopPush(params: [][]const u8) !void {
 
 pub fn waitAxisEmpty(params: [][]const u8) !void {
     const line_name = params[0];
-    const axis_id = try std.fmt.parseInt(client.Axis.Id.Line, params[1], 0);
+    const axis_id = try std.fmt.parseInt(u32, params[1], 0);
     const timeout = if (params[2].len > 0)
         try std.fmt.parseInt(u64, params[2], 0)
     else
         0;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    try client.Axis.waitEmpty(
+    const msg = try api.request.info.system.encode(
         client.allocator,
-        line.id,
-        axis_id,
-        timeout,
+        .{
+            .line_id = line.id,
+            .axis = true,
+            .source = .{
+                .axis_range = .{
+                    .start_id = axis_id,
+                    .end_id = axis_id,
+                },
+            },
+        },
     );
+    defer client.allocator.free(msg);
+    var wait_timer = try std.time.Timer.start();
+    while (true) {
+        if (timeout != 0 and
+            wait_timer.read() > timeout * std.time.ns_per_ms)
+            return error.WaitTimeout;
+        try command.checkCommandInterrupt();
+        try client.net.send(msg);
+        const resp = try client.net.receive(client.allocator);
+        defer client.allocator.free(resp);
+        var system = try api.response.info.system.decode(
+            client.allocator,
+            resp,
+        );
+        defer system.deinit();
+        if (system.line_id != line.id) return error.InvalidResponse;
+        const axis_info = system.axis_infos.pop() orelse return error.InvalidResponse;
+        const carrier = axis_info.carrier_id;
+        const axis_alarms = axis_info.hall_alarm orelse return error.InvalidResponse;
+        const wait_push = axis_info.waiting_push;
+        const wait_pull = axis_info.waiting_pull;
+        if (carrier == 0 and !axis_alarms.back and !axis_alarms.front and
+            !wait_pull and !wait_push)
+        {
+            break;
+        }
+    }
 }
 
 pub fn addLogInfo(params: [][]const u8) !void {
