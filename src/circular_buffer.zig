@@ -117,10 +117,10 @@ pub fn CircularBufferAlloc(comptime T: type) type {
     return struct {
         const Self = @This();
 
-        buffer: []T = undefined,
-        head: usize = 0,
-        count: usize = 0,
-        allocator: std.mem.Allocator = undefined,
+        buffer: []T,
+        head: usize,
+        count: usize,
+        allocator: std.mem.Allocator,
 
         /// Initialize circular buffer capacity. Capacity is not resizable.
         pub fn initCapacity(allocator: std.mem.Allocator, num: usize) !Self {

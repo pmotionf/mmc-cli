@@ -10,7 +10,7 @@ const ReturnDemo2Config = if (config.return_demo2)
 else
     void;
 const ClientCliConfig =
-    if (config.mmc_client) @import("command/client_cli.zig").Config else void;
+    if (config.mmc_client) @import("command/mmc_client.zig").Config else void;
 const Mes07Config =
     if (config.mes07) @import("command/mes07.zig").Config else void;
 
@@ -19,14 +19,14 @@ parsed: std.json.Parsed(Parse),
 pub const Module = enum {
     mcl,
     return_demo2,
-    client_cli,
+    mmc_client,
     mes07,
 };
 
 const ModuleConfig = union(Module) {
     mcl: MclConfig,
     return_demo2: ReturnDemo2Config,
-    client_cli: ClientCliConfig,
+    mmc_client: ClientCliConfig,
     mes07: Mes07Config,
 };
 

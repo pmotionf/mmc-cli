@@ -35,7 +35,7 @@ jobs:
 
       - uses: mlugg/setup-zig@v2
         with:
-          version: master
+          version: 0.15.0-dev.1474+3ea015db9
 
       - uses: actions/github-script@v7
         id: parse-version
