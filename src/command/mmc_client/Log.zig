@@ -35,7 +35,7 @@ pub const Config = struct {
     /// Inclusive axis range of the line to be logged.
     axis_id_range: Range,
 
-    pub const Range = struct { start: client.Axis.Id.Line, end: client.Axis.Id.Line };
+    pub const Range = struct { start: u32, end: u32 };
 
     pub fn init(
         self: *Config,
@@ -62,13 +62,20 @@ pub const Config = struct {
     }
 };
 
+// TODO: Make a dynamic allocation for the log and compare the time with
+//       buffer
+const max = struct {
+    const driver = 64 * 4;
+    const axis = driver * 3;
+};
+
 /// One iteration of logged data
 pub const Data = struct {
     timestamp: f64 = 0,
-    axes: [client.Axis.max.line]Axis = [_]Axis{
+    axes: [max.axis]Axis = [_]Axis{
         std.mem.zeroInit(Axis, .{}),
-    } ** client.Axis.max.line,
-    drivers: [client.Driver.max]Driver,
+    } ** max.axis,
+    drivers: [max.driver]Driver,
 
     pub const Axis = struct {
         hall: struct { back: bool, front: bool },
@@ -108,11 +115,11 @@ pub const Data = struct {
         self.axes = [_]Axis{std.mem.zeroInit(
             Axis,
             .{},
-        )} ** client.Axis.max.line;
+        )} ** max.axis;
         self.drivers = [_]Driver{std.mem.zeroInit(
             Driver,
             .{},
-        )} ** client.Driver.max;
+        )} ** max.driver;
         self.timestamp = 0;
     }
 

@@ -7,12 +7,10 @@ const CircularBufferAlloc =
     @import("../circular_buffer.zig").CircularBufferAlloc;
 const command = @import("../command.zig");
 pub const Line = @import("mmc_client/Line.zig");
-pub const Driver = @import("mmc_client/Driver.zig");
-pub const Axis = @import("mmc_client/Axis.zig");
 pub const Log = @import("mmc_client/Log.zig");
 pub const Network = @import("mmc_client/Network.zig");
 pub const carrier = @import("mmc_client/carrier.zig");
-const api = @import("mmc_client/api.zig");
+pub const api = @import("mmc_client/api.zig");
 const callbacks = @import("mmc_client/callbacks.zig");
 
 pub var lines: []Line = &.{};

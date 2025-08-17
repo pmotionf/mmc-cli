@@ -1,8 +1,6 @@
 // This file purpose is an interface for parsing the response and creating a
 // request to the server.
 const std = @import("std");
-const Axis = @import("Axis.zig");
-const Driver = @import("Driver.zig");
 const Line = @import("Line.zig");
 const Log = @import("Log.zig");
 
@@ -530,12 +528,6 @@ pub const request = struct {
                 allocator: std.mem.Allocator,
                 payload: api.command_msg.Request.ClearErrors,
             ) ![]const u8 {
-                if (payload.line_id == 0 or payload.line_id > Line.max)
-                    return error.InvalidLine;
-                if (payload.driver_id) |driver| {
-                    if (driver == 0 or driver > Driver.max)
-                        return error.InvalidDriver;
-                }
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -558,12 +550,6 @@ pub const request = struct {
                 allocator: std.mem.Allocator,
                 payload: api.command_msg.Request.ClearCarriers,
             ) ![]const u8 {
-                if (payload.line_id == 0 or payload.line_id > Line.max)
-                    return error.InvalidLine;
-                if (payload.axis_id) |axis| {
-                    if (axis == 0 or axis > Axis.max.line)
-                        return error.InvalidAxis;
-                }
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -586,12 +572,6 @@ pub const request = struct {
                 allocator: std.mem.Allocator,
                 payload: api.command_msg.Request.ReleaseControl,
             ) ![]const u8 {
-                if (payload.line_id == 0 or payload.line_id > Line.max)
-                    return error.InvalidLine;
-                if (payload.axis_id) |axis| {
-                    if (axis == 0 or axis > Axis.max.line)
-                        return error.InvalidAxis;
-                }
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -614,12 +594,6 @@ pub const request = struct {
                 allocator: std.mem.Allocator,
                 payload: api.command_msg.Request.StopPullCarrier,
             ) ![]const u8 {
-                if (payload.line_id == 0 or payload.line_id > Line.max)
-                    return error.InvalidLine;
-                if (payload.axis_id) |axis| {
-                    if (axis == 0 or axis > Axis.max.line)
-                        return error.InvalidAxis;
-                }
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -642,12 +616,6 @@ pub const request = struct {
                 allocator: std.mem.Allocator,
                 payload: api.command_msg.Request.StopPushCarrier,
             ) ![]const u8 {
-                if (payload.line_id == 0 or payload.line_id > Line.max)
-                    return error.InvalidLine;
-                if (payload.axis_id) |axis| {
-                    if (axis == 0 or axis > Axis.max.line)
-                        return error.InvalidAxis;
-                }
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -670,18 +638,6 @@ pub const request = struct {
                 allocator: std.mem.Allocator,
                 payload: api.command_msg.Request.AutoInitialize,
             ) ![]const u8 {
-                for (payload.lines.items) |line| {
-                    if (line.line_id == 0 or line.line_id > Line.max)
-                        return error.InvalidPayload;
-                    if (line.acceleration) |acc| {
-                        if (acc == 0 or acc > 196)
-                            return error.InvalidAcceleration;
-                    } else return error.InvalidPayload;
-                    if (line.velocity) |vel| {
-                        if (vel == 0 or vel > 30)
-                            return error.InvalidVelocity;
-                    } else return error.InvalidPayload;
-                }
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -703,28 +659,6 @@ pub const request = struct {
                 allocator: std.mem.Allocator,
                 payload: api.command_msg.Request.MoveCarrier,
             ) ![]const u8 {
-                if (payload.line_id == 0 or payload.line_id > Line.max)
-                    return error.InvalidLine;
-                if (payload.control_kind == .CONTROL_UNSPECIFIED)
-                    return error.InvalidControlKind;
-                if (payload.target) |target| {
-                    switch (target) {
-                        .axis => |axis| {
-                            if (axis == 0 or axis > Axis.max.line)
-                                return error.InvalidAxisTarget;
-                        },
-                        .distance => |distance| {
-                            if (distance == 0) return error.ZeroDistance;
-                        },
-                        else => {},
-                    }
-                } else return error.MissingTarget;
-                if (payload.velocity == 0 or payload.velocity > 30)
-                    return error.InvalidVelocity;
-                if (payload.acceleration == 0 or payload.acceleration > 196)
-                    return error.InvalidAcceleration;
-                if (payload.carrier_id == 0 or payload.carrier_id > 2048)
-                    return error.InvalidCarrier;
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -762,20 +696,6 @@ pub const request = struct {
                 allocator: std.mem.Allocator,
                 payload: api.command_msg.Request.PushCarrier,
             ) ![]const u8 {
-                if (payload.line_id == 0 or payload.line_id > Line.max)
-                    return error.InvalidLine;
-                if (payload.direction == .DIRECTION_UNSPECIFIED)
-                    return error.MissingDirection;
-                if (payload.velocity == 0 or payload.velocity > 30)
-                    return error.InvalidVelocity;
-                if (payload.acceleration == 0 or payload.acceleration > 196)
-                    return error.InvalidAcceleration;
-                if (payload.carrier_id == 0 or payload.carrier_id > 2048)
-                    return error.InvalidCarrier;
-                if (payload.axis_id) |axis| {
-                    if (axis == 0 or axis > Axis.max.line)
-                        return error.InvalidTransitionAxis;
-                }
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -802,31 +722,6 @@ pub const request = struct {
                 allocator: std.mem.Allocator,
                 payload: api.command_msg.Request.PullCarrier,
             ) ![]const u8 {
-                if (payload.line_id == 0 or payload.line_id > Line.max)
-                    return error.InvalidLine;
-                if (payload.direction == .DIRECTION_UNSPECIFIED)
-                    return error.MissingDirection;
-                if (payload.velocity == 0 or payload.velocity > 30)
-                    return error.InvalidVelocity;
-                if (payload.acceleration == 0 or payload.acceleration > 196)
-                    return error.InvalidAcceleration;
-                if (payload.carrier_id == 0 or payload.carrier_id > 2048)
-                    return error.InvalidCarrier;
-                if (payload.axis_id == 0 or payload.axis_id > Axis.max.line)
-                    return error.InvalidPullingAxis;
-                if (payload.transition) |transition| {
-                    if (transition.control_kind == .CONTROL_UNSPECIFIED)
-                        return error.InvalidControlKind;
-                    if (transition.target) |target| {
-                        switch (target) {
-                            .axis => |axis| {
-                                if (axis == 0 or axis > Axis.max.line)
-                                    return error.InvalidAxisTarget;
-                            },
-                            else => {},
-                        }
-                    } else return error.MissingTarget;
-                }
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -854,17 +749,6 @@ pub const request = struct {
                 allocator: std.mem.Allocator,
                 payload: api.command_msg.Request.IsolateCarrier,
             ) ![]const u8 {
-                if (payload.line_id == 0 or payload.line_id > Line.max)
-                    return error.InvalidLine;
-                if (payload.direction == .DIRECTION_UNSPECIFIED)
-                    return error.MissingDirection;
-                if (payload.carrier_id == 0 or payload.carrier_id > 2048)
-                    return error.InvalidCarrier;
-                if (payload.axis_id == 0 or payload.axis_id > Axis.max.line)
-                    return error.InvalidPullingAxis;
-                if (payload.link_axis) |link_axis|
-                    if (link_axis == .DIRECTION_UNSPECIFIED)
-                        return error.InvalidLinkDirection;
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -890,8 +774,6 @@ pub const request = struct {
                 allocator: std.mem.Allocator,
                 payload: api.command_msg.Request.Calibrate,
             ) ![]const u8 {
-                if (payload.line_id == 0 or payload.line_id > Line.max)
-                    return error.InvalidLine;
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -913,8 +795,6 @@ pub const request = struct {
                 allocator: std.mem.Allocator,
                 payload: api.command_msg.Request.SetLineZero,
             ) ![]const u8 {
-                if (payload.line_id == 0 or payload.line_id > Line.max)
-                    return error.InvalidLine;
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -936,8 +816,6 @@ pub const request = struct {
                 allocator: std.mem.Allocator,
                 payload: api.command_msg.Request.ClearCommand,
             ) ![]const u8 {
-                if (payload.command_id == 0 or payload.command_id > 4096)
-                    return error.InvalidCommand;
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -961,9 +839,6 @@ pub const request = struct {
                 allocator: std.mem.Allocator,
                 payload: api.info_msg.Request.Command,
             ) ![]const u8 {
-                if (payload.id) |id| {
-                    if (id == 0 or id > 4096) return error.InvalidCommandID;
-                }
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .info = .{
@@ -981,32 +856,6 @@ pub const request = struct {
                 allocator: std.mem.Allocator,
                 payload: api.info_msg.Request.System,
             ) ![]const u8 {
-                if (payload.line_id == 0 or payload.line_id > Line.max)
-                    return error.InvalidLine;
-                if (payload.source) |source| {
-                    switch (source) {
-                        .driver_range => |range| {
-                            if (range.start_id == 0 or range.start_id > Driver.max)
-                                return error.InvalidDriverRange;
-                            if (range.end_id == 0 or range.end_id > Driver.max or
-                                range.end_id < range.start_id)
-                                return error.InvalidDriverRange;
-                        },
-                        .axis_range => |range| {
-                            if (range.start_id == 0 or range.start_id > Axis.max.line)
-                                return error.InvalidAxisRange;
-                            if (range.end_id == 0 or range.end_id > Axis.max.line or
-                                range.end_id < range.start_id)
-                                return error.InvalidAxisRange;
-                        },
-                        .carriers => |carriers| {
-                            for (carriers.ids.items) |carrier| {
-                                if (carrier == 0 or carrier > 2048)
-                                    return error.InvalidCarrierID;
-                            }
-                        },
-                    }
-                }
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .info = .{
