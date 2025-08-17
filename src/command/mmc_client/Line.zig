@@ -26,10 +26,6 @@ pub fn init(
 ) !Line {
     var result: Line = undefined;
     if (config.axes > std.math.maxInt(u10)) return error.InvalidConfiguration;
-    std.debug.print(
-        "axis len: {}\ncarrier len: {}\nname: {s}\naxes: {}\n",
-        .{ config.length.?.axis, config.length.?.carrier, config.name.getSlice(), config.axes },
-    );
     result.index = index;
     result.id = index + 1;
     result.acceleration = 78;

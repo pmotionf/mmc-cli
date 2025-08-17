@@ -795,9 +795,7 @@ pub fn deinit() void {
 /// latest server.
 pub fn disconnect() error{ServerNotConnected}!void {
     // Wait until the log finish storing log data and cleanup
-    while (Log.start.load(.monotonic)) {
-        // std.debug.print("waiting deinit", .{});
-    }
+    while (Log.start.load(.monotonic)) {}
     log.deinit();
     try net.close();
     for (lines) |*line| {

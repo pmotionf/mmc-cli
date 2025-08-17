@@ -51,8 +51,6 @@ pub const Config = struct {
     }
 
     pub fn deinit(self: *Config, allocator: std.mem.Allocator) void {
-        std.debug.print("{s}\n", .{self.name});
-
         allocator.free(self.name);
         self.name = &.{};
         self.id = 0;
@@ -486,17 +484,10 @@ pub fn handler(duration: f64) !void {
     try net.connect(client.log.allocator, client.log.endpoint);
     defer net.deinit(client.log.allocator);
     var data = std.mem.zeroInit(Data, .{});
-    std.debug.print("finish init data\n", .{});
     client.log.data = try .initCapacity(
         client.log.allocator,
         logging_size,
     );
-    std.debug.print("finish init data capacity\n", .{});
-    // client.log.timestamps = try .initCapacity(
-    //     client.log.allocator,
-    //     logging_size,
-    // );
-    // std.debug.print("finish init timestamps capacity\n", .{});
     // TODO: This approach make checkError cannot be used by other thread.
     //       Find a better approach.
     // Remove any previous detected error.
