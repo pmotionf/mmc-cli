@@ -377,7 +377,12 @@ fn writeValues(writer: *std.Io.Writer, parent: anytype) !void {
 }
 
 /// Write the logged data into the logging file
-fn write(self: *Log, writer: *std.Io.Writer, duration: f64) !void {
+fn write(
+    self: *Log,
+    writer: *std.Io.Writer,
+    duration: f64,
+    last_timestamp: f64,
+) !void {
     // Write header for the logging file
     try writer.writeAll("timestamp,");
     for (self.configs) |config| {
@@ -417,9 +422,8 @@ fn write(self: *Log, writer: *std.Io.Writer, duration: f64) !void {
         }
     }
     // Write the data to the logging file
-    const initial_timestamp = self.data.?.peek().?.timestamp;
     while (self.data.?.readItem()) |data| {
-        if (data.timestamp - initial_timestamp > duration) break;
+        if (last_timestamp - data.timestamp > duration) continue;
         try writer.writeByte('\n');
         try writer.print(
             "{d},",
@@ -490,6 +494,7 @@ pub fn handler(duration: f64) !void {
     std.log.debug("Logging started", .{});
     const log_time_start = std.time.microTimestamp();
     var timer = try std.time.Timer.start();
+    var timestamp: f64 = undefined;
     while (true) {
         if (main.exit.load(.monotonic)) break;
         // Check if there is an error after the log started, including the
@@ -500,11 +505,12 @@ pub fn handler(duration: f64) !void {
             break;
         };
         while (timer.read() < mcl_update * std.time.ns_per_ms) {}
-        data.timestamp = @as(
+        timestamp = @as(
             f64,
             @floatFromInt(std.time.microTimestamp() - log_time_start),
         ) / std.time.us_per_s;
         timer.reset();
+        data.timestamp = timestamp;
         data.get(client.log.allocator, client.log.configs, &net) catch |e| {
             std.log.debug("{t}", .{e});
             std.log.debug("{?f}", .{@errorReturnTrace()});
@@ -518,7 +524,7 @@ pub fn handler(duration: f64) !void {
         client.log.data.?.writeItemOverwrite(data);
     }
     var log_writer = log_file.writer(&.{});
-    try client.log.write(&log_writer.interface, duration);
+    try client.log.write(&log_writer.interface, duration, timestamp);
     try log_writer.interface.flush();
     std.log.info("Logging data is saved successfully.", .{});
 }
