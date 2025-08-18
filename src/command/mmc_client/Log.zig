@@ -236,10 +236,6 @@ pub const Data = struct {
                 };
                 driver_idx += 1;
             }
-            // try api_helper.response.info.system.toLog(
-            //     response,
-            //     &self.lines[config.id],
-            // );
         }
     }
 };
@@ -343,9 +339,7 @@ fn writeHeaders(
                 );
         } else {
             if (parent.len == 0)
-                if (std.mem.eql(u8, "id", field.name)) {
-                    // Do not make header for root id
-                } else try writer.print(
+                try writer.print(
                     "{s}_{s},",
                     .{ prefix, field.name },
                 )
@@ -522,7 +516,6 @@ pub fn handler(duration: f64) !void {
         };
         defer data.reset();
         client.log.data.?.writeItemOverwrite(data);
-        // client.log.timestamps.?.writeItemOverwrite(data.timestamp);
     }
     var log_writer = log_file.writer(&.{});
     try client.log.write(&log_writer.interface, duration);

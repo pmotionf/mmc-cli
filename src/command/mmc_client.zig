@@ -818,11 +818,11 @@ pub fn clearCommand(a: std.mem.Allocator, id: u32) !void {
     );
     defer a.free(req);
     while (true) {
-        // TODO: Change this function to not a loop when tested.
         try command.checkCommandInterrupt();
         try net.send(req);
         const resp = try net.receive(allocator);
         defer allocator.free(resp);
+        // Keep trying to clear the command if failed.
         if (try api.response.command.operation.decode(
             a,
             resp,

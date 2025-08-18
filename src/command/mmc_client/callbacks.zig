@@ -1726,11 +1726,9 @@ fn waitCommandReceived(allocator: std.mem.Allocator) !void {
         },
     );
     defer allocator.free(msg);
+    defer client.clearCommand(allocator, id) catch {};
     while (true) {
-        command.checkCommandInterrupt() catch |e| {
-            try client.clearCommand(allocator, id);
-            return e;
-        };
+        try command.checkCommandInterrupt();
         try client.net.send(msg);
         const resp = try client.net.receive(allocator);
         defer allocator.free(resp);
