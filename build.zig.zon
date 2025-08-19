@@ -5,24 +5,24 @@
     .minimum_zig_version = "0.15.0-dev.1474+3ea015db9",
     .dependencies = .{
         .network = .{
-            .url = "https://github.com/mochalins/network/archive/87c899a.tar.gz",
+            .url = "http://github.com/mochalins/network/archive/87c899a.tar.gz",
             .hash = "network-0.1.0-Pm-AgpYxAQCFkXKCR7rQzvqkq7D1Mo8alI1-AwvWM3Tr",
         },
         .mcl = .{
-            .url = "https://github.com/pmotionf/mcl/archive/1e3edf0.tar.gz",
+            .url = "http://github.com/pmotionf/mcl/archive/1e3edf0.tar.gz",
             .hash = "mcl-0.7.0-bTecRq6-AACgGZb5MWsG5USQ5rEUJssriL1H5uzaxVSp",
             .lazy = true,
         },
         .chrono = .{
-            .url = "https://github.com/pmotionf/chrono/archive/31e31b0.tar.gz",
+            .url = "http://github.com/pmotionf/chrono/archive/31e31b0.tar.gz",
             .hash = "chrono-0.1.0-uVd76I_AAwCMh8lYH9E-5ia0tI-tda4Q2FjFoIdE2dYG",
         },
         .mmc_api = .{
-            .url = "https://github.com/pmotionf/mmc-api/archive/61ba60b.tar.gz",
+            .url = "http://github.com/pmotionf/mmc-api/archive/61ba60b.tar.gz",
             .hash = "mmc_api-0.4.0-P5raR69BAgCUY7EiLZ2mku9nBU0TAYpTe4eRwJf3Zji1",
         },
         .soem = .{
-            .url = "https://github.com/pmotionf/SOEM/archive/6dff3f5.tar.gz",
+            .url = "http://github.com/pmotionf/SOEM/archive/6dff3f5.tar.gz",
             .hash = "soem-1.4.0-hMH6QwH7DQDhU4QpnIidSZbzZlVoljUcay_9RIbl4jPj",
             .lazy = true,
         },
