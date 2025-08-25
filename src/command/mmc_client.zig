@@ -9,7 +9,7 @@ const command = @import("../command.zig");
 pub const Line = @import("mmc_client/Line.zig");
 pub const Log = @import("mmc_client/Log.zig");
 pub const Network = @import("mmc_client/Network.zig");
-pub const carrier = @import("mmc_client/carrier.zig");
+pub const carrier = @import("mmc_client/Carrier.zig");
 pub const api = @import("mmc_client/api.zig");
 const callbacks = @import("mmc_client/callbacks.zig");
 
