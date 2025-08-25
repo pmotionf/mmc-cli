@@ -9,13 +9,16 @@ const command = @import("../command.zig");
 pub const Line = @import("mmc_client/Line.zig");
 pub const Log = @import("mmc_client/Log.zig");
 pub const Network = @import("mmc_client/Network.zig");
-pub const carrier = @import("mmc_client/carrier.zig");
+pub const carrier = @import("mmc_client/Carrier.zig");
 pub const api = @import("mmc_client/api.zig");
 const callbacks = @import("mmc_client/callbacks.zig");
 
 pub var lines: []Line = &.{};
 pub var log: Log = undefined;
 pub var net: Network = .init();
+
+/// Global writer for encoding protobuf message
+pub var writer: std.Io.Writer.Allocating = undefined;
 
 var arena: std.heap.ArenaAllocator = undefined;
 pub var allocator: std.mem.Allocator = undefined;
@@ -35,6 +38,7 @@ pub fn init(c: Config) !void {
         debug_allocator.allocator()
     else
         arena.allocator();
+    writer = .init(allocator);
     try Network.network.init();
     errdefer Network.network.deinit();
     net.endpoint.ip = try allocator.alloc(u8, c.IP_address.len);
@@ -812,20 +816,23 @@ pub fn matchLine(name: []const u8) !usize {
 }
 
 pub fn clearCommand(a: std.mem.Allocator, id: u32) !void {
-    const req = try api.request.command.clear_commands.encode(
+    try api.request.command.clear_commands.encode(
         a,
+        &writer.writer,
         .{ .command_id = id },
     );
+    const req = try writer.toOwnedSlice();
     defer a.free(req);
     while (true) {
         try command.checkCommandInterrupt();
         try net.send(req);
         const resp = try net.receive(allocator);
         defer allocator.free(resp);
+        var reader: std.Io.Reader = .fixed(resp);
         // Keep trying to clear the command if failed.
         if (try api.response.command.operation.decode(
             a,
-            resp,
+            &reader,
         )) break;
     }
 }

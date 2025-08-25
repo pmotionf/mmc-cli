@@ -12,13 +12,13 @@ pub const response = struct {
             /// Decode the response. Caller shall free the allocated memory.
             pub fn decode(
                 allocator: std.mem.Allocator,
-                msg: []const u8,
+                reader: *std.Io.Reader,
             ) !api.core_msg.Response.LineConfig {
-                const decoded = try api.mmc_msg.Response.decode(
-                    msg,
+                var decoded = try api.mmc_msg.Response.decode(
+                    reader,
                     allocator,
                 );
-                errdefer decoded.deinit();
+                errdefer decoded.deinit(allocator);
                 switch (decoded.body orelse return error.InvalidResponse) {
                     .request_error => |req_err| {
                         return response.error_handler(req_err);
@@ -39,13 +39,13 @@ pub const response = struct {
             /// Decode the response.
             pub fn decode(
                 allocator: std.mem.Allocator,
-                msg: []const u8,
+                reader: *std.Io.Reader,
             ) !api.core_msg.Response.SemanticVersion {
-                const decoded = try api.mmc_msg.Response.decode(
-                    msg,
+                var decoded = try api.mmc_msg.Response.decode(
+                    reader,
                     allocator,
                 );
-                defer decoded.deinit();
+                defer decoded.deinit(allocator);
                 switch (decoded.body orelse return error.InvalidResponse) {
                     .request_error => |req_err| {
                         return response.error_handler(req_err);
@@ -66,13 +66,13 @@ pub const response = struct {
             /// Decode the response. Caller shall free the allocated memory.
             pub fn decode(
                 allocator: std.mem.Allocator,
-                msg: []const u8,
+                reader: *std.Io.Reader,
             ) !api.core_msg.Response.Server {
-                const decoded = try api.mmc_msg.Response.decode(
-                    msg,
+                var decoded = try api.mmc_msg.Response.decode(
+                    reader,
                     allocator,
                 );
-                errdefer decoded.deinit();
+                errdefer decoded.deinit(allocator);
                 switch (decoded.body orelse return error.InvalidResponse) {
                     .request_error => |req_err| {
                         return response.error_handler(req_err);
@@ -100,12 +100,15 @@ pub const response = struct {
     pub const command = struct {
         pub const id = struct {
             /// Decode the response.
-            pub fn decode(allocator: std.mem.Allocator, msg: []const u8) !u32 {
-                const decoded = try api.mmc_msg.Response.decode(
-                    msg,
+            pub fn decode(
+                allocator: std.mem.Allocator,
+                reader: *std.Io.Reader,
+            ) !u32 {
+                var decoded = try api.mmc_msg.Response.decode(
+                    reader,
                     allocator,
                 );
-                defer decoded.deinit();
+                defer decoded.deinit(allocator);
                 switch (decoded.body orelse return error.InvalidResponse) {
                     .request_error => |req_err| {
                         return response.error_handler(req_err);
@@ -127,12 +130,15 @@ pub const response = struct {
             }
         };
         pub const operation = struct {
-            pub fn decode(allocator: std.mem.Allocator, msg: []const u8) !bool {
-                const decoded = try api.mmc_msg.Response.decode(
-                    msg,
+            pub fn decode(
+                allocator: std.mem.Allocator,
+                reader: *std.Io.Reader,
+            ) !bool {
+                var decoded = try api.mmc_msg.Response.decode(
+                    reader,
                     allocator,
                 );
-                defer decoded.deinit();
+                defer decoded.deinit(allocator);
                 switch (decoded.body orelse return error.InvalidResponse) {
                     .request_error => |req_err| {
                         return response.error_handler(req_err);
@@ -184,13 +190,13 @@ pub const response = struct {
             /// Decode the response. Caller shall free the allocated memory.
             pub fn decode(
                 allocator: std.mem.Allocator,
-                msg: []const u8,
+                reader: *std.Io.Reader,
             ) !api.info_msg.Response.Commands {
-                const decoded = try api.mmc_msg.Response.decode(
-                    msg,
+                var decoded = try api.mmc_msg.Response.decode(
+                    reader,
                     allocator,
                 );
-                errdefer decoded.deinit();
+                errdefer decoded.deinit(allocator);
                 switch (decoded.body orelse return error.InvalidResponse) {
                     .request_error => |req_err| {
                         return response.error_handler(req_err);
@@ -370,13 +376,13 @@ pub const response = struct {
             /// Decode the response. Caller shall free the allocated memory.
             pub fn decode(
                 allocator: std.mem.Allocator,
-                msg: []const u8,
+                reader: *std.Io.Reader,
             ) !api.info_msg.Response.System {
-                const decoded = try api.mmc_msg.Response.decode(
-                    msg,
+                var decoded = try api.mmc_msg.Response.decode(
+                    reader,
                     allocator,
                 );
-                errdefer decoded.deinit();
+                errdefer decoded.deinit(allocator);
                 switch (decoded.body orelse return error.InvalidResponse) {
                     .request_error => |req_err| {
                         return response.error_handler(req_err);
@@ -506,8 +512,9 @@ pub const request = struct {
         /// the memory.
         pub fn encode(
             allocator: std.mem.Allocator,
+            writer: *std.Io.Writer,
             comptime payload: api.core_msg.Request.Kind,
-        ) ![]const u8 {
+        ) !void {
             if (payload == .CORE_REQUEST_KIND_UNSPECIFIED)
                 @compileError("Kind is unspecified");
             const msg: api.mmc_msg.Request = .{
@@ -517,7 +524,7 @@ pub const request = struct {
                     },
                 },
             };
-            return try msg.encode(allocator);
+            try msg.encode(writer, allocator);
         }
     };
     pub const command = struct {
@@ -526,8 +533,9 @@ pub const request = struct {
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
+                writer: *std.Io.Writer,
                 payload: api.command_msg.Request.ClearErrors,
-            ) ![]const u8 {
+            ) !void {
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -540,7 +548,7 @@ pub const request = struct {
                         },
                     },
                 };
-                return try msg.encode(allocator);
+                try msg.encode(writer, allocator);
             }
         };
         pub const clear_carriers = struct {
@@ -548,8 +556,9 @@ pub const request = struct {
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
+                writer: *std.Io.Writer,
                 payload: api.command_msg.Request.ClearCarriers,
-            ) ![]const u8 {
+            ) !void {
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -562,7 +571,7 @@ pub const request = struct {
                         },
                     },
                 };
-                return try msg.encode(allocator);
+                try msg.encode(writer, allocator);
             }
         };
         pub const release_control = struct {
@@ -570,8 +579,9 @@ pub const request = struct {
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
+                writer: *std.Io.Writer,
                 payload: api.command_msg.Request.ReleaseControl,
-            ) ![]const u8 {
+            ) !void {
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -584,7 +594,7 @@ pub const request = struct {
                         },
                     },
                 };
-                return try msg.encode(allocator);
+                try msg.encode(writer, allocator);
             }
         };
         pub const stop_pull_carrier = struct {
@@ -592,8 +602,9 @@ pub const request = struct {
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
+                writer: *std.Io.Writer,
                 payload: api.command_msg.Request.StopPullCarrier,
-            ) ![]const u8 {
+            ) !void {
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -606,7 +617,7 @@ pub const request = struct {
                         },
                     },
                 };
-                return try msg.encode(allocator);
+                try msg.encode(writer, allocator);
             }
         };
         pub const stop_push_carrier = struct {
@@ -614,8 +625,9 @@ pub const request = struct {
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
+                writer: *std.Io.Writer,
                 payload: api.command_msg.Request.StopPushCarrier,
-            ) ![]const u8 {
+            ) !void {
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -628,7 +640,7 @@ pub const request = struct {
                         },
                     },
                 };
-                return try msg.encode(allocator);
+                try msg.encode(writer, allocator);
             }
         };
         pub const auto_initialize = struct {
@@ -636,8 +648,9 @@ pub const request = struct {
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
+                writer: *std.Io.Writer,
                 payload: api.command_msg.Request.AutoInitialize,
-            ) ![]const u8 {
+            ) !void {
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -649,7 +662,7 @@ pub const request = struct {
                         },
                     },
                 };
-                return try msg.encode(allocator);
+                try msg.encode(writer, allocator);
             }
         };
         pub const move_carrier = struct {
@@ -657,8 +670,9 @@ pub const request = struct {
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
+                writer: *std.Io.Writer,
                 payload: api.command_msg.Request.MoveCarrier,
-            ) ![]const u8 {
+            ) !void {
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -686,7 +700,7 @@ pub const request = struct {
                         },
                     },
                 };
-                return try msg.encode(allocator);
+                try msg.encode(writer, allocator);
             }
         };
         pub const push_carrier = struct {
@@ -694,8 +708,9 @@ pub const request = struct {
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
+                writer: *std.Io.Writer,
                 payload: api.command_msg.Request.PushCarrier,
-            ) ![]const u8 {
+            ) !void {
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -712,7 +727,7 @@ pub const request = struct {
                         },
                     },
                 };
-                return try msg.encode(allocator);
+                try msg.encode(writer, allocator);
             }
         };
         pub const pull_carrier = struct {
@@ -720,8 +735,9 @@ pub const request = struct {
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
+                writer: *std.Io.Writer,
                 payload: api.command_msg.Request.PullCarrier,
-            ) ![]const u8 {
+            ) !void {
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -739,7 +755,7 @@ pub const request = struct {
                         },
                     },
                 };
-                return try msg.encode(allocator);
+                try msg.encode(writer, allocator);
             }
         };
         pub const isolate_carrier = struct {
@@ -747,8 +763,9 @@ pub const request = struct {
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
+                writer: *std.Io.Writer,
                 payload: api.command_msg.Request.IsolateCarrier,
-            ) ![]const u8 {
+            ) !void {
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -764,7 +781,7 @@ pub const request = struct {
                         },
                     },
                 };
-                return try msg.encode(allocator);
+                try msg.encode(writer, allocator);
             }
         };
         pub const calibrate = struct {
@@ -772,8 +789,9 @@ pub const request = struct {
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
+                writer: *std.Io.Writer,
                 payload: api.command_msg.Request.Calibrate,
-            ) ![]const u8 {
+            ) !void {
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -785,7 +803,7 @@ pub const request = struct {
                         },
                     },
                 };
-                return try msg.encode(allocator);
+                try msg.encode(writer, allocator);
             }
         };
         pub const set_line_zero = struct {
@@ -793,8 +811,9 @@ pub const request = struct {
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
+                writer: *std.Io.Writer,
                 payload: api.command_msg.Request.SetLineZero,
-            ) ![]const u8 {
+            ) !void {
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -806,7 +825,7 @@ pub const request = struct {
                         },
                     },
                 };
-                return try msg.encode(allocator);
+                try msg.encode(writer, allocator);
             }
         };
         pub const clear_commands = struct {
@@ -814,8 +833,9 @@ pub const request = struct {
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
+                writer: *std.Io.Writer,
                 payload: api.command_msg.Request.ClearCommand,
-            ) ![]const u8 {
+            ) !void {
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .command = .{
@@ -827,7 +847,7 @@ pub const request = struct {
                         },
                     },
                 };
-                return try msg.encode(allocator);
+                try msg.encode(writer, allocator);
             }
         };
     };
@@ -837,8 +857,9 @@ pub const request = struct {
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
+                writer: *std.Io.Writer,
                 payload: api.info_msg.Request.Command,
-            ) ![]const u8 {
+            ) !void {
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .info = .{
@@ -848,14 +869,15 @@ pub const request = struct {
                         },
                     },
                 };
-                return try msg.encode(allocator);
+                try msg.encode(writer, allocator);
             }
         };
         pub const system = struct {
             pub fn encode(
                 allocator: std.mem.Allocator,
+                writer: *std.Io.Writer,
                 payload: api.info_msg.Request.System,
-            ) ![]const u8 {
+            ) !void {
                 const msg: api.mmc_msg.Request = .{
                     .body = .{
                         .info = .{
@@ -871,7 +893,7 @@ pub const request = struct {
                         },
                     },
                 };
-                return try msg.encode(allocator);
+                try msg.encode(writer, allocator);
             }
         };
     };

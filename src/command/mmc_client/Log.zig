@@ -136,8 +136,11 @@ pub const Data = struct {
         for (configs) |config| {
             if (config.axis_id_range.start == 0) continue;
             {
-                const msg = try api_helper.request.info.system.encode(
+                var buf: [4096]u8 = undefined;
+                var writer: std.Io.Writer = .fixed(&buf);
+                try api_helper.request.info.system.encode(
                     allocator,
+                    &writer,
                     .{
                         .line_id = config.id,
                         .axis = config.axis,
@@ -151,16 +154,16 @@ pub const Data = struct {
                         },
                     },
                 );
-                defer allocator.free(msg);
-                try net.send(msg);
+                try net.send(writer.buffered());
             }
             const msg = try net.receive(allocator);
             defer allocator.free(msg);
-            const response = try api_helper.response.info.system.decode(
+            var reader: std.Io.Reader = .fixed(msg);
+            var response = try api_helper.response.info.system.decode(
                 allocator,
-                msg,
+                &reader,
             );
-            defer response.deinit();
+            defer response.deinit(allocator);
             const axis_infos = response.axis_infos;
             const axis_errors = response.axis_errors;
             const driver_infos = response.driver_infos;
