@@ -1398,7 +1398,9 @@ pub fn carrierPushForward(params: [][]const u8) !void {
                         .location = line.length.axis * @as(
                             f32,
                             @floatFromInt(axis - 1),
-                        ) + 150.0,
+                        ) * 1000.0 + 150.0,
+                        // 1000: scale from m to mm,
+                        // 150: offset for continuous push
                     },
                     .disable_cas = true,
                     .control_kind = .CONTROL_POSITION,
@@ -1456,7 +1458,9 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
                         .location = line.length.axis * @as(
                             f32,
                             @floatFromInt(axis - 1),
-                        ) - 150.0,
+                        ) * 1000.0 - 150.0,
+                        // 1000: scale from m to mm,
+                        // 150: offset for continuous push
                     },
                     .disable_cas = true,
                     .control_kind = .CONTROL_POSITION,
