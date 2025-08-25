@@ -27,7 +27,7 @@ pub fn init(
     var result: Line = undefined;
     if (config.axes > std.math.maxInt(u10)) return error.InvalidConfiguration;
     result.index = index;
-    result.id = index + 1;
+    result.id = @as(Id, index) + 1;
     result.acceleration = 78;
     result.velocity = 12;
     result.length = .{

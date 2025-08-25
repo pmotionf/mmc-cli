@@ -436,8 +436,8 @@ fn write(
         var driver_idx: usize = 0;
         for (self.configs) |config| {
             if (config.driver) {
-                const start_id = config.axis_id_range.start / 3;
-                const end_id = config.axis_id_range.end / 3;
+                const start_id = (config.axis_id_range.start - 1) / 3 + 1;
+                const end_id = (config.axis_id_range.end - 1) / 3 + 1;
                 for (start_id..end_id + 1) |_| {
                     try writeValues(writer, data.drivers[driver_idx]);
                     driver_idx += 1;
