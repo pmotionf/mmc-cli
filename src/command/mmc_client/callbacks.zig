@@ -390,7 +390,7 @@ pub fn carrierInfo(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        var ids: std.ArrayListUnmanaged(u32) = .empty;
+        var ids: std.ArrayList(u32) = .empty;
         defer ids.deinit(client.allocator);
         try ids.append(client.allocator, carrier_id);
         try client.api.request.info.system.encode(
@@ -426,7 +426,7 @@ pub fn carrierInfo(params: [][]const u8) !void {
 }
 
 pub fn autoInitialize(params: [][]const u8) !void {
-    var init_lines: std.ArrayListUnmanaged(
+    var init_lines: std.ArrayList(
         client.api.api.command_msg.Request.AutoInitialize.Line,
     ) = .empty;
     defer init_lines.deinit(client.allocator);
@@ -617,7 +617,7 @@ pub fn assertLocation(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        var ids: std.ArrayListUnmanaged(u32) = .empty;
+        var ids: std.ArrayList(u32) = .empty;
         defer ids.deinit(client.allocator);
         try ids.append(client.allocator, carrier_id);
         try client.api.request.info.system.encode(
@@ -792,7 +792,7 @@ pub fn carrierLocation(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        var ids: std.ArrayListUnmanaged(u32) = .empty;
+        var ids: std.ArrayList(u32) = .empty;
         defer ids.deinit(client.allocator);
         try ids.append(client.allocator, carrier_id);
         try client.api.request.info.system.encode(
@@ -842,7 +842,7 @@ pub fn carrierAxis(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        var ids: std.ArrayListUnmanaged(u32) = .empty;
+        var ids: std.ArrayList(u32) = .empty;
         defer ids.deinit(client.allocator);
         try ids.append(client.allocator, carrier_id);
         try client.api.request.info.system.encode(

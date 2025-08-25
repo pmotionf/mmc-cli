@@ -14,7 +14,7 @@ pub fn waitState(
     state: SystemResponse.Carrier.Info.State,
     timeout: u64,
 ) !void {
-    var ids: std.ArrayListUnmanaged(u32) = .empty;
+    var ids: std.ArrayList(u32) = .empty;
     defer ids.deinit(allocator);
     try ids.append(allocator, id);
     try api.request.info.system.encode(
