@@ -292,7 +292,7 @@ pub const clipboard = struct {
                                     @bitCast(@intFromPtr(handle)),
                                 );
                                 const wtf16: [*:0]u16 =
-                                    @alignCast(@ptrCast(data));
+                                    @ptrCast(@alignCast(data));
                                 const source_len = std.mem.len(wtf16);
 
                                 const source = wtf16[0..source_len];
