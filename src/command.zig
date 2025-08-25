@@ -64,7 +64,7 @@ pub const Table = struct {
         return .{
             .allocator = gpa,
             .header = &.{},
-            .rows = std.ArrayList([][]const u8).init(allocator),
+            .rows = .empty,
         };
     }
 
@@ -83,7 +83,7 @@ pub const Table = struct {
                 }
             }
         }
-        self.rows.deinit();
+        self.rows.deinit(self.allocator);
     }
 
     fn clearRows(self: *Table) void {
@@ -135,7 +135,7 @@ pub const Table = struct {
     /// Add a filled row to the end of the table, looking up variable values
     /// at time of call.
     pub fn addRow(self: *Table) !void {
-        const new_row = try self.rows.addOne();
+        const new_row = try self.rows.addOne(self.allocator);
         errdefer self.rows.shrinkRetainingCapacity(self.rows.items.len - 1);
         new_row.* = try self.allocator.alloc([]const u8, self.header.len);
         errdefer self.allocator.free(new_row.*);

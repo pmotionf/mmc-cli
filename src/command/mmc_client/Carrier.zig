@@ -14,11 +14,12 @@ pub fn waitState(
     state: SystemResponse.Carrier.Info.State,
     timeout: u64,
 ) !void {
-    var ids = std.ArrayListAligned(u32, null).init(client.allocator);
-    defer ids.deinit();
-    try ids.append(id);
-    const msg = try api.request.info.system.encode(
+    var ids: std.ArrayListUnmanaged(u32) = .empty;
+    defer ids.deinit(allocator);
+    try ids.append(allocator, id);
+    try api.request.info.system.encode(
         allocator,
+        &client.writer.writer,
         .{
             .line_id = line_id,
             .carrier = true,
@@ -27,6 +28,7 @@ pub fn waitState(
             },
         },
     );
+    const msg = try client.writer.toOwnedSlice();
     var wait_timer = try std.time.Timer.start();
     defer client.allocator.free(msg);
     while (true) {
@@ -37,11 +39,12 @@ pub fn waitState(
         try client.net.send(msg);
         const resp = try client.net.receive(client.allocator);
         defer client.allocator.free(resp);
+        var reader: std.Io.Reader = .fixed(resp);
         var system = try api.response.info.system.decode(
             client.allocator,
-            resp,
+            &reader,
         );
-        defer system.deinit();
+        defer system.deinit(client.allocator);
         if (system.line_id != line_id) return error.InvalidResponse;
         const carrier = system.carrier_infos.pop() orelse return error.InvalidResponse;
         if (carrier.state == state) return;

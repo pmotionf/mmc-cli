@@ -34,7 +34,7 @@ pub fn init(
         .axis = config.length.?.axis,
         .carrier = config.length.?.carrier,
     };
-    result.name = try allocator.dupe(u8, config.name.getSlice());
+    result.name = try allocator.dupe(u8, config.name);
     result.axes = @intCast(config.axes);
     return result;
 }

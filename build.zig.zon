@@ -18,8 +18,8 @@
             .hash = "chrono-0.1.0-uVd76I_AAwCMh8lYH9E-5ia0tI-tda4Q2FjFoIdE2dYG",
         },
         .mmc_api = .{
-            .url = "https://github.com/pmotionf/mmc-api/archive/61ba60b.tar.gz",
-            .hash = "mmc_api-0.4.0-P5raR69BAgCUY7EiLZ2mku9nBU0TAYpTe4eRwJf3Zji1",
+            .url = "https://github.com/pmotionf/mmc-api/archive/5bbd16f.tar.gz",
+            .hash = "mmc_api-0.4.0-P5raR_JYAgBH6hC3La-slgZamnUqV3ga9pmAXlzbcIrd",
         },
         .soem = .{
             .url = "https://github.com/pmotionf/SOEM/archive/6dff3f5.tar.gz",

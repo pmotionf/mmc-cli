@@ -49,19 +49,22 @@ pub fn connect(params: [][]const u8) !void {
     // Asserting that API version matched between client and server
     {
         // Send API version request
-        const msg = try client.api.request.core.encode(
+        try client.api.request.core.encode(
             client.allocator,
+            &client.writer.writer,
             .CORE_REQUEST_KIND_API_VERSION,
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
     {
         const msg = try client.net.receive(client.allocator);
+        var reader: std.Io.Reader = .fixed(msg);
         defer client.allocator.free(msg);
         const response = try client.api.response.core.api_version.decode(
             client.allocator,
-            msg,
+            &reader,
         );
         if (client.api.api.version.major != response.major or
             client.api.api.version.minor != response.minor)
@@ -72,21 +75,24 @@ pub fn connect(params: [][]const u8) !void {
     // Get line configuration
     {
         // Send line configuration request
-        const msg = try client.api.request.core.encode(
+        try client.api.request.core.encode(
             client.allocator,
+            &client.writer.writer,
             .CORE_REQUEST_KIND_LINE_CONFIG,
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
     {
         const msg = try client.net.receive(client.allocator);
+        var reader: std.Io.Reader = .fixed(msg);
         defer client.allocator.free(msg);
-        const response = try client.api.response.core.line_config.decode(
+        var response = try client.api.response.core.line_config.decode(
             client.allocator,
-            msg,
+            &reader,
         );
-        defer response.deinit();
+        defer response.deinit(client.allocator);
         client.lines = try client.allocator.alloc(
             client.Line,
             response.lines.items.len,
@@ -185,22 +191,25 @@ pub fn getAcceleration(params: [][]const u8) !void {
 
 pub fn serverVersion(_: [][]const u8) !void {
     {
-        const msg = try client.api.request.core.encode(
+        try client.api.request.core.encode(
             client.allocator,
+            &client.writer.writer,
             .CORE_REQUEST_KIND_SERVER_INFO,
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
     const msg = try client.net.receive(client.allocator);
+    var reader: std.Io.Reader = .fixed(msg);
     defer client.allocator.free(msg);
-    const server = try client.api.response.core.server.decode(
+    var server = try client.api.response.core.server.decode(
         client.allocator,
-        msg,
+        &reader,
     );
-    defer server.deinit();
+    defer server.deinit(client.allocator);
     const version = server.version.?;
-    const name = server.name.getSlice();
+    const name = server.name;
     std.log.info(
         "{s} server version: {d}.{d}.{d}\n",
         .{ name, version.major, version.minor, version.patch },
@@ -222,8 +231,9 @@ pub fn showError(params: [][]const u8) !void {
         } else break :b null;
     };
     {
-        const msg = try client.api.request.info.system.encode(
+        try client.api.request.info.system.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .axis = true,
@@ -234,16 +244,18 @@ pub fn showError(params: [][]const u8) !void {
                     null,
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
     const msg = try client.net.receive(client.allocator);
+    var reader: std.Io.Reader = .fixed(msg);
     defer client.allocator.free(msg);
-    const system = try client.api.response.info.system.decode(
+    var system = try client.api.response.info.system.decode(
         client.allocator,
-        msg,
+        &reader,
     );
-    defer system.deinit();
+    defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
     var axis_errors = system.axis_errors;
     var driver_errors = system.driver_errors;
@@ -286,8 +298,9 @@ pub fn axisInfo(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        const msg = try client.api.request.info.system.encode(
+        try client.api.request.info.system.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .axis = true,
@@ -299,16 +312,18 @@ pub fn axisInfo(params: [][]const u8) !void {
                 },
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
     const msg = try client.net.receive(client.allocator);
+    var reader: std.Io.Reader = .fixed(msg);
     defer client.allocator.free(msg);
-    const system = try client.api.response.info.system.decode(
+    var system = try client.api.response.info.system.decode(
         client.allocator,
-        msg,
+        &reader,
     );
-    defer system.deinit();
+    defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
     var axis_infos = system.axis_infos;
     var axis_errors = system.axis_errors;
@@ -329,8 +344,9 @@ pub fn driverInfo(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        const msg = try client.api.request.info.system.encode(
+        try client.api.request.info.system.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .driver = true,
@@ -342,16 +358,18 @@ pub fn driverInfo(params: [][]const u8) !void {
                 },
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
     const msg = try client.net.receive(client.allocator);
+    var reader: std.Io.Reader = .fixed(msg);
     defer client.allocator.free(msg);
-    const system = try client.api.response.info.system.decode(
+    var system = try client.api.response.info.system.decode(
         client.allocator,
-        msg,
+        &reader,
     );
-    defer system.deinit();
+    defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
     var driver_infos = system.driver_infos;
     var driver_errors = system.driver_errors;
@@ -372,11 +390,12 @@ pub fn carrierInfo(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        var ids = std.ArrayListAligned(u32, null).init(client.allocator);
-        defer ids.deinit();
-        try ids.append(carrier_id);
-        const msg = try client.api.request.info.system.encode(
+        var ids: std.ArrayListUnmanaged(u32) = .empty;
+        defer ids.deinit(client.allocator);
+        try ids.append(client.allocator, carrier_id);
+        try client.api.request.info.system.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .carrier = true,
@@ -385,16 +404,18 @@ pub fn carrierInfo(params: [][]const u8) !void {
                 },
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
     const msg = try client.net.receive(client.allocator);
+    var reader: std.Io.Reader = .fixed(msg);
     defer client.allocator.free(msg);
-    const system = try client.api.response.info.system.decode(
+    var system = try client.api.response.info.system.decode(
         client.allocator,
-        msg,
+        &reader,
     );
-    defer system.deinit();
+    defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
     var carriers = system.carrier_infos;
     if (carriers.items.len > 1) return error.InvalidResponse;
@@ -405,11 +426,10 @@ pub fn carrierInfo(params: [][]const u8) !void {
 }
 
 pub fn autoInitialize(params: [][]const u8) !void {
-    var init_lines = std.ArrayListAligned(
+    var init_lines: std.ArrayListUnmanaged(
         client.api.api.command_msg.Request.AutoInitialize.Line,
-        null,
-    ).init(client.allocator);
-    defer init_lines.deinit();
+    ) = .empty;
+    defer init_lines.deinit(client.allocator);
     if (params[0].len != 0) {
         var iterator = std.mem.tokenizeSequence(
             u8,
@@ -422,21 +442,23 @@ pub fn autoInitialize(params: [][]const u8) !void {
             const line: client.api.api.command_msg.Request.AutoInitialize.Line = .{
                 .line_id = _line.id,
             };
-            try init_lines.append(line);
+            try init_lines.append(client.allocator, line);
         }
     } else {
         for (client.lines) |_line| {
             const line: client.api.api.command_msg.Request.AutoInitialize.Line = .{
                 .line_id = _line.id,
             };
-            try init_lines.append(line);
+            try init_lines.append(client.allocator, line);
         }
     }
     {
-        const msg = try client.api.request.command.auto_initialize.encode(
+        try client.api.request.command.auto_initialize.encode(
             client.allocator,
+            &client.writer.writer,
             .{ .lines = init_lines },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
@@ -450,8 +472,9 @@ pub fn axisCarrier(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        const msg = try client.api.request.info.system.encode(
+        try client.api.request.info.system.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .carrier = true,
@@ -463,16 +486,18 @@ pub fn axisCarrier(params: [][]const u8) !void {
                 },
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
     const msg = try client.net.receive(client.allocator);
+    var reader: std.Io.Reader = .fixed(msg);
     defer client.allocator.free(msg);
-    const system = try client.api.response.info.system.decode(
+    var system = try client.api.response.info.system.decode(
         client.allocator,
-        msg,
+        &reader,
     );
-    defer system.deinit();
+    defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
     var carriers = system.carrier_infos;
     const carrier = carriers.pop() orelse return error.InvalidResponse;
@@ -506,36 +531,38 @@ pub fn carrierId(params: [][]const u8) !void {
         }
     }
 
-    var line_idxs =
-        std.ArrayList(usize).init(client.allocator);
-    defer line_idxs.deinit();
+    var line_idxs: std.ArrayList(usize) = .empty;
+    defer line_idxs.deinit(client.allocator);
     line_name_iterator.reset();
     while (line_name_iterator.next()) |line_name| {
-        try line_idxs.append(try client.matchLine(line_name));
+        try line_idxs.append(client.allocator, try client.matchLine(line_name));
     }
 
     var variable_count: usize = 1;
     for (line_idxs.items) |line_idx| {
         const line = client.lines[line_idx];
         {
-            const msg = try client.api.request.info.system.encode(
+            try client.api.request.info.system.encode(
                 client.allocator,
+                &client.writer.writer,
                 .{
                     .line_id = line.id,
                     .axis = true,
                     .source = null,
                 },
             );
+            const msg = try client.writer.toOwnedSlice();
             defer client.allocator.free(msg);
             try client.net.send(msg);
         }
         const msg = try client.net.receive(client.allocator);
+        var reader: std.Io.Reader = .fixed(msg);
         defer client.allocator.free(msg);
-        const system = try client.api.response.info.system.decode(
+        var system = try client.api.response.info.system.decode(
             client.allocator,
-            msg,
+            &reader,
         );
-        defer system.deinit();
+        defer system.deinit(client.allocator);
         if (system.line_id != line.id) return error.InvalidResponse;
         const axis_infos = system.axis_infos;
         if (axis_infos.items.len != line.axes) return error.InvalidResponse;
@@ -590,11 +617,12 @@ pub fn assertLocation(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        var ids = std.ArrayListAligned(u32, null).init(client.allocator);
-        defer ids.deinit();
-        try ids.append(carrier_id);
-        const msg = try client.api.request.info.system.encode(
+        var ids: std.ArrayListUnmanaged(u32) = .empty;
+        defer ids.deinit(client.allocator);
+        try ids.append(client.allocator, carrier_id);
+        try client.api.request.info.system.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .carrier = true,
@@ -603,16 +631,18 @@ pub fn assertLocation(params: [][]const u8) !void {
                 },
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
     const msg = try client.net.receive(client.allocator);
+    var reader: std.Io.Reader = .fixed(msg);
     defer client.allocator.free(msg);
-    const system = try client.api.response.info.system.decode(
+    var system = try client.api.response.info.system.decode(
         client.allocator,
-        msg,
+        &reader,
     );
-    defer system.deinit();
+    defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
     var carriers = system.carrier_infos;
     if (system.line_id != line.id) return error.InvalidResponse;
@@ -637,13 +667,15 @@ pub fn releaseServo(params: [][]const u8) !void {
         axis_id = axis;
     }
     {
-        const msg = try client.api.request.command.release_control.encode(
+        try client.api.request.command.release_control.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .axis_id = if (axis_id) |axis| axis else null,
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
@@ -660,8 +692,9 @@ pub fn clearErrors(params: [][]const u8) !void {
         axis_id = axis;
     }
     {
-        const msg = try client.api.request.command.clear_errors.encode(
+        try client.api.request.command.clear_errors.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .driver_id = if (axis_id) |id|
@@ -670,6 +703,7 @@ pub fn clearErrors(params: [][]const u8) !void {
                     null,
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
@@ -686,13 +720,15 @@ pub fn clearCarrierInfo(params: [][]const u8) !void {
         axis_id = axis;
     }
     {
-        const msg = try client.api.request.command.clear_carriers.encode(
+        try client.api.request.command.clear_carriers.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .axis_id = if (axis_id) |id| id else null,
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
@@ -702,37 +738,45 @@ pub fn clearCarrierInfo(params: [][]const u8) !void {
 pub fn resetSystem(_: [][]const u8) !void {
     for (client.lines) |line| {
         {
-            const msg = try client.api.request.command.clear_carriers.encode(
+            try client.api.request.command.clear_carriers.encode(
                 client.allocator,
+                &client.writer.writer,
                 .{ .line_id = line.id },
             );
+            const msg = try client.writer.toOwnedSlice();
             defer client.allocator.free(msg);
             try client.net.send(msg);
         }
         try waitCommandReceived(client.allocator);
         {
-            const msg = try client.api.request.command.clear_errors.encode(
+            try client.api.request.command.clear_errors.encode(
                 client.allocator,
+                &client.writer.writer,
                 .{ .line_id = line.id },
             );
+            const msg = try client.writer.toOwnedSlice();
             defer client.allocator.free(msg);
             try client.net.send(msg);
         }
         try waitCommandReceived(client.allocator);
         {
-            const msg = try client.api.request.command.stop_push_carrier.encode(
+            try client.api.request.command.stop_push_carrier.encode(
                 client.allocator,
+                &client.writer.writer,
                 .{ .line_id = line.id },
             );
+            const msg = try client.writer.toOwnedSlice();
             defer client.allocator.free(msg);
             try client.net.send(msg);
         }
         try waitCommandReceived(client.allocator);
         {
-            const msg = try client.api.request.command.stop_pull_carrier.encode(
+            try client.api.request.command.stop_pull_carrier.encode(
                 client.allocator,
+                &client.writer.writer,
                 .{ .line_id = line.id },
             );
+            const msg = try client.writer.toOwnedSlice();
             defer client.allocator.free(msg);
             try client.net.send(msg);
         }
@@ -748,11 +792,12 @@ pub fn carrierLocation(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        var ids = std.ArrayListAligned(u32, null).init(client.allocator);
-        defer ids.deinit();
-        try ids.append(carrier_id);
-        const msg = try client.api.request.info.system.encode(
+        var ids: std.ArrayListUnmanaged(u32) = .empty;
+        defer ids.deinit(client.allocator);
+        try ids.append(client.allocator, carrier_id);
+        try client.api.request.info.system.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .carrier = true,
@@ -761,16 +806,18 @@ pub fn carrierLocation(params: [][]const u8) !void {
                 },
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
     const msg = try client.net.receive(client.allocator);
+    var reader: std.Io.Reader = .fixed(msg);
     defer client.allocator.free(msg);
-    const system = try client.api.response.info.system.decode(
+    var system = try client.api.response.info.system.decode(
         client.allocator,
-        msg,
+        &reader,
     );
-    defer system.deinit();
+    defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
     var carriers = system.carrier_infos;
     const carrier = carriers.pop() orelse return error.InvalidResponse;
@@ -795,11 +842,12 @@ pub fn carrierAxis(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        var ids = std.ArrayListAligned(u32, null).init(client.allocator);
-        defer ids.deinit();
-        try ids.append(carrier_id);
-        const msg = try client.api.request.info.system.encode(
+        var ids: std.ArrayListUnmanaged(u32) = .empty;
+        defer ids.deinit(client.allocator);
+        try ids.append(client.allocator, carrier_id);
+        try client.api.request.info.system.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .carrier = true,
@@ -808,16 +856,18 @@ pub fn carrierAxis(params: [][]const u8) !void {
                 },
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
     const msg = try client.net.receive(client.allocator);
+    var reader: std.Io.Reader = .fixed(msg);
     defer client.allocator.free(msg);
-    const system = try client.api.response.info.system.decode(
+    var system = try client.api.response.info.system.decode(
         client.allocator,
-        msg,
+        &reader,
     );
-    defer system.deinit();
+    defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
     var carriers = system.carrier_infos;
     const carrier = carriers.pop() orelse return error.InvalidResponse;
@@ -845,8 +895,9 @@ pub fn hallStatus(params: [][]const u8) !void {
     }
     if (axis_id) |id| {
         {
-            const msg = try client.api.request.info.system.encode(
+            try client.api.request.info.system.encode(
                 client.allocator,
+                &client.writer.writer,
                 .{
                     .line_id = line.id,
                     .axis = true,
@@ -858,16 +909,18 @@ pub fn hallStatus(params: [][]const u8) !void {
                     },
                 },
             );
+            const msg = try client.writer.toOwnedSlice();
             defer client.allocator.free(msg);
             try client.net.send(msg);
         }
         const msg = try client.net.receive(client.allocator);
+        var reader: std.Io.Reader = .fixed(msg);
         defer client.allocator.free(msg);
         var system = try client.api.response.info.system.decode(
             client.allocator,
-            msg,
+            &reader,
         );
-        defer system.deinit();
+        defer system.deinit(client.allocator);
         if (system.line_id != line.id) return error.InvalidResponse;
         const axis = system.axis_infos.pop() orelse return error.InvalidResponse;
         const hall = axis.hall_alarm orelse return error.InvalidResponse;
@@ -881,24 +934,27 @@ pub fn hallStatus(params: [][]const u8) !void {
         );
     } else {
         {
-            const msg = try client.api.request.info.system.encode(
+            try client.api.request.info.system.encode(
                 client.allocator,
+                &client.writer.writer,
                 .{
                     .line_id = line.id,
                     .axis = true,
                     .source = null,
                 },
             );
+            const msg = try client.writer.toOwnedSlice();
             defer client.allocator.free(msg);
             try client.net.send(msg);
         }
         const msg = try client.net.receive(client.allocator);
+        var reader: std.Io.Reader = .fixed(msg);
         defer client.allocator.free(msg);
-        const system = try client.api.response.info.system.decode(
+        var system = try client.api.response.info.system.decode(
             client.allocator,
-            msg,
+            &reader,
         );
-        defer system.deinit();
+        defer system.deinit(client.allocator);
         if (system.line_id != line.id and
             system.axis_infos.items.len != line.axes)
             return error.InvalidResponse;
@@ -940,8 +996,9 @@ pub fn assertHall(params: [][]const u8) !void {
         } else return error.InvalidHallAlarmState;
     }
     {
-        const msg = try client.api.request.info.system.encode(
+        try client.api.request.info.system.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .axis = true,
@@ -953,16 +1010,18 @@ pub fn assertHall(params: [][]const u8) !void {
                 },
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
     const msg = try client.net.receive(client.allocator);
+    var reader: std.Io.Reader = .fixed(msg);
     defer client.allocator.free(msg);
     var system = try client.api.response.info.system.decode(
         client.allocator,
-        msg,
+        &reader,
     );
-    defer system.deinit();
+    defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
     const axis = system.axis_infos.pop() orelse return error.InvalidResponse;
     const hall = axis.hall_alarm.?;
@@ -986,10 +1045,12 @@ pub fn calibrate(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        const msg = try client.api.request.command.calibrate.encode(
+        try client.api.request.command.calibrate.encode(
             client.allocator,
+            &client.writer.writer,
             .{ .line_id = line.id },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
@@ -1001,10 +1062,12 @@ pub fn setLineZero(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        const msg = try client.api.request.command.set_line_zero.encode(
+        try client.api.request.command.set_line_zero.encode(
             client.allocator,
+            &client.writer.writer,
             .{ .line_id = line.id },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
@@ -1046,8 +1109,9 @@ pub fn isolate(params: [][]const u8) !void {
         } else break :link null;
     };
     {
-        const msg = try client.api.request.command.isolate_carrier.encode(
+        try client.api.request.command.isolate_carrier.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .axis_id = axis_id,
@@ -1056,6 +1120,7 @@ pub fn isolate(params: [][]const u8) !void {
                 .direction = dir,
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
@@ -1120,8 +1185,9 @@ pub fn carrierPosMoveAxis(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        const msg = try client.api.request.command.move_carrier.encode(
+        try client.api.request.command.move_carrier.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .carrier_id = carrier_id,
@@ -1132,6 +1198,7 @@ pub fn carrierPosMoveAxis(params: [][]const u8) !void {
                 .control_kind = .CONTROL_POSITION,
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
@@ -1152,8 +1219,9 @@ pub fn carrierPosMoveLocation(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        const msg = try client.api.request.command.move_carrier.encode(
+        try client.api.request.command.move_carrier.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .carrier_id = carrier_id,
@@ -1164,6 +1232,7 @@ pub fn carrierPosMoveLocation(params: [][]const u8) !void {
                 .control_kind = .CONTROL_POSITION,
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
@@ -1183,8 +1252,9 @@ pub fn carrierPosMoveDistance(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        const msg = try client.api.request.command.move_carrier.encode(
+        try client.api.request.command.move_carrier.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .carrier_id = carrier_id,
@@ -1195,6 +1265,7 @@ pub fn carrierPosMoveDistance(params: [][]const u8) !void {
                 .control_kind = .CONTROL_POSITION,
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
@@ -1214,8 +1285,9 @@ pub fn carrierSpdMoveAxis(params: [][]const u8) !void {
     else
         return error.InvalidCasConfiguration;
     {
-        const msg = try client.api.request.command.move_carrier.encode(
+        try client.api.request.command.move_carrier.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .carrier_id = carrier_id,
@@ -1226,6 +1298,7 @@ pub fn carrierSpdMoveAxis(params: [][]const u8) !void {
                 .control_kind = .CONTROL_VELOCITY,
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
@@ -1246,8 +1319,9 @@ pub fn carrierSpdMoveLocation(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        const msg = try client.api.request.command.move_carrier.encode(
+        try client.api.request.command.move_carrier.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .carrier_id = carrier_id,
@@ -1258,6 +1332,7 @@ pub fn carrierSpdMoveLocation(params: [][]const u8) !void {
                 .control_kind = .CONTROL_VELOCITY,
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
@@ -1277,8 +1352,9 @@ pub fn carrierSpdMoveDistance(params: [][]const u8) !void {
     else
         return error.InvalidCasConfiguration;
     {
-        const msg = try client.api.request.command.move_carrier.encode(
+        try client.api.request.command.move_carrier.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .carrier_id = carrier_id,
@@ -1289,6 +1365,7 @@ pub fn carrierSpdMoveDistance(params: [][]const u8) !void {
                 .control_kind = .CONTROL_VELOCITY,
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
@@ -1309,8 +1386,9 @@ pub fn carrierPushForward(params: [][]const u8) !void {
     const line = client.lines[line_idx];
     if (axis_id) |axis| {
         {
-            const msg = try client.api.request.command.move_carrier.encode(
+            try client.api.request.command.move_carrier.encode(
                 client.allocator,
+                &client.writer.writer,
                 .{
                     .line_id = line.id,
                     .carrier_id = carrier_id,
@@ -1326,14 +1404,16 @@ pub fn carrierPushForward(params: [][]const u8) !void {
                     .control_kind = .CONTROL_POSITION,
                 },
             );
+            const msg = try client.writer.toOwnedSlice();
             defer client.allocator.free(msg);
             try client.net.send(msg);
         }
         try waitCommandReceived(client.allocator);
     }
     {
-        const msg = try client.api.request.command.push_carrier.encode(
+        try client.api.request.command.push_carrier.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .carrier_id = carrier_id,
@@ -1343,6 +1423,7 @@ pub fn carrierPushForward(params: [][]const u8) !void {
                 .axis_id = if (axis_id) |axis| axis else null,
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
@@ -1363,8 +1444,9 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
     const line = client.lines[line_idx];
     if (axis_id) |axis| {
         {
-            const msg = try client.api.request.command.move_carrier.encode(
+            try client.api.request.command.move_carrier.encode(
                 client.allocator,
+                &client.writer.writer,
                 .{
                     .line_id = line.id,
                     .carrier_id = carrier_id,
@@ -1380,14 +1462,16 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
                     .control_kind = .CONTROL_POSITION,
                 },
             );
+            const msg = try client.writer.toOwnedSlice();
             defer client.allocator.free(msg);
             try client.net.send(msg);
         }
         try waitCommandReceived(client.allocator);
     }
     {
-        const msg = try client.api.request.command.push_carrier.encode(
+        try client.api.request.command.push_carrier.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .carrier_id = carrier_id,
@@ -1397,6 +1481,7 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
                 .axis_id = if (axis_id) |axis| axis else null,
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
@@ -1420,8 +1505,9 @@ pub fn carrierPullForward(params: [][]const u8) !void {
     else
         return error.InvalidCasConfiguration;
     {
-        const msg = try client.api.request.command.pull_carrier.encode(
+        try client.api.request.command.pull_carrier.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .axis_id = axis_id,
@@ -1440,6 +1526,7 @@ pub fn carrierPullForward(params: [][]const u8) !void {
                 },
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
@@ -1464,8 +1551,9 @@ pub fn carrierPullBackward(params: [][]const u8) !void {
     else
         return error.InvalidCasConfiguration;
     {
-        const msg = try client.api.request.command.pull_carrier.encode(
+        try client.api.request.command.pull_carrier.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .axis_id = axis_id,
@@ -1484,6 +1572,7 @@ pub fn carrierPullBackward(params: [][]const u8) !void {
                 },
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
@@ -1520,13 +1609,15 @@ pub fn carrierStopPull(params: [][]const u8) !void {
         axis_id = axis;
     }
     {
-        const msg = try client.api.request.command.stop_pull_carrier.encode(
+        try client.api.request.command.stop_pull_carrier.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .axis_id = if (axis_id) |axis| axis else null,
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
@@ -1543,13 +1634,15 @@ pub fn carrierStopPush(params: [][]const u8) !void {
         axis_id = axis;
     }
     {
-        const msg = try client.api.request.command.stop_push_carrier.encode(
+        try client.api.request.command.stop_push_carrier.encode(
             client.allocator,
+            &client.writer.writer,
             .{
                 .line_id = line.id,
                 .axis_id = if (axis_id) |axis| axis else null,
             },
         );
+        const msg = try client.writer.toOwnedSlice();
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
@@ -1564,8 +1657,9 @@ pub fn waitAxisEmpty(params: [][]const u8) !void {
         0;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const msg = try client.api.request.info.system.encode(
+    try client.api.request.info.system.encode(
         client.allocator,
+        &client.writer.writer,
         .{
             .line_id = line.id,
             .axis = true,
@@ -1577,6 +1671,7 @@ pub fn waitAxisEmpty(params: [][]const u8) !void {
             },
         },
     );
+    const msg = try client.writer.toOwnedSlice();
     defer client.allocator.free(msg);
     var wait_timer = try std.time.Timer.start();
     while (true) {
@@ -1587,11 +1682,12 @@ pub fn waitAxisEmpty(params: [][]const u8) !void {
         try client.net.send(msg);
         const resp = try client.net.receive(client.allocator);
         defer client.allocator.free(resp);
+        var reader: std.Io.Reader = .fixed(resp);
         var system = try client.api.response.info.system.decode(
             client.allocator,
-            resp,
+            &reader,
         );
-        defer system.deinit();
+        defer system.deinit(client.allocator);
         if (system.line_id != line.id) return error.InvalidResponse;
         const axis_info = system.axis_infos.pop() orelse return error.InvalidResponse;
         const carrier = axis_info.carrier_id;
@@ -1713,30 +1809,34 @@ fn waitCommandReceived(allocator: std.mem.Allocator) !void {
     var id: u32 = 0;
     {
         const msg = try client.net.receive(client.allocator);
+        var reader: std.Io.Reader = .fixed(msg);
         defer allocator.free(msg);
         id = try client.api.response.command.id.decode(
             client.allocator,
-            msg,
+            &reader,
         );
     }
-    const msg = try client.api.request.info.commands.encode(
+    try client.api.request.info.commands.encode(
         allocator,
+        &client.writer.writer,
         .{
             .id = id,
         },
     );
+    const msg = try client.writer.toOwnedSlice();
     defer allocator.free(msg);
     defer client.clearCommand(allocator, id) catch {};
     while (true) {
         try command.checkCommandInterrupt();
         try client.net.send(msg);
         const resp = try client.net.receive(allocator);
+        var reader: std.Io.Reader = .fixed(resp);
         defer allocator.free(resp);
         var decoded = try client.api.response.info.commands.decode(
             allocator,
-            resp,
+            &reader,
         );
-        defer decoded.deinit();
+        defer decoded.deinit(client.allocator);
         if (decoded.commands.items.len > 1) return error.InvalidResponse;
         if (decoded.commands.pop()) |comm| {
             switch (comm.status) {

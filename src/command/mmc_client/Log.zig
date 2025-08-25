@@ -12,12 +12,15 @@ const main = @import("../../main.zig");
 /// Determine whether the log has been started or not. Deinit function behavior
 /// depends on this flag.
 pub var start = std.atomic.Value(bool).init(false);
+/// Global writer for log thread.
+var w: std.Io.Writer.Allocating = undefined;
 
 allocator: std.mem.Allocator,
 path: ?[]const u8,
 configs: []Config,
 data: ?CircularBufferAlloc(Data),
 endpoint: Network.Endpoint,
+writer: std.Io.Writer,
 
 /// Kind of info to log
 pub const Kind = enum { axis, driver };
@@ -127,6 +130,7 @@ pub const Data = struct {
         /// Allocator for encoding, decoding, sending, and receiving the message
         /// from the server.
         allocator: std.mem.Allocator,
+        writer: *std.Io.Writer,
         /// Logging configurations
         configs: []Config,
         net: *Network,
@@ -136,8 +140,9 @@ pub const Data = struct {
         for (configs) |config| {
             if (config.axis_id_range.start == 0) continue;
             {
-                const msg = try api_helper.request.info.system.encode(
+                try api_helper.request.info.system.encode(
                     allocator,
+                    writer,
                     .{
                         .line_id = config.id,
                         .axis = config.axis,
@@ -151,16 +156,17 @@ pub const Data = struct {
                         },
                     },
                 );
-                defer allocator.free(msg);
-                try net.send(msg);
+                try net.send(writer.buffered());
+                try writer.flush();
             }
             const msg = try net.receive(allocator);
             defer allocator.free(msg);
-            const response = try api_helper.response.info.system.decode(
+            var reader: std.Io.Reader = .fixed(msg);
+            var response = try api_helper.response.info.system.decode(
                 allocator,
-                msg,
+                &reader,
             );
-            defer response.deinit();
+            defer response.deinit(allocator);
             const axis_infos = response.axis_infos;
             const axis_errors = response.axis_errors;
             const driver_infos = response.driver_infos;
@@ -249,10 +255,12 @@ pub fn init(
     lines: []client.Line,
     endpoint: Network.Endpoint,
 ) !Log {
+    w = .init(allocator);
     return .{
         .allocator = allocator,
         .configs = try allocator.alloc(Config, lines.len),
         .endpoint = endpoint,
+        .writer = w.writer,
         .path = null,
         .data = null,
     };
@@ -265,6 +273,7 @@ pub fn deinit(self: *Log) void {
     self.allocator.free(self.configs);
     self.endpoint = .{ .ip = &.{}, .port = 0 };
     self.reset();
+    w.deinit();
 }
 
 /// Clear all memory except congfigs, so that user can start logging instantly.
@@ -511,7 +520,7 @@ pub fn handler(duration: f64) !void {
         ) / std.time.us_per_s;
         timer.reset();
         data.timestamp = timestamp;
-        data.get(client.log.allocator, client.log.configs, &net) catch |e| {
+        data.get(client.log.allocator, &client.log.writer, client.log.configs, &net) catch |e| {
             std.log.debug("{t}", .{e});
             std.log.debug("{?f}", .{@errorReturnTrace()});
             // NOTE: Should the main thread be notified to stop any running
