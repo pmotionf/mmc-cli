@@ -183,6 +183,7 @@ pub fn handler(ctx: *Prompt) void {
                                         ctx.input_buffer[0..hist_item.len];
                                     @memcpy(ctx.input, hist_item);
                                     ctx.cursor.moveEnd();
+                                    ctx.history.selection = null;
                                 } else if (ctx.complete_partial_start) |cvs| {
                                     keep_complete_selection = true;
                                     const prefix = ctx.complete.prefix;
@@ -667,7 +668,7 @@ fn insertCodepoint(self: *Prompt, cp: []const u8) void {
     if (self.history.selection) |*selection| {
         const hist_item = selection.slice();
         // Cancel selection if input length exceeds history item length.
-        if (self.input.len > hist_item.len) {
+        if (self.input.len >= hist_item.len) {
             self.history.selection = null;
         }
         // Cancel selection if insert does not match.
