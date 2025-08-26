@@ -1,5 +1,6 @@
 const Network = @This();
 
+// TODO: Ditch the network library. Utilize std.posix.poll to check socket status.
 const std = @import("std");
 pub const network = @import("network");
 const command = @import("../../command.zig");
@@ -11,21 +12,45 @@ endpoint: Endpoint,
 pub const Endpoint = struct {
     ip: []u8,
     port: u16,
+
+    fn modify(
+        self: *Endpoint,
+        allocator: std.mem.Allocator,
+        endpoint: Endpoint,
+    ) std.mem.Allocator.Error!void {
+        allocator.free(self.ip);
+        self.ip = try allocator.dupe(u8, endpoint.ip);
+        self.port = endpoint.port;
+    }
 };
 
-/// Initialize the empty Network variable
-pub fn init() Network {
-    return .{
-        .endpoint = .{
-            .ip = &.{},
-            .port = 0,
-        },
-        .socket = null,
-    };
+/// Initialize the endpoint for network connection
+pub fn init(
+    allocator: std.mem.Allocator,
+    endpoint: Endpoint,
+) (std.mem.Allocator.Error || error{InitializationError})!Network {
+    var result: Network = undefined;
+    errdefer result.deinit(allocator);
+    result.endpoint.ip = try allocator.dupe(u8, endpoint.ip);
+    result.endpoint.port = endpoint.port;
+    result.socket = null;
+    try network.init();
+    return result;
 }
 
-/// Connect the client to the server. Call deinit to close the connection and
-/// clear memory allocated for the IP. Call close to only close the connection.
+/// Clear the memory allocated for Network
+pub fn deinit(self: *Network, allocator: std.mem.Allocator) void {
+    self.close() catch {};
+    allocator.free(self.endpoint.ip);
+    self.endpoint.ip = &.{};
+    self.endpoint.port = 0;
+    network.deinit();
+}
+
+// TODO: The connect function should connect from the saved endpoint.
+/// Connect the client to the server using. Call `deinit` to close the connection and
+/// clear memory allocated for the IP. Call `close` to close the connection
+/// while retaining the last connected endpoint information.
 pub fn connect(
     self: *Network,
     allocator: std.mem.Allocator,
@@ -38,15 +63,10 @@ pub fn connect(
         endpoint.port,
         .tcp,
     );
-    // Replace the ip if the current ip is different to the provided one
+    // Replace the endpoint if the new one is different to the current one
     if (!std.mem.eql(u8, self.endpoint.ip, endpoint.ip)) {
-        self.endpoint.ip = try client.allocator.realloc(
-            self.endpoint.ip,
-            endpoint.ip.len,
-        );
-        @memcpy(self.endpoint.ip, endpoint.ip);
+        try self.endpoint.modify(allocator, endpoint);
     }
-    self.endpoint.port = endpoint.port;
     self.socket = socket;
 }
 
@@ -60,14 +80,6 @@ pub fn close(self: *Network) error{ServerNotConnected}!void {
         socket.close();
         self.socket = null;
     } else return error.ServerNotConnected;
-}
-
-/// Clear the memory allocated for Network
-pub fn deinit(self: *Network, allocator: std.mem.Allocator) void {
-    if (self.socket) |_| self.close() catch {};
-    allocator.free(self.endpoint.ip);
-    self.endpoint.ip = &.{};
-    self.endpoint.port = 0;
 }
 
 pub fn send(self: *Network, msg: []const u8) !void {
@@ -98,7 +110,7 @@ pub fn receive(self: *Network, allocator: std.mem.Allocator) ![]const u8 {
         // Check if the socket can read without blocking.
         // TODO: Calculate the maximum required buffer for receiving the current
         //       api's response.
-        var buf: [8192]u8 = undefined;
+        var buf: [16_384]u8 = undefined;
         while (self.isSocketEventOccurred(
             std.posix.POLL.IN,
             0,
@@ -140,6 +152,8 @@ pub fn receive(self: *Network, allocator: std.mem.Allocator) ![]const u8 {
     } else return error.ServerNotConnected;
 }
 
+// TODO: Create a variable that holds function to check if the socket is ready
+// to read, write, accept connection, disconnected, error, and invalid.
 /// Check whether the socket has event flag occurred. Timeout is in milliseconds
 /// unit.
 pub fn isSocketEventOccurred(self: *Network, event: i16, timeout: i32) !bool {

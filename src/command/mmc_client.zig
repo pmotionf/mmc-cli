@@ -13,9 +13,16 @@ pub const carrier = @import("mmc_client/Carrier.zig");
 pub const api = @import("mmc_client/api.zig");
 const callbacks = @import("mmc_client/callbacks.zig");
 
+/// `lines` is initialized once the client is connected to a server.
+/// Deinitialized once disconnected from a server.
 pub var lines: []Line = &.{};
+/// `log` is initialized once the client is connected to a server. Deinitialized
+/// once disconnected from a server.
 pub var log: Log = undefined;
-pub var net: Network = .init();
+/// `net` is initialized once the configuration is loaded. `net` might be
+/// modified when attempting to connect to a server. Deinitialized once the
+/// configuration is deinitialized from `command.zig`.
+pub var net: Network = undefined;
 
 /// Global writer for encoding protobuf message
 pub var writer: std.Io.Writer.Allocating = undefined;
@@ -39,11 +46,14 @@ pub fn init(c: Config) !void {
     else
         arena.allocator();
     writer = .init(allocator);
-    try Network.network.init();
-    errdefer Network.network.deinit();
-    net.endpoint.ip = try allocator.alloc(u8, c.IP_address.len);
-    @memcpy(net.endpoint.ip, c.IP_address);
-    net.endpoint.port = c.port;
+    net = try Network.init(
+        allocator,
+        .{
+            .ip = c.IP_address,
+            .port = c.port,
+        },
+    );
+    errdefer net.deinit(allocator);
 
     try command.registry.put(.{
         .name = "SERVER_VERSION",
@@ -787,7 +797,6 @@ pub fn init(c: Config) !void {
 pub fn deinit() void {
     disconnect() catch {};
     net.deinit(allocator);
-    Network.network.deinit();
     if (debug_allocator.detectLeaks()) {
         std.log.debug("Leaks detected", .{});
     } else {
@@ -800,8 +809,8 @@ pub fn deinit() void {
 pub fn disconnect() error{ServerNotConnected}!void {
     // Wait until the log finish storing log data and cleanup
     while (Log.start.load(.monotonic)) {}
-    log.deinit();
     try net.close();
+    log.deinit();
     for (lines) |*line| {
         line.deinit(allocator);
     }

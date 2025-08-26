@@ -158,6 +158,7 @@ pub const Data = struct {
             }
             const msg = try net.receive(allocator);
             defer allocator.free(msg);
+            std.debug.print("response length: {} bytes\n", .{msg.len});
             var reader: std.Io.Reader = .fixed(msg);
             var response = try api_helper.response.info.system.decode(
                 allocator,
@@ -392,8 +393,8 @@ fn write(
         var buf: [64]u8 = undefined;
         if (!config.axis and !config.driver) continue;
         if (config.driver) {
-            const start_id = config.axis_id_range.start / 3;
-            const end_id = config.axis_id_range.end / 3;
+            const start_id = (config.axis_id_range.start - 1) / 3 + 1;
+            const end_id = (config.axis_id_range.end - 1) / 3 + 1;
             for (start_id..end_id + 1) |id| {
                 try writeHeaders(
                     writer,
@@ -432,23 +433,23 @@ fn write(
             "{d},",
             .{data.timestamp},
         );
-        var axis_idx: usize = 0;
-        var driver_idx: usize = 0;
         for (self.configs) |config| {
             if (config.driver) {
                 const start_id = (config.axis_id_range.start - 1) / 3 + 1;
                 const end_id = (config.axis_id_range.end - 1) / 3 + 1;
-                for (start_id..end_id + 1) |_| {
-                    try writeValues(writer, data.drivers[driver_idx]);
-                    driver_idx += 1;
+                for (start_id - 1..end_id) |idx| {
+                    try writeValues(writer, data.drivers[idx]);
                 }
             }
             if (config.axis) {
                 const start_id = config.axis_id_range.start;
                 const end_id = config.axis_id_range.end;
-                for (start_id..end_id + 1) |_| {
-                    try writeValues(writer, data.axes[axis_idx]);
-                    axis_idx += 1;
+                std.debug.print("axis start: {} axis end: {}\n", .{
+                    config.axis_id_range.start,
+                    config.axis_id_range.end,
+                });
+                for (start_id - 1..end_id) |idx| {
+                    try writeValues(writer, data.axes[idx]);
                 }
             }
         }
@@ -481,9 +482,9 @@ pub fn handler(duration: f64) !void {
     const log_file = try std.fs.cwd().createFile(client.log.path.?, .{});
     defer log_file.close();
     const logging_size = @as(usize, @intFromFloat(logging_size_float));
-    var net: Network = .init();
-    try net.connect(client.log.allocator, client.log.endpoint);
+    var net: Network = try .init(client.log.allocator, client.log.endpoint);
     defer net.deinit(client.log.allocator);
+    try net.connect(client.log.allocator, client.log.endpoint);
     var data = std.mem.zeroInit(Data, .{});
     client.log.data = try .initCapacity(
         client.log.allocator,

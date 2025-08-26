@@ -46,6 +46,7 @@ pub fn connect(params: [][]const u8) !void {
         "Connected to {f}",
         .{try client.net.socket.?.getRemoteEndPoint()},
     );
+    std.log.debug("Send API version request..", .{});
     // Asserting that API version matched between client and server
     {
         // Send API version request
@@ -58,10 +59,11 @@ pub fn connect(params: [][]const u8) !void {
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
+    std.log.debug("Asserting API version..", .{});
     {
         const msg = try client.net.receive(client.allocator);
-        var reader: std.Io.Reader = .fixed(msg);
         defer client.allocator.free(msg);
+        var reader: std.Io.Reader = .fixed(msg);
         const response = try client.api.response.core.api_version.decode(
             client.allocator,
             &reader,
@@ -72,7 +74,7 @@ pub fn connect(params: [][]const u8) !void {
             return error.APIVersionMismatch;
         }
     }
-    // Get line configuration
+    std.log.debug("Sending line config request..", .{});
     {
         // Send line configuration request
         try client.api.request.core.encode(
@@ -84,6 +86,7 @@ pub fn connect(params: [][]const u8) !void {
         defer client.allocator.free(msg);
         try client.net.send(msg);
     }
+    std.log.debug("Getting line configuration..", .{});
     {
         const msg = try client.net.receive(client.allocator);
         var reader: std.Io.Reader = .fixed(msg);
@@ -1773,7 +1776,7 @@ pub fn startLogInfo(params: [][]const u8) !void {
         );
         break :p try std.fmt.allocPrint(
             client.allocator,
-            "mmc-register-{}.{:0>2}.{:0>2}-{:0>2}.{:0>2}.{:0>2}.csv",
+            "mmc-logging-{}.{:0>2}.{:0>2}-{:0>2}.{:0>2}.{:0>2}.csv",
             .{
                 ymd.year,
                 ymd.month.number(),
