@@ -175,11 +175,7 @@ fn setupModule(
         mod.addImport(import.name, import.module);
     }
     switch (options.target.result.os.tag) {
-        .windows => {
-            mod.linkSystemLibrary("kernel32", .{});
-            mod.linkSystemLibrary("ws2_32", .{});
-            mod.linkSystemLibrary("user32", .{});
-        },
+        .windows => {},
         .linux => {
             const soem = b.lazyDependency("soem", .{
                 .target = options.target,

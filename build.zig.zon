@@ -5,8 +5,8 @@
     .minimum_zig_version = "0.15.1",
     .dependencies = .{
         .network = .{
-            .url = "https://github.com/mochalins/network/archive/87c899a.tar.gz",
-            .hash = "network-0.1.0-Pm-AgpYxAQCFkXKCR7rQzvqkq7D1Mo8alI1-AwvWM3Tr",
+            .url = "https://github.com/mochalins/network/archive/084fed7.tar.gz",
+            .hash = "network-0.1.0-Pm-AgiMxAQCuaDrGAfSxVHeozUQ2gU3jINGLFxJ1Zpld",
         },
         .mcl = .{
             .url = "https://github.com/pmotionf/mcl/archive/1e3edf0.tar.gz",
