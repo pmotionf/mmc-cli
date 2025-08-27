@@ -1,8 +1,8 @@
 .{
     .name = .mmc_cli,
-    .version = "0.10.3",
+    .version = "0.11.0",
     .fingerprint = 0x392c74984291bf14,
-    .minimum_zig_version = "0.15.0-dev.1474+3ea015db9",
+    .minimum_zig_version = "0.15.1",
     .dependencies = .{
         .network = .{
             .url = "https://github.com/mochalins/network/archive/87c899a.tar.gz",
