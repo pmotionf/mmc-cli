@@ -915,8 +915,6 @@ fn setLog(params: [][]const u8) !void {
         );
     };
 
-    std.debug.print("{s}\n", .{file_path});
-
     if (std.ascii.eqlIgnoreCase("stop", mode_str)) {
         if (log_file) |f| {
             f.close();

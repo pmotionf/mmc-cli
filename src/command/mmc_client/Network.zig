@@ -82,8 +82,9 @@ pub fn init(
 /// Clear the memory allocated for Network
 pub fn deinit(self: *Network, allocator: std.mem.Allocator) void {
     self.close() catch {};
+    allocator.free(self.reader_buf);
+    allocator.free(self.writer_buf);
     self.endpoint.deinit(allocator);
-    if (builtin.os.tag == .windows) std.os.windows.WSACleanup() catch return;
 }
 
 /// Connect the client to the server using the provided endpoint. If the provided
@@ -99,12 +100,12 @@ pub fn connectToHost(
     // Try to connect with the given endpoint
     const stream = try std.net.tcpConnectToHost(
         allocator,
-        endpoint.ip,
+        endpoint.name,
         endpoint.port,
     );
     self.socket = .init(stream, self.reader_buf, self.writer_buf);
     // Replace the endpoint if the new one is different to the current one
-    if (!std.mem.eql(u8, self.endpoint.ip, endpoint.ip)) {
+    if (!std.mem.eql(u8, self.endpoint.name, endpoint.name)) {
         try self.endpoint.modify(allocator, endpoint);
     }
 }
@@ -121,21 +122,27 @@ pub fn close(self: *Network) error{ServerNotConnected}!void {
     } else return error.ServerNotConnected;
 }
 
+// NOTE: This implementation is more preferable since we do not need to copy the
+//       string to a different reader. However, the zig net stream implementation
+//       keep reading it without knowing that the stream already ends. If we can
+//       make a simple patch to zig std.net.Stream.Reader, this implementation
+//       shall be used.
+//
 /// Wait until the socket is ready to read a message. Return the reader.
-pub fn getReader(self: *Network) !*std.Io.Reader {
-    if (self.socket) |socket| {
-        const reader: *std.Io.Reader = socket.reader.interface();
-        while (!readyToRead(socket.stream, 0))
-            // Wait for 0.5 seconds to remove any incoming message. This message
-            // is no longer required as the process to read the message is
-            // cancelled.
+pub fn _getReader(self: *Network) !*std.Io.Reader {
+    if (self.socket) |_| {
+        const reader: *std.Io.Reader = self.socket.?.reader.interface();
+        while (waitingToRead(self.socket.?.stream, 0)) |wait| {
             command.checkCommandInterrupt() catch |e| {
-                if (readyToRead(socket.stream, 500)) {
-                    reader.tossBuffered();
-                }
+                // Wait for 0.5 seconds to remove any incoming message. This message
+                // is no longer required as the process to read the message is
+                // cancelled.
+                _ = try waitingToRead(self.socket.?.stream, 500);
+                reader.tossBuffered();
                 return e;
-            }
-        else |e| {
+            };
+            if (!wait) break;
+        } else |e| {
             try self.close();
             return e;
         }
@@ -143,13 +150,41 @@ pub fn getReader(self: *Network) !*std.Io.Reader {
     } else return error.ServerNotConnected;
 }
 
+pub fn getReader(self: *Network) !std.Io.Reader {
+    if (self.socket) |_| {
+        const reader: *std.Io.Reader = self.socket.?.reader.interface();
+        while (waitingToRead(self.socket.?.stream, 0)) |wait| {
+            command.checkCommandInterrupt() catch |e| {
+                // Wait for 0.5 seconds to remove any incoming message. This message
+                // is no longer required as the process to read the message is
+                // cancelled.
+                _ = try waitingToRead(self.socket.?.stream, 500);
+                // This implementation is a little funky as the reader need to peek at
+                // least once to read the whole data.
+                _ = try reader.peekByte();
+                reader.tossBuffered();
+                return e;
+            };
+            if (!wait) break;
+        } else |e| {
+            try self.close();
+            return e;
+        }
+        // This implementation is a little funky as the reader need to peek at
+        // least once to read the whole data.
+        _ = try reader.peekByte();
+        return std.Io.Reader.fixed(try reader.take(reader.bufferedLen()));
+    } else return error.ServerNotConnected;
+}
+
 /// Wait until the socket is ready to write a message. Return the writer.
 pub fn getWriter(self: *Network) !*std.Io.Writer {
-    if (self.socket) |socket| {
-        const writer: *std.Io.Writer = socket.writer.interface();
-        while (!readyToWrite(socket.stream, 0))
-            try command.checkCommandInterrupt()
-        else |e| {
+    if (self.socket) |_| {
+        const writer: *std.Io.Writer = &self.socket.?.writer.interface;
+        while (waitingToWrite(self.socket.?.stream, 0)) |wait| {
+            try command.checkCommandInterrupt();
+            if (!wait) break;
+        } else |e| {
             try self.close();
             return e;
         }
@@ -158,40 +193,47 @@ pub fn getWriter(self: *Network) !*std.Io.Writer {
 }
 
 /// Check if the socket is ready to read
-fn readyToRead(
+fn waitingToRead(
     stream: std.net.Stream,
     /// Time, in milliseconds, to wait. 0 return immediately. <0 blocking.
     timeout: i32,
 ) (std.posix.PollError || error{ConnectionClosedByPeer})!bool {
     const revents = try poll(
         stream.handle,
-        std.posix.POLL.IN,
+        std.posix.POLL.RDNORM,
         timeout,
     );
+
     if (checkRevents(revents, std.posix.POLL.HUP))
         return error.ConnectionClosedByPeer;
-    return checkRevents(revents, std.posix.POLL.IN);
+    if (checkRevents(revents, std.posix.POLL.RDNORM))
+        return false
+    else
+        return true;
 }
 
 /// Check if the socket is ready to write
-fn readyToWrite(
+fn waitingToWrite(
     stream: std.net.Stream,
     /// Time, in milliseconds, to wait. 0 return immediately. <0 blocking.
     timeout: i32,
 ) (std.posix.PollError || error{ConnectionClosedByPeer})!bool {
     const revents = try poll(
         stream.handle,
-        std.posix.POLL.OUT,
+        std.posix.POLL.WRNORM,
         timeout,
     );
     if (checkRevents(revents, std.posix.POLL.HUP))
         return error.ConnectionClosedByPeer;
 
-    return checkRevents(revents, std.posix.POLL.OUT);
+    if (checkRevents(revents, std.posix.POLL.WRNORM))
+        return false
+    else
+        return true;
 }
 
 fn checkRevents(revents: i16, mask: i16) bool {
-    if (revents & mask == mask) return true else false;
+    if (revents & mask == mask) return true else return false;
 }
 
 /// Query the socket status with the given event, return the revent.

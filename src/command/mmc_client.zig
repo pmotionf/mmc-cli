@@ -24,9 +24,6 @@ pub var log: Log = undefined;
 /// configuration is deinitialized from `command.zig`.
 pub var net: Network = undefined;
 
-/// Global writer for encoding protobuf message
-pub var writer: std.Io.Writer.Allocating = undefined;
-
 var arena: std.heap.ArenaAllocator = undefined;
 pub var allocator: std.mem.Allocator = undefined;
 
@@ -45,13 +42,10 @@ pub fn init(c: Config) !void {
         debug_allocator.allocator()
     else
         arena.allocator();
-    writer = .init(allocator);
     net = try Network.init(
         allocator,
-        .{
-            .ip = c.IP_address,
-            .port = c.port,
-        },
+        c.IP_address,
+        c.port,
     );
     errdefer net.deinit(allocator);
 
@@ -802,6 +796,7 @@ pub fn deinit() void {
     } else {
         arena.deinit();
     }
+    if (builtin.os.tag == .windows) std.os.windows.WSACleanup() catch return;
 }
 
 /// Free all memory EXCEPT the endpoint, so that client can reconnect to the
@@ -825,20 +820,14 @@ pub fn matchLine(name: []const u8) !usize {
 }
 
 pub fn clearCommand(a: std.mem.Allocator, id: u32) !void {
-    try api.request.command.clear_commands.encode(
-        a,
-        &writer.writer,
-        .{ .command_id = id },
-    );
-    const req = try writer.toOwnedSlice();
-    defer a.free(req);
     while (true) {
-        try command.checkCommandInterrupt();
-        try net.send(req);
-        const resp = try net.receive(allocator);
-        defer allocator.free(resp);
-        var reader: std.Io.Reader = .fixed(resp);
-        // Keep trying to clear the command if failed.
+        const writer = try net.getWriter();
+        try api.request.command.clear_commands.encode(
+            a,
+            writer,
+            .{ .command_id = id },
+        );
+        var reader = try net.getReader();
         if (try api.response.command.operation.decode(
             a,
             &reader,

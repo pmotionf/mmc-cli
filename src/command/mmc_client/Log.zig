@@ -136,11 +136,10 @@ pub const Data = struct {
         for (configs) |config| {
             if (config.axis_id_range.start == 0) continue;
             {
-                var buf: [4096]u8 = undefined;
-                var writer: std.Io.Writer = .fixed(&buf);
+                const writer = try net.getWriter();
                 try api_helper.request.info.system.encode(
                     allocator,
-                    &writer,
+                    writer,
                     .{
                         .line_id = config.id,
                         .axis = config.axis,
@@ -154,12 +153,9 @@ pub const Data = struct {
                         },
                     },
                 );
-                try net.send(writer.buffered());
+                try writer.flush();
             }
-            const msg = try net.receive(allocator);
-            defer allocator.free(msg);
-            std.debug.print("response length: {} bytes\n", .{msg.len});
-            var reader: std.Io.Reader = .fixed(msg);
+            var reader = try net.getReader();
             var response = try api_helper.response.info.system.decode(
                 allocator,
                 &reader,
@@ -267,7 +263,7 @@ pub fn deinit(self: *Log) void {
         config.deinit(self.allocator);
     }
     self.allocator.free(self.configs);
-    self.endpoint = .{ .ip = &.{}, .port = 0 };
+    self.endpoint = .{ .name = &.{}, .port = 0 };
     self.reset();
 }
 
@@ -444,10 +440,6 @@ fn write(
             if (config.axis) {
                 const start_id = config.axis_id_range.start;
                 const end_id = config.axis_id_range.end;
-                std.debug.print("axis start: {} axis end: {}\n", .{
-                    config.axis_id_range.start,
-                    config.axis_id_range.end,
-                });
                 for (start_id - 1..end_id) |idx| {
                     try writeValues(writer, data.axes[idx]);
                 }
@@ -482,9 +474,13 @@ pub fn handler(duration: f64) !void {
     const log_file = try std.fs.cwd().createFile(client.log.path.?, .{});
     defer log_file.close();
     const logging_size = @as(usize, @intFromFloat(logging_size_float));
-    var net: Network = try .init(client.log.allocator, client.log.endpoint);
+    var net = try Network.init(
+        client.log.allocator,
+        client.log.endpoint.name,
+        client.log.endpoint.port,
+    );
     defer net.deinit(client.log.allocator);
-    try net.connect(client.log.allocator, client.log.endpoint);
+    try net.connectToHost(client.log.allocator, client.log.endpoint);
     var data = std.mem.zeroInit(Data, .{});
     client.log.data = try .initCapacity(
         client.log.allocator,
