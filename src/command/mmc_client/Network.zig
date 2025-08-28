@@ -2,72 +2,111 @@ const Network = @This();
 
 // TODO: Ditch the network library. Utilize std.posix.poll to check socket status.
 const std = @import("std");
-pub const network = @import("network");
+const builtin = @import("builtin");
 const command = @import("../../command.zig");
 const client = @import("../mmc_client.zig");
 
-socket: ?network.Socket,
+// NOTE: Endpoint is saved in `Network` since the endpoint can be given during
+//       the program initialization. This allows the `CONNECT` command to run
+//       without any parameters, as it just execute with the saved endpoint.
+/// Endpoint can be provided in two ways: reading configuration file and
+/// provided by the user through Endpoint.modify.
 endpoint: Endpoint,
+/// Socket will be null if the connection has been closed from client (here).
+socket: ?Socket,
+reader_buf: []u8,
+writer_buf: []u8,
 
 pub const Endpoint = struct {
-    ip: []u8,
+    name: []u8,
     port: u16,
+
+    fn init(
+        allocator: std.mem.Allocator,
+        name: []u8,
+        port: u16,
+    ) std.mem.Allocator.Error!Endpoint {
+        var result: Endpoint = undefined;
+        result.name = try allocator.dupe(u8, name);
+        result.port = port;
+        return result;
+    }
+
+    fn deinit(self: *Endpoint, allocator: std.mem.Allocator) void {
+        allocator.free(self.name);
+        self.port = 0;
+    }
 
     fn modify(
         self: *Endpoint,
         allocator: std.mem.Allocator,
         endpoint: Endpoint,
     ) std.mem.Allocator.Error!void {
-        allocator.free(self.ip);
-        self.ip = try allocator.dupe(u8, endpoint.ip);
+        allocator.free(self.name);
+        self.name = try allocator.dupe(u8, endpoint.name);
         self.port = endpoint.port;
     }
 };
 
+pub const Socket = struct {
+    stream: std.net.Stream,
+    reader: std.net.Stream.Reader,
+    writer: std.net.Stream.Writer,
+
+    pub fn init(
+        stream: std.net.Stream,
+        reader_buf: []u8,
+        writer_buf: []u8,
+    ) Socket {
+        var result: Socket = undefined;
+        result.stream = stream;
+        result.reader = stream.reader(reader_buf);
+        result.writer = stream.writer(writer_buf);
+        return result;
+    }
+};
 /// Initialize the endpoint for network connection
 pub fn init(
     allocator: std.mem.Allocator,
-    endpoint: Endpoint,
-) (std.mem.Allocator.Error || error{InitializationError})!Network {
+    name: []u8,
+    port: u16,
+) (std.mem.Allocator.Error)!Network {
     var result: Network = undefined;
-    errdefer result.deinit(allocator);
-    result.endpoint.ip = try allocator.dupe(u8, endpoint.ip);
-    result.endpoint.port = endpoint.port;
+    result.endpoint = try .init(allocator, name, port);
+    result.reader_buf = try allocator.alloc(u8, 16_384);
+    result.writer_buf = try allocator.alloc(u8, 4096);
     result.socket = null;
-    try network.init();
     return result;
 }
 
 /// Clear the memory allocated for Network
 pub fn deinit(self: *Network, allocator: std.mem.Allocator) void {
     self.close() catch {};
-    allocator.free(self.endpoint.ip);
-    self.endpoint.ip = &.{};
-    self.endpoint.port = 0;
-    network.deinit();
+    self.endpoint.deinit(allocator);
+    if (builtin.os.tag == .windows) std.os.windows.WSACleanup() catch return;
 }
 
-// TODO: The connect function should connect from the saved endpoint.
-/// Connect the client to the server using. Call `deinit` to close the connection and
-/// clear memory allocated for the IP. Call `close` to close the connection
-/// while retaining the last connected endpoint information.
-pub fn connect(
+/// Connect the client to the server using the provided endpoint. If the provided
+/// endpoint is different from the stored one, replace the endpoint. Call `deinit`
+/// to close the connection and clear the endpoint. Call `close` to close the
+/// connection while retaining the last connected endpoint information.
+pub fn connectToHost(
     self: *Network,
     allocator: std.mem.Allocator,
     endpoint: Endpoint,
 ) !void {
+    if (self.socket) |_| return error.ConnectionAlreadyEstablished;
     // Try to connect with the given endpoint
-    const socket = try network.connectToHost(
+    const stream = try std.net.tcpConnectToHost(
         allocator,
         endpoint.ip,
         endpoint.port,
-        .tcp,
     );
+    self.socket = .init(stream, self.reader_buf, self.writer_buf);
     // Replace the endpoint if the new one is different to the current one
     if (!std.mem.eql(u8, self.endpoint.ip, endpoint.ip)) {
         try self.endpoint.modify(allocator, endpoint);
     }
-    self.socket = socket;
 }
 
 /// Close the socket
@@ -75,115 +114,107 @@ pub fn close(self: *Network) error{ServerNotConnected}!void {
     if (self.socket) |socket| {
         defer std.log.info(
             "Disconnected from server {s}:{d}",
-            .{ self.endpoint.ip, self.endpoint.port },
+            .{ self.endpoint.name, self.endpoint.port },
         );
-        socket.close();
+        socket.stream.close();
         self.socket = null;
     } else return error.ServerNotConnected;
 }
 
-pub fn send(self: *Network, msg: []const u8) !void {
+/// Wait until the socket is ready to read a message. Return the reader.
+pub fn getReader(self: *Network) !*std.Io.Reader {
     if (self.socket) |socket| {
-        // check if the socket can write without blocking
-        while (self.isSocketEventOccurred(
-            std.posix.POLL.OUT,
-            0,
-        )) |socket_status| {
-            if (socket_status) break;
-            try command.checkCommandInterrupt();
-        } else |sock_err| {
-            try self.close();
-            return sock_err;
-        }
-        var writer = socket.writer(&.{});
-        defer writer.interface.flush() catch {};
-        writer.interface.writeAll(msg) catch |e| {
-            try self.close();
-            return e;
-        };
-    } else return error.ServerNotConnected;
-}
-
-/// Non-blocking receive from socket
-pub fn receive(self: *Network, allocator: std.mem.Allocator) ![]const u8 {
-    if (self.socket) |socket| {
-        // Check if the socket can read without blocking.
-        // TODO: Calculate the maximum required buffer for receiving the current
-        //       api's response.
-        var buf: [16_384]u8 = undefined;
-        while (self.isSocketEventOccurred(
-            std.posix.POLL.IN,
-            0,
-        )) |socket_status| {
-            // This step is required for reading from socket as the socket
-            // may still receive some message from server. This message is no
-            // longer valuable, thus ignored in the catch.
+        const reader: *std.Io.Reader = socket.reader.interface();
+        while (!readyToRead(socket.stream, 0))
+            // Wait for 0.5 seconds to remove any incoming message. This message
+            // is no longer required as the process to read the message is
+            // cancelled.
             command.checkCommandInterrupt() catch |e| {
-                if (self.isSocketEventOccurred(
-                    std.posix.POLL.IN,
-                    500,
-                )) |_socket_status| {
-                    if (_socket_status)
-                        // Remove any incoming messages, if any.
-                        _ = socket.receive(&buf) catch {
-                            try self.close();
-                        };
-                    return e;
-                } else |sock_err| {
-                    try self.close();
-                    return sock_err;
+                if (readyToRead(socket.stream, 500)) {
+                    reader.tossBuffered();
                 }
-            };
-            if (socket_status) break;
-        } else |sock_err| {
-            try self.close();
-            return sock_err;
-        }
-        const msg_size = socket.receive(&buf) catch |e| {
+                return e;
+            }
+        else |e| {
             try self.close();
             return e;
-        };
-        // msg_size value 0 means the connection is gracefully closed
-        if (msg_size == 0) {
-            try self.close();
-            return error.ConnectionClosed;
         }
-        return allocator.dupe(u8, buf[0..msg_size]);
+        return reader;
     } else return error.ServerNotConnected;
 }
 
-// TODO: Create a variable that holds function to check if the socket is ready
-// to read, write, accept connection, disconnected, error, and invalid.
-/// Check whether the socket has event flag occurred. Timeout is in milliseconds
-/// unit.
-pub fn isSocketEventOccurred(self: *Network, event: i16, timeout: i32) !bool {
+/// Wait until the socket is ready to write a message. Return the writer.
+pub fn getWriter(self: *Network) !*std.Io.Writer {
     if (self.socket) |socket| {
-        const fd: std.posix.pollfd = .{
-            .fd = socket.internal,
-            .events = event,
-            .revents = 0,
-        };
-        var poll_fd: [1]std.posix.pollfd = .{fd};
-        // check whether the expected socket event happen
-        const status = std.posix.poll(
-            &poll_fd,
-            timeout,
-        ) catch |e| {
+        const writer: *std.Io.Writer = socket.writer.interface();
+        while (!readyToWrite(socket.stream, 0))
+            try command.checkCommandInterrupt()
+        else |e| {
             try self.close();
             return e;
-        };
-        if (status == 0)
-            return false
-        else {
-            // POLL.HUP: the peer gracefully close the socket
-            if (poll_fd[0].revents & std.posix.POLL.HUP == std.posix.POLL.HUP)
-                return error.ConnectionResetByPeer
-            else if (poll_fd[0].revents & std.posix.POLL.ERR == std.posix.POLL.ERR)
-                return error.ConnectionError
-            else if (poll_fd[0].revents & std.posix.POLL.NVAL == std.posix.POLL.NVAL)
-                return error.InvalidSocket
-            else
-                return true;
         }
+        return writer;
     } else return error.ServerNotConnected;
+}
+
+/// Check if the socket is ready to read
+fn readyToRead(
+    stream: std.net.Stream,
+    /// Time, in milliseconds, to wait. 0 return immediately. <0 blocking.
+    timeout: i32,
+) (std.posix.PollError || error{ConnectionClosedByPeer})!bool {
+    const revents = try poll(
+        stream.handle,
+        std.posix.POLL.IN,
+        timeout,
+    );
+    if (checkRevents(revents, std.posix.POLL.HUP))
+        return error.ConnectionClosedByPeer;
+    return checkRevents(revents, std.posix.POLL.IN);
+}
+
+/// Check if the socket is ready to write
+fn readyToWrite(
+    stream: std.net.Stream,
+    /// Time, in milliseconds, to wait. 0 return immediately. <0 blocking.
+    timeout: i32,
+) (std.posix.PollError || error{ConnectionClosedByPeer})!bool {
+    const revents = try poll(
+        stream.handle,
+        std.posix.POLL.OUT,
+        timeout,
+    );
+    if (checkRevents(revents, std.posix.POLL.HUP))
+        return error.ConnectionClosedByPeer;
+
+    return checkRevents(revents, std.posix.POLL.OUT);
+}
+
+fn checkRevents(revents: i16, mask: i16) bool {
+    if (revents & mask == mask) return true else false;
+}
+
+/// Query the socket status with the given event, return the revent.
+/// Note that `POLLHUP`, `POLLNVAL`, and `POLLERR` is always returned
+/// without any request. This poll() always return immediately.
+fn poll(
+    socket: std.net.Stream.Handle,
+    events: i16,
+    /// Time, in milliseconds, to wait. 0 return immediately. <0 blocking.
+    timeout: i32,
+) std.posix.PollError!i16 {
+    const fd: std.posix.pollfd = .{
+        .fd = socket,
+        .events = events,
+        .revents = 0,
+    };
+    var poll_fd: [1]std.posix.pollfd = .{fd};
+    // check whether the expected socket event happen
+    _ = std.posix.poll(
+        &poll_fd,
+        timeout,
+    ) catch |e| {
+        return e;
+    };
+    return poll_fd[0].revents;
 }
