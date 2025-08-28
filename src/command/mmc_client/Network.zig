@@ -220,13 +220,13 @@ fn waitingToWrite(
 ) (std.posix.PollError || error{ConnectionClosedByPeer})!bool {
     const revents = try poll(
         stream.handle,
-        std.posix.POLL.WRNORM,
+        std.posix.POLL.OUT,
         timeout,
     );
     if (checkRevents(revents, std.posix.POLL.HUP))
         return error.ConnectionClosedByPeer;
 
-    if (checkRevents(revents, std.posix.POLL.WRNORM))
+    if (checkRevents(revents, std.posix.POLL.OUT))
         return false
     else
         return true;
