@@ -73,7 +73,7 @@ pub const Socket = struct {
         /// Time, in milliseconds, to wait. 0 return immediately. <0 blocking.
         timeout: i32,
     ) (std.posix.PollError || error{ConnectionClosedByPeer})!bool {
-        const stream: std.net.Stream = socket.reader.getStream();
+        const stream: std.net.Stream = socket.reader.net_stream;
         const revents = try poll(
             stream.handle,
             std.posix.POLL.RDNORM,
@@ -102,34 +102,17 @@ pub const Socket = struct {
         return checkRevents(revents, std.posix.POLL.OUT);
     }
 
-    const max_buffers_len = 8;
-
     pub const Reader = switch (native_os) {
         .windows => struct {
-            /// Use `interface` for portable code.
-            interface_state: std.Io.Reader,
-            /// Use `getStream` for portable code.
+            interface: std.Io.Reader,
             net_stream: std.net.Stream,
-            /// Use `getError` for portable code.
             error_state: ?Error,
 
             pub const Error = ReadError;
 
-            pub fn getStream(r: *const Reader) std.net.Stream {
-                return r.net_stream;
-            }
-
-            pub fn getError(r: *const Reader) ?Error {
-                return r.error_state;
-            }
-
-            pub fn interface(r: *Reader) *std.Io.Reader {
-                return &r.interface_state;
-            }
-
             pub fn init(net_stream: std.net.Stream, buffer: []u8) Reader {
                 return .{
-                    .interface_state = .{
+                    .interface = .{
                         .vtable = &.{
                             .stream = stream,
                             .readVec = readVec,
@@ -152,7 +135,8 @@ pub const Socket = struct {
             }
 
             fn readVec(io_r: *std.Io.Reader, data: [][]u8) std.Io.Reader.Error!usize {
-                const r: *Reader = @alignCast(@fieldParentPtr("interface_state", io_r));
+                const max_buffers_len = 8;
+                const r: *Reader = @alignCast(@fieldParentPtr("interface", io_r));
                 // Check if the socket is ready to read.
                 const socket: *Socket = @alignCast(
                     @fieldParentPtr("reader", r),
@@ -226,80 +210,72 @@ pub const Socket = struct {
             }
         },
         else => struct {
-            /// Use `getStream`, `interface`, and `getError` for portable code.
-            file_reader: std.fs.File.Reader,
+            interface: std.Io.Reader,
+            net_stream: std.net.Stream,
+            error_state: ?Error,
 
             pub const Error = ReadError;
 
-            pub fn interface(r: *Reader) *std.Io.Reader {
-                return &r.file_reader.interface;
-            }
-
             pub fn init(net_stream: std.net.Stream, buffer: []u8) Reader {
                 return .{
-                    .file_reader = .{
-                        .interface = initInterface(buffer),
-                        .file = .{ .handle = net_stream.handle },
-                        .mode = .streaming,
-                        .seek_err = error.Unseekable,
-                        .size_err = error.Streaming,
+                    .interface = .{
+                        .vtable = &.{
+                            .stream = stream,
+                            .readVec = readVec,
+                        },
+                        .buffer = buffer,
+                        .seek = 0,
+                        .end = 0,
                     },
+                    .net_stream = net_stream,
+                    .error_state = null,
+                    // .file_reader = .{
+                    //     .interface = initInterface(buffer),
+                    //     .file = .{ .handle = net_stream.handle },
+                    //     .mode = .streaming,
+                    //     .seek_err = error.Unseekable,
+                    //     .size_err = error.Streaming,
+                    // },
                 };
             }
 
-            pub fn initInterface(buffer: []u8) std.Io.Reader {
-                return .{
-                    .vtable = &.{
-                        .stream = std.fs.File.Reader.stream,
-                        .discard = std.fs.File.Reader.discard,
-                        .readVec = readVec,
-                    },
-                    .buffer = buffer,
-                    .seek = 0,
-                    .end = 0,
-                };
+            /// Number of slices to store on the stack, when trying to send as many byte
+            /// vectors through the underlying read calls as possible.
+            const max_buffers_len = 16;
+
+            fn stream(io_r: *std.Io.Reader, io_w: *std.Io.Writer, limit: std.Io.Limit) std.Io.Reader.StreamError!usize {
+                const dest = limit.slice(try io_w.writableSliceGreedy(1));
+                var bufs: [1][]u8 = .{dest};
+                const n = try readVec(io_r, &bufs);
+                io_w.advance(n);
+                return n;
             }
+
             /// Modified readVec to read when the socket is ready to read.
-            fn readVec(io_reader: *std.Io.Reader, data: [][]u8) std.Io.Reader.Error!usize {
-                const r: *Reader = @alignCast(@fieldParentPtr("interface", io_reader));
-                switch (r.mode) {
-                    .streaming, .streaming_reading => {
-                        // Check if the socket is ready to read.
-                        const socket: *Socket = @alignCast(
-                            @fieldParentPtr("reader", r),
-                        );
-                        if (!(socket.readyToRead(0) catch return error.ReadFailed) and
-                            io_reader.bufferedLen() == 0)
-                            return error.EndOfStream;
-                        var iovecs_buffer: [max_buffers_len]std.posix.iovec = undefined;
-                        const dest_n, const data_size = try io_reader.writableVectorPosix(&iovecs_buffer, data);
-                        const dest = iovecs_buffer[0..dest_n];
-                        std.debug.assert(dest[0].len > 0);
-                        const n = std.posix.readv(r.file.handle, dest) catch |err| {
-                            r.err = err;
-                            return error.ReadFailed;
-                        };
-                        if (n == 0) {
-                            r.size = r.pos;
-                            return error.EndOfStream;
-                        }
-                        r.pos += n;
-                        if (n > data_size) {
-                            io_reader.end += n - data_size;
-                            return data_size;
-                        }
-                        return n;
-                    },
-                    else => unreachable,
+            fn readVec(io_r: *std.Io.Reader, data: [][]u8) std.Io.Reader.Error!usize {
+                const r: *Reader = @alignCast(@fieldParentPtr("interface", io_r));
+                // Check if the socket is ready to read.
+                const socket: *Socket = @alignCast(
+                    @fieldParentPtr("reader", r),
+                );
+                if (!(socket.readyToRead(0) catch return error.ReadFailed) and
+                    io_r.bufferedLen() == 0)
+                    return error.EndOfStream;
+                var iovecs_buffer: [max_buffers_len]std.posix.iovec = undefined;
+                const dest_n, const data_size = try io_r.writableVectorPosix(&iovecs_buffer, data);
+                const dest = iovecs_buffer[0..dest_n];
+                std.debug.assert(dest[0].len > 0);
+                const n = std.posix.readv(r.net_stream.handle, dest) catch |err| {
+                    r.error_state = err;
+                    return error.ReadFailed;
+                };
+                if (n == 0) return error.EndOfStream;
+                if (n > data_size) {
+                    io_r.seek = 0;
+                    io_r.end = n - data_size;
+                    return data_size;
                 }
-            }
-
-            pub fn getStream(r: *const Reader) std.net.Stream {
-                return .{ .handle = r.file_reader.file.handle };
-            }
-
-            pub fn getError(r: *const Reader) ?Error {
-                return r.file_reader.err;
+                return n;
             }
         },
     };
@@ -394,7 +370,7 @@ pub fn close(self: *Network) error{ServerNotConnected}!void {
             "Disconnected from server {s}:{d}",
             .{ self.endpoint.name, self.endpoint.port },
         );
-        const stream: std.net.Stream = socket.reader.getStream();
+        const stream: std.net.Stream = socket.reader.net_stream;
         stream.close();
         self.socket = null;
     } else return error.ServerNotConnected;
@@ -403,7 +379,7 @@ pub fn close(self: *Network) error{ServerNotConnected}!void {
 /// Wait until the socket is ready to read a message. Return the reader.
 pub fn getReader(self: *Network) !*std.Io.Reader {
     if (self.socket) |_| {
-        const reader: *std.Io.Reader = self.socket.?.reader.interface();
+        const reader = &self.socket.?.reader.interface;
         while (self.socket.?.readyToRead(0)) |ready| {
             command.checkCommandInterrupt() catch |e| {
                 // Wait for 0.5 seconds to remove any incoming message. This message
