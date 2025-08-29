@@ -24,9 +24,6 @@ pub var log: Log = undefined;
 /// configuration is deinitialized from `command.zig`.
 pub var net: Network = undefined;
 
-/// Global writer for encoding protobuf message
-pub var writer: std.Io.Writer.Allocating = undefined;
-
 var arena: std.heap.ArenaAllocator = undefined;
 pub var allocator: std.mem.Allocator = undefined;
 
@@ -35,6 +32,11 @@ pub const Config = struct {
     IP_address: []u8,
     port: u16,
 };
+
+/// Reader buffer for network stream
+pub var reader_buf: [4096]u8 = undefined;
+/// Writer buffer for network stream
+pub var writer_buf: [4096]u8 = undefined;
 
 var debug_allocator = std.heap.DebugAllocator(.{}){};
 
@@ -45,13 +47,10 @@ pub fn init(c: Config) !void {
         debug_allocator.allocator()
     else
         arena.allocator();
-    writer = .init(allocator);
     net = try Network.init(
         allocator,
-        .{
-            .ip = c.IP_address,
-            .port = c.port,
-        },
+        "Client",
+        .{ .name = c.IP_address, .port = c.port },
     );
     errdefer net.deinit(allocator);
 
@@ -802,6 +801,7 @@ pub fn deinit() void {
     } else {
         arena.deinit();
     }
+    if (builtin.os.tag == .windows) std.os.windows.WSACleanup() catch return;
 }
 
 /// Free all memory EXCEPT the endpoint, so that client can reconnect to the
@@ -809,7 +809,7 @@ pub fn deinit() void {
 pub fn disconnect() error{ServerNotConnected}!void {
     // Wait until the log finish storing log data and cleanup
     while (Log.start.load(.monotonic)) {}
-    try net.close();
+    try net.socket.close();
     log.deinit();
     for (lines) |*line| {
         line.deinit(allocator);
@@ -825,23 +825,21 @@ pub fn matchLine(name: []const u8) !usize {
 }
 
 pub fn clearCommand(a: std.mem.Allocator, id: u32) !void {
-    try api.request.command.clear_commands.encode(
-        a,
-        &writer.writer,
-        .{ .command_id = id },
-    );
-    const req = try writer.toOwnedSlice();
-    defer a.free(req);
     while (true) {
-        try command.checkCommandInterrupt();
-        try net.send(req);
-        const resp = try net.receive(allocator);
-        defer allocator.free(resp);
-        var reader: std.Io.Reader = .fixed(resp);
-        // Keep trying to clear the command if failed.
-        if (try api.response.command.operation.decode(
+        try net.socket.waitToWrite();
+        var writer = try net.socket.writer(&writer_buf);
+        try api.request.command.clear_commands.encode(
             a,
-            &reader,
-        )) break;
+            &writer.interface,
+            .{ .command_id = id },
+        );
+        try writer.interface.flush();
+        try net.socket.waitToRead();
+        var reader = try net.socket.reader(&reader_buf);
+        const completed = try api.response.command.operation.decode(
+            a,
+            &reader.interface,
+        );
+        if (completed) break;
     }
 }
