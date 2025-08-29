@@ -141,9 +141,10 @@ pub const Socket = struct {
                 const socket: *Socket = @alignCast(
                     @fieldParentPtr("reader", r),
                 );
-                if (!(socket.readyToRead(0) catch return error.ReadFailed) and
-                    io_r.bufferedLen() == 0)
-                    return error.EndOfStream;
+                if (io_r.bufferedLen() == 0) {
+                    if (!(socket.readyToRead(0) catch return error.ReadFailed))
+                        return error.EndOfStream;
+                }
                 var iovecs: [max_buffers_len]std.os.windows.ws2_32.WSABUF = undefined;
                 const bufs_n, const data_size = try io_r.writableVectorWsa(&iovecs, data);
                 const bufs = iovecs[0..bufs_n];
@@ -152,7 +153,6 @@ pub const Socket = struct {
                     r.error_state = err;
                     return error.ReadFailed;
                 };
-                if (n == 0) return error.EndOfStream;
                 if (n > data_size) {
                     io_r.seek = 0;
                     io_r.end = n - data_size;
@@ -229,13 +229,6 @@ pub const Socket = struct {
                     },
                     .net_stream = net_stream,
                     .error_state = null,
-                    // .file_reader = .{
-                    //     .interface = initInterface(buffer),
-                    //     .file = .{ .handle = net_stream.handle },
-                    //     .mode = .streaming,
-                    //     .seek_err = error.Unseekable,
-                    //     .size_err = error.Streaming,
-                    // },
                 };
             }
 
@@ -258,9 +251,10 @@ pub const Socket = struct {
                 const socket: *Socket = @alignCast(
                     @fieldParentPtr("reader", r),
                 );
-                if (!(socket.readyToRead(0) catch return error.ReadFailed) and
-                    io_r.bufferedLen() == 0)
-                    return error.EndOfStream;
+                if (io_r.bufferedLen() == 0) {
+                    if (!(socket.readyToRead(0) catch return error.ReadFailed))
+                        return error.EndOfStream;
+                }
                 var iovecs_buffer: [max_buffers_len]std.posix.iovec = undefined;
                 const dest_n, const data_size = try io_r.writableVectorPosix(&iovecs_buffer, data);
                 const dest = iovecs_buffer[0..dest_n];
@@ -269,7 +263,6 @@ pub const Socket = struct {
                     r.error_state = err;
                     return error.ReadFailed;
                 };
-                if (n == 0) return error.EndOfStream;
                 if (n > data_size) {
                     io_r.seek = 0;
                     io_r.end = n - data_size;
