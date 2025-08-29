@@ -12,6 +12,12 @@ const main = @import("../../main.zig");
 /// Determine whether the log has been started or not. Deinit function behavior
 /// depends on this flag.
 pub var start = std.atomic.Value(bool).init(false);
+// NOTE: The following buffer differ from the client buffer as they are working
+//       on different thread.
+/// Reader buffer for network stream
+pub var reader_buf: [4096]u8 = undefined;
+/// Writer buffer for network stream
+pub var writer_buf: [4096]u8 = undefined;
 
 allocator: std.mem.Allocator,
 path: ?[]const u8,
@@ -136,10 +142,11 @@ pub const Data = struct {
         for (configs) |config| {
             if (config.axis_id_range.start == 0) continue;
             {
-                const writer = try net.getWriter();
+                try net.socket.waitToWrite();
+                var writer = try net.socket.writer(&writer_buf);
                 try api_helper.request.info.system.encode(
                     allocator,
-                    writer,
+                    &writer.interface,
                     .{
                         .line_id = config.id,
                         .axis = config.axis,
@@ -153,11 +160,13 @@ pub const Data = struct {
                         },
                     },
                 );
-                try writer.flush();
+                try writer.interface.flush();
             }
+            try net.socket.waitToRead();
+            var reader = try net.socket.reader(&reader_buf);
             var response = try api_helper.response.info.system.decode(
                 allocator,
-                try net.getReader(),
+                &reader.interface,
             );
             defer response.deinit(allocator);
             const axis_infos = response.axis_infos;
@@ -475,8 +484,8 @@ pub fn handler(duration: f64) !void {
     const logging_size = @as(usize, @intFromFloat(logging_size_float));
     var net = try Network.init(
         client.log.allocator,
-        client.log.endpoint.name,
-        client.log.endpoint.port,
+        "Logging",
+        client.log.endpoint,
     );
     defer net.deinit(client.log.allocator);
     try net.connectToHost(client.log.allocator, client.log.endpoint);

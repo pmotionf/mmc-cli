@@ -29,7 +29,7 @@ pub fn connect(params: [][]const u8) !void {
         .{ endpoint.name, endpoint.port },
     );
     try client.net.connectToHost(client.allocator, endpoint);
-    errdefer client.net.close() catch {};
+    errdefer client.net.socket.close() catch {};
     std.log.info(
         "Connected to {s}:{d}",
         .{ client.net.endpoint.name, client.net.endpoint.port },
@@ -38,19 +38,22 @@ pub fn connect(params: [][]const u8) !void {
     // Asserting that API version matched between client and server
     {
         // Send API version request
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.core.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .CORE_REQUEST_KIND_API_VERSION,
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
     std.log.debug("Asserting API version..", .{});
     {
+        try client.net.socket.waitToRead();
+        var reader = try client.net.socket.reader(&client.reader_buf);
         const response = try client.api.response.core.api_version.decode(
             client.allocator,
-            try client.net.getReader(),
+            &reader.interface,
         );
         if (client.api.api.version.major != response.major or
             client.api.api.version.minor != response.minor)
@@ -61,19 +64,22 @@ pub fn connect(params: [][]const u8) !void {
     std.log.debug("Sending line config request..", .{});
     {
         // Send line configuration request
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.core.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .CORE_REQUEST_KIND_LINE_CONFIG,
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
     std.log.debug("Getting line configuration..", .{});
     {
+        try client.net.socket.waitToRead();
+        var reader = try client.net.socket.reader(&client.reader_buf);
         var response = try client.api.response.core.line_config.decode(
             client.allocator,
-            try client.net.getReader(),
+            &reader.interface,
         );
         defer response.deinit(client.allocator);
         client.lines = try client.allocator.alloc(
@@ -174,17 +180,20 @@ pub fn getAcceleration(params: [][]const u8) !void {
 
 pub fn serverVersion(_: [][]const u8) !void {
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.core.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .CORE_REQUEST_KIND_SERVER_INFO,
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
+    try client.net.socket.waitToRead();
+    var reader = try client.net.socket.reader(&client.reader_buf);
     var server = try client.api.response.core.server.decode(
         client.allocator,
-        try client.net.getReader(),
+        &reader.interface,
     );
     defer server.deinit(client.allocator);
     const version = server.version.?;
@@ -210,10 +219,11 @@ pub fn showError(params: [][]const u8) !void {
         } else break :b null;
     };
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .axis = true,
@@ -224,11 +234,13 @@ pub fn showError(params: [][]const u8) !void {
                     null,
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
+    try client.net.socket.waitToRead();
+    var reader = try client.net.socket.reader(&client.reader_buf);
     var system = try client.api.response.info.system.decode(
         client.allocator,
-        try client.net.getReader(),
+        &reader.interface,
     );
     defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
@@ -273,10 +285,11 @@ pub fn axisInfo(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .axis = true,
@@ -288,11 +301,13 @@ pub fn axisInfo(params: [][]const u8) !void {
                 },
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
+    try client.net.socket.waitToRead();
+    var reader = try client.net.socket.reader(&client.reader_buf);
     var system = try client.api.response.info.system.decode(
         client.allocator,
-        try client.net.getReader(),
+        &reader.interface,
     );
     defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
@@ -315,10 +330,11 @@ pub fn driverInfo(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .driver = true,
@@ -330,11 +346,13 @@ pub fn driverInfo(params: [][]const u8) !void {
                 },
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
+    try client.net.socket.waitToRead();
+    var reader = try client.net.socket.reader(&client.reader_buf);
     var system = try client.api.response.info.system.decode(
         client.allocator,
-        try client.net.getReader(),
+        &reader.interface,
     );
     defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
@@ -360,10 +378,11 @@ pub fn carrierInfo(params: [][]const u8) !void {
         var ids: std.ArrayList(u32) = .empty;
         defer ids.deinit(client.allocator);
         try ids.append(client.allocator, carrier_id);
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .carrier = true,
@@ -372,11 +391,13 @@ pub fn carrierInfo(params: [][]const u8) !void {
                 },
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
+    try client.net.socket.waitToRead();
+    var reader = try client.net.socket.reader(&client.reader_buf);
     var system = try client.api.response.info.system.decode(
         client.allocator,
-        try client.net.getReader(),
+        &reader.interface,
     );
     defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
@@ -416,13 +437,14 @@ pub fn autoInitialize(params: [][]const u8) !void {
         }
     }
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.auto_initialize.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{ .lines = init_lines },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
     try waitCommandReceived(client.allocator);
 }
@@ -434,10 +456,11 @@ pub fn axisCarrier(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .carrier = true,
@@ -449,11 +472,13 @@ pub fn axisCarrier(params: [][]const u8) !void {
                 },
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
+    try client.net.socket.waitToRead();
+    var reader = try client.net.socket.reader(&client.reader_buf);
     var system = try client.api.response.info.system.decode(
         client.allocator,
-        try client.net.getReader(),
+        &reader.interface,
     );
     defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
@@ -500,21 +525,24 @@ pub fn carrierId(params: [][]const u8) !void {
     for (line_idxs.items) |line_idx| {
         const line = client.lines[line_idx];
         {
-            const writer = try client.net.getWriter();
+            try client.net.socket.waitToWrite();
+            var writer = try client.net.socket.writer(&client.writer_buf);
             try client.api.request.info.system.encode(
                 client.allocator,
-                writer,
+                &writer.interface,
                 .{
                     .line_id = line.id,
                     .axis = true,
                     .source = null,
                 },
             );
-            try writer.flush();
+            try writer.interface.flush();
         }
+        try client.net.socket.waitToRead();
+        var reader = try client.net.socket.reader(&client.reader_buf);
         var system = try client.api.response.info.system.decode(
             client.allocator,
-            try client.net.getReader(),
+            &reader.interface,
         );
         defer system.deinit(client.allocator);
         if (system.line_id != line.id) return error.InvalidResponse;
@@ -574,10 +602,11 @@ pub fn assertLocation(params: [][]const u8) !void {
         var ids: std.ArrayList(u32) = .empty;
         defer ids.deinit(client.allocator);
         try ids.append(client.allocator, carrier_id);
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .carrier = true,
@@ -586,11 +615,13 @@ pub fn assertLocation(params: [][]const u8) !void {
                 },
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
+    try client.net.socket.waitToRead();
+    var reader = try client.net.socket.reader(&client.reader_buf);
     var system = try client.api.response.info.system.decode(
         client.allocator,
-        try client.net.getReader(),
+        &reader.interface,
     );
     defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
@@ -617,16 +648,17 @@ pub fn releaseServo(params: [][]const u8) !void {
         axis_id = axis;
     }
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.release_control.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .axis_id = if (axis_id) |axis| axis else null,
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
     try waitCommandReceived(client.allocator);
 }
@@ -641,10 +673,11 @@ pub fn clearErrors(params: [][]const u8) !void {
         axis_id = axis;
     }
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.clear_errors.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .driver_id = if (axis_id) |id|
@@ -653,7 +686,7 @@ pub fn clearErrors(params: [][]const u8) !void {
                     null,
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
     try waitCommandReceived(client.allocator);
 }
@@ -668,16 +701,17 @@ pub fn clearCarrierInfo(params: [][]const u8) !void {
         axis_id = axis;
     }
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.clear_carriers.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .axis_id = if (axis_id) |id| id else null,
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
     try waitCommandReceived(client.allocator);
 }
@@ -685,43 +719,47 @@ pub fn clearCarrierInfo(params: [][]const u8) !void {
 pub fn resetSystem(_: [][]const u8) !void {
     for (client.lines) |line| {
         {
-            const writer = try client.net.getWriter();
+            try client.net.socket.waitToWrite();
+            var writer = try client.net.socket.writer(&client.writer_buf);
             try client.api.request.command.clear_carriers.encode(
                 client.allocator,
-                writer,
+                &writer.interface,
                 .{ .line_id = line.id },
             );
-            try writer.flush();
+            try writer.interface.flush();
         }
         try waitCommandReceived(client.allocator);
         {
-            const writer = try client.net.getWriter();
+            try client.net.socket.waitToWrite();
+            var writer = try client.net.socket.writer(&client.writer_buf);
             try client.api.request.command.clear_errors.encode(
                 client.allocator,
-                writer,
+                &writer.interface,
                 .{ .line_id = line.id },
             );
-            try writer.flush();
+            try writer.interface.flush();
         }
         try waitCommandReceived(client.allocator);
         {
-            const writer = try client.net.getWriter();
+            try client.net.socket.waitToWrite();
+            var writer = try client.net.socket.writer(&client.writer_buf);
             try client.api.request.command.stop_push_carrier.encode(
                 client.allocator,
-                writer,
+                &writer.interface,
                 .{ .line_id = line.id },
             );
-            try writer.flush();
+            try writer.interface.flush();
         }
         try waitCommandReceived(client.allocator);
         {
-            const writer = try client.net.getWriter();
+            try client.net.socket.waitToWrite();
+            var writer = try client.net.socket.writer(&client.writer_buf);
             try client.api.request.command.stop_pull_carrier.encode(
                 client.allocator,
-                writer,
+                &writer.interface,
                 .{ .line_id = line.id },
             );
-            try writer.flush();
+            try writer.interface.flush();
         }
         try waitCommandReceived(client.allocator);
     }
@@ -738,10 +776,11 @@ pub fn carrierLocation(params: [][]const u8) !void {
         var ids: std.ArrayList(u32) = .empty;
         defer ids.deinit(client.allocator);
         try ids.append(client.allocator, carrier_id);
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .carrier = true,
@@ -750,11 +789,13 @@ pub fn carrierLocation(params: [][]const u8) !void {
                 },
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
+    try client.net.socket.waitToRead();
+    var reader = try client.net.socket.reader(&client.reader_buf);
     var system = try client.api.response.info.system.decode(
         client.allocator,
-        try client.net.getReader(),
+        &reader.interface,
     );
     defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
@@ -784,10 +825,11 @@ pub fn carrierAxis(params: [][]const u8) !void {
         var ids: std.ArrayList(u32) = .empty;
         defer ids.deinit(client.allocator);
         try ids.append(client.allocator, carrier_id);
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .carrier = true,
@@ -796,11 +838,13 @@ pub fn carrierAxis(params: [][]const u8) !void {
                 },
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
+    try client.net.socket.waitToRead();
+    var reader = try client.net.socket.reader(&client.reader_buf);
     var system = try client.api.response.info.system.decode(
         client.allocator,
-        try client.net.getReader(),
+        &reader.interface,
     );
     defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
@@ -830,10 +874,11 @@ pub fn hallStatus(params: [][]const u8) !void {
     }
     if (axis_id) |id| {
         {
-            const writer = try client.net.getWriter();
+            try client.net.socket.waitToWrite();
+            var writer = try client.net.socket.writer(&client.writer_buf);
             try client.api.request.info.system.encode(
                 client.allocator,
-                writer,
+                &writer.interface,
                 .{
                     .line_id = line.id,
                     .axis = true,
@@ -845,11 +890,13 @@ pub fn hallStatus(params: [][]const u8) !void {
                     },
                 },
             );
-            try writer.flush();
+            try writer.interface.flush();
         }
+        try client.net.socket.waitToRead();
+        var reader = try client.net.socket.reader(&client.reader_buf);
         var system = try client.api.response.info.system.decode(
             client.allocator,
-            try client.net.getReader(),
+            &reader.interface,
         );
         defer system.deinit(client.allocator);
         if (system.line_id != line.id) return error.InvalidResponse;
@@ -865,21 +912,24 @@ pub fn hallStatus(params: [][]const u8) !void {
         );
     } else {
         {
-            const writer = try client.net.getWriter();
+            try client.net.socket.waitToWrite();
+            var writer = try client.net.socket.writer(&client.writer_buf);
             try client.api.request.info.system.encode(
                 client.allocator,
-                writer,
+                &writer.interface,
                 .{
                     .line_id = line.id,
                     .axis = true,
                     .source = null,
                 },
             );
-            try writer.flush();
+            try writer.interface.flush();
         }
+        try client.net.socket.waitToRead();
+        var reader = try client.net.socket.reader(&client.reader_buf);
         var system = try client.api.response.info.system.decode(
             client.allocator,
-            try client.net.getReader(),
+            &reader.interface,
         );
         defer system.deinit(client.allocator);
         if (system.line_id != line.id and
@@ -923,10 +973,11 @@ pub fn assertHall(params: [][]const u8) !void {
         } else return error.InvalidHallAlarmState;
     }
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .axis = true,
@@ -938,11 +989,13 @@ pub fn assertHall(params: [][]const u8) !void {
                 },
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
+    try client.net.socket.waitToRead();
+    var reader = try client.net.socket.reader(&client.reader_buf);
     var system = try client.api.response.info.system.decode(
         client.allocator,
-        try client.net.getReader(),
+        &reader.interface,
     );
     defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
@@ -968,13 +1021,14 @@ pub fn calibrate(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.calibrate.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{ .line_id = line.id },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
     try waitCommandReceived(client.allocator);
 }
@@ -984,13 +1038,14 @@ pub fn setLineZero(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.set_line_zero.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{ .line_id = line.id },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
     try waitCommandReceived(client.allocator);
 }
@@ -1030,10 +1085,11 @@ pub fn isolate(params: [][]const u8) !void {
         } else break :link null;
     };
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.isolate_carrier.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .axis_id = axis_id,
@@ -1042,7 +1098,7 @@ pub fn isolate(params: [][]const u8) !void {
                 .direction = dir,
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
     try waitCommandReceived(client.allocator);
 }
@@ -1105,10 +1161,11 @@ pub fn carrierPosMoveAxis(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.move_carrier.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .carrier_id = carrier_id,
@@ -1119,7 +1176,7 @@ pub fn carrierPosMoveAxis(params: [][]const u8) !void {
                 .control_kind = .CONTROL_POSITION,
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
     try waitCommandReceived(client.allocator);
 }
@@ -1138,10 +1195,11 @@ pub fn carrierPosMoveLocation(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.move_carrier.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .carrier_id = carrier_id,
@@ -1152,7 +1210,7 @@ pub fn carrierPosMoveLocation(params: [][]const u8) !void {
                 .control_kind = .CONTROL_POSITION,
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
     try waitCommandReceived(client.allocator);
 }
@@ -1170,10 +1228,11 @@ pub fn carrierPosMoveDistance(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.move_carrier.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .carrier_id = carrier_id,
@@ -1184,7 +1243,7 @@ pub fn carrierPosMoveDistance(params: [][]const u8) !void {
                 .control_kind = .CONTROL_POSITION,
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
     try waitCommandReceived(client.allocator);
 }
@@ -1202,10 +1261,11 @@ pub fn carrierSpdMoveAxis(params: [][]const u8) !void {
     else
         return error.InvalidCasConfiguration;
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.move_carrier.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .carrier_id = carrier_id,
@@ -1216,7 +1276,7 @@ pub fn carrierSpdMoveAxis(params: [][]const u8) !void {
                 .control_kind = .CONTROL_VELOCITY,
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
     try waitCommandReceived(client.allocator);
 }
@@ -1235,10 +1295,11 @@ pub fn carrierSpdMoveLocation(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.move_carrier.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .carrier_id = carrier_id,
@@ -1249,7 +1310,7 @@ pub fn carrierSpdMoveLocation(params: [][]const u8) !void {
                 .control_kind = .CONTROL_VELOCITY,
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
     try waitCommandReceived(client.allocator);
 }
@@ -1267,10 +1328,11 @@ pub fn carrierSpdMoveDistance(params: [][]const u8) !void {
     else
         return error.InvalidCasConfiguration;
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.move_carrier.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .carrier_id = carrier_id,
@@ -1281,7 +1343,7 @@ pub fn carrierSpdMoveDistance(params: [][]const u8) !void {
                 .control_kind = .CONTROL_VELOCITY,
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
     try waitCommandReceived(client.allocator);
 }
@@ -1300,10 +1362,11 @@ pub fn carrierPushForward(params: [][]const u8) !void {
     const line = client.lines[line_idx];
     if (axis_id) |axis| {
         {
-            const writer = try client.net.getWriter();
+            try client.net.socket.waitToWrite();
+            var writer = try client.net.socket.writer(&client.writer_buf);
             try client.api.request.command.move_carrier.encode(
                 client.allocator,
-                writer,
+                &writer.interface,
                 .{
                     .line_id = line.id,
                     .carrier_id = carrier_id,
@@ -1321,15 +1384,16 @@ pub fn carrierPushForward(params: [][]const u8) !void {
                     .control_kind = .CONTROL_POSITION,
                 },
             );
-            try writer.flush();
+            try writer.interface.flush();
         }
         try waitCommandReceived(client.allocator);
     }
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.push_carrier.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .carrier_id = carrier_id,
@@ -1339,7 +1403,7 @@ pub fn carrierPushForward(params: [][]const u8) !void {
                 .axis_id = if (axis_id) |axis| axis else null,
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
     try waitCommandReceived(client.allocator);
 }
@@ -1358,10 +1422,11 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
     const line = client.lines[line_idx];
     if (axis_id) |axis| {
         {
-            const writer = try client.net.getWriter();
+            try client.net.socket.waitToWrite();
+            var writer = try client.net.socket.writer(&client.writer_buf);
             try client.api.request.command.move_carrier.encode(
                 client.allocator,
-                writer,
+                &writer.interface,
                 .{
                     .line_id = line.id,
                     .carrier_id = carrier_id,
@@ -1379,15 +1444,16 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
                     .control_kind = .CONTROL_POSITION,
                 },
             );
-            try writer.flush();
+            try writer.interface.flush();
         }
         try waitCommandReceived(client.allocator);
     }
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.push_carrier.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .carrier_id = carrier_id,
@@ -1397,7 +1463,7 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
                 .axis_id = if (axis_id) |axis| axis else null,
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
     try waitCommandReceived(client.allocator);
 }
@@ -1419,10 +1485,11 @@ pub fn carrierPullForward(params: [][]const u8) !void {
     else
         return error.InvalidCasConfiguration;
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.pull_carrier.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .axis_id = axis_id,
@@ -1441,7 +1508,7 @@ pub fn carrierPullForward(params: [][]const u8) !void {
                 },
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
     try waitCommandReceived(client.allocator);
 }
@@ -1464,10 +1531,11 @@ pub fn carrierPullBackward(params: [][]const u8) !void {
     else
         return error.InvalidCasConfiguration;
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.pull_carrier.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .axis_id = axis_id,
@@ -1486,7 +1554,7 @@ pub fn carrierPullBackward(params: [][]const u8) !void {
                 },
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
     try waitCommandReceived(client.allocator);
 }
@@ -1521,16 +1589,17 @@ pub fn carrierStopPull(params: [][]const u8) !void {
         axis_id = axis;
     }
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.stop_pull_carrier.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .axis_id = if (axis_id) |axis| axis else null,
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
     try waitCommandReceived(client.allocator);
 }
@@ -1545,16 +1614,17 @@ pub fn carrierStopPush(params: [][]const u8) !void {
         axis_id = axis;
     }
     {
-        const writer = try client.net.getWriter();
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.stop_push_carrier.encode(
             client.allocator,
-            writer,
+            &writer.interface,
             .{
                 .line_id = line.id,
                 .axis_id = if (axis_id) |axis| axis else null,
             },
         );
-        try writer.flush();
+        try writer.interface.flush();
     }
 }
 
@@ -1573,10 +1643,11 @@ pub fn waitAxisEmpty(params: [][]const u8) !void {
             wait_timer.read() > timeout * std.time.ns_per_ms)
             return error.WaitTimeout;
         {
-            const writer = try client.net.getWriter();
+            try client.net.socket.waitToWrite();
+            var writer = try client.net.socket.writer(&client.writer_buf);
             try client.api.request.info.system.encode(
                 client.allocator,
-                writer,
+                &writer.interface,
                 .{
                     .line_id = line.id,
                     .axis = true,
@@ -1588,11 +1659,13 @@ pub fn waitAxisEmpty(params: [][]const u8) !void {
                     },
                 },
             );
-            try writer.flush();
+            try writer.interface.flush();
         }
+        try client.net.socket.waitToRead();
+        var reader = try client.net.socket.reader(&client.reader_buf);
         var system = try client.api.response.info.system.decode(
             client.allocator,
-            try client.net.getReader(),
+            &reader.interface,
         );
         defer system.deinit(client.allocator);
         if (system.line_id != line.id) return error.InvalidResponse;
@@ -1715,27 +1788,32 @@ pub fn removeLogInfo(params: [][]const u8) !void {
 fn waitCommandReceived(allocator: std.mem.Allocator) !void {
     var id: u32 = 0;
     {
+        try client.net.socket.waitToRead();
+        var reader = try client.net.socket.reader(&client.reader_buf);
         id = try client.api.response.command.id.decode(
             client.allocator,
-            try client.net.getReader(),
+            &reader.interface,
         );
     }
     defer client.clearCommand(allocator, id) catch {};
     while (true) {
         {
-            const writer = try client.net.getWriter();
+            try client.net.socket.waitToWrite();
+            var writer = try client.net.socket.writer(&client.writer_buf);
             try client.api.request.info.commands.encode(
                 allocator,
-                writer,
+                &writer.interface,
                 .{
                     .id = id,
                 },
             );
-            try writer.flush();
+            try writer.interface.flush();
         }
+        try client.net.socket.waitToRead();
+        var reader = try client.net.socket.reader(&client.reader_buf);
         var decoded = try client.api.response.info.commands.decode(
             allocator,
-            try client.net.getReader(),
+            &reader.interface,
         );
         defer decoded.deinit(client.allocator);
         if (decoded.commands.items.len > 1) return error.InvalidResponse;

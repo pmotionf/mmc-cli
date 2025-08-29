@@ -14,10 +14,12 @@ const native_os = builtin.os.tag;
 /// Endpoint can be provided in two ways: reading configuration file and
 /// provided by the user through Endpoint.modify.
 endpoint: Endpoint,
+// The name is used to differentiate which connection is being closed, e.g.,
+// "client" or "logging".
+/// The connection name
+name: []u8,
 /// Socket will be null if the connection has been closed from client (here).
-socket: ?Socket,
-reader_buf: []u8,
-writer_buf: []u8,
+socket: Socket,
 
 pub const Endpoint = struct {
     name: []u8,
@@ -25,12 +27,11 @@ pub const Endpoint = struct {
 
     fn init(
         allocator: std.mem.Allocator,
-        name: []u8,
-        port: u16,
+        endpoint: Endpoint,
     ) std.mem.Allocator.Error!Endpoint {
         var result: Endpoint = undefined;
-        result.name = try allocator.dupe(u8, name);
-        result.port = port;
+        result.name = try allocator.dupe(u8, endpoint.name);
+        result.port = endpoint.port;
         return result;
     }
 
@@ -51,55 +52,70 @@ pub const Endpoint = struct {
 };
 
 pub const Socket = struct {
-    stream: std.net.Stream,
-    reader: Reader,
-    writer: std.net.Stream.Writer,
+    stream: ?std.net.Stream,
 
-    pub fn init(
-        stream: std.net.Stream,
-        reader_buf: []u8,
-        writer_buf: []u8,
-    ) Socket {
-        var result: Socket = undefined;
-        result.stream = stream;
-        result.reader = Reader.init(stream, reader_buf);
-        result.writer = stream.writer(writer_buf);
-        return result;
+    /// Wait until the socket is ready to read a message.
+    pub fn waitToRead(self: *Socket) !void {
+        if (self.stream) |stream| {
+            while (readyToRead(stream, 0)) |ready| {
+                command.checkCommandInterrupt() catch |e| {
+                    // Wait for 0.5 seconds to remove any incoming message. This message
+                    // is no longer required as the process to read the message is
+                    // cancelled.
+                    const arrived = try readyToRead(stream, 500);
+                    if (arrived) {
+                        // TODO: Remove the arrived byte
+                        // _ = try reader.peekByte();
+                        // reader.tossBuffered();
+                    }
+                    return e;
+                };
+                if (ready) return;
+            } else |e| {
+                try self.close();
+                return e;
+            }
+        } else return error.ServerNotConnected;
     }
 
-    /// Check if the socket is ready to read
-    pub fn readyToRead(
-        socket: *Socket,
-        /// Time, in milliseconds, to wait. 0 return immediately. <0 blocking.
-        timeout: i32,
-    ) (std.posix.PollError || error{ConnectionClosedByPeer})!bool {
-        const stream: std.net.Stream = socket.reader.net_stream;
-        const revents = try poll(
-            stream.handle,
-            std.posix.POLL.RDNORM,
-            timeout,
-        );
-
-        if (checkRevents(revents, std.posix.POLL.HUP))
-            return error.ConnectionClosedByPeer;
-        return checkRevents(revents, std.posix.POLL.RDNORM);
+    /// Wait until the socket is ready to write a message.
+    pub fn waitToWrite(self: *Socket) !void {
+        if (self.stream) |stream| {
+            while (readyToWrite(stream, 0)) |ready| {
+                try command.checkCommandInterrupt();
+                if (ready) return;
+            } else |e| {
+                try self.close();
+                return e;
+            }
+        } else return error.ServerNotConnected;
     }
 
-    /// Check if the socket is ready to write
-    pub fn readyToWrite(
-        socket: *Socket,
-        /// Time, in milliseconds, to wait. 0 return immediately. <0 blocking.
-        timeout: i32,
-    ) (std.posix.PollError || error{ConnectionClosedByPeer})!bool {
-        const stream: std.net.Stream = socket.writer.getStream();
-        const revents = try poll(
-            stream.handle,
-            std.posix.POLL.OUT,
-            timeout,
-        );
-        if (checkRevents(revents, std.posix.POLL.HUP))
-            return error.ConnectionClosedByPeer;
-        return checkRevents(revents, std.posix.POLL.OUT);
+    pub fn writer(self: Socket, buffer: []u8) error{ServerNotConnected}!std.net.Stream.Writer {
+        if (self.stream) |stream|
+            return stream.writer(buffer)
+        else
+            return error.ServerNotConnected;
+    }
+
+    pub fn reader(self: Socket, buffer: []u8) error{ServerNotConnected}!Reader {
+        if (self.stream) |stream|
+            return Reader.init(stream, buffer)
+        else
+            return error.ServerNotConnected;
+    }
+
+    /// Close the socket
+    pub fn close(self: *Socket) error{ServerNotConnected}!void {
+        if (self.stream) |stream| {
+            const net: *Network = @alignCast(@fieldParentPtr("socket", self));
+            defer std.log.info(
+                "{s} is disconnected from server {s}:{d}",
+                .{ net.name, net.endpoint.name, net.endpoint.port },
+            );
+            stream.close();
+            self.stream = null;
+        } else return error.ServerNotConnected;
     }
 
     pub const Reader = switch (native_os) {
@@ -137,12 +153,11 @@ pub const Socket = struct {
             fn readVec(io_r: *std.Io.Reader, data: [][]u8) std.Io.Reader.Error!usize {
                 const max_buffers_len = 8;
                 const r: *Reader = @alignCast(@fieldParentPtr("interface", io_r));
-                // Check if the socket is ready to read.
-                const socket: *Socket = @alignCast(
-                    @fieldParentPtr("reader", r),
-                );
                 if (io_r.bufferedLen() == 0) {
-                    if (!(socket.readyToRead(0) catch return error.ReadFailed))
+                    // If the stream is not ready to read while there is nothing
+                    // left in the buffer, it is the end of the stream.
+                    if (!(readyToRead(r.net_stream, 0) catch
+                        return error.ReadFailed))
                         return error.EndOfStream;
                 }
                 var iovecs: [max_buffers_len]std.os.windows.ws2_32.WSABUF = undefined;
@@ -247,12 +262,12 @@ pub const Socket = struct {
             /// Modified readVec to read when the socket is ready to read.
             fn readVec(io_r: *std.Io.Reader, data: [][]u8) std.Io.Reader.Error!usize {
                 const r: *Reader = @alignCast(@fieldParentPtr("interface", io_r));
-                // Check if the socket is ready to read.
-                const socket: *Socket = @alignCast(
-                    @fieldParentPtr("reader", r),
-                );
+
                 if (io_r.bufferedLen() == 0) {
-                    if (!(socket.readyToRead(0) catch return error.ReadFailed))
+                    // If the stream is not ready to read while there is nothing
+                    // left in the buffer, it is the end of the stream.
+                    if (!(readyToRead(r.net_stream, 0) catch
+                        return error.ReadFailed))
                         return error.EndOfStream;
                 }
                 var iovecs_buffer: [max_buffers_len]std.posix.iovec = undefined;
@@ -280,6 +295,39 @@ pub const Socket = struct {
         ConnectionResetByPeer,
         SocketNotConnected,
     };
+
+    /// Check if the socket is ready to read
+    pub fn readyToRead(
+        stream: std.net.Stream,
+        /// Time, in milliseconds, to wait. 0 return immediately. <0 blocking.
+        timeout: i32,
+    ) (std.posix.PollError || error{ConnectionClosedByPeer})!bool {
+        const revents = try poll(
+            stream.handle,
+            std.posix.POLL.RDNORM,
+            timeout,
+        );
+
+        if (checkRevents(revents, std.posix.POLL.HUP))
+            return error.ConnectionClosedByPeer;
+        return checkRevents(revents, std.posix.POLL.RDNORM);
+    }
+
+    /// Check if the socket is ready to write
+    pub fn readyToWrite(
+        stream: std.net.Stream,
+        /// Time, in milliseconds, to wait. 0 return immediately. <0 blocking.
+        timeout: i32,
+    ) (std.posix.PollError || error{ConnectionClosedByPeer})!bool {
+        const revents = try poll(
+            stream.handle,
+            std.posix.POLL.OUT,
+            timeout,
+        );
+        if (checkRevents(revents, std.posix.POLL.HUP))
+            return error.ConnectionClosedByPeer;
+        return checkRevents(revents, std.posix.POLL.OUT);
+    }
 
     fn checkRevents(revents: i16, mask: i16) bool {
         if (revents & mask == mask) return true else return false;
@@ -314,22 +362,20 @@ pub const Socket = struct {
 /// Initialize the endpoint for network connection
 pub fn init(
     allocator: std.mem.Allocator,
-    name: []u8,
-    port: u16,
+    name: []const u8,
+    endpoint: Endpoint,
 ) (std.mem.Allocator.Error)!Network {
     var result: Network = undefined;
-    result.endpoint = try .init(allocator, name, port);
-    result.reader_buf = try allocator.alloc(u8, 4096);
-    result.writer_buf = try allocator.alloc(u8, 4096);
-    result.socket = null;
+    result.name = try allocator.dupe(u8, name);
+    result.endpoint = try .init(allocator, endpoint);
+    result.socket = .{ .stream = null };
     return result;
 }
 
 /// Clear the memory allocated for Network
 pub fn deinit(self: *Network, allocator: std.mem.Allocator) void {
-    self.close() catch {};
-    allocator.free(self.reader_buf);
-    allocator.free(self.writer_buf);
+    self.socket.close() catch {};
+    allocator.free(self.name);
     self.endpoint.deinit(allocator);
 }
 
@@ -342,71 +388,17 @@ pub fn connectToHost(
     allocator: std.mem.Allocator,
     endpoint: Endpoint,
 ) !void {
-    if (self.socket) |_| return error.ConnectionAlreadyEstablished;
+    if (self.socket.stream) |_| return error.ConnectionAlreadyEstablished;
     // Try to connect with the given endpoint
     const stream = try std.net.tcpConnectToHost(
         allocator,
         endpoint.name,
         endpoint.port,
     );
-    self.socket = .init(stream, self.reader_buf, self.writer_buf);
+    self.socket = .{ .stream = stream };
+    // self.socket = .init(stream, self.reader_buf, self.writer_buf);
     // Replace the endpoint if the new one is different to the current one
     if (!std.mem.eql(u8, self.endpoint.name, endpoint.name)) {
         try self.endpoint.modify(allocator, endpoint);
     }
-}
-
-/// Close the socket
-pub fn close(self: *Network) error{ServerNotConnected}!void {
-    if (self.socket) |socket| {
-        defer std.log.info(
-            "Disconnected from server {s}:{d}",
-            .{ self.endpoint.name, self.endpoint.port },
-        );
-        const stream: std.net.Stream = socket.reader.net_stream;
-        stream.close();
-        self.socket = null;
-    } else return error.ServerNotConnected;
-}
-
-/// Wait until the socket is ready to read a message. Return the reader.
-pub fn getReader(self: *Network) !*std.Io.Reader {
-    if (self.socket) |_| {
-        const reader = &self.socket.?.reader.interface;
-        while (self.socket.?.readyToRead(0)) |ready| {
-            command.checkCommandInterrupt() catch |e| {
-                // Wait for 0.5 seconds to remove any incoming message. This message
-                // is no longer required as the process to read the message is
-                // cancelled.
-                const arrived = try self.socket.?.readyToRead(
-                    500,
-                );
-                if (arrived) {
-                    _ = try reader.peekByte();
-                    reader.tossBuffered();
-                }
-                return e;
-            };
-            if (ready) break;
-        } else |e| {
-            try self.close();
-            return e;
-        }
-        return reader;
-    } else return error.ServerNotConnected;
-}
-
-/// Wait until the socket is ready to write a message. Return the writer.
-pub fn getWriter(self: *Network) !*std.Io.Writer {
-    if (self.socket) |_| {
-        const writer: *std.Io.Writer = &self.socket.?.writer.interface;
-        while (self.socket.?.readyToWrite(0)) |ready| {
-            try command.checkCommandInterrupt();
-            if (ready) break;
-        } else |e| {
-            try self.close();
-            return e;
-        }
-        return writer;
-    } else return error.ServerNotConnected;
 }

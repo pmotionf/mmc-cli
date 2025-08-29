@@ -23,10 +23,11 @@ pub fn waitState(
             wait_timer.read() > timeout * std.time.ns_per_ms)
             return error.WaitTimeout;
         {
-            const writer = try client.net.getWriter();
+            try client.net.socket.waitToWrite();
+            var writer = try client.net.socket.writer(&client.writer_buf);
             try api.request.info.system.encode(
                 allocator,
-                writer,
+                &writer.interface,
                 .{
                     .line_id = line_id,
                     .carrier = true,
@@ -35,12 +36,13 @@ pub fn waitState(
                     },
                 },
             );
-            try writer.flush();
+            try writer.interface.flush();
         }
-        const reader = try client.net.getReader();
+        try client.net.socket.waitToRead();
+        var reader = try client.net.socket.reader(&client.reader_buf);
         var system = try api.response.info.system.decode(
             client.allocator,
-            reader,
+            &reader.interface,
         );
         defer system.deinit(client.allocator);
         if (system.line_id != line_id) return error.InvalidResponse;
