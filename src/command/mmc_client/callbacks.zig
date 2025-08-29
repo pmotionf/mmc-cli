@@ -48,10 +48,9 @@ pub fn connect(params: [][]const u8) !void {
     }
     std.log.debug("Asserting API version..", .{});
     {
-        var reader = try client.net.getReader();
         const response = try client.api.response.core.api_version.decode(
             client.allocator,
-            &reader,
+            try client.net.getReader(),
         );
         if (client.api.api.version.major != response.major or
             client.api.api.version.minor != response.minor)
@@ -72,10 +71,9 @@ pub fn connect(params: [][]const u8) !void {
     }
     std.log.debug("Getting line configuration..", .{});
     {
-        var reader = try client.net.getReader();
         var response = try client.api.response.core.line_config.decode(
             client.allocator,
-            &reader,
+            try client.net.getReader(),
         );
         defer response.deinit(client.allocator);
         client.lines = try client.allocator.alloc(
@@ -184,10 +182,9 @@ pub fn serverVersion(_: [][]const u8) !void {
         );
         try writer.flush();
     }
-    var reader = try client.net.getReader();
     var server = try client.api.response.core.server.decode(
         client.allocator,
-        &reader,
+        try client.net.getReader(),
     );
     defer server.deinit(client.allocator);
     const version = server.version.?;
@@ -229,10 +226,9 @@ pub fn showError(params: [][]const u8) !void {
         );
         try writer.flush();
     }
-    var reader = try client.net.getReader();
     var system = try client.api.response.info.system.decode(
         client.allocator,
-        &reader,
+        try client.net.getReader(),
     );
     defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
@@ -294,10 +290,9 @@ pub fn axisInfo(params: [][]const u8) !void {
         );
         try writer.flush();
     }
-    var reader = try client.net.getReader();
     var system = try client.api.response.info.system.decode(
         client.allocator,
-        &reader,
+        try client.net.getReader(),
     );
     defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
@@ -337,10 +332,9 @@ pub fn driverInfo(params: [][]const u8) !void {
         );
         try writer.flush();
     }
-    var reader = try client.net.getReader();
     var system = try client.api.response.info.system.decode(
         client.allocator,
-        &reader,
+        try client.net.getReader(),
     );
     defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
@@ -380,10 +374,9 @@ pub fn carrierInfo(params: [][]const u8) !void {
         );
         try writer.flush();
     }
-    var reader = try client.net.getReader();
     var system = try client.api.response.info.system.decode(
         client.allocator,
-        &reader,
+        try client.net.getReader(),
     );
     defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
@@ -458,10 +451,9 @@ pub fn axisCarrier(params: [][]const u8) !void {
         );
         try writer.flush();
     }
-    var reader = try client.net.getReader();
     var system = try client.api.response.info.system.decode(
         client.allocator,
-        &reader,
+        try client.net.getReader(),
     );
     defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
@@ -520,10 +512,9 @@ pub fn carrierId(params: [][]const u8) !void {
             );
             try writer.flush();
         }
-        var reader = try client.net.getReader();
         var system = try client.api.response.info.system.decode(
             client.allocator,
-            &reader,
+            try client.net.getReader(),
         );
         defer system.deinit(client.allocator);
         if (system.line_id != line.id) return error.InvalidResponse;
@@ -597,10 +588,9 @@ pub fn assertLocation(params: [][]const u8) !void {
         );
         try writer.flush();
     }
-    var reader = try client.net.getReader();
     var system = try client.api.response.info.system.decode(
         client.allocator,
-        &reader,
+        try client.net.getReader(),
     );
     defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
@@ -762,10 +752,9 @@ pub fn carrierLocation(params: [][]const u8) !void {
         );
         try writer.flush();
     }
-    var reader = try client.net.getReader();
     var system = try client.api.response.info.system.decode(
         client.allocator,
-        &reader,
+        try client.net.getReader(),
     );
     defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
@@ -809,10 +798,9 @@ pub fn carrierAxis(params: [][]const u8) !void {
         );
         try writer.flush();
     }
-    var reader = try client.net.getReader();
     var system = try client.api.response.info.system.decode(
         client.allocator,
-        &reader,
+        try client.net.getReader(),
     );
     defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
@@ -859,10 +847,9 @@ pub fn hallStatus(params: [][]const u8) !void {
             );
             try writer.flush();
         }
-        var reader = try client.net.getReader();
         var system = try client.api.response.info.system.decode(
             client.allocator,
-            &reader,
+            try client.net.getReader(),
         );
         defer system.deinit(client.allocator);
         if (system.line_id != line.id) return error.InvalidResponse;
@@ -890,10 +877,9 @@ pub fn hallStatus(params: [][]const u8) !void {
             );
             try writer.flush();
         }
-        var reader = try client.net.getReader();
         var system = try client.api.response.info.system.decode(
             client.allocator,
-            &reader,
+            try client.net.getReader(),
         );
         defer system.deinit(client.allocator);
         if (system.line_id != line.id and
@@ -954,10 +940,9 @@ pub fn assertHall(params: [][]const u8) !void {
         );
         try writer.flush();
     }
-    var reader = try client.net.getReader();
     var system = try client.api.response.info.system.decode(
         client.allocator,
-        &reader,
+        try client.net.getReader(),
     );
     defer system.deinit(client.allocator);
     if (system.line_id != line.id) return error.InvalidResponse;
@@ -1605,10 +1590,9 @@ pub fn waitAxisEmpty(params: [][]const u8) !void {
             );
             try writer.flush();
         }
-        var reader = try client.net.getReader();
         var system = try client.api.response.info.system.decode(
             client.allocator,
-            &reader,
+            try client.net.getReader(),
         );
         defer system.deinit(client.allocator);
         if (system.line_id != line.id) return error.InvalidResponse;
@@ -1731,10 +1715,9 @@ pub fn removeLogInfo(params: [][]const u8) !void {
 fn waitCommandReceived(allocator: std.mem.Allocator) !void {
     var id: u32 = 0;
     {
-        var reader = try client.net.getReader();
         id = try client.api.response.command.id.decode(
             client.allocator,
-            &reader,
+            try client.net.getReader(),
         );
     }
     defer client.clearCommand(allocator, id) catch {};
@@ -1750,10 +1733,9 @@ fn waitCommandReceived(allocator: std.mem.Allocator) !void {
             );
             try writer.flush();
         }
-        var reader = try client.net.getReader();
         var decoded = try client.api.response.info.commands.decode(
             allocator,
-            &reader,
+            try client.net.getReader(),
         );
         defer decoded.deinit(client.allocator);
         if (decoded.commands.items.len > 1) return error.InvalidResponse;

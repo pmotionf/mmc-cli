@@ -155,10 +155,9 @@ pub const Data = struct {
                 );
                 try writer.flush();
             }
-            var reader = try net.getReader();
             var response = try api_helper.response.info.system.decode(
                 allocator,
-                &reader,
+                try net.getReader(),
             );
             defer response.deinit(allocator);
             const axis_infos = response.axis_infos;

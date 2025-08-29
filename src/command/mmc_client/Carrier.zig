@@ -37,10 +37,10 @@ pub fn waitState(
             );
             try writer.flush();
         }
-        var reader = try client.net.getReader();
+        const reader = try client.net.getReader();
         var system = try api.response.info.system.decode(
             client.allocator,
-            &reader,
+            reader,
         );
         defer system.deinit(client.allocator);
         if (system.line_id != line_id) return error.InvalidResponse;

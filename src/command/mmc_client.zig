@@ -827,10 +827,11 @@ pub fn clearCommand(a: std.mem.Allocator, id: u32) !void {
             writer,
             .{ .command_id = id },
         );
-        var reader = try net.getReader();
-        if (try api.response.command.operation.decode(
+        try writer.flush();
+        const completed = try api.response.command.operation.decode(
             a,
-            &reader,
-        )) break;
+            try net.getReader(),
+        );
+        if (completed) break;
     }
 }

@@ -6,6 +6,8 @@ const builtin = @import("builtin");
 const command = @import("../../command.zig");
 const client = @import("../mmc_client.zig");
 
+const native_os = builtin.os.tag;
+
 // NOTE: Endpoint is saved in `Network` since the endpoint can be given during
 //       the program initialization. This allows the `CONNECT` command to run
 //       without any parameters, as it just execute with the saved endpoint.
@@ -50,7 +52,7 @@ pub const Endpoint = struct {
 
 pub const Socket = struct {
     stream: std.net.Stream,
-    reader: std.net.Stream.Reader,
+    reader: Reader,
     writer: std.net.Stream.Writer,
 
     pub fn init(
@@ -60,11 +62,286 @@ pub const Socket = struct {
     ) Socket {
         var result: Socket = undefined;
         result.stream = stream;
-        result.reader = stream.reader(reader_buf);
+        result.reader = Reader.init(stream, reader_buf);
         result.writer = stream.writer(writer_buf);
         return result;
     }
+
+    /// Check if the socket is ready to read
+    pub fn readyToRead(
+        socket: *Socket,
+        /// Time, in milliseconds, to wait. 0 return immediately. <0 blocking.
+        timeout: i32,
+    ) (std.posix.PollError || error{ConnectionClosedByPeer})!bool {
+        const stream: std.net.Stream = socket.reader.getStream();
+        const revents = try poll(
+            stream.handle,
+            std.posix.POLL.RDNORM,
+            timeout,
+        );
+
+        if (checkRevents(revents, std.posix.POLL.HUP))
+            return error.ConnectionClosedByPeer;
+        return checkRevents(revents, std.posix.POLL.RDNORM);
+    }
+
+    /// Check if the socket is ready to write
+    pub fn readyToWrite(
+        socket: *Socket,
+        /// Time, in milliseconds, to wait. 0 return immediately. <0 blocking.
+        timeout: i32,
+    ) (std.posix.PollError || error{ConnectionClosedByPeer})!bool {
+        const stream: std.net.Stream = socket.writer.getStream();
+        const revents = try poll(
+            stream.handle,
+            std.posix.POLL.OUT,
+            timeout,
+        );
+        if (checkRevents(revents, std.posix.POLL.HUP))
+            return error.ConnectionClosedByPeer;
+        return checkRevents(revents, std.posix.POLL.OUT);
+    }
+
+    const max_buffers_len = 8;
+
+    pub const Reader = switch (native_os) {
+        .windows => struct {
+            /// Use `interface` for portable code.
+            interface_state: std.Io.Reader,
+            /// Use `getStream` for portable code.
+            net_stream: std.net.Stream,
+            /// Use `getError` for portable code.
+            error_state: ?Error,
+
+            pub const Error = ReadError;
+
+            pub fn getStream(r: *const Reader) std.net.Stream {
+                return r.net_stream;
+            }
+
+            pub fn getError(r: *const Reader) ?Error {
+                return r.error_state;
+            }
+
+            pub fn interface(r: *Reader) *std.Io.Reader {
+                return &r.interface_state;
+            }
+
+            pub fn init(net_stream: std.net.Stream, buffer: []u8) Reader {
+                return .{
+                    .interface_state = .{
+                        .vtable = &.{
+                            .stream = stream,
+                            .readVec = readVec,
+                        },
+                        .buffer = buffer,
+                        .seek = 0,
+                        .end = 0,
+                    },
+                    .net_stream = net_stream,
+                    .error_state = null,
+                };
+            }
+
+            fn stream(io_r: *std.Io.Reader, io_w: *std.Io.Writer, limit: std.Io.Limit) std.Io.Reader.StreamError!usize {
+                const dest = limit.slice(try io_w.writableSliceGreedy(1));
+                var bufs: [1][]u8 = .{dest};
+                const n = try readVec(io_r, &bufs);
+                io_w.advance(n);
+                return n;
+            }
+
+            fn readVec(io_r: *std.Io.Reader, data: [][]u8) std.Io.Reader.Error!usize {
+                const r: *Reader = @alignCast(@fieldParentPtr("interface_state", io_r));
+                // Check if the socket is ready to read.
+                const socket: *Socket = @alignCast(
+                    @fieldParentPtr("reader", r),
+                );
+                if (!(socket.readyToRead(0) catch return error.ReadFailed) and
+                    io_r.bufferedLen() == 0)
+                    return error.EndOfStream;
+                var iovecs: [max_buffers_len]std.os.windows.ws2_32.WSABUF = undefined;
+                const bufs_n, const data_size = try io_r.writableVectorWsa(&iovecs, data);
+                const bufs = iovecs[0..bufs_n];
+                std.debug.assert(bufs[0].len != 0);
+                const n = streamBufs(r, bufs) catch |err| {
+                    r.error_state = err;
+                    return error.ReadFailed;
+                };
+                if (n == 0) return error.EndOfStream;
+                if (n > data_size) {
+                    io_r.seek = 0;
+                    io_r.end = n - data_size;
+                    return data_size;
+                }
+                return n;
+            }
+
+            fn handleRecvError(winsock_error: std.os.windows.ws2_32.WinsockError) Error!void {
+                switch (winsock_error) {
+                    .WSAECONNRESET => return error.ConnectionResetByPeer,
+                    .WSAEFAULT => unreachable, // a pointer is not completely contained in user address space.
+                    .WSAEINPROGRESS, .WSAEINTR => unreachable, // deprecated and removed in WSA 2.2
+                    .WSAEINVAL => return error.SocketNotBound,
+                    .WSAEMSGSIZE => return error.MessageTooBig,
+                    .WSAENETDOWN => return error.NetworkSubsystemFailed,
+                    .WSAENETRESET => return error.ConnectionResetByPeer,
+                    .WSAENOTCONN => return error.SocketNotConnected,
+                    .WSAEWOULDBLOCK => return error.WouldBlock,
+                    .WSANOTINITIALISED => unreachable, // WSAStartup must be called before this function
+                    .WSA_IO_PENDING => unreachable,
+                    .WSA_OPERATION_ABORTED => unreachable, // not using overlapped I/O
+                    else => |err| return std.os.windows.unexpectedWSAError(err),
+                }
+            }
+
+            fn streamBufs(r: *Reader, bufs: []std.os.windows.ws2_32.WSABUF) Error!u32 {
+                var flags: u32 = 0;
+                var overlapped: std.os.windows.OVERLAPPED = std.mem.zeroes(std.os.windows.OVERLAPPED);
+
+                var n: u32 = undefined;
+                if (std.os.windows.ws2_32.WSARecv(
+                    r.net_stream.handle,
+                    bufs.ptr,
+                    @intCast(bufs.len),
+                    &n,
+                    &flags,
+                    &overlapped,
+                    null,
+                ) == std.os.windows.ws2_32.SOCKET_ERROR) switch (std.os.windows.ws2_32.WSAGetLastError()) {
+                    .WSA_IO_PENDING => {
+                        var result_flags: u32 = undefined;
+                        if (std.os.windows.ws2_32.WSAGetOverlappedResult(
+                            r.net_stream.handle,
+                            &overlapped,
+                            &n,
+                            std.os.windows.TRUE,
+                            &result_flags,
+                        ) == std.os.windows.FALSE) try handleRecvError(std.os.windows.ws2_32.WSAGetLastError());
+                    },
+                    else => |winsock_error| try handleRecvError(winsock_error),
+                };
+
+                return n;
+            }
+        },
+        else => struct {
+            /// Use `getStream`, `interface`, and `getError` for portable code.
+            file_reader: std.fs.File.Reader,
+
+            pub const Error = ReadError;
+
+            pub fn interface(r: *Reader) *std.Io.Reader {
+                return &r.file_reader.interface;
+            }
+
+            pub fn init(net_stream: std.net.Stream, buffer: []u8) Reader {
+                return .{
+                    .file_reader = .{
+                        .interface = initInterface(buffer),
+                        .file = .{ .handle = net_stream.handle },
+                        .mode = .streaming,
+                        .seek_err = error.Unseekable,
+                        .size_err = error.Streaming,
+                    },
+                };
+            }
+
+            pub fn initInterface(buffer: []u8) std.Io.Reader {
+                return .{
+                    .vtable = &.{
+                        .stream = std.fs.File.Reader.stream,
+                        .discard = std.fs.File.Reader.discard,
+                        .readVec = readVec,
+                    },
+                    .buffer = buffer,
+                    .seek = 0,
+                    .end = 0,
+                };
+            }
+            /// Modified readVec to read when the socket is ready to read.
+            fn readVec(io_reader: *std.Io.Reader, data: [][]u8) std.Io.Reader.Error!usize {
+                const r: *Reader = @alignCast(@fieldParentPtr("interface", io_reader));
+                switch (r.mode) {
+                    .streaming, .streaming_reading => {
+                        // Check if the socket is ready to read.
+                        const socket: *Socket = @alignCast(
+                            @fieldParentPtr("reader", r),
+                        );
+                        if (!(socket.readyToRead(0) catch return error.ReadFailed) and
+                            io_reader.bufferedLen() == 0)
+                            return error.EndOfStream;
+                        var iovecs_buffer: [max_buffers_len]std.posix.iovec = undefined;
+                        const dest_n, const data_size = try io_reader.writableVectorPosix(&iovecs_buffer, data);
+                        const dest = iovecs_buffer[0..dest_n];
+                        std.debug.assert(dest[0].len > 0);
+                        const n = std.posix.readv(r.file.handle, dest) catch |err| {
+                            r.err = err;
+                            return error.ReadFailed;
+                        };
+                        if (n == 0) {
+                            r.size = r.pos;
+                            return error.EndOfStream;
+                        }
+                        r.pos += n;
+                        if (n > data_size) {
+                            io_reader.end += n - data_size;
+                            return data_size;
+                        }
+                        return n;
+                    },
+                    else => unreachable,
+                }
+            }
+
+            pub fn getStream(r: *const Reader) std.net.Stream {
+                return .{ .handle = r.file_reader.file.handle };
+            }
+
+            pub fn getError(r: *const Reader) ?Error {
+                return r.file_reader.err;
+            }
+        },
+    };
+
+    pub const ReadError = std.posix.ReadError || error{
+        SocketNotBound,
+        MessageTooBig,
+        NetworkSubsystemFailed,
+        ConnectionResetByPeer,
+        SocketNotConnected,
+    };
+
+    fn checkRevents(revents: i16, mask: i16) bool {
+        if (revents & mask == mask) return true else return false;
+    }
+
+    /// Query the socket status with the given event, return the revent.
+    /// Note that `POLLHUP`, `POLLNVAL`, and `POLLERR` is always returned
+    /// without any request.
+    fn poll(
+        socket: std.net.Stream.Handle,
+        events: i16,
+        /// Time, in milliseconds, to wait. 0 return immediately. <0 blocking.
+        timeout: i32,
+    ) std.posix.PollError!i16 {
+        const fd: std.posix.pollfd = .{
+            .fd = socket,
+            .events = events,
+            .revents = 0,
+        };
+        var poll_fd: [1]std.posix.pollfd = .{fd};
+        // check whether the expected socket event happen
+        _ = std.posix.poll(
+            &poll_fd,
+            timeout,
+        ) catch |e| {
+            return e;
+        };
+        return poll_fd[0].revents;
+    }
 };
+
 /// Initialize the endpoint for network connection
 pub fn init(
     allocator: std.mem.Allocator,
@@ -73,7 +350,7 @@ pub fn init(
 ) (std.mem.Allocator.Error)!Network {
     var result: Network = undefined;
     result.endpoint = try .init(allocator, name, port);
-    result.reader_buf = try allocator.alloc(u8, 16_384);
+    result.reader_buf = try allocator.alloc(u8, 4096);
     result.writer_buf = try allocator.alloc(u8, 4096);
     result.socket = null;
     return result;
@@ -117,31 +394,31 @@ pub fn close(self: *Network) error{ServerNotConnected}!void {
             "Disconnected from server {s}:{d}",
             .{ self.endpoint.name, self.endpoint.port },
         );
-        socket.stream.close();
+        const stream: std.net.Stream = socket.reader.getStream();
+        stream.close();
         self.socket = null;
     } else return error.ServerNotConnected;
 }
 
-// NOTE: This implementation is more preferable since we do not need to copy the
-//       string to a different reader. However, the zig net stream implementation
-//       keep reading it without knowing that the stream already ends. If we can
-//       make a simple patch to zig std.net.Stream.Reader, this implementation
-//       shall be used.
-//
 /// Wait until the socket is ready to read a message. Return the reader.
-pub fn _getReader(self: *Network) !*std.Io.Reader {
+pub fn getReader(self: *Network) !*std.Io.Reader {
     if (self.socket) |_| {
         const reader: *std.Io.Reader = self.socket.?.reader.interface();
-        while (waitingToRead(self.socket.?.stream, 0)) |wait| {
+        while (self.socket.?.readyToRead(0)) |ready| {
             command.checkCommandInterrupt() catch |e| {
                 // Wait for 0.5 seconds to remove any incoming message. This message
                 // is no longer required as the process to read the message is
                 // cancelled.
-                _ = try waitingToRead(self.socket.?.stream, 500);
-                reader.tossBuffered();
+                const arrived = try self.socket.?.readyToRead(
+                    500,
+                );
+                if (arrived) {
+                    _ = try reader.peekByte();
+                    reader.tossBuffered();
+                }
                 return e;
             };
-            if (!wait) break;
+            if (ready) break;
         } else |e| {
             try self.close();
             return e;
@@ -150,113 +427,17 @@ pub fn _getReader(self: *Network) !*std.Io.Reader {
     } else return error.ServerNotConnected;
 }
 
-pub fn getReader(self: *Network) !std.Io.Reader {
-    if (self.socket) |_| {
-        const reader: *std.Io.Reader = self.socket.?.reader.interface();
-        while (waitingToRead(self.socket.?.stream, 0)) |wait| {
-            command.checkCommandInterrupt() catch |e| {
-                // Wait for 0.5 seconds to remove any incoming message. This message
-                // is no longer required as the process to read the message is
-                // cancelled.
-                _ = try waitingToRead(self.socket.?.stream, 500);
-                // This implementation is a little funky as the reader need to peek at
-                // least once to read the whole data.
-                _ = try reader.peekByte();
-                reader.tossBuffered();
-                return e;
-            };
-            if (!wait) break;
-        } else |e| {
-            try self.close();
-            return e;
-        }
-        // This implementation is a little funky as the reader need to peek at
-        // least once to read the whole data.
-        _ = try reader.peekByte();
-        return std.Io.Reader.fixed(try reader.take(reader.bufferedLen()));
-    } else return error.ServerNotConnected;
-}
-
 /// Wait until the socket is ready to write a message. Return the writer.
 pub fn getWriter(self: *Network) !*std.Io.Writer {
     if (self.socket) |_| {
         const writer: *std.Io.Writer = &self.socket.?.writer.interface;
-        while (waitingToWrite(self.socket.?.stream, 0)) |wait| {
+        while (self.socket.?.readyToWrite(0)) |ready| {
             try command.checkCommandInterrupt();
-            if (!wait) break;
+            if (ready) break;
         } else |e| {
             try self.close();
             return e;
         }
         return writer;
     } else return error.ServerNotConnected;
-}
-
-/// Check if the socket is ready to read
-fn waitingToRead(
-    stream: std.net.Stream,
-    /// Time, in milliseconds, to wait. 0 return immediately. <0 blocking.
-    timeout: i32,
-) (std.posix.PollError || error{ConnectionClosedByPeer})!bool {
-    const revents = try poll(
-        stream.handle,
-        std.posix.POLL.RDNORM,
-        timeout,
-    );
-
-    if (checkRevents(revents, std.posix.POLL.HUP))
-        return error.ConnectionClosedByPeer;
-    if (checkRevents(revents, std.posix.POLL.RDNORM))
-        return false
-    else
-        return true;
-}
-
-/// Check if the socket is ready to write
-fn waitingToWrite(
-    stream: std.net.Stream,
-    /// Time, in milliseconds, to wait. 0 return immediately. <0 blocking.
-    timeout: i32,
-) (std.posix.PollError || error{ConnectionClosedByPeer})!bool {
-    const revents = try poll(
-        stream.handle,
-        std.posix.POLL.OUT,
-        timeout,
-    );
-    if (checkRevents(revents, std.posix.POLL.HUP))
-        return error.ConnectionClosedByPeer;
-
-    if (checkRevents(revents, std.posix.POLL.OUT))
-        return false
-    else
-        return true;
-}
-
-fn checkRevents(revents: i16, mask: i16) bool {
-    if (revents & mask == mask) return true else return false;
-}
-
-/// Query the socket status with the given event, return the revent.
-/// Note that `POLLHUP`, `POLLNVAL`, and `POLLERR` is always returned
-/// without any request. This poll() always return immediately.
-fn poll(
-    socket: std.net.Stream.Handle,
-    events: i16,
-    /// Time, in milliseconds, to wait. 0 return immediately. <0 blocking.
-    timeout: i32,
-) std.posix.PollError!i16 {
-    const fd: std.posix.pollfd = .{
-        .fd = socket,
-        .events = events,
-        .revents = 0,
-    };
-    var poll_fd: [1]std.posix.pollfd = .{fd};
-    // check whether the expected socket event happen
-    _ = std.posix.poll(
-        &poll_fd,
-        timeout,
-    ) catch |e| {
-        return e;
-    };
-    return poll_fd[0].revents;
 }
