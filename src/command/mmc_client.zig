@@ -358,7 +358,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Release the servo of a given axis, allowing for free carrier movement.
         \\This command should be run before carriers move within or exit from
-        \\the system due to external influence. If no axis is given, release the
+        \\the track due to external influence. If no axis is given, release the
         \\servo of all axis on the line. 
         ,
         .execute = &callbacks.releaseServo,
@@ -384,9 +384,9 @@ pub fn init(c: Config) !void {
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
         },
-        .short_description = "Calibrate a system line.",
+        .short_description = "Calibrate a track line.",
         .long_description =
-        \\Calibrate a system line. An uninitialized carrier must be positioned
+        \\Calibrate a track line. An uninitialized carrier must be positioned
         \\at the start of the line such that the first axis has both hall
         \\alarms active.
         ,
@@ -400,9 +400,8 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Set line zero position.",
         .long_description =
-        \\Set a system line's zero position based on a current carrier's
-        \\position. Aforementioned carrier must be located at first axis of
-        \\system line.
+        \\Set a line's zero position based on a current carrier's position. 
+        \\Aforementioned carrier must be located at first axis of line.
         ,
         .execute = &callbacks.setLineZero,
     });
@@ -808,7 +807,7 @@ pub fn deinit() void {
 /// latest server.
 pub fn disconnect() error{ServerNotConnected}!void {
     // Wait until the log finish storing log data and cleanup
-    while (Log.start.load(.monotonic)) {}
+    while (Log.executing.load(.monotonic)) {}
     try net.socket.close();
     log.deinit();
     for (lines) |*line| {
@@ -831,15 +830,15 @@ pub fn clearCommand(a: std.mem.Allocator, id: u32) !void {
         try api.request.command.clear_commands.encode(
             a,
             &writer.interface,
-            .{ .command_id = id },
+            .{ .command = id },
         );
         try writer.interface.flush();
         try net.socket.waitToRead();
         var reader = try net.socket.reader(&reader_buf);
-        const completed = try api.response.command.operation.decode(
+        const cleared_id = try api.response.command.cleared_id.decode(
             a,
             &reader.interface,
         );
-        if (completed) break;
+        if (cleared_id == id) break;
     }
 }
