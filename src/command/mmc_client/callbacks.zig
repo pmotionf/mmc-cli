@@ -91,7 +91,7 @@ pub fn connect(params: [][]const u8) !void {
         try client.api.request.core.encode(
             client.allocator,
             &writer.interface,
-            .CORE_REQUEST_KIND_LINE_CONFIG,
+            .CORE_REQUEST_KIND_TRACK_CONFIG,
         );
         try writer.interface.flush();
     }
@@ -99,7 +99,7 @@ pub fn connect(params: [][]const u8) !void {
     {
         try socket.waitToRead(&command.checkCommandInterrupt);
         var reader = socket.reader(&client.reader_buf);
-        var response = try client.api.response.core.line_config.decode(
+        var response = try client.api.response.core.track_config.decode(
             client.allocator,
             &reader.interface,
         );
@@ -244,29 +244,29 @@ pub fn showError(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const source: ?client.api.api.info_msg.Range = b: {
+    const filter: ?client.api.api.mmc_msg.Range = b: {
         if (params[1].len > 0) {
             const axis_id = try std.fmt.parseInt(
                 u32,
                 params[1],
                 0,
             );
-            break :b .{ .start_id = axis_id, .end_id = axis_id };
+            break :b .{ .start = axis_id, .end = axis_id };
         } else break :b null;
     };
     {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.info.system.encode(
+        try client.api.request.info.track.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .axis = true,
-                .driver = true,
-                .source = if (source) |range|
-                    .{ .axis_range = range }
+                .line = line.id,
+                .info_axis_errors = true,
+                .info_driver_errors = true,
+                .filter = if (filter) |range|
+                    .{ .axes = range }
                 else
                     null,
             },
@@ -275,15 +275,15 @@ pub fn showError(params: [][]const u8) !void {
     }
     try socket.waitToRead(&command.checkCommandInterrupt);
     var reader = socket.reader(&client.reader_buf);
-    var system = try client.api.response.info.system.decode(
+    var track = try client.api.response.info.track.decode(
         client.allocator,
         &reader.interface,
     );
-    defer system.deinit(client.allocator);
-    if (system.line_id != line.id) return error.InvalidResponse;
-    var axis_errors = system.axis_errors;
-    var driver_errors = system.driver_errors;
-    if (source) |_| {
+    defer track.deinit(client.allocator);
+    if (track.line != line.id) return error.InvalidResponse;
+    var axis_errors = track.axis_errors;
+    var driver_errors = track.driver_errors;
+    if (filter) |_| {
         if (axis_errors.items.len != 1) return error.InvalidResponse;
         if (driver_errors.items.len != 1) return error.InvalidResponse;
     } else {
@@ -291,31 +291,32 @@ pub fn showError(params: [][]const u8) !void {
     }
     var stdout = std.fs.File.stdout().writer(&.{});
     const writer = &stdout.interface;
-    if (source) |_| {
-        try client.api.response.info.system.axis.err.printActive(
+    if (filter) |_| {
+        try client.api.response.info.track.axis.err.printActive(
             axis_errors.pop().?,
             writer,
         );
-        try client.api.response.info.system.driver.err.printActive(
+        try client.api.response.info.track.driver.err.printActive(
             driver_errors.pop().?,
             writer,
         );
         return;
     }
     for (axis_errors.items) |err| {
-        try client.api.response.info.system.axis.err.printActive(
+        try client.api.response.info.track.axis.err.printActive(
             err,
             writer,
         );
     }
     for (driver_errors.items) |err| {
-        try client.api.response.info.system.driver.err.printActive(
+        try client.api.response.info.track.driver.err.printActive(
             err,
             writer,
         );
     }
 }
 
+// TODO: Only show axis state
 pub fn axisInfo(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
@@ -326,16 +327,17 @@ pub fn axisInfo(params: [][]const u8) !void {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.info.system.encode(
+        try client.api.request.info.track.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .axis = true,
-                .source = .{
-                    .axis_range = .{
-                        .start_id = axis_id,
-                        .end_id = axis_id,
+                .line = line.id,
+                .info_axis_errors = true,
+                .info_axis_state = true,
+                .filter = .{
+                    .axes = .{
+                        .start = axis_id,
+                        .end = axis_id,
                     },
                 },
             },
@@ -344,25 +346,26 @@ pub fn axisInfo(params: [][]const u8) !void {
     }
     try socket.waitToRead(&command.checkCommandInterrupt);
     var reader = socket.reader(&client.reader_buf);
-    var system = try client.api.response.info.system.decode(
+    var track = try client.api.response.info.track.decode(
         client.allocator,
         &reader.interface,
     );
-    defer system.deinit(client.allocator);
-    if (system.line_id != line.id) return error.InvalidResponse;
-    var axis_infos = system.axis_infos;
-    var axis_errors = system.axis_errors;
-    if (axis_infos.items.len != axis_errors.items.len and
-        axis_infos.items.len != 1)
+    defer track.deinit(client.allocator);
+    if (track.line != line.id) return error.InvalidResponse;
+    var axis_state = track.axis_state;
+    var axis_errors = track.axis_errors;
+    if (axis_state.items.len != axis_errors.items.len and
+        axis_state.items.len != 1)
         return error.InvalidResponse;
-    const info = axis_infos.pop().?;
+    const info = axis_state.pop().?;
     const err = axis_errors.pop().?;
     var stdout = std.fs.File.stdout().writer(&.{});
     const writer = &stdout.interface;
-    try client.api.response.info.system.axis.info.print(info, writer);
-    try client.api.response.info.system.axis.err.print(err, writer);
+    try client.api.response.info.track.axis.state.print(info, writer);
+    try client.api.response.info.track.axis.err.print(err, writer);
 }
 
+// TODO: Only show driver state
 pub fn driverInfo(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
@@ -373,16 +376,17 @@ pub fn driverInfo(params: [][]const u8) !void {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.info.system.encode(
+        try client.api.request.info.track.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .driver = true,
-                .source = .{
-                    .driver_range = .{
-                        .start_id = driver_id,
-                        .end_id = driver_id,
+                .line = line.id,
+                .info_driver_state = true,
+                .info_driver_errors = true,
+                .filter = .{
+                    .drivers = .{
+                        .start = driver_id,
+                        .end = driver_id,
                     },
                 },
             },
@@ -391,23 +395,23 @@ pub fn driverInfo(params: [][]const u8) !void {
     }
     try socket.waitToRead(&command.checkCommandInterrupt);
     var reader = socket.reader(&client.reader_buf);
-    var system = try client.api.response.info.system.decode(
+    var track = try client.api.response.info.track.decode(
         client.allocator,
         &reader.interface,
     );
-    defer system.deinit(client.allocator);
-    if (system.line_id != line.id) return error.InvalidResponse;
-    var driver_infos = system.driver_infos;
-    var driver_errors = system.driver_errors;
-    if (driver_infos.items.len != driver_errors.items.len and
+    defer track.deinit(client.allocator);
+    if (track.line != line.id) return error.InvalidResponse;
+    var driver_state = track.driver_state;
+    var driver_errors = track.driver_errors;
+    if (driver_state.items.len != driver_errors.items.len and
         driver_errors.items.len != 1)
         return error.InvalidResponse;
-    const info = driver_infos.pop().?;
+    const info = driver_state.pop().?;
     const err = driver_errors.pop().?;
     var stdout = std.fs.File.stdout().writer(&.{});
     const writer = &stdout.interface;
-    try client.api.response.info.system.driver.info.print(info, writer);
-    try client.api.response.info.system.driver.err.print(err, writer);
+    try client.api.response.info.track.driver.state.print(info, writer);
+    try client.api.response.info.track.driver.err.print(err, writer);
 }
 
 pub fn carrierInfo(params: [][]const u8) !void {
@@ -423,13 +427,13 @@ pub fn carrierInfo(params: [][]const u8) !void {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.info.system.encode(
+        try client.api.request.info.track.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .carrier = true,
-                .source = .{
+                .line = line.id,
+                .info_carrier_state = true,
+                .filter = .{
                     .carriers = .{ .ids = ids },
                 },
             },
@@ -438,18 +442,18 @@ pub fn carrierInfo(params: [][]const u8) !void {
     }
     try socket.waitToRead(&command.checkCommandInterrupt);
     var reader = socket.reader(&client.reader_buf);
-    var system = try client.api.response.info.system.decode(
+    var track = try client.api.response.info.track.decode(
         client.allocator,
         &reader.interface,
     );
-    defer system.deinit(client.allocator);
-    if (system.line_id != line.id) return error.InvalidResponse;
-    var carriers = system.carrier_infos;
+    defer track.deinit(client.allocator);
+    if (track.line != line.id) return error.InvalidResponse;
+    var carriers = track.carrier_state;
     if (carriers.items.len > 1) return error.InvalidResponse;
     const carrier = carriers.pop() orelse return error.CarrierNotFound;
     var stdout = std.fs.File.stdout().writer(&.{});
     const writer = &stdout.interface;
-    try client.api.response.info.system.carrier.print(carrier, writer);
+    try client.api.response.info.track.carrier.print(carrier, writer);
 }
 
 pub fn autoInitialize(params: [][]const u8) !void {
@@ -468,14 +472,14 @@ pub fn autoInitialize(params: [][]const u8) !void {
             const line_idx = try client.matchLine(line_name);
             const _line = client.lines[line_idx];
             const line: client.api.api.command_msg.Request.AutoInitialize.Line = .{
-                .line_id = _line.id,
+                .line = _line.id,
             };
             try init_lines.append(client.allocator, line);
         }
     } else {
         for (client.lines) |_line| {
             const line: client.api.api.command_msg.Request.AutoInitialize.Line = .{
-                .line_id = _line.id,
+                .line = _line.id,
             };
             try init_lines.append(client.allocator, line);
         }
@@ -505,16 +509,16 @@ pub fn axisCarrier(params: [][]const u8) !void {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.info.system.encode(
+        try client.api.request.info.track.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .carrier = true,
-                .source = .{
-                    .axis_range = .{
-                        .start_id = axis_id,
-                        .end_id = axis_id,
+                .line = line.id,
+                .info_carrier_state = true,
+                .filter = .{
+                    .axes = .{
+                        .start = axis_id,
+                        .end = axis_id,
                     },
                 },
             },
@@ -523,13 +527,13 @@ pub fn axisCarrier(params: [][]const u8) !void {
     }
     try socket.waitToRead(&command.checkCommandInterrupt);
     var reader = socket.reader(&client.reader_buf);
-    var system = try client.api.response.info.system.decode(
+    var track = try client.api.response.info.track.decode(
         client.allocator,
         &reader.interface,
     );
-    defer system.deinit(client.allocator);
-    if (system.line_id != line.id) return error.InvalidResponse;
-    var carriers = system.carrier_infos;
+    defer track.deinit(client.allocator);
+    if (track.line != line.id) return error.InvalidResponse;
+    var carriers = track.carrier_state;
     const carrier = carriers.pop() orelse return error.InvalidResponse;
     std.log.info("Carrier {d} on axis {d}.\n", .{ carrier.id, axis_id });
     if (result_var.len > 0) {
@@ -576,32 +580,32 @@ pub fn carrierId(params: [][]const u8) !void {
             try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
-            try client.api.request.info.system.encode(
+            try client.api.request.info.track.encode(
                 client.allocator,
                 &writer.interface,
                 .{
-                    .line_id = line.id,
-                    .axis = true,
-                    .source = null,
+                    .line = line.id,
+                    .info_axis_state = true,
+                    .filter = null,
                 },
             );
             try writer.interface.flush();
         }
         try socket.waitToRead(&command.checkCommandInterrupt);
         var reader = socket.reader(&client.reader_buf);
-        var system = try client.api.response.info.system.decode(
+        var track = try client.api.response.info.track.decode(
             client.allocator,
             &reader.interface,
         );
-        defer system.deinit(client.allocator);
-        if (system.line_id != line.id) return error.InvalidResponse;
-        const axis_infos = system.axis_infos;
-        if (axis_infos.items.len != line.axes) return error.InvalidResponse;
-        for (axis_infos.items) |axis| {
-            if (axis.carrier_id == 0) continue;
+        defer track.deinit(client.allocator);
+        if (track.line != line.id) return error.InvalidResponse;
+        const axis_state = track.axis_state;
+        if (axis_state.items.len != line.axes) return error.InvalidResponse;
+        for (axis_state.items) |axis| {
+            if (axis.carrier == 0) continue;
             std.log.info(
                 "Carrier {d} on line {s} axis {d}",
-                .{ axis.carrier_id, line.name, axis.id },
+                .{ axis.carrier, line.name, axis.id },
             );
             if (result_var.len > 0) {
                 var int_buf: [8]u8 = undefined;
@@ -614,7 +618,7 @@ pub fn carrierId(params: [][]const u8) !void {
                 const variable_value = try std.fmt.bufPrint(
                     &int_buf,
                     "{d}",
-                    .{axis.carrier_id},
+                    .{axis.carrier},
                 );
                 var iterator = command.variables.iterator();
                 var isValueExists: bool = false;
@@ -655,13 +659,13 @@ pub fn assertLocation(params: [][]const u8) !void {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.info.system.encode(
+        try client.api.request.info.track.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .carrier = true,
-                .source = .{
+                .line = line.id,
+                .info_carrier_state = true,
+                .filter = .{
                     .carriers = .{ .ids = ids },
                 },
             },
@@ -670,14 +674,14 @@ pub fn assertLocation(params: [][]const u8) !void {
     }
     try socket.waitToRead(&command.checkCommandInterrupt);
     var reader = socket.reader(&client.reader_buf);
-    var system = try client.api.response.info.system.decode(
+    var track = try client.api.response.info.track.decode(
         client.allocator,
         &reader.interface,
     );
-    defer system.deinit(client.allocator);
-    if (system.line_id != line.id) return error.InvalidResponse;
-    var carriers = system.carrier_infos;
-    if (system.line_id != line.id) return error.InvalidResponse;
+    defer track.deinit(client.allocator);
+    if (track.line != line.id) return error.InvalidResponse;
+    var carriers = track.carrier_state;
+    if (track.line != line.id) return error.InvalidResponse;
     const carrier = carriers.pop() orelse return error.InvalidResponse;
     const location = carrier.position;
     if (location < expected_location - location_thr or
@@ -685,30 +689,30 @@ pub fn assertLocation(params: [][]const u8) !void {
         return error.UnexpectedCarrierLocation;
 }
 
+// TODO: Change parameter from axis to carrier
 pub fn releaseServo(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    var axis_id: ?u32 = null;
+    var carrier_id: ?u32 = null;
     if (params[1].len > 0) {
-        const axis = try std.fmt.parseInt(
+        carrier_id = try std.fmt.parseInt(
             u32,
             params[1],
             0,
         );
-        axis_id = axis;
     }
     {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.command.release_control.encode(
+        try client.api.request.command.release.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .axis_id = if (axis_id) |axis| axis else null,
+                .line = line.id,
+                .carrier = if (carrier_id) |carrier| carrier else null,
             },
         );
         try writer.interface.flush();
@@ -721,10 +725,10 @@ pub fn clearErrors(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    var axis_id: ?u32 = null;
+    var driver_id: ?u32 = null;
     if (params[1].len > 0) {
         const axis = try std.fmt.parseInt(u32, params[1], 0);
-        axis_id = axis;
+        driver_id = axis / 3;
     }
     {
         try client.removeIgnoredMessage(socket);
@@ -734,9 +738,9 @@ pub fn clearErrors(params: [][]const u8) !void {
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .driver_id = if (axis_id) |id|
-                    id / 3
+                .line = line.id,
+                .drivers = if (driver_id) |id|
+                    .{ .start = id, .end = id }
                 else
                     null,
             },
@@ -746,6 +750,7 @@ pub fn clearErrors(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
+// TODO: Rename to deinitialize
 pub fn clearCarrierInfo(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
@@ -760,12 +765,15 @@ pub fn clearCarrierInfo(params: [][]const u8) !void {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.command.clear_carriers.encode(
+        try client.api.request.command.deinitialize.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .axis_id = if (axis_id) |id| id else null,
+                .line = line.id,
+                .axes = if (axis_id) |id|
+                    .{ .start = id, .end = id }
+                else
+                    null,
             },
         );
         try writer.interface.flush();
@@ -780,10 +788,10 @@ pub fn resetSystem(_: [][]const u8) !void {
             try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
-            try client.api.request.command.clear_carriers.encode(
+            try client.api.request.command.deinitialize.encode(
                 client.allocator,
                 &writer.interface,
-                .{ .line_id = line.id },
+                .{ .line = line.id },
             );
             try writer.interface.flush();
         }
@@ -795,7 +803,7 @@ pub fn resetSystem(_: [][]const u8) !void {
             try client.api.request.command.clear_errors.encode(
                 client.allocator,
                 &writer.interface,
-                .{ .line_id = line.id },
+                .{ .line = line.id },
             );
             try writer.interface.flush();
         }
@@ -804,10 +812,10 @@ pub fn resetSystem(_: [][]const u8) !void {
             try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
-            try client.api.request.command.stop_push_carrier.encode(
+            try client.api.request.command.stop_push.encode(
                 client.allocator,
                 &writer.interface,
-                .{ .line_id = line.id },
+                .{ .line = line.id },
             );
             try writer.interface.flush();
         }
@@ -816,10 +824,10 @@ pub fn resetSystem(_: [][]const u8) !void {
             try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
-            try client.api.request.command.stop_pull_carrier.encode(
+            try client.api.request.command.stop_pull.encode(
                 client.allocator,
                 &writer.interface,
-                .{ .line_id = line.id },
+                .{ .line = line.id },
             );
             try writer.interface.flush();
         }
@@ -842,13 +850,13 @@ pub fn carrierLocation(params: [][]const u8) !void {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.info.system.encode(
+        try client.api.request.info.track.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .carrier = true,
-                .source = .{
+                .line = line.id,
+                .info_carrier_state = true,
+                .filter = .{
                     .carriers = .{ .ids = ids },
                 },
             },
@@ -857,13 +865,13 @@ pub fn carrierLocation(params: [][]const u8) !void {
     }
     try socket.waitToRead(&command.checkCommandInterrupt);
     var reader = socket.reader(&client.reader_buf);
-    var system = try client.api.response.info.system.decode(
+    var track = try client.api.response.info.track.decode(
         client.allocator,
         &reader.interface,
     );
-    defer system.deinit(client.allocator);
-    if (system.line_id != line.id) return error.InvalidResponse;
-    var carriers = system.carrier_infos;
+    defer track.deinit(client.allocator);
+    if (track.line != line.id) return error.InvalidResponse;
+    var carriers = track.carrier_state;
     const carrier = carriers.pop() orelse return error.InvalidResponse;
     std.log.info(
         "Carrier {d} location: {d} mm",
@@ -893,13 +901,13 @@ pub fn carrierAxis(params: [][]const u8) !void {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.info.system.encode(
+        try client.api.request.info.track.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .carrier = true,
-                .source = .{
+                .line = line.id,
+                .info_carrier_state = true,
+                .filter = .{
                     .carriers = .{ .ids = ids },
                 },
             },
@@ -908,25 +916,23 @@ pub fn carrierAxis(params: [][]const u8) !void {
     }
     try socket.waitToRead(&command.checkCommandInterrupt);
     var reader = socket.reader(&client.reader_buf);
-    var system = try client.api.response.info.system.decode(
+    var track = try client.api.response.info.track.decode(
         client.allocator,
         &reader.interface,
     );
-    defer system.deinit(client.allocator);
-    if (system.line_id != line.id) return error.InvalidResponse;
-    var carriers = system.carrier_infos;
+    defer track.deinit(client.allocator);
+    if (track.line != line.id) return error.InvalidResponse;
+    var carriers = track.carrier_state;
     const carrier = carriers.pop() orelse return error.InvalidResponse;
-    if (carrier.axis) |axis| {
+    std.log.info(
+        "Carrier {d} axis: {}",
+        .{ carrier.id, carrier.axis_main },
+    );
+    if (carrier.axis_auxiliary) |aux|
         std.log.info(
             "Carrier {d} axis: {}",
-            .{ carrier.id, axis.main },
+            .{ carrier.id, aux },
         );
-        if (axis.auxiliary) |aux|
-            std.log.info(
-                "Carrier {d} axis: {}",
-                .{ carrier.id, aux },
-            );
-    } else return error.InvalidResponse;
 }
 
 pub fn hallStatus(params: [][]const u8) !void {
@@ -944,16 +950,16 @@ pub fn hallStatus(params: [][]const u8) !void {
             try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
-            try client.api.request.info.system.encode(
+            try client.api.request.info.track.encode(
                 client.allocator,
                 &writer.interface,
                 .{
-                    .line_id = line.id,
-                    .axis = true,
-                    .source = .{
-                        .axis_range = .{
-                            .start_id = id,
-                            .end_id = id,
+                    .line = line.id,
+                    .info_axis_state = true,
+                    .filter = .{
+                        .axes = .{
+                            .start = id,
+                            .end = id,
                         },
                     },
                 },
@@ -962,20 +968,19 @@ pub fn hallStatus(params: [][]const u8) !void {
         }
         try socket.waitToRead(&command.checkCommandInterrupt);
         var reader = socket.reader(&client.reader_buf);
-        var system = try client.api.response.info.system.decode(
+        var track = try client.api.response.info.track.decode(
             client.allocator,
             &reader.interface,
         );
-        defer system.deinit(client.allocator);
-        if (system.line_id != line.id) return error.InvalidResponse;
-        const axis = system.axis_infos.pop() orelse return error.InvalidResponse;
-        const hall = axis.hall_alarm orelse return error.InvalidResponse;
+        defer track.deinit(client.allocator);
+        if (track.line != line.id) return error.InvalidResponse;
+        const axis = track.axis_state.pop() orelse return error.InvalidResponse;
         std.log.info(
             "Axis {} Hall Sensor:\n\t BACK - {s}\n\t FRONT - {s}",
             .{
                 axis.id,
-                if (hall.back) "ON" else "OFF",
-                if (hall.front) "ON" else "OFF",
+                if (axis.hall_alarm_back) "ON" else "OFF",
+                if (axis.hall_alarm_front) "ON" else "OFF",
             },
         );
     } else {
@@ -983,35 +988,35 @@ pub fn hallStatus(params: [][]const u8) !void {
             try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
-            try client.api.request.info.system.encode(
+            try client.api.request.info.track.encode(
                 client.allocator,
                 &writer.interface,
                 .{
-                    .line_id = line.id,
-                    .axis = true,
-                    .source = null,
+                    .line = line.id,
+                    .info_axis_state = true,
+                    .filter = null,
                 },
             );
             try writer.interface.flush();
         }
         try socket.waitToRead(&command.checkCommandInterrupt);
         var reader = socket.reader(&client.reader_buf);
-        var system = try client.api.response.info.system.decode(
+        var track = try client.api.response.info.track.decode(
             client.allocator,
             &reader.interface,
         );
-        defer system.deinit(client.allocator);
-        if (system.line_id != line.id and
-            system.axis_infos.items.len != line.axes)
+        defer track.deinit(client.allocator);
+        if (track.line != line.id and
+            track.axis_state.items.len != line.axes)
             return error.InvalidResponse;
         // Starts printing hall status
-        for (system.axis_infos.items) |axis| {
+        for (track.axis_state.items) |axis| {
             std.log.info(
                 "Axis {} Hall Sensor:\n\t BACK - {s}\n\t FRONT - {s}",
                 .{
                     axis.id,
-                    if (axis.hall_alarm.?.back) "ON" else "OFF",
-                    if (axis.hall_alarm.?.front) "ON" else "OFF",
+                    if (axis.hall_alarm_back) "ON" else "OFF",
+                    if (axis.hall_alarm_front) "ON" else "OFF",
                 },
             );
         }
@@ -1022,7 +1027,7 @@ pub fn assertHall(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(u32, params[1], 0);
-    const side: client.api.api.command_msg.Direction =
+    const side: client.api.api.command_msg.Request.Direction =
         if (std.ascii.eqlIgnoreCase("back", params[2]) or
         std.ascii.eqlIgnoreCase("left", params[2]))
             .DIRECTION_BACKWARD
@@ -1046,16 +1051,16 @@ pub fn assertHall(params: [][]const u8) !void {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.info.system.encode(
+        try client.api.request.info.track.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .axis = true,
-                .source = .{
-                    .axis_range = .{
-                        .start_id = axis_id,
-                        .end_id = axis_id,
+                .line = line.id,
+                .info_axis_state = true,
+                .filter = .{
+                    .axes = .{
+                        .start = axis_id,
+                        .end = axis_id,
                     },
                 },
             },
@@ -1064,22 +1069,21 @@ pub fn assertHall(params: [][]const u8) !void {
     }
     try socket.waitToRead(&command.checkCommandInterrupt);
     var reader = socket.reader(&client.reader_buf);
-    var system = try client.api.response.info.system.decode(
+    var track = try client.api.response.info.track.decode(
         client.allocator,
         &reader.interface,
     );
-    defer system.deinit(client.allocator);
-    if (system.line_id != line.id) return error.InvalidResponse;
-    const axis = system.axis_infos.pop() orelse return error.InvalidResponse;
-    const hall = axis.hall_alarm.?;
+    defer track.deinit(client.allocator);
+    if (track.line != line.id) return error.InvalidResponse;
+    const axis = track.axis_state.pop() orelse return error.InvalidResponse;
     switch (side) {
         .DIRECTION_BACKWARD => {
-            if (hall.back != alarm_on) {
+            if (axis.hall_alarm_back != alarm_on) {
                 return error.UnexpectedHallAlarm;
             }
         },
         .DIRECTION_FORWARD => {
-            if (hall.front != alarm_on) {
+            if (axis.hall_alarm_front != alarm_on) {
                 return error.UnexpectedHallAlarm;
             }
         },
@@ -1099,7 +1103,7 @@ pub fn calibrate(params: [][]const u8) !void {
         try client.api.request.command.calibrate.encode(
             client.allocator,
             &writer.interface,
-            .{ .line_id = line.id },
+            .{ .line = line.id },
         );
         try writer.interface.flush();
     }
@@ -1115,10 +1119,10 @@ pub fn setLineZero(params: [][]const u8) !void {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.command.set_line_zero.encode(
+        try client.api.request.command.set_zero.encode(
             client.allocator,
             &writer.interface,
-            .{ .line_id = line.id },
+            .{ .line = line.id },
         );
         try writer.interface.flush();
     }
@@ -1133,7 +1137,7 @@ pub fn isolate(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
 
-    const dir: client.api.api.command_msg.Direction = dir_parse: {
+    const dir: client.api.api.command_msg.Request.Direction = dir_parse: {
         if (std.ascii.eqlIgnoreCase("forward", params[2])) {
             break :dir_parse .DIRECTION_FORWARD;
         } else if (std.ascii.eqlIgnoreCase("backward", params[2])) {
@@ -1147,7 +1151,7 @@ pub fn isolate(params: [][]const u8) !void {
         try std.fmt.parseInt(u10, params[3], 0)
     else
         0;
-    const link_axis: ?client.api.api.command_msg.Direction = link: {
+    const link_axis: ?client.api.api.command_msg.Request.Direction = link: {
         if (params[4].len > 0) {
             if (std.ascii.eqlIgnoreCase("next", params[4]) or
                 std.ascii.eqlIgnoreCase("right", params[4]))
@@ -1164,13 +1168,13 @@ pub fn isolate(params: [][]const u8) !void {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.command.isolate_carrier.encode(
+        try client.api.request.command.initialize.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .axis_id = axis_id,
-                .carrier_id = carrier_id,
+                .line = line.id,
+                .axis = axis_id,
+                .carrier = carrier_id,
                 .link_axis = link_axis,
                 .direction = dir,
             },
@@ -1195,7 +1199,7 @@ pub fn waitIsolate(params: [][]const u8) !void {
         client.allocator,
         line.id,
         carrier_id,
-        .CARRIER_STATE_ISOLATE_COMPLETED,
+        .CARRIER_STATE_INITIALIZE_COMPLETED,
         timeout,
     );
 }
@@ -1242,17 +1246,17 @@ pub fn carrierPosMoveAxis(params: [][]const u8) !void {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.command.move_carrier.encode(
+        try client.api.request.command.move.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .carrier_id = carrier_id,
+                .line = line.id,
+                .carrier = carrier_id,
                 .velocity = client.lines[line_idx].velocity,
                 .acceleration = client.lines[line_idx].acceleration,
                 .target = .{ .axis = axis_id },
                 .disable_cas = disable_cas,
-                .control_kind = .CONTROL_POSITION,
+                .control = .CONTROL_POSITION,
             },
         );
         try writer.interface.flush();
@@ -1278,17 +1282,17 @@ pub fn carrierPosMoveLocation(params: [][]const u8) !void {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.command.move_carrier.encode(
+        try client.api.request.command.move.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .carrier_id = carrier_id,
+                .line = line.id,
+                .carrier = carrier_id,
                 .velocity = client.lines[line_idx].velocity,
                 .acceleration = client.lines[line_idx].acceleration,
                 .target = .{ .location = location },
                 .disable_cas = disable_cas,
-                .control_kind = .CONTROL_POSITION,
+                .control = .CONTROL_POSITION,
             },
         );
         try writer.interface.flush();
@@ -1313,17 +1317,17 @@ pub fn carrierPosMoveDistance(params: [][]const u8) !void {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.command.move_carrier.encode(
+        try client.api.request.command.move.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .carrier_id = carrier_id,
+                .line = line.id,
+                .carrier = carrier_id,
                 .velocity = client.lines[line_idx].velocity,
                 .acceleration = client.lines[line_idx].acceleration,
                 .target = .{ .distance = distance },
                 .disable_cas = disable_cas,
-                .control_kind = .CONTROL_POSITION,
+                .control = .CONTROL_POSITION,
             },
         );
         try writer.interface.flush();
@@ -1348,17 +1352,17 @@ pub fn carrierSpdMoveAxis(params: [][]const u8) !void {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.command.move_carrier.encode(
+        try client.api.request.command.move.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .carrier_id = carrier_id,
+                .line = line.id,
+                .carrier = carrier_id,
                 .velocity = client.lines[line_idx].velocity,
                 .acceleration = client.lines[line_idx].acceleration,
                 .target = .{ .axis = axis_id },
                 .disable_cas = disable_cas,
-                .control_kind = .CONTROL_VELOCITY,
+                .control = .CONTROL_VELOCITY,
             },
         );
         try writer.interface.flush();
@@ -1384,17 +1388,17 @@ pub fn carrierSpdMoveLocation(params: [][]const u8) !void {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.command.move_carrier.encode(
+        try client.api.request.command.move.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .carrier_id = carrier_id,
+                .line = line.id,
+                .carrier = carrier_id,
                 .velocity = client.lines[line_idx].velocity,
                 .acceleration = client.lines[line_idx].acceleration,
                 .target = .{ .location = location },
                 .disable_cas = disable_cas,
-                .control_kind = .CONTROL_VELOCITY,
+                .control = .CONTROL_VELOCITY,
             },
         );
         try writer.interface.flush();
@@ -1419,17 +1423,17 @@ pub fn carrierSpdMoveDistance(params: [][]const u8) !void {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.command.move_carrier.encode(
+        try client.api.request.command.move.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .carrier_id = carrier_id,
+                .line = line.id,
+                .carrier = carrier_id,
                 .velocity = client.lines[line_idx].velocity,
                 .acceleration = client.lines[line_idx].acceleration,
                 .target = .{ .distance = distance },
                 .disable_cas = disable_cas,
-                .control_kind = .CONTROL_VELOCITY,
+                .control = .CONTROL_VELOCITY,
             },
         );
         try writer.interface.flush();
@@ -1437,6 +1441,8 @@ pub fn carrierSpdMoveDistance(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
+// TODO: Change the parameter to axis oriented
+// TODO: Push without transition
 pub fn carrierPushForward(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
@@ -1455,12 +1461,12 @@ pub fn carrierPushForward(params: [][]const u8) !void {
             try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
-            try client.api.request.command.move_carrier.encode(
+            try client.api.request.command.move.encode(
                 client.allocator,
                 &writer.interface,
                 .{
-                    .line_id = line.id,
-                    .carrier_id = carrier_id,
+                    .line = line.id,
+                    .carrier = carrier_id,
                     .velocity = client.lines[line_idx].velocity,
                     .acceleration = client.lines[line_idx].acceleration,
                     .target = .{
@@ -1472,7 +1478,7 @@ pub fn carrierPushForward(params: [][]const u8) !void {
                         // 150: offset for continuous push
                     },
                     .disable_cas = true,
-                    .control_kind = .CONTROL_POSITION,
+                    .control = .CONTROL_POSITION,
                 },
             );
             try writer.interface.flush();
@@ -1483,16 +1489,16 @@ pub fn carrierPushForward(params: [][]const u8) !void {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.command.push_carrier.encode(
+        try client.api.request.command.push.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .carrier_id = carrier_id,
+                .line = line.id,
+                .carrier = carrier_id,
                 .velocity = client.lines[line_idx].velocity,
                 .acceleration = client.lines[line_idx].acceleration,
                 .direction = .DIRECTION_FORWARD,
-                .axis_id = if (axis_id) |axis| axis else null,
+                .axis = axis,
             },
         );
         try writer.interface.flush();
@@ -1500,6 +1506,8 @@ pub fn carrierPushForward(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
+// TODO: Change the parameter to axis oriented
+// TODO: Push without transition
 pub fn carrierPushBackward(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
@@ -1518,12 +1526,12 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
             try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
-            try client.api.request.command.move_carrier.encode(
+            try client.api.request.command.move.encode(
                 client.allocator,
                 &writer.interface,
                 .{
-                    .line_id = line.id,
-                    .carrier_id = carrier_id,
+                    .line = line.id,
+                    .carrier = carrier_id,
                     .velocity = client.lines[line_idx].velocity,
                     .acceleration = client.lines[line_idx].acceleration,
                     .target = .{
@@ -1535,7 +1543,7 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
                         // 150: offset for continuous push
                     },
                     .disable_cas = true,
-                    .control_kind = .CONTROL_POSITION,
+                    .control = .CONTROL_POSITION,
                 },
             );
             try writer.interface.flush();
@@ -1546,16 +1554,16 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.command.push_carrier.encode(
+        try client.api.request.command.push.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .carrier_id = carrier_id,
+                .line = line.id,
+                .carrier = carrier_id,
                 .velocity = client.lines[line_idx].velocity,
                 .acceleration = client.lines[line_idx].acceleration,
                 .direction = .DIRECTION_BACKWARD,
-                .axis_id = if (axis_id) |axis| axis else null,
+                .axis = axis,
             },
         );
         try writer.interface.flush();
@@ -1584,19 +1592,19 @@ pub fn carrierPullForward(params: [][]const u8) !void {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.command.pull_carrier.encode(
+        try client.api.request.command.pull.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .axis_id = axis_id,
-                .carrier_id = carrier_id,
+                .line = line.id,
+                .axis = axis_id,
+                .carrier = carrier_id,
                 .velocity = client.lines[line_idx].velocity,
                 .acceleration = client.lines[line_idx].acceleration,
                 .direction = .DIRECTION_FORWARD,
                 .transition = blk: {
                     if (destination) |loc| break :blk .{
-                        .control_kind = .CONTROL_POSITION,
+                        .control = .CONTROL_POSITION,
                         .disable_cas = disable_cas,
                         .target = .{
                             .location = loc,
@@ -1632,19 +1640,19 @@ pub fn carrierPullBackward(params: [][]const u8) !void {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.command.pull_carrier.encode(
+        try client.api.request.command.pull.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .axis_id = axis_id,
-                .carrier_id = carrier_id,
+                .line = line.id,
+                .axis = axis_id,
+                .carrier = carrier_id,
                 .velocity = client.lines[line_idx].velocity,
                 .acceleration = client.lines[line_idx].acceleration,
                 .direction = .DIRECTION_BACKWARD,
                 .transition = blk: {
                     if (destination) |loc| break :blk .{
-                        .control_kind = .CONTROL_POSITION,
+                        .control = .CONTROL_POSITION,
                         .disable_cas = disable_cas,
                         .target = .{
                             .location = loc,
@@ -1692,12 +1700,15 @@ pub fn carrierStopPull(params: [][]const u8) !void {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.command.stop_pull_carrier.encode(
+        try client.api.request.command.stop_pull.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .axis_id = if (axis_id) |axis| axis else null,
+                .line = line.id,
+                .axes = if (axis_id) |id|
+                    .{ .start = id, .end = id }
+                else
+                    null,
             },
         );
         try writer.interface.flush();
@@ -1719,12 +1730,15 @@ pub fn carrierStopPush(params: [][]const u8) !void {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
-        try client.api.request.command.stop_push_carrier.encode(
+        try client.api.request.command.stop_push.encode(
             client.allocator,
             &writer.interface,
             .{
-                .line_id = line.id,
-                .axis_id = if (axis_id) |axis| axis else null,
+                .line = line.id,
+                .axes = if (axis_id) |id|
+                    .{ .start = id, .end = id }
+                else
+                    null,
             },
         );
         try writer.interface.flush();
@@ -1750,16 +1764,16 @@ pub fn waitAxisEmpty(params: [][]const u8) !void {
             try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
-            try client.api.request.info.system.encode(
+            try client.api.request.info.track.encode(
                 client.allocator,
                 &writer.interface,
                 .{
-                    .line_id = line.id,
-                    .axis = true,
-                    .source = .{
-                        .axis_range = .{
-                            .start_id = axis_id,
-                            .end_id = axis_id,
+                    .line = line.id,
+                    .info_axis_state = true,
+                    .filter = .{
+                        .axes = .{
+                            .start = axis_id,
+                            .end = axis_id,
                         },
                     },
                 },
@@ -1768,19 +1782,18 @@ pub fn waitAxisEmpty(params: [][]const u8) !void {
         }
         try socket.waitToRead(&command.checkCommandInterrupt);
         var reader = socket.reader(&client.reader_buf);
-        var system = try client.api.response.info.system.decode(
+        var track = try client.api.response.info.track.decode(
             client.allocator,
             &reader.interface,
         );
-        defer system.deinit(client.allocator);
-        if (system.line_id != line.id) return error.InvalidResponse;
-        const axis_info = system.axis_infos.pop() orelse return error.InvalidResponse;
-        const carrier = axis_info.carrier_id;
-        const axis_alarms = axis_info.hall_alarm orelse return error.InvalidResponse;
-        const wait_push = axis_info.waiting_push;
-        const wait_pull = axis_info.waiting_pull;
-        if (carrier == 0 and !axis_alarms.back and !axis_alarms.front and
-            !wait_pull and !wait_push)
+        defer track.deinit(client.allocator);
+        if (track.line != line.id) return error.InvalidResponse;
+        const axis = track.axis_state.pop() orelse return error.InvalidResponse;
+        if (axis.carrier == 0 and
+            !axis.hall_alarm_back and
+            !axis.hall_alarm_front and
+            !axis.waiting_push and
+            !axis.waiting_pull)
         {
             break;
         }
@@ -1907,7 +1920,7 @@ fn waitCommandReceived(allocator: std.mem.Allocator) !void {
             try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
-            try client.api.request.info.commands.encode(
+            try client.api.request.info.command.encode(
                 allocator,
                 &writer.interface,
                 .{
@@ -1918,25 +1931,22 @@ fn waitCommandReceived(allocator: std.mem.Allocator) !void {
         }
         try socket.waitToRead(&command.checkCommandInterrupt);
         var reader = socket.reader(&client.reader_buf);
-        var decoded = try client.api.response.info.commands.decode(
+        var decoded = try client.api.response.info.command.decode(
             allocator,
             &reader.interface,
         );
         defer decoded.deinit(client.allocator);
-        if (decoded.commands.items.len > 1) return error.InvalidResponse;
-        if (decoded.commands.pop()) |comm| {
+        if (decoded.items.items.len > 1) return error.InvalidResponse;
+        if (decoded.items.pop()) |comm| {
             switch (comm.status) {
-                .STATUS_PROGRESSING, .STATUS_QUEUED => {}, // continue the loop
-                .STATUS_COMPLETED => break,
-                .STATUS_FAILED => {
-                    return switch (comm.error_response.?) {
-                        .ERROR_KIND_CARRIER_ALREADY_EXISTS => error.CarrierAlreadyExists,
-                        .ERROR_KIND_CARRIER_NOT_FOUND => error.CarrierNotFound,
-                        .ERROR_KIND_HOMING_FAILED => error.HomingFailed,
-                        .ERROR_KIND_INVALID_AXIS => error.InvalidAxis,
-                        .ERROR_KIND_INVALID_COMMAND => error.InvalidCommand,
-                        .ERROR_KIND_INVALID_PARAMETER => error.InvalidParameter,
-                        .ERROR_KIND_INVALID_SYSTEM_STATE => error.InvalidSystemState,
+                .COMMAND_STATUS_PROGRESSING => {}, // continue the loop
+                .COMMAND_STATUS_COMPLETED => break,
+                .COMMAND_STATUS_FAILED => {
+                    return switch (comm.@"error".?) {
+                        .COMMAND_ERROR_INVALID_SYSTEM_STATE => error.InvalidSystemState,
+                        .COMMAND_ERROR_INVALID_CARRIER_ID => error.InvalidCarrierId,
+                        .COMMAND_ERROR_DRIVER_DISCONNECTED => error.DriverDisconnected,
+                        .COMMAND_ERROR_UNEXPECTED => error.Unexpected,
                         else => error.UnexpectedResponse,
                     };
                 },
