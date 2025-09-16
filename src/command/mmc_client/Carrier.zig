@@ -2,7 +2,7 @@ const std = @import("std");
 const client = @import("../mmc_client.zig");
 const command = @import("../../command.zig");
 const api = @import("api.zig");
-const SystemResponse = api.api.info_msg.Response.Track;
+const SystemResponse = api.api.protobuf.mmc.info.Response.Track;
 
 pub const max = 2048;
 pub const Id = std.math.IntFittingRange(1, max);

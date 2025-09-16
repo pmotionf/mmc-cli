@@ -827,14 +827,14 @@ pub fn matchLine(name: []const u8) !usize {
     } else return error.LineNameNotFound;
 }
 
-pub fn clearCommand(a: std.mem.Allocator, id: u32) !void {
+pub fn removeCommand(a: std.mem.Allocator, id: u32) !void {
     const socket = sock orelse return error.ServerNotConnected;
     while (true) {
         {
             try removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&writer_buf);
-            try api.request.command.clear_commands.encode(
+            try api.request.command.remove_commands.encode(
                 a,
                 &writer.interface,
                 .{ .command = id },
@@ -843,11 +843,11 @@ pub fn clearCommand(a: std.mem.Allocator, id: u32) !void {
         }
         try socket.waitToRead(&command.checkCommandInterrupt);
         var reader = socket.reader(&reader_buf);
-        const cleared_id = try api.response.command.cleared_id.decode(
+        const removed_id = try api.response.command.removed_id.decode(
             a,
             &reader.interface,
         );
-        if (cleared_id == id) break;
+        if (removed_id == id) break;
     }
 }
 

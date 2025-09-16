@@ -4,7 +4,7 @@ const std = @import("std");
 const CircularBufferAlloc =
     @import("../../circular_buffer.zig").CircularBufferAlloc;
 const api_helper = @import("api.zig");
-const SystemResponse = api_helper.api.info_msg.Response.Track;
+const SystemResponse = api_helper.api.protobuf.mmc.info.Response.Track;
 const client = @import("../mmc_client.zig");
 const command = @import("../../command.zig");
 const main = @import("../../main.zig");

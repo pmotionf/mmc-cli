@@ -244,7 +244,7 @@ pub fn showError(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const filter: ?client.api.api.mmc_msg.Range = b: {
+    const filter: ?client.api.api.protobuf.root.Range = b: {
         if (params[1].len > 0) {
             const axis_id = try std.fmt.parseInt(
                 u32,
@@ -459,7 +459,7 @@ pub fn carrierInfo(params: [][]const u8) !void {
 pub fn autoInitialize(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     var init_lines: std.ArrayList(
-        client.api.api.command_msg.Request.AutoInitialize.Line,
+        client.api.api.protobuf.mmc.command.Request.AutoInitialize.Line,
     ) = .empty;
     defer init_lines.deinit(client.allocator);
     if (params[0].len != 0) {
@@ -471,14 +471,14 @@ pub fn autoInitialize(params: [][]const u8) !void {
         while (iterator.next()) |line_name| {
             const line_idx = try client.matchLine(line_name);
             const _line = client.lines[line_idx];
-            const line: client.api.api.command_msg.Request.AutoInitialize.Line = .{
+            const line: client.api.api.protobuf.mmc.command.Request.AutoInitialize.Line = .{
                 .line = _line.id,
             };
             try init_lines.append(client.allocator, line);
         }
     } else {
         for (client.lines) |_line| {
-            const line: client.api.api.command_msg.Request.AutoInitialize.Line = .{
+            const line: client.api.api.protobuf.mmc.command.Request.AutoInitialize.Line = .{
                 .line = _line.id,
             };
             try init_lines.append(client.allocator, line);
@@ -1027,7 +1027,7 @@ pub fn assertHall(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(u32, params[1], 0);
-    const side: client.api.api.command_msg.Request.Direction =
+    const side: client.api.api.protobuf.mmc.command.Request.Direction =
         if (std.ascii.eqlIgnoreCase("back", params[2]) or
         std.ascii.eqlIgnoreCase("left", params[2]))
             .DIRECTION_BACKWARD
@@ -1137,7 +1137,7 @@ pub fn isolate(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
 
-    const dir: client.api.api.command_msg.Request.Direction = dir_parse: {
+    const dir: client.api.api.protobuf.mmc.command.Request.Direction = dir_parse: {
         if (std.ascii.eqlIgnoreCase("forward", params[2])) {
             break :dir_parse .DIRECTION_FORWARD;
         } else if (std.ascii.eqlIgnoreCase("backward", params[2])) {
@@ -1151,7 +1151,7 @@ pub fn isolate(params: [][]const u8) !void {
         try std.fmt.parseInt(u10, params[3], 0)
     else
         0;
-    const link_axis: ?client.api.api.command_msg.Request.Direction = link: {
+    const link_axis: ?client.api.api.protobuf.mmc.command.Request.Direction = link: {
         if (params[4].len > 0) {
             if (std.ascii.eqlIgnoreCase("next", params[4]) or
                 std.ascii.eqlIgnoreCase("right", params[4]))
@@ -1914,7 +1914,7 @@ fn waitCommandReceived(allocator: std.mem.Allocator) !void {
             &reader.interface,
         );
     }
-    defer client.clearCommand(allocator, id) catch {};
+    defer client.removeCommand(allocator, id) catch {};
     while (true) {
         {
             try client.removeIgnoredMessage(socket);
