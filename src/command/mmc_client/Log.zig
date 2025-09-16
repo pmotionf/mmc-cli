@@ -142,6 +142,7 @@ pub const Data = struct {
         for (configs) |config| {
             if (config.axis_id_range.start == 0) continue;
             {
+                try net.socket.removeIgnoredMessage(&reader_buf);
                 try net.socket.waitToWrite();
                 var writer = try net.socket.writer(&writer_buf);
                 try api_helper.request.info.track.encode(

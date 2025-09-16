@@ -825,6 +825,7 @@ pub fn matchLine(name: []const u8) !usize {
 
 pub fn clearCommand(a: std.mem.Allocator, id: u32) !void {
     while (true) {
+        try net.socket.removeIgnoredMessage(&reader_buf);
         try net.socket.waitToWrite();
         var writer = try net.socket.writer(&writer_buf);
         try api.request.command.clear_commands.encode(

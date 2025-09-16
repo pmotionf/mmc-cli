@@ -23,6 +23,7 @@ pub fn waitState(
             wait_timer.read() > timeout * std.time.ns_per_ms)
             return error.WaitTimeout;
         {
+            try client.net.socket.removeIgnoredMessage(&client.reader_buf);
             try client.net.socket.waitToWrite();
             var writer = try client.net.socket.writer(&client.writer_buf);
             try api.request.info.track.encode(

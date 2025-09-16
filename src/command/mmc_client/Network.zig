@@ -91,6 +91,19 @@ pub const Socket = struct {
         } else return error.ServerNotConnected;
     }
 
+    /// Remove the not expected message. Shall be called before sending a new
+    /// command.
+    pub fn removeIgnoredMessage(
+        self: Socket,
+        reader_buf: []u8,
+    ) !void {
+        const stream = self.stream orelse return error.ServerNotConnected;
+        if (try readyToRead(stream, 0)) {
+            var r = try self.reader(reader_buf);
+            _ = try r.interface.peekByte();
+        }
+    }
+
     pub fn writer(self: Socket, buffer: []u8) error{ServerNotConnected}!std.net.Stream.Writer {
         if (self.stream) |stream|
             return stream.writer(buffer)

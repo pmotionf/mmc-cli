@@ -38,6 +38,7 @@ pub fn connect(params: [][]const u8) !void {
     // Asserting that API version matched between client and server
     {
         // Send API version request
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.core.encode(
@@ -64,6 +65,7 @@ pub fn connect(params: [][]const u8) !void {
     std.log.debug("Sending line config request..", .{});
     {
         // Send line configuration request
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.core.encode(
@@ -180,6 +182,7 @@ pub fn getAcceleration(params: [][]const u8) !void {
 
 pub fn serverVersion(_: [][]const u8) !void {
     {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.core.encode(
@@ -219,6 +222,7 @@ pub fn showError(params: [][]const u8) !void {
         } else break :b null;
     };
     {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.info.track.encode(
@@ -286,6 +290,7 @@ pub fn axisInfo(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.info.track.encode(
@@ -333,6 +338,7 @@ pub fn driverInfo(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.info.track.encode(
@@ -382,6 +388,7 @@ pub fn carrierInfo(params: [][]const u8) !void {
         var ids: std.ArrayList(u32) = .empty;
         defer ids.deinit(client.allocator);
         try ids.append(client.allocator, carrier_id);
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.info.track.encode(
@@ -441,6 +448,7 @@ pub fn autoInitialize(params: [][]const u8) !void {
         }
     }
     {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.auto_initialize.encode(
@@ -460,6 +468,7 @@ pub fn axisCarrier(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.info.track.encode(
@@ -529,6 +538,7 @@ pub fn carrierId(params: [][]const u8) !void {
     for (line_idxs.items) |line_idx| {
         const line = client.lines[line_idx];
         {
+            try client.net.socket.removeIgnoredMessage(&client.reader_buf);
             try client.net.socket.waitToWrite();
             var writer = try client.net.socket.writer(&client.writer_buf);
             try client.api.request.info.track.encode(
@@ -599,13 +609,14 @@ pub fn assertLocation(params: [][]const u8) !void {
     const location_thr = if (params[3].len > 0)
         try std.fmt.parseFloat(f32, params[3])
     else
-        1.0;
+        0.001;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
         var ids: std.ArrayList(u32) = .empty;
         defer ids.deinit(client.allocator);
         try ids.append(client.allocator, carrier_id);
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.info.track.encode(
@@ -652,6 +663,7 @@ pub fn releaseServo(params: [][]const u8) !void {
         );
     }
     {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.release.encode(
@@ -667,6 +679,7 @@ pub fn releaseServo(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
+// TODO: Change this parameter to driver
 pub fn clearErrors(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
@@ -674,9 +687,10 @@ pub fn clearErrors(params: [][]const u8) !void {
     var driver_id: ?u32 = null;
     if (params[1].len > 0) {
         const axis = try std.fmt.parseInt(u32, params[1], 0);
-        driver_id = axis / 3;
+        driver_id = (axis - 1) / 3 + 1;
     }
     {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.clear_errors.encode(
@@ -706,6 +720,7 @@ pub fn clearCarrierInfo(params: [][]const u8) !void {
         axis_id = axis;
     }
     {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.deinitialize.encode(
@@ -727,6 +742,7 @@ pub fn clearCarrierInfo(params: [][]const u8) !void {
 pub fn resetSystem(_: [][]const u8) !void {
     for (client.lines) |line| {
         {
+            try client.net.socket.removeIgnoredMessage(&client.reader_buf);
             try client.net.socket.waitToWrite();
             var writer = try client.net.socket.writer(&client.writer_buf);
             try client.api.request.command.deinitialize.encode(
@@ -738,6 +754,7 @@ pub fn resetSystem(_: [][]const u8) !void {
         }
         try waitCommandReceived(client.allocator);
         {
+            try client.net.socket.removeIgnoredMessage(&client.reader_buf);
             try client.net.socket.waitToWrite();
             var writer = try client.net.socket.writer(&client.writer_buf);
             try client.api.request.command.clear_errors.encode(
@@ -749,6 +766,7 @@ pub fn resetSystem(_: [][]const u8) !void {
         }
         try waitCommandReceived(client.allocator);
         {
+            try client.net.socket.removeIgnoredMessage(&client.reader_buf);
             try client.net.socket.waitToWrite();
             var writer = try client.net.socket.writer(&client.writer_buf);
             try client.api.request.command.stop_push.encode(
@@ -760,6 +778,7 @@ pub fn resetSystem(_: [][]const u8) !void {
         }
         try waitCommandReceived(client.allocator);
         {
+            try client.net.socket.removeIgnoredMessage(&client.reader_buf);
             try client.net.socket.waitToWrite();
             var writer = try client.net.socket.writer(&client.writer_buf);
             try client.api.request.command.stop_pull.encode(
@@ -784,6 +803,7 @@ pub fn carrierLocation(params: [][]const u8) !void {
         var ids: std.ArrayList(u32) = .empty;
         defer ids.deinit(client.allocator);
         try ids.append(client.allocator, carrier_id);
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.info.track.encode(
@@ -808,7 +828,7 @@ pub fn carrierLocation(params: [][]const u8) !void {
     defer track.deinit(client.allocator);
     if (track.line != line.id) return error.InvalidResponse;
     var carriers = track.carrier_state;
-    const carrier = carriers.pop() orelse return error.InvalidResponse;
+    const carrier = carriers.pop() orelse return error.CarrierNotFound;
     std.log.info(
         "Carrier {d} location: {d} mm",
         .{ carrier.id, carrier.position },
@@ -833,6 +853,7 @@ pub fn carrierAxis(params: [][]const u8) !void {
         var ids: std.ArrayList(u32) = .empty;
         defer ids.deinit(client.allocator);
         try ids.append(client.allocator, carrier_id);
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.info.track.encode(
@@ -857,7 +878,7 @@ pub fn carrierAxis(params: [][]const u8) !void {
     defer track.deinit(client.allocator);
     if (track.line != line.id) return error.InvalidResponse;
     var carriers = track.carrier_state;
-    const carrier = carriers.pop() orelse return error.InvalidResponse;
+    const carrier = carriers.pop() orelse return error.CarrierNotFound;
     std.log.info(
         "Carrier {d} axis: {}",
         .{ carrier.id, carrier.axis_main },
@@ -880,6 +901,7 @@ pub fn hallStatus(params: [][]const u8) !void {
     }
     if (axis_id) |id| {
         {
+            try client.net.socket.removeIgnoredMessage(&client.reader_buf);
             try client.net.socket.waitToWrite();
             var writer = try client.net.socket.writer(&client.writer_buf);
             try client.api.request.info.track.encode(
@@ -917,6 +939,7 @@ pub fn hallStatus(params: [][]const u8) !void {
         );
     } else {
         {
+            try client.net.socket.removeIgnoredMessage(&client.reader_buf);
             try client.net.socket.waitToWrite();
             var writer = try client.net.socket.writer(&client.writer_buf);
             try client.api.request.info.track.encode(
@@ -978,6 +1001,7 @@ pub fn assertHall(params: [][]const u8) !void {
         } else return error.InvalidHallAlarmState;
     }
     {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.info.track.encode(
@@ -1025,6 +1049,7 @@ pub fn calibrate(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.calibrate.encode(
@@ -1042,6 +1067,7 @@ pub fn setLineZero(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.set_zero.encode(
@@ -1089,6 +1115,7 @@ pub fn isolate(params: [][]const u8) !void {
         } else break :link null;
     };
     {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.initialize.encode(
@@ -1165,6 +1192,7 @@ pub fn carrierPosMoveAxis(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.move.encode(
@@ -1199,6 +1227,7 @@ pub fn carrierPosMoveLocation(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.move.encode(
@@ -1232,6 +1261,7 @@ pub fn carrierPosMoveDistance(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.move.encode(
@@ -1265,6 +1295,7 @@ pub fn carrierSpdMoveAxis(params: [][]const u8) !void {
     else
         return error.InvalidCasConfiguration;
     {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.move.encode(
@@ -1299,6 +1330,7 @@ pub fn carrierSpdMoveLocation(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.move.encode(
@@ -1332,6 +1364,7 @@ pub fn carrierSpdMoveDistance(params: [][]const u8) !void {
     else
         return error.InvalidCasConfiguration;
     {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.move.encode(
@@ -1368,6 +1401,7 @@ pub fn carrierPushForward(params: [][]const u8) !void {
     const line = client.lines[line_idx];
     if (axis_id) |axis| {
         {
+            try client.net.socket.removeIgnoredMessage(&client.reader_buf);
             try client.net.socket.waitToWrite();
             var writer = try client.net.socket.writer(&client.writer_buf);
             try client.api.request.command.move.encode(
@@ -1394,23 +1428,24 @@ pub fn carrierPushForward(params: [][]const u8) !void {
         }
         try waitCommandReceived(client.allocator);
         {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
-        try client.api.request.command.push.encode(
-            client.allocator,
-            &writer.interface,
-            .{
-                .line = line.id,
-                .carrier = carrier_id,
-                .velocity = client.lines[line_idx].velocity,
-                .acceleration = client.lines[line_idx].acceleration,
-                .direction = .DIRECTION_FORWARD,
-                .axis = axis,
-            },
-        );
-        try writer.interface.flush();
-    }
-    try waitCommandReceived(client.allocator);
+            try client.net.socket.removeIgnoredMessage(&client.reader_buf);
+            try client.net.socket.waitToWrite();
+            var writer = try client.net.socket.writer(&client.writer_buf);
+            try client.api.request.command.push.encode(
+                client.allocator,
+                &writer.interface,
+                .{
+                    .line = line.id,
+                    .carrier = carrier_id,
+                    .velocity = client.lines[line_idx].velocity,
+                    .acceleration = client.lines[line_idx].acceleration,
+                    .direction = .DIRECTION_FORWARD,
+                    .axis = axis,
+                },
+            );
+            try writer.interface.flush();
+        }
+        try waitCommandReceived(client.allocator);
     }
 }
 
@@ -1430,6 +1465,7 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
     const line = client.lines[line_idx];
     if (axis_id) |axis| {
         {
+            try client.net.socket.removeIgnoredMessage(&client.reader_buf);
             try client.net.socket.waitToWrite();
             var writer = try client.net.socket.writer(&client.writer_buf);
             try client.api.request.command.move.encode(
@@ -1456,23 +1492,24 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
         }
         try waitCommandReceived(client.allocator);
         {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
-        try client.api.request.command.push.encode(
-            client.allocator,
-            &writer.interface,
-            .{
-                .line = line.id,
-                .carrier = carrier_id,
-                .velocity = client.lines[line_idx].velocity,
-                .acceleration = client.lines[line_idx].acceleration,
-                .direction = .DIRECTION_BACKWARD,
-                .axis = axis,
-            },
-        );
-        try writer.interface.flush();
-    }
-    try waitCommandReceived(client.allocator);
+            try client.net.socket.removeIgnoredMessage(&client.reader_buf);
+            try client.net.socket.waitToWrite();
+            var writer = try client.net.socket.writer(&client.writer_buf);
+            try client.api.request.command.push.encode(
+                client.allocator,
+                &writer.interface,
+                .{
+                    .line = line.id,
+                    .carrier = carrier_id,
+                    .velocity = client.lines[line_idx].velocity,
+                    .acceleration = client.lines[line_idx].acceleration,
+                    .direction = .DIRECTION_BACKWARD,
+                    .axis = axis,
+                },
+            );
+            try writer.interface.flush();
+        }
+        try waitCommandReceived(client.allocator);
     }
 }
 
@@ -1493,6 +1530,7 @@ pub fn carrierPullForward(params: [][]const u8) !void {
     else
         return error.InvalidCasConfiguration;
     {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.pull.encode(
@@ -1539,6 +1577,7 @@ pub fn carrierPullBackward(params: [][]const u8) !void {
     else
         return error.InvalidCasConfiguration;
     {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.pull.encode(
@@ -1597,6 +1636,7 @@ pub fn carrierStopPull(params: [][]const u8) !void {
         axis_id = axis;
     }
     {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.stop_pull.encode(
@@ -1625,6 +1665,7 @@ pub fn carrierStopPush(params: [][]const u8) !void {
         axis_id = axis;
     }
     {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
         try client.net.socket.waitToWrite();
         var writer = try client.net.socket.writer(&client.writer_buf);
         try client.api.request.command.stop_push.encode(
@@ -1657,6 +1698,7 @@ pub fn waitAxisEmpty(params: [][]const u8) !void {
             wait_timer.read() > timeout * std.time.ns_per_ms)
             return error.WaitTimeout;
         {
+            try client.net.socket.removeIgnoredMessage(&client.reader_buf);
             try client.net.socket.waitToWrite();
             var writer = try client.net.socket.writer(&client.writer_buf);
             try client.api.request.info.track.encode(
@@ -1811,6 +1853,7 @@ fn waitCommandReceived(allocator: std.mem.Allocator) !void {
     defer client.clearCommand(allocator, id) catch {};
     while (true) {
         {
+            try client.net.socket.removeIgnoredMessage(&client.reader_buf);
             try client.net.socket.waitToWrite();
             var writer = try client.net.socket.writer(&client.writer_buf);
             try client.api.request.info.command.encode(
