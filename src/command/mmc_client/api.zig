@@ -13,8 +13,8 @@ pub const response = struct {
             pub fn decode(
                 allocator: std.mem.Allocator,
                 reader: *std.Io.Reader,
-            ) !api.core_msg.Response.TrackConfig {
-                var decoded = try api.mmc_msg.Response.decode(
+            ) !api.protobuf.mmc.core.Response.TrackConfig {
+                var decoded = try api.protobuf.mmc.Response.decode(
                     reader,
                     allocator,
                 );
@@ -40,8 +40,8 @@ pub const response = struct {
             pub fn decode(
                 allocator: std.mem.Allocator,
                 reader: *std.Io.Reader,
-            ) !api.core_msg.Response.SemanticVersion {
-                var decoded = try api.mmc_msg.Response.decode(
+            ) !api.protobuf.mmc.core.Response.SemanticVersion {
+                var decoded = try api.protobuf.mmc.Response.decode(
                     reader,
                     allocator,
                 );
@@ -67,8 +67,8 @@ pub const response = struct {
             pub fn decode(
                 allocator: std.mem.Allocator,
                 reader: *std.Io.Reader,
-            ) !api.core_msg.Response.Server {
-                var decoded = try api.mmc_msg.Response.decode(
+            ) !api.protobuf.mmc.core.Response.Server {
+                var decoded = try api.protobuf.mmc.Response.decode(
                     reader,
                     allocator,
                 );
@@ -89,7 +89,7 @@ pub const response = struct {
                 }
             }
         };
-        fn error_handler(err: api.core_msg.Request.Error) anyerror {
+        fn error_handler(err: api.protobuf.mmc.core.Request.Error) anyerror {
             return switch (err) {
                 .CORE_REQUEST_ERROR_UNSPECIFIED => error.InvalidResponse,
                 .CORE_REQUEST_ERROR_REQUEST_UNKNOWN => error.RequestUnknown,
@@ -104,7 +104,7 @@ pub const response = struct {
                 allocator: std.mem.Allocator,
                 reader: *std.Io.Reader,
             ) !u32 {
-                var decoded = try api.mmc_msg.Response.decode(
+                var decoded = try api.protobuf.mmc.Response.decode(
                     reader,
                     allocator,
                 );
@@ -129,12 +129,12 @@ pub const response = struct {
                 }
             }
         };
-        pub const cleared_id = struct {
+        pub const removed_id = struct {
             pub fn decode(
                 allocator: std.mem.Allocator,
                 reader: *std.Io.Reader,
             ) !u32 {
-                var decoded = try api.mmc_msg.Response.decode(
+                var decoded = try api.protobuf.mmc.Response.decode(
                     reader,
                     allocator,
                 );
@@ -145,7 +145,7 @@ pub const response = struct {
                     },
                     .command => |command_resp| switch (command_resp.body orelse
                         return error.InvalidResponse) {
-                        .cleared_id => |_id| return _id,
+                        .removed_id => |_id| return _id,
                         .request_error => |req_err| {
                             return command.error_handler(req_err);
                         },
@@ -155,7 +155,7 @@ pub const response = struct {
                 }
             }
         };
-        fn error_handler(err: api.command_msg.Request.Error) anyerror {
+        fn error_handler(err: api.protobuf.mmc.command.Request.Error) anyerror {
             return switch (err) {
                 .COMMAND_REQUEST_ERROR_UNSPECIFIED => error.InvalidResponse,
                 .COMMAND_REQUEST_ERROR_INVALID_LINE => error.InvalidLine,
@@ -183,8 +183,8 @@ pub const response = struct {
             pub fn decode(
                 allocator: std.mem.Allocator,
                 reader: *std.Io.Reader,
-            ) !api.info_msg.Response.Commands {
-                var decoded = try api.mmc_msg.Response.decode(
+            ) !api.protobuf.mmc.info.Response.Commands {
+                var decoded = try api.protobuf.mmc.Response.decode(
                     reader,
                     allocator,
                 );
@@ -212,7 +212,7 @@ pub const response = struct {
                 pub const state = struct {
                     /// Print all axis information into the screen
                     pub fn print(
-                        axis_info: api.info_msg.Response.Track.Axis.State,
+                        axis_info: api.protobuf.mmc.info.Response.Track.Axis.State,
                         writer: *std.Io.Writer,
                     ) !void {
                         _ = try nestedWrite(
@@ -227,7 +227,7 @@ pub const response = struct {
                 pub const err = struct {
                     /// Print all axis information into the screen
                     pub fn print(
-                        axis_err: api.info_msg.Response.Track.Axis.Error,
+                        axis_err: api.protobuf.mmc.info.Response.Track.Axis.Error,
                         writer: *std.Io.Writer,
                     ) !void {
                         _ = try nestedWrite(
@@ -240,7 +240,7 @@ pub const response = struct {
                     }
                     /// Print only active error bit
                     pub fn printActive(
-                        axis_err: api.info_msg.Response.Track.Axis.Error,
+                        axis_err: api.protobuf.mmc.info.Response.Track.Axis.Error,
                         writer: *std.Io.Writer,
                     ) !void {
                         const ti = @typeInfo(@TypeOf(axis_err)).@"struct";
@@ -283,7 +283,7 @@ pub const response = struct {
                 pub const state = struct {
                     /// Print all axis information into the screen
                     pub fn print(
-                        driver_info: api.info_msg.Response.Track.Driver.State,
+                        driver_info: api.protobuf.mmc.info.Response.Track.Driver.State,
                         writer: *std.Io.Writer,
                     ) !void {
                         _ = try nestedWrite(
@@ -298,7 +298,7 @@ pub const response = struct {
                 pub const err = struct {
                     /// Print all axis information into the screen
                     pub fn print(
-                        driver_err: api.info_msg.Response.Track.Driver.Error,
+                        driver_err: api.protobuf.mmc.info.Response.Track.Driver.Error,
                         writer: *std.Io.Writer,
                     ) !void {
                         _ = try nestedWrite(
@@ -311,7 +311,7 @@ pub const response = struct {
                     }
                     /// Print only active error bit
                     pub fn printActive(
-                        driver_err: api.info_msg.Response.Track.Driver.Error,
+                        driver_err: api.protobuf.mmc.info.Response.Track.Driver.Error,
                         writer: *std.Io.Writer,
                     ) !void {
                         const ti = @typeInfo(@TypeOf(driver_err)).@"struct";
@@ -353,7 +353,7 @@ pub const response = struct {
             pub const carrier = struct {
                 /// Print all axis information into the screen
                 pub fn print(
-                    carrier_info: api.info_msg.Response.Track.Carrier.State,
+                    carrier_info: api.protobuf.mmc.info.Response.Track.Carrier.State,
                     writer: *std.Io.Writer,
                 ) !void {
                     _ = try nestedWrite(
@@ -369,8 +369,8 @@ pub const response = struct {
             pub fn decode(
                 allocator: std.mem.Allocator,
                 reader: *std.Io.Reader,
-            ) !api.info_msg.Response.Track {
-                var decoded = try api.mmc_msg.Response.decode(
+            ) !api.protobuf.mmc.info.Response.Track {
+                var decoded = try api.protobuf.mmc.Response.decode(
                     reader,
                     allocator,
                 );
@@ -393,7 +393,7 @@ pub const response = struct {
 
             /// Parse track response to fit the logging data
             pub fn toLog(
-                system_resp: api.info_msg.Response.Track,
+                system_resp: api.protobuf.mmc.info.Response.Track,
                 result: *Log.Data,
             ) !void {
                 const axis_infos = system_resp.axis_infos;
@@ -474,7 +474,7 @@ pub const response = struct {
             }
         };
 
-        fn error_handler(err: api.info_msg.Request.Error) anyerror {
+        fn error_handler(err: api.protobuf.mmc.info.Request.Error) anyerror {
             return switch (err) {
                 .INFO_REQUEST_ERROR_UNSPECIFIED => error.InvalidResponse,
                 .INFO_REQUEST_ERROR_INVALID_LINE => error.InvalidLine,
@@ -486,7 +486,7 @@ pub const response = struct {
         }
     };
 
-    fn error_handler(err: api.mmc_msg.Request.Error) anyerror {
+    fn error_handler(err: api.protobuf.mmc.Request.Error) anyerror {
         return switch (err) {
             .MMC_REQUEST_ERROR_UNSPECIFIED => error.InvalidResponse,
             .MMC_REQUEST_ERROR_INVALID_MESSAGE => error.InvalidMessage,
@@ -502,11 +502,11 @@ pub const request = struct {
         pub fn encode(
             allocator: std.mem.Allocator,
             writer: *std.Io.Writer,
-            comptime payload: api.core_msg.Request.Kind,
+            comptime payload: api.protobuf.mmc.core.Request.Kind,
         ) !void {
             if (payload == .CORE_REQUEST_KIND_UNSPECIFIED)
                 @compileError("Kind is unspecified");
-            const msg: api.mmc_msg.Request = .{
+            const msg: api.protobuf.mmc.Request = .{
                 .body = .{
                     .core = .{
                         .kind = payload,
@@ -523,9 +523,9 @@ pub const request = struct {
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.ClearErrors,
+                payload: api.protobuf.mmc.command.Request.ClearErrors,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
                             .body = .{ .clear_errors = payload },
@@ -541,9 +541,9 @@ pub const request = struct {
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.Deinitialize,
+                payload: api.protobuf.mmc.command.Request.Deinitialize,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
                             .body = .{ .deinitialize = payload },
@@ -559,9 +559,9 @@ pub const request = struct {
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.Release,
+                payload: api.protobuf.mmc.command.Request.Release,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
                             .body = .{ .release = payload },
@@ -577,9 +577,9 @@ pub const request = struct {
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.StopPull,
+                payload: api.protobuf.mmc.command.Request.StopPull,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
                             .body = .{ .stop_pull = payload },
@@ -595,9 +595,9 @@ pub const request = struct {
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.StopPush,
+                payload: api.protobuf.mmc.command.Request.StopPush,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
                             .body = .{ .stop_push = payload },
@@ -613,9 +613,9 @@ pub const request = struct {
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.AutoInitialize,
+                payload: api.protobuf.mmc.command.Request.AutoInitialize,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
                             .body = .{ .auto_initialize = payload },
@@ -631,9 +631,9 @@ pub const request = struct {
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.Move,
+                payload: api.protobuf.mmc.command.Request.Move,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
                             .body = .{ .move = payload },
@@ -649,9 +649,9 @@ pub const request = struct {
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.Push,
+                payload: api.protobuf.mmc.command.Request.Push,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
                             .body = .{ .push = payload },
@@ -667,9 +667,9 @@ pub const request = struct {
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.Pull,
+                payload: api.protobuf.mmc.command.Request.Pull,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
                             .body = .{ .pull = payload },
@@ -685,9 +685,9 @@ pub const request = struct {
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.Initialize,
+                payload: api.protobuf.mmc.command.Request.Initialize,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
                             .body = .{ .initialize = payload },
@@ -703,9 +703,9 @@ pub const request = struct {
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.Calibrate,
+                payload: api.protobuf.mmc.command.Request.Calibrate,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
                             .body = .{ .calibrate = payload },
@@ -721,9 +721,9 @@ pub const request = struct {
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.SetZero,
+                payload: api.protobuf.mmc.command.Request.SetZero,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
                             .body = .{ .set_zero = payload },
@@ -733,18 +733,18 @@ pub const request = struct {
                 try msg.encode(writer, allocator);
             }
         };
-        pub const clear_commands = struct {
+        pub const remove_commands = struct {
             /// Validate payload and encode to protobuf string. Caller shall free
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.ClearCommand,
+                payload: api.protobuf.mmc.command.Request.RemoveCommand,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
-                            .body = .{ .clear_command = payload },
+                            .body = .{ .remove_command = payload },
                         },
                     },
                 };
@@ -759,9 +759,9 @@ pub const request = struct {
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.info_msg.Request.Command,
+                payload: api.protobuf.mmc.info.Request.Command,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .info = .{
                             .body = .{ .command = payload },
@@ -775,9 +775,9 @@ pub const request = struct {
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.info_msg.Request.Track,
+                payload: api.protobuf.mmc.info.Request.Track,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .info = .{
                             .body = .{ .track = payload },

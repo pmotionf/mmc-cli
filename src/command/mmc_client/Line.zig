@@ -1,7 +1,7 @@
 const Line = @This();
 const std = @import("std");
 const api = @import("mmc-api");
-const Config = api.core_msg.Response.TrackConfig;
+const Config = api.protobuf.mmc.core.Response.TrackConfig;
 
 index: Line.Index,
 id: Line.Id,
