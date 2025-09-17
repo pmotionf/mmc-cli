@@ -283,7 +283,6 @@ pub fn showError(params: [][]const u8) !void {
     }
 }
 
-// TODO: Only show axis state
 pub fn axisInfo(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(u32, params[1], 0);
@@ -298,7 +297,6 @@ pub fn axisInfo(params: [][]const u8) !void {
             &writer.interface,
             .{
                 .line = line.id,
-                .info_axis_errors = true,
                 .info_axis_state = true,
                 .filter = .{
                     .axes = .{
@@ -319,19 +317,12 @@ pub fn axisInfo(params: [][]const u8) !void {
     defer track.deinit(client.allocator);
     if (track.line != line.id) return error.InvalidResponse;
     var axis_state = track.axis_state;
-    var axis_errors = track.axis_errors;
-    if (axis_state.items.len != axis_errors.items.len and
-        axis_state.items.len != 1)
-        return error.InvalidResponse;
-    const info = axis_state.pop().?;
-    const err = axis_errors.pop().?;
+    const info = axis_state.pop() orelse return error.InvalidResponse;
     var stdout = std.fs.File.stdout().writer(&.{});
     const writer = &stdout.interface;
     try client.api.response.info.track.axis.state.print(info, writer);
-    try client.api.response.info.track.axis.err.print(err, writer);
 }
 
-// TODO: Only show driver state
 pub fn driverInfo(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const driver_id = try std.fmt.parseInt(u32, params[1], 0);
@@ -347,7 +338,6 @@ pub fn driverInfo(params: [][]const u8) !void {
             .{
                 .line = line.id,
                 .info_driver_state = true,
-                .info_driver_errors = true,
                 .filter = .{
                     .drivers = .{
                         .start = driver_id,
@@ -367,16 +357,10 @@ pub fn driverInfo(params: [][]const u8) !void {
     defer track.deinit(client.allocator);
     if (track.line != line.id) return error.InvalidResponse;
     var driver_state = track.driver_state;
-    var driver_errors = track.driver_errors;
-    if (driver_state.items.len != driver_errors.items.len and
-        driver_errors.items.len != 1)
-        return error.InvalidResponse;
-    const info = driver_state.pop().?;
-    const err = driver_errors.pop().?;
+    const info = driver_state.pop() orelse return error.InvalidResponse;
     var stdout = std.fs.File.stdout().writer(&.{});
     const writer = &stdout.interface;
     try client.api.response.info.track.driver.state.print(info, writer);
-    try client.api.response.info.track.driver.err.print(err, writer);
 }
 
 pub fn carrierInfo(params: [][]const u8) !void {
@@ -709,7 +693,6 @@ pub fn clearErrors(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
-// TODO: Rename to deinitialize
 pub fn clearCarrierInfo(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
