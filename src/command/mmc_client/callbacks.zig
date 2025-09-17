@@ -281,27 +281,17 @@ pub fn showError(params: [][]const u8) !void {
     );
     defer track.deinit(client.allocator);
     if (track.line != line.id) return error.InvalidResponse;
-    var axis_errors = track.axis_errors;
-    var driver_errors = track.driver_errors;
+    const axis_errors = track.axis_errors;
+    const driver_errors = track.driver_errors;
     if (filter) |_| {
         if (axis_errors.items.len != 1) return error.InvalidResponse;
         if (driver_errors.items.len != 1) return error.InvalidResponse;
     } else {
         if (axis_errors.items.len != line.axes) return error.InvalidResponse;
+        if (driver_errors.items.len != (line.axes - 1) / 3 + 1) return error.InvalidResponse;
     }
     var stdout = std.fs.File.stdout().writer(&.{});
     const writer = &stdout.interface;
-    if (filter) |_| {
-        try client.api.response.info.track.axis.err.printActive(
-            axis_errors.pop().?,
-            writer,
-        );
-        try client.api.response.info.track.driver.err.printActive(
-            driver_errors.pop().?,
-            writer,
-        );
-        return;
-    }
     for (axis_errors.items) |err| {
         try client.api.response.info.track.axis.err.printActive(
             err,
