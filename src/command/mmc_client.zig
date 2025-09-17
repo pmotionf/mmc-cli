@@ -314,12 +314,12 @@ pub fn init(c: Config) !void {
         .name = "CLEAR_ERRORS",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "axis", .optional = true },
+            .{ .name = "driver", .optional = true },
         },
         .short_description = "Clear driver errors.",
         .long_description =
-        \\Clear driver errors of specified axis. If no axis is provided, clear
-        \\driver errors of all axis.
+        \\Clear all errors on the specified driver. If no driver is provided, 
+        \\clear errors on all drivers of the specified line.
         ,
         .execute = &callbacks.clearErrors,
     });

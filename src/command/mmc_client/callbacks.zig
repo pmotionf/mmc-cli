@@ -652,7 +652,6 @@ pub fn releaseCarrier(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
-// TODO: Change this parameter to driver
 pub fn clearErrors(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
