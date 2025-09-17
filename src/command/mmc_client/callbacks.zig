@@ -679,8 +679,7 @@ pub fn assertLocation(params: [][]const u8) !void {
         return error.UnexpectedCarrierLocation;
 }
 
-// TODO: Change parameter from axis to carrier
-pub fn releaseServo(params: [][]const u8) !void {
+pub fn releaseCarrier(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);

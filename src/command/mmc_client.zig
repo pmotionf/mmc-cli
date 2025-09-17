@@ -351,21 +351,22 @@ pub fn init(c: Config) !void {
     });
     errdefer command.registry.orderedRemove("CLEAR_CARRIER_INFO");
     try command.registry.put(.{
-        .name = "RELEASE_AXIS_SERVO",
+        .name = "RELEASE_CARRIER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "axis", .optional = true },
+            .{ .name = "carrier", .optional = true },
         },
-        .short_description = "Release the servo of axis.",
+        .short_description = "Release the carrier for being controlled",
         .long_description =
-        \\Release the servo of a given axis, allowing for free carrier movement.
-        \\This command should be run before carriers move within or exit from
-        \\the track due to external influence. If no axis is given, release the
-        \\servo of all axis on the line. 
+        \\Release the motor that control the given carrier, allowing for free 
+        \\carrier movement. This command should be run before carriers move 
+        \\within or exit from the track due to external influence. If no carrier 
+        \\is given, all carriers on the provided line will be released from 
+        \\control. 
         ,
-        .execute = &callbacks.releaseServo,
+        .execute = &callbacks.releaseCarrier,
     });
-    errdefer command.registry.orderedRemove("RELEASE_AXIS_SERVO");
+    errdefer command.registry.orderedRemove("RELEASE_CARRIER");
     try command.registry.put(.{
         .name = "AUTO_INITIALIZE",
         .parameters = &[_]command.Command.Parameter{
