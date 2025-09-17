@@ -1385,8 +1385,6 @@ pub fn carrierSpdMoveDistance(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
-// TODO: Change the parameter to axis oriented
-// TODO: Push without transition
 pub fn carrierPushForward(params: [][]const u8) !void {
     const line_name = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
@@ -1416,9 +1414,8 @@ pub fn carrierPushForward(params: [][]const u8) !void {
                         .location = line.length.axis * @as(
                             f32,
                             @floatFromInt(axis - 1),
-                        ) * 1000.0 + 150.0,
-                        // 1000: scale from m to mm,
-                        // 150: offset for continuous push
+                        ) + 0.15,
+                        // 0.15: offset for continuous push (m)
                     },
                     .disable_cas = true,
                     .control = .CONTROL_POSITION,
@@ -1446,11 +1443,60 @@ pub fn carrierPushForward(params: [][]const u8) !void {
             try writer.interface.flush();
         }
         try waitCommandReceived(client.allocator);
+        return;
     }
+    // Get the axis information
+    {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
+        var ids: [1]u32 = .{carrier_id};
+        try client.api.request.info.track.encode(
+            client.allocator,
+            &writer.interface,
+            .{
+                .line = line.id,
+                .info_carrier_state = true,
+                .filter = .{
+                    .carriers = .{ .ids = .fromOwnedSlice(&ids) },
+                },
+            },
+        );
+        try writer.interface.flush();
+    }
+    const carrier = carrier: {
+        try client.net.socket.waitToRead();
+        var reader = try client.net.socket.reader(&client.reader_buf);
+        var track = try client.api.response.info.track.decode(
+            client.allocator,
+            &reader.interface,
+        );
+        defer track.deinit(client.allocator);
+        if (track.line != line.id) return error.InvalidResponse;
+        var carrier_state = track.carrier_state;
+        break :carrier carrier_state.pop() orelse return error.CarrierNotFound;
+    };
+    {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
+        try client.api.request.command.push.encode(
+            client.allocator,
+            &writer.interface,
+            .{
+                .line = line.id,
+                .carrier = carrier.id,
+                .velocity = client.lines[line_idx].velocity,
+                .acceleration = client.lines[line_idx].acceleration,
+                .direction = .DIRECTION_FORWARD,
+                .axis = carrier.axis_main,
+            },
+        );
+        try writer.interface.flush();
+    }
+    try waitCommandReceived(client.allocator);
 }
 
-// TODO: Change the parameter to axis oriented
-// TODO: Push without transition
 pub fn carrierPushBackward(params: [][]const u8) !void {
     const line_name = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
@@ -1480,9 +1526,8 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
                         .location = line.length.axis * @as(
                             f32,
                             @floatFromInt(axis - 1),
-                        ) * 1000.0 - 150.0,
-                        // 1000: scale from m to mm,
-                        // 150: offset for continuous push
+                        ) - 0.15,
+                        // 0.15: offset for continuous push
                     },
                     .disable_cas = true,
                     .control = .CONTROL_POSITION,
@@ -1510,7 +1555,58 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
             try writer.interface.flush();
         }
         try waitCommandReceived(client.allocator);
+        return;
     }
+    // Get the axis information
+    {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
+        var ids: [1]u32 = .{carrier_id};
+        try client.api.request.info.track.encode(
+            client.allocator,
+            &writer.interface,
+            .{
+                .line = line.id,
+                .info_carrier_state = true,
+                .filter = .{
+                    .carriers = .{ .ids = .fromOwnedSlice(&ids) },
+                },
+            },
+        );
+        try writer.interface.flush();
+    }
+    const carrier = carrier: {
+        try client.net.socket.waitToRead();
+        var reader = try client.net.socket.reader(&client.reader_buf);
+        var track = try client.api.response.info.track.decode(
+            client.allocator,
+            &reader.interface,
+        );
+        defer track.deinit(client.allocator);
+        if (track.line != line.id) return error.InvalidResponse;
+        var carrier_state = track.carrier_state;
+        break :carrier carrier_state.pop() orelse return error.CarrierNotFound;
+    };
+    {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
+        try client.api.request.command.push.encode(
+            client.allocator,
+            &writer.interface,
+            .{
+                .line = line.id,
+                .carrier = carrier.id,
+                .velocity = client.lines[line_idx].velocity,
+                .acceleration = client.lines[line_idx].acceleration,
+                .direction = .DIRECTION_BACKWARD,
+                .axis = carrier.axis_main,
+            },
+        );
+        try writer.interface.flush();
+    }
+    try waitCommandReceived(client.allocator);
 }
 
 pub fn carrierPullForward(params: [][]const u8) !void {
