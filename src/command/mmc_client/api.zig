@@ -246,25 +246,6 @@ pub const response = struct {
                         const ti = @typeInfo(@TypeOf(axis_err)).@"struct";
                         inline for (ti.fields) |field| {
                             switch (@typeInfo(field.type)) {
-                                .optional => {
-                                    const child = @field(
-                                        axis_err,
-                                        field.name,
-                                    ).?;
-                                    const inner_ti =
-                                        @typeInfo(@TypeOf(child)).@"struct";
-                                    inline for (inner_ti.fields) |inner| {
-                                        if (@field(child, inner.name))
-                                            try writer.print(
-                                                "{s}.{s} on axis {d}\n",
-                                                .{
-                                                    field.name,
-                                                    inner.name,
-                                                    axis_err.id,
-                                                },
-                                            );
-                                    }
-                                },
                                 .bool => {
                                     if (@field(axis_err, field.name))
                                         try writer.print(
@@ -317,29 +298,10 @@ pub const response = struct {
                         const ti = @typeInfo(@TypeOf(driver_err)).@"struct";
                         inline for (ti.fields) |field| {
                             switch (@typeInfo(field.type)) {
-                                .optional => {
-                                    const child = @field(
-                                        driver_err,
-                                        field.name,
-                                    ).?;
-                                    const inner_ti =
-                                        @typeInfo(@TypeOf(child)).@"struct";
-                                    inline for (inner_ti.fields) |inner| {
-                                        if (@field(child, inner.name))
-                                            try writer.print(
-                                                "{s}.{s} on driver {d}\n",
-                                                .{
-                                                    field.name,
-                                                    inner.name,
-                                                    driver_err.id,
-                                                },
-                                            );
-                                    }
-                                },
                                 .bool => {
                                     if (@field(driver_err, field.name))
                                         try writer.print(
-                                            "{s} on axis {d}\n",
+                                            "{s} on driver {d}\n",
                                             .{ field.name, driver_err.id },
                                         );
                                 },
