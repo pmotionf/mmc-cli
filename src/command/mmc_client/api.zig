@@ -713,6 +713,60 @@ pub const request = struct {
                 try msg.encode(writer, allocator);
             }
         };
+        pub const stop = struct {
+            /// Validate payload and encode to protobuf string. Caller shall free
+            /// the memory.
+            pub fn encode(
+                allocator: std.mem.Allocator,
+                writer: *std.Io.Writer,
+                payload: api.protobuf.mmc.command.Request.Stop,
+            ) !void {
+                const msg: api.protobuf.mmc.Request = .{
+                    .body = .{
+                        .command = .{
+                            .body = .{ .stop = payload },
+                        },
+                    },
+                };
+                try msg.encode(writer, allocator);
+            }
+        };
+        pub const pause = struct {
+            /// Validate payload and encode to protobuf string. Caller shall free
+            /// the memory.
+            pub fn encode(
+                allocator: std.mem.Allocator,
+                writer: *std.Io.Writer,
+                payload: api.protobuf.mmc.command.Request.Pause,
+            ) !void {
+                const msg: api.protobuf.mmc.Request = .{
+                    .body = .{
+                        .command = .{
+                            .body = .{ .pause = payload },
+                        },
+                    },
+                };
+                try msg.encode(writer, allocator);
+            }
+        };
+        pub const @"resume" = struct {
+            /// Validate payload and encode to protobuf string. Caller shall free
+            /// the memory.
+            pub fn encode(
+                allocator: std.mem.Allocator,
+                writer: *std.Io.Writer,
+                payload: api.protobuf.mmc.command.Request.Resume,
+            ) !void {
+                const msg: api.protobuf.mmc.Request = .{
+                    .body = .{
+                        .command = .{
+                            .body = .{ .@"resume" = payload },
+                        },
+                    },
+                };
+                try msg.encode(writer, allocator);
+            }
+        };
     };
     pub const info = struct {
         pub const command = struct {
