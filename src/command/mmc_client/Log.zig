@@ -4,14 +4,14 @@ const std = @import("std");
 const CircularBufferAlloc =
     @import("../../circular_buffer.zig").CircularBufferAlloc;
 const api_helper = @import("api.zig");
-const SystemResponse = api_helper.api.info_msg.Response.System;
+const SystemResponse = api_helper.api.protobuf.mmc.info.Response.Track;
 const client = @import("../mmc_client.zig");
 const command = @import("../../command.zig");
 const Network = @import("Network.zig");
 const main = @import("../../main.zig");
 /// Determine whether the log has been started or not. Deinit function behavior
 /// depends on this flag.
-pub var start = std.atomic.Value(bool).init(false);
+pub var executing = std.atomic.Value(bool).init(false);
 // NOTE: The following buffer differ from the client buffer as they are working
 //       on different thread.
 /// Reader buffer for network stream
@@ -83,7 +83,7 @@ pub const Data = struct {
 
     pub const Axis = struct {
         hall: struct { back: bool, front: bool },
-        motor_enabled: bool,
+        motor_active: bool,
         pulling: bool,
         pushing: bool,
         carrier: Carrier,
@@ -91,7 +91,7 @@ pub const Data = struct {
         pub const Carrier = struct {
             id: u10,
             position: f32,
-            state: SystemResponse.Carrier.Info.State,
+            state: SystemResponse.Carrier.State.State,
             cas: struct { enabled: bool, triggered: bool },
         };
         pub const Error = struct {
@@ -142,20 +142,23 @@ pub const Data = struct {
         for (configs) |config| {
             if (config.axis_id_range.start == 0) continue;
             {
+                try net.socket.removeIgnoredMessage(&reader_buf);
                 try net.socket.waitToWrite();
                 var writer = try net.socket.writer(&writer_buf);
-                try api_helper.request.info.system.encode(
+                try api_helper.request.info.track.encode(
                     allocator,
                     &writer.interface,
                     .{
-                        .line_id = config.id,
-                        .axis = config.axis,
-                        .carrier = if (config.axis) true else false,
-                        .driver = config.driver,
-                        .source = .{
-                            .axis_range = .{
-                                .start_id = config.axis_id_range.start,
-                                .end_id = config.axis_id_range.end,
+                        .line = config.id,
+                        .info_axis_errors = if (config.axis) true else false,
+                        .info_axis_state = if (config.axis) true else false,
+                        .info_carrier_state = if (config.axis) true else false,
+                        .info_driver_errors = if (config.driver) true else false,
+                        .info_driver_state = if (config.driver) true else false,
+                        .filter = .{
+                            .axes = .{
+                                .start = config.axis_id_range.start,
+                                .end = config.axis_id_range.end,
                             },
                         },
                     },
@@ -164,28 +167,28 @@ pub const Data = struct {
             }
             try net.socket.waitToRead();
             var reader = try net.socket.reader(&reader_buf);
-            var response = try api_helper.response.info.system.decode(
+            var response = try api_helper.response.info.track.decode(
                 allocator,
                 &reader.interface,
             );
             defer response.deinit(allocator);
-            const axis_infos = response.axis_infos;
+            const axis_state = response.axis_state;
             const axis_errors = response.axis_errors;
-            const driver_infos = response.driver_infos;
+            const driver_state = response.driver_state;
             const driver_errors = response.driver_errors;
-            const carriers = response.carrier_infos;
+            const carriers = response.carrier_state;
             // Parse axes informations
             for (
-                axis_infos.items,
+                axis_state.items,
                 axis_errors.items,
             ) |axis_info, axis_err| {
                 if (axis_info.id != axis_err.id) return error.InvalidResponse;
                 self.axes[axis_idx] = .{
                     .hall = .{
-                        .front = axis_info.hall_alarm.?.front,
-                        .back = axis_info.hall_alarm.?.back,
+                        .front = axis_info.hall_alarm_front,
+                        .back = axis_info.hall_alarm_back,
                     },
-                    .motor_enabled = axis_info.motor_enabled,
+                    .motor_active = axis_info.motor_active,
                     .pulling = axis_info.waiting_pull,
                     .pushing = axis_info.waiting_push,
                     .err = .{
@@ -200,45 +203,50 @@ pub const Data = struct {
             }
             // Parse carrier information response to axis.carrier
             for (carriers.items) |_carrier| {
-                const _axis = _carrier.axis.?;
-                const ti = @typeInfo(@TypeOf(_axis)).@"struct";
-                inline for (ti.fields) |field| {
-                    const axis = if (@typeInfo(field.type) == .optional) b: {
-                        if (@field(_axis, field.name)) |id| {
-                            break :b id - 1;
-                        } else break;
-                    } else @field(_axis, field.name) - 1;
+                const main_axis = _carrier.axis_main;
+                const aux_axis = _carrier.axis_auxiliary;
+                self.axes[main_axis].carrier = .{
+                    .id = @intCast(_carrier.id),
+                    .position = _carrier.position,
+                    .state = _carrier.state,
+                    .cas = .{
+                        .enabled = !_carrier.cas_disabled,
+                        .triggered = _carrier.cas_triggered,
+                    },
+                };
+                if (aux_axis) |axis| {
                     self.axes[axis].carrier = .{
                         .id = @intCast(_carrier.id),
                         .position = _carrier.position,
                         .state = _carrier.state,
                         .cas = .{
-                            .enabled = _carrier.cas.?.enabled,
-                            .triggered = _carrier.cas.?.triggered,
+                            .enabled = !_carrier.cas_disabled,
+                            .triggered = _carrier.cas_triggered,
                         },
                     };
                 }
             }
             for (
-                driver_infos.items,
+                driver_state.items,
                 driver_errors.items,
             ) |driver_info, driver_err| {
                 self.drivers[driver_idx] = .{
                     .connected = driver_info.connected,
-                    .available = driver_info.available,
-                    .servo_enabled = driver_info.servo_enabled,
-                    .stopped = driver_info.servo_enabled,
+                    // TODO: Ensure the value is correct
+                    .available = !driver_info.busy,
+                    .servo_enabled = !driver_info.motor_disabled,
+                    .stopped = driver_info.stopped,
                     .paused = driver_info.paused,
                     .err = .{
                         .control_loop_max_time_exceeded = driver_err.control_loop_time_exceeded,
                         .inverter_overheat = driver_err.inverter_overheat,
                         .power = .{
-                            .overvoltage = driver_err.power_error.?.overvoltage,
-                            .undervoltage = driver_err.power_error.?.undervoltage,
+                            .overvoltage = driver_err.overvoltage,
+                            .undervoltage = driver_err.undervoltage,
                         },
                         .comm = .{
-                            .from_prev = driver_err.communication_error.?.from_prev,
-                            .from_next = driver_err.communication_error.?.from_next,
+                            .from_prev = driver_err.comm_error_prev,
+                            .from_next = driver_err.comm_error_next,
                         },
                     },
                 };
@@ -397,9 +405,9 @@ fn write(
         var buf: [64]u8 = undefined;
         if (!config.axis and !config.driver) continue;
         if (config.driver) {
-            const start_id = (config.axis_id_range.start - 1) / 3 + 1;
-            const end_id = (config.axis_id_range.end - 1) / 3 + 1;
-            for (start_id..end_id + 1) |id| {
+            const start = (config.axis_id_range.start - 1) / 3 + 1;
+            const end = (config.axis_id_range.end - 1) / 3 + 1;
+            for (start..end + 1) |id| {
                 try writeHeaders(
                     writer,
                     try std.fmt.bufPrint(
@@ -413,9 +421,9 @@ fn write(
             }
         }
         if (config.axis) {
-            const start_id = config.axis_id_range.start;
-            const end_id = config.axis_id_range.end;
-            for (start_id..end_id + 1) |id| {
+            const start = config.axis_id_range.start;
+            const end = config.axis_id_range.end;
+            for (start..end + 1) |id| {
                 try writeHeaders(
                     writer,
                     try std.fmt.bufPrint(
@@ -439,16 +447,16 @@ fn write(
         );
         for (self.configs) |config| {
             if (config.driver) {
-                const start_id = (config.axis_id_range.start - 1) / 3 + 1;
-                const end_id = (config.axis_id_range.end - 1) / 3 + 1;
-                for (start_id - 1..end_id) |idx| {
+                const start = (config.axis_id_range.start - 1) / 3 + 1;
+                const end = (config.axis_id_range.end - 1) / 3 + 1;
+                for (start - 1..end) |idx| {
                     try writeValues(writer, data.drivers[idx]);
                 }
             }
             if (config.axis) {
-                const start_id = config.axis_id_range.start;
-                const end_id = config.axis_id_range.end;
-                for (start_id - 1..end_id) |idx| {
+                const start = config.axis_id_range.start;
+                const end = config.axis_id_range.end;
+                for (start - 1..end) |idx| {
                     try writeValues(writer, data.axes[idx]);
                 }
             }
@@ -458,8 +466,8 @@ fn write(
 
 /// Handler for the whole logging process
 pub fn handler(duration: f64) !void {
-    Log.start.store(true, .monotonic);
-    defer Log.start.store(false, .monotonic);
+    Log.executing.store(true, .monotonic);
+    defer Log.executing.store(false, .monotonic);
     defer client.log.reset();
     // Assumption: The register from mcl is updated every 3 ms. Requesting
     //             data with interval reducing the server loads.

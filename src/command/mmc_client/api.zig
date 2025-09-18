@@ -8,13 +8,13 @@ pub const api = @import("mmc-api");
 
 pub const response = struct {
     pub const core = struct {
-        pub const line_config = struct {
+        pub const track_config = struct {
             /// Decode the response. Caller shall free the allocated memory.
             pub fn decode(
                 allocator: std.mem.Allocator,
                 reader: *std.Io.Reader,
-            ) !api.core_msg.Response.LineConfig {
-                var decoded = try api.mmc_msg.Response.decode(
+            ) !api.protobuf.mmc.core.Response.TrackConfig {
+                var decoded = try api.protobuf.mmc.Response.decode(
                     reader,
                     allocator,
                 );
@@ -25,7 +25,7 @@ pub const response = struct {
                     },
                     .core => |core_resp| switch (core_resp.body orelse
                         return error.InvalidResponse) {
-                        .line_config => |config| return config,
+                        .track_config => |config| return config,
                         .request_error => |req_err| {
                             return core.error_handler(req_err);
                         },
@@ -40,8 +40,8 @@ pub const response = struct {
             pub fn decode(
                 allocator: std.mem.Allocator,
                 reader: *std.Io.Reader,
-            ) !api.core_msg.Response.SemanticVersion {
-                var decoded = try api.mmc_msg.Response.decode(
+            ) !api.protobuf.mmc.core.Response.SemanticVersion {
+                var decoded = try api.protobuf.mmc.Response.decode(
                     reader,
                     allocator,
                 );
@@ -67,8 +67,8 @@ pub const response = struct {
             pub fn decode(
                 allocator: std.mem.Allocator,
                 reader: *std.Io.Reader,
-            ) !api.core_msg.Response.Server {
-                var decoded = try api.mmc_msg.Response.decode(
+            ) !api.protobuf.mmc.core.Response.Server {
+                var decoded = try api.protobuf.mmc.Response.decode(
                     reader,
                     allocator,
                 );
@@ -89,7 +89,7 @@ pub const response = struct {
                 }
             }
         };
-        fn error_handler(err: api.core_msg.Response.RequestErrorKind) anyerror {
+        fn error_handler(err: api.protobuf.mmc.core.Request.Error) anyerror {
             return switch (err) {
                 .CORE_REQUEST_ERROR_UNSPECIFIED => error.InvalidResponse,
                 .CORE_REQUEST_ERROR_REQUEST_UNKNOWN => error.RequestUnknown,
@@ -104,7 +104,7 @@ pub const response = struct {
                 allocator: std.mem.Allocator,
                 reader: *std.Io.Reader,
             ) !u32 {
-                var decoded = try api.mmc_msg.Response.decode(
+                var decoded = try api.protobuf.mmc.Response.decode(
                     reader,
                     allocator,
                 );
@@ -115,7 +115,7 @@ pub const response = struct {
                     },
                     .command => |command_resp| switch (command_resp.body orelse
                         return error.InvalidResponse) {
-                        .command_id => |comm_id| {
+                        .id => |comm_id| {
                             // ID is guaranteed to not be 0
                             if (comm_id == 0) return error.InvalidIdResponse;
                             return comm_id;
@@ -129,12 +129,12 @@ pub const response = struct {
                 }
             }
         };
-        pub const operation = struct {
+        pub const removed_id = struct {
             pub fn decode(
                 allocator: std.mem.Allocator,
                 reader: *std.Io.Reader,
-            ) !bool {
-                var decoded = try api.mmc_msg.Response.decode(
+            ) !u32 {
+                var decoded = try api.protobuf.mmc.Response.decode(
                     reader,
                     allocator,
                 );
@@ -145,14 +145,7 @@ pub const response = struct {
                     },
                     .command => |command_resp| switch (command_resp.body orelse
                         return error.InvalidResponse) {
-                        // TODO: The API shall change to bool
-                        .command_operation => |status| {
-                            return switch (status) {
-                                .COMMAND_STATUS_UNSPECIFIED => return error.InvalidResponse,
-                                .COMMAND_STATUS_COMPLETED => return true,
-                                _ => unreachable,
-                            };
-                        },
+                        .removed_id => |_id| return _id,
                         .request_error => |req_err| {
                             return command.error_handler(req_err);
                         },
@@ -162,37 +155,36 @@ pub const response = struct {
                 }
             }
         };
-        fn error_handler(err: api.command_msg.Response.RequestErrorKind) anyerror {
+        fn error_handler(err: api.protobuf.mmc.command.Request.Error) anyerror {
             return switch (err) {
                 .COMMAND_REQUEST_ERROR_UNSPECIFIED => error.InvalidResponse,
                 .COMMAND_REQUEST_ERROR_INVALID_LINE => error.InvalidLine,
                 .COMMAND_REQUEST_ERROR_INVALID_AXIS => error.InvalidAxis,
-                .COMMAND_REQUEST_ERROR_CARRIER_NOT_FOUND => error.CarrierNotFound,
-                .COMMAND_REQUEST_ERROR_CC_LINK_DISCONNECTED => error.CCLinkDisconnected,
+                .COMMAND_REQUEST_ERROR_INVALID_DRIVER => error.InvalidDriver,
                 .COMMAND_REQUEST_ERROR_INVALID_ACCELERATION => error.InvalidAcceleration,
                 .COMMAND_REQUEST_ERROR_INVALID_VELOCITY => error.InvalidSpeed,
-                .COMMAND_REQUEST_ERROR_OUT_OF_MEMORY => error.ServerRunningOutOfMemory,
-                .COMMAND_REQUEST_ERROR_MISSING_PARAMETER => error.MissingParameter,
                 .COMMAND_REQUEST_ERROR_INVALID_DIRECTION => error.InvalidDirection,
                 .COMMAND_REQUEST_ERROR_INVALID_LOCATION => error.InvalidLocation,
                 .COMMAND_REQUEST_ERROR_INVALID_DISTANCE => error.InvalidDistance,
                 .COMMAND_REQUEST_ERROR_INVALID_CARRIER => error.InvalidCarrier,
-                .COMMAND_REQUEST_ERROR_COMMAND_PROGRESSING => error.CommandProgressing,
+                .COMMAND_REQUEST_ERROR_MISSING_PARAMETER => error.MissingParameter,
                 .COMMAND_REQUEST_ERROR_COMMAND_NOT_FOUND => error.CommandNotFound,
+                .COMMAND_REQUEST_ERROR_CARRIER_NOT_FOUND => error.CarrierNotFound,
+                .COMMAND_REQUEST_ERROR_CC_LINK_DISCONNECTED => error.CCLinkDisconnected,
+                .COMMAND_REQUEST_ERROR_OUT_OF_MEMORY => error.ServerRunningOutOfMemory,
                 .COMMAND_REQUEST_ERROR_MAXIMUM_AUTO_INITIALIZE_EXCEEDED => error.MaximumAutoInitializeExceeded,
-                .COMMAND_REQUEST_ERROR_INVALID_DRIVER => error.InvalidDriver,
                 _ => unreachable,
             };
         }
     };
     pub const info = struct {
-        pub const commands = struct {
+        pub const command = struct {
             /// Decode the response. Caller shall free the allocated memory.
             pub fn decode(
                 allocator: std.mem.Allocator,
                 reader: *std.Io.Reader,
-            ) !api.info_msg.Response.Commands {
-                var decoded = try api.mmc_msg.Response.decode(
+            ) !api.protobuf.mmc.info.Response.Commands {
+                var decoded = try api.protobuf.mmc.Response.decode(
                     reader,
                     allocator,
                 );
@@ -203,7 +195,7 @@ pub const response = struct {
                     },
                     .info => |info_resp| switch (info_resp.body orelse
                         return error.InvalidResponse) {
-                        .commands => |commands_resp| {
+                        .command => |commands_resp| {
                             return commands_resp;
                         },
                         .request_error => |req_err| {
@@ -215,16 +207,16 @@ pub const response = struct {
                 }
             }
         };
-        pub const system = struct {
+        pub const track = struct {
             pub const axis = struct {
-                pub const info = struct {
+                pub const state = struct {
                     /// Print all axis information into the screen
                     pub fn print(
-                        axis_info: api.info_msg.Response.System.Axis.Info,
+                        axis_info: api.protobuf.mmc.info.Response.Track.Axis.State,
                         writer: *std.Io.Writer,
                     ) !void {
                         _ = try nestedWrite(
-                            "Axis info",
+                            "Axis state",
                             axis_info,
                             0,
                             writer,
@@ -235,7 +227,7 @@ pub const response = struct {
                 pub const err = struct {
                     /// Print all axis information into the screen
                     pub fn print(
-                        axis_err: api.info_msg.Response.System.Axis.Error,
+                        axis_err: api.protobuf.mmc.info.Response.Track.Axis.Error,
                         writer: *std.Io.Writer,
                     ) !void {
                         _ = try nestedWrite(
@@ -248,31 +240,12 @@ pub const response = struct {
                     }
                     /// Print only active error bit
                     pub fn printActive(
-                        axis_err: api.info_msg.Response.System.Axis.Error,
+                        axis_err: api.protobuf.mmc.info.Response.Track.Axis.Error,
                         writer: *std.Io.Writer,
                     ) !void {
                         const ti = @typeInfo(@TypeOf(axis_err)).@"struct";
                         inline for (ti.fields) |field| {
                             switch (@typeInfo(field.type)) {
-                                .optional => {
-                                    const child = @field(
-                                        axis_err,
-                                        field.name,
-                                    ).?;
-                                    const inner_ti =
-                                        @typeInfo(@TypeOf(child)).@"struct";
-                                    inline for (inner_ti.fields) |inner| {
-                                        if (@field(child, inner.name))
-                                            try writer.print(
-                                                "{s}.{s} on axis {d}\n",
-                                                .{
-                                                    field.name,
-                                                    inner.name,
-                                                    axis_err.id,
-                                                },
-                                            );
-                                    }
-                                },
                                 .bool => {
                                     if (@field(axis_err, field.name))
                                         try writer.print(
@@ -288,14 +261,14 @@ pub const response = struct {
                 };
             };
             pub const driver = struct {
-                pub const info = struct {
+                pub const state = struct {
                     /// Print all axis information into the screen
                     pub fn print(
-                        driver_info: api.info_msg.Response.System.Driver.Info,
+                        driver_info: api.protobuf.mmc.info.Response.Track.Driver.State,
                         writer: *std.Io.Writer,
                     ) !void {
                         _ = try nestedWrite(
-                            "Driver info",
+                            "Driver state",
                             driver_info,
                             0,
                             writer,
@@ -306,7 +279,7 @@ pub const response = struct {
                 pub const err = struct {
                     /// Print all axis information into the screen
                     pub fn print(
-                        driver_err: api.info_msg.Response.System.Driver.Error,
+                        driver_err: api.protobuf.mmc.info.Response.Track.Driver.Error,
                         writer: *std.Io.Writer,
                     ) !void {
                         _ = try nestedWrite(
@@ -319,35 +292,16 @@ pub const response = struct {
                     }
                     /// Print only active error bit
                     pub fn printActive(
-                        driver_err: api.info_msg.Response.System.Driver.Error,
+                        driver_err: api.protobuf.mmc.info.Response.Track.Driver.Error,
                         writer: *std.Io.Writer,
                     ) !void {
                         const ti = @typeInfo(@TypeOf(driver_err)).@"struct";
                         inline for (ti.fields) |field| {
                             switch (@typeInfo(field.type)) {
-                                .optional => {
-                                    const child = @field(
-                                        driver_err,
-                                        field.name,
-                                    ).?;
-                                    const inner_ti =
-                                        @typeInfo(@TypeOf(child)).@"struct";
-                                    inline for (inner_ti.fields) |inner| {
-                                        if (@field(child, inner.name))
-                                            try writer.print(
-                                                "{s}.{s} on driver {d}\n",
-                                                .{
-                                                    field.name,
-                                                    inner.name,
-                                                    driver_err.id,
-                                                },
-                                            );
-                                    }
-                                },
                                 .bool => {
                                     if (@field(driver_err, field.name))
                                         try writer.print(
-                                            "{s} on axis {d}\n",
+                                            "{s} on driver {d}\n",
                                             .{ field.name, driver_err.id },
                                         );
                                 },
@@ -361,7 +315,7 @@ pub const response = struct {
             pub const carrier = struct {
                 /// Print all axis information into the screen
                 pub fn print(
-                    carrier_info: api.info_msg.Response.System.Carrier.Info,
+                    carrier_info: api.protobuf.mmc.info.Response.Track.Carrier.State,
                     writer: *std.Io.Writer,
                 ) !void {
                     _ = try nestedWrite(
@@ -377,8 +331,8 @@ pub const response = struct {
             pub fn decode(
                 allocator: std.mem.Allocator,
                 reader: *std.Io.Reader,
-            ) !api.info_msg.Response.System {
-                var decoded = try api.mmc_msg.Response.decode(
+            ) !api.protobuf.mmc.info.Response.Track {
+                var decoded = try api.protobuf.mmc.Response.decode(
                     reader,
                     allocator,
                 );
@@ -389,7 +343,7 @@ pub const response = struct {
                     },
                     .info => |info_resp| switch (info_resp.body orelse
                         return error.InvalidResponse) {
-                        .system => |system_resp| return system_resp,
+                        .track => |system_resp| return system_resp,
                         .request_error => |req_err| {
                             return info.error_handler(req_err);
                         },
@@ -399,16 +353,16 @@ pub const response = struct {
                 }
             }
 
-            /// Parse system response to fit the logging data
+            /// Parse track response to fit the logging data
             pub fn toLog(
-                system_resp: api.info_msg.Response.System,
+                system_resp: api.protobuf.mmc.info.Response.Track,
                 result: *Log.Data,
             ) !void {
                 const axis_infos = system_resp.axis_infos;
                 const axis_errors = system_resp.axis_errors;
                 const driver_infos = system_resp.driver_infos;
                 const driver_errors = system_resp.driver_errors;
-                const carriers = system_resp.carrier_infos;
+                const carriers = system_resp.carrier_state;
                 // Parse axes information response
                 for (
                     axis_infos.items,
@@ -421,7 +375,7 @@ pub const response = struct {
                             .front = axis_info.hall_alarm.?.front,
                             .back = axis_info.hall_alarm.?.back,
                         },
-                        .motor_enabled = axis_info.motor_enabled,
+                        .motor_active = axis_info.motor_active,
                         .pulling = axis_info.waiting_pull,
                         .pushing = axis_info.waiting_push,
                         .err = .{
@@ -482,22 +436,19 @@ pub const response = struct {
             }
         };
 
-        fn error_handler(err: api.info_msg.Response.RequestErrorKind) anyerror {
+        fn error_handler(err: api.protobuf.mmc.info.Request.Error) anyerror {
             return switch (err) {
                 .INFO_REQUEST_ERROR_UNSPECIFIED => error.InvalidResponse,
                 .INFO_REQUEST_ERROR_INVALID_LINE => error.InvalidLine,
                 .INFO_REQUEST_ERROR_INVALID_AXIS => error.InvalidAxis,
                 .INFO_REQUEST_ERROR_INVALID_DRIVER => error.InvalidDriver,
-                .INFO_REQUEST_ERROR_CARRIER_NOT_FOUND => error.CarrierNotFound,
-                .INFO_REQUEST_ERROR_CC_LINK_DISCONNECTED => error.CCLinkDisconnected,
                 .INFO_REQUEST_ERROR_MISSING_PARAMETER => error.MissingParameter,
-                .INFO_REQUEST_ERROR_COMMAND_NOT_FOUND => error.CommandNotFound,
                 _ => unreachable,
             };
         }
     };
 
-    fn error_handler(err: api.mmc_msg.Response.RequestError) anyerror {
+    fn error_handler(err: api.protobuf.mmc.Request.Error) anyerror {
         return switch (err) {
             .MMC_REQUEST_ERROR_UNSPECIFIED => error.InvalidResponse,
             .MMC_REQUEST_ERROR_INVALID_MESSAGE => error.InvalidMessage,
@@ -513,11 +464,11 @@ pub const request = struct {
         pub fn encode(
             allocator: std.mem.Allocator,
             writer: *std.Io.Writer,
-            comptime payload: api.core_msg.Request.Kind,
+            comptime payload: api.protobuf.mmc.core.Request.Kind,
         ) !void {
             if (payload == .CORE_REQUEST_KIND_UNSPECIFIED)
                 @compileError("Kind is unspecified");
-            const msg: api.mmc_msg.Request = .{
+            const msg: api.protobuf.mmc.Request = .{
                 .body = .{
                     .core = .{
                         .kind = payload,
@@ -534,109 +485,84 @@ pub const request = struct {
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.ClearErrors,
+                payload: api.protobuf.mmc.command.Request.ClearErrors,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
-                            .body = .{
-                                .clear_errors = .{
-                                    .line_id = payload.line_id,
-                                    .driver_id = payload.driver_id,
-                                },
-                            },
+                            .body = .{ .clear_errors = payload },
                         },
                     },
                 };
                 try msg.encode(writer, allocator);
             }
         };
-        pub const clear_carriers = struct {
+        pub const deinitialize = struct {
             /// Validate payload and encode to protobuf string. Caller shall free
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.ClearCarriers,
+                payload: api.protobuf.mmc.command.Request.Deinitialize,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
-                            .body = .{
-                                .clear_carrier_info = .{
-                                    .line_id = payload.line_id,
-                                    .axis_id = payload.axis_id,
-                                },
-                            },
+                            .body = .{ .deinitialize = payload },
                         },
                     },
                 };
                 try msg.encode(writer, allocator);
             }
         };
-        pub const release_control = struct {
+        pub const release = struct {
             /// Validate payload and encode to protobuf string. Caller shall free
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.ReleaseControl,
+                payload: api.protobuf.mmc.command.Request.Release,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
-                            .body = .{
-                                .release_control = .{
-                                    .line_id = payload.line_id,
-                                    .axis_id = payload.axis_id,
-                                },
-                            },
+                            .body = .{ .release = payload },
                         },
                     },
                 };
                 try msg.encode(writer, allocator);
             }
         };
-        pub const stop_pull_carrier = struct {
+        pub const stop_pull = struct {
             /// Validate payload and encode to protobuf string. Caller shall free
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.StopPullCarrier,
+                payload: api.protobuf.mmc.command.Request.StopPull,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
-                            .body = .{
-                                .stop_pull_carrier = .{
-                                    .line_id = payload.line_id,
-                                    .axis_id = payload.axis_id,
-                                },
-                            },
+                            .body = .{ .stop_pull = payload },
                         },
                     },
                 };
                 try msg.encode(writer, allocator);
             }
         };
-        pub const stop_push_carrier = struct {
+        pub const stop_push = struct {
             /// Validate payload and encode to protobuf string. Caller shall free
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.StopPushCarrier,
+                payload: api.protobuf.mmc.command.Request.StopPush,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
-                            .body = .{
-                                .stop_push_carrier = .{
-                                    .line_id = payload.line_id,
-                                    .axis_id = payload.axis_id,
-                                },
-                            },
+                            .body = .{ .stop_push = payload },
                         },
                     },
                 };
@@ -649,135 +575,84 @@ pub const request = struct {
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.AutoInitialize,
+                payload: api.protobuf.mmc.command.Request.AutoInitialize,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
-                            .body = .{
-                                .auto_initialize = .{
-                                    .lines = payload.lines,
-                                },
-                            },
+                            .body = .{ .auto_initialize = payload },
                         },
                     },
                 };
                 try msg.encode(writer, allocator);
             }
         };
-        pub const move_carrier = struct {
+        pub const move = struct {
             /// Validate payload and encode to protobuf string. Caller shall free
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.MoveCarrier,
+                payload: api.protobuf.mmc.command.Request.Move,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
-                            .body = .{
-                                .move_carrier = .{
-                                    .line_id = payload.line_id,
-                                    .acceleration = payload.acceleration,
-                                    .velocity = payload.velocity,
-                                    .carrier_id = payload.carrier_id,
-                                    .control_kind = payload.control_kind,
-                                    .disable_cas = payload.disable_cas,
-                                    .target = switch (payload.target.?) {
-                                        .axis => |axis| .{
-                                            .axis = axis,
-                                        },
-                                        .location => |loc| .{
-                                            .location = loc,
-                                        },
-                                        .distance => |dist| .{
-                                            .distance = dist,
-                                        },
-                                    },
-                                },
-                            },
+                            .body = .{ .move = payload },
                         },
                     },
                 };
                 try msg.encode(writer, allocator);
             }
         };
-        pub const push_carrier = struct {
+        pub const push = struct {
             /// Validate payload and encode to protobuf string. Caller shall free
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.PushCarrier,
+                payload: api.protobuf.mmc.command.Request.Push,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
-                            .body = .{
-                                .push_carrier = .{
-                                    .line_id = payload.line_id,
-                                    .acceleration = payload.acceleration,
-                                    .velocity = payload.velocity,
-                                    .carrier_id = payload.carrier_id,
-                                    .direction = payload.direction,
-                                    .axis_id = payload.axis_id,
-                                },
-                            },
+                            .body = .{ .push = payload },
                         },
                     },
                 };
                 try msg.encode(writer, allocator);
             }
         };
-        pub const pull_carrier = struct {
+        pub const pull = struct {
             /// Validate payload and encode to protobuf string. Caller shall free
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.PullCarrier,
+                payload: api.protobuf.mmc.command.Request.Pull,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
-                            .body = .{
-                                .pull_carrier = .{
-                                    .line_id = payload.line_id,
-                                    .acceleration = payload.acceleration,
-                                    .velocity = payload.velocity,
-                                    .carrier_id = payload.carrier_id,
-                                    .direction = payload.direction,
-                                    .axis_id = payload.axis_id,
-                                    .transition = payload.transition,
-                                },
-                            },
+                            .body = .{ .pull = payload },
                         },
                     },
                 };
                 try msg.encode(writer, allocator);
             }
         };
-        pub const isolate_carrier = struct {
+        pub const initialize = struct {
             /// Validate payload and encode to protobuf string. Caller shall free
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.IsolateCarrier,
+                payload: api.protobuf.mmc.command.Request.Initialize,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
-                            .body = .{
-                                .isolate_carrier = .{
-                                    .line_id = payload.line_id,
-                                    .carrier_id = payload.carrier_id,
-                                    .direction = payload.direction,
-                                    .axis_id = payload.axis_id,
-                                    .link_axis = payload.link_axis,
-                                },
-                            },
+                            .body = .{ .initialize = payload },
                         },
                     },
                 };
@@ -790,60 +665,102 @@ pub const request = struct {
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.Calibrate,
+                payload: api.protobuf.mmc.command.Request.Calibrate,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
-                            .body = .{
-                                .calibrate = .{
-                                    .line_id = payload.line_id,
-                                },
-                            },
+                            .body = .{ .calibrate = payload },
                         },
                     },
                 };
                 try msg.encode(writer, allocator);
             }
         };
-        pub const set_line_zero = struct {
+        pub const set_zero = struct {
             /// Validate payload and encode to protobuf string. Caller shall free
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.SetLineZero,
+                payload: api.protobuf.mmc.command.Request.SetZero,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
-                            .body = .{
-                                .set_line_zero = .{
-                                    .line_id = payload.line_id,
-                                },
-                            },
+                            .body = .{ .set_zero = payload },
                         },
                     },
                 };
                 try msg.encode(writer, allocator);
             }
         };
-        pub const clear_commands = struct {
+        pub const remove_commands = struct {
             /// Validate payload and encode to protobuf string. Caller shall free
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.command_msg.Request.ClearCommand,
+                payload: api.protobuf.mmc.command.Request.RemoveCommand,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .command = .{
-                            .body = .{
-                                .clear_command = .{
-                                    .command_id = payload.command_id,
-                                },
-                            },
+                            .body = .{ .remove_command = payload },
+                        },
+                    },
+                };
+                try msg.encode(writer, allocator);
+            }
+        };
+        pub const stop = struct {
+            /// Validate payload and encode to protobuf string. Caller shall free
+            /// the memory.
+            pub fn encode(
+                allocator: std.mem.Allocator,
+                writer: *std.Io.Writer,
+                payload: api.protobuf.mmc.command.Request.Stop,
+            ) !void {
+                const msg: api.protobuf.mmc.Request = .{
+                    .body = .{
+                        .command = .{
+                            .body = .{ .stop = payload },
+                        },
+                    },
+                };
+                try msg.encode(writer, allocator);
+            }
+        };
+        pub const pause = struct {
+            /// Validate payload and encode to protobuf string. Caller shall free
+            /// the memory.
+            pub fn encode(
+                allocator: std.mem.Allocator,
+                writer: *std.Io.Writer,
+                payload: api.protobuf.mmc.command.Request.Pause,
+            ) !void {
+                const msg: api.protobuf.mmc.Request = .{
+                    .body = .{
+                        .command = .{
+                            .body = .{ .pause = payload },
+                        },
+                    },
+                };
+                try msg.encode(writer, allocator);
+            }
+        };
+        pub const @"resume" = struct {
+            /// Validate payload and encode to protobuf string. Caller shall free
+            /// the memory.
+            pub fn encode(
+                allocator: std.mem.Allocator,
+                writer: *std.Io.Writer,
+                payload: api.protobuf.mmc.command.Request.Resume,
+            ) !void {
+                const msg: api.protobuf.mmc.Request = .{
+                    .body = .{
+                        .command = .{
+                            .body = .{ .@"resume" = payload },
                         },
                     },
                 };
@@ -852,44 +769,34 @@ pub const request = struct {
         };
     };
     pub const info = struct {
-        pub const commands = struct {
+        pub const command = struct {
             /// Validate payload and encode to protobuf string. Caller shall free
             /// the memory.
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.info_msg.Request.Command,
+                payload: api.protobuf.mmc.info.Request.Command,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .info = .{
-                            .body = .{
-                                .command = .{ .id = payload.id },
-                            },
+                            .body = .{ .command = payload },
                         },
                     },
                 };
                 try msg.encode(writer, allocator);
             }
         };
-        pub const system = struct {
+        pub const track = struct {
             pub fn encode(
                 allocator: std.mem.Allocator,
                 writer: *std.Io.Writer,
-                payload: api.info_msg.Request.System,
+                payload: api.protobuf.mmc.info.Request.Track,
             ) !void {
-                const msg: api.mmc_msg.Request = .{
+                const msg: api.protobuf.mmc.Request = .{
                     .body = .{
                         .info = .{
-                            .body = .{
-                                .system = .{
-                                    .line_id = payload.line_id,
-                                    .axis = payload.axis,
-                                    .carrier = payload.carrier,
-                                    .driver = payload.driver,
-                                    .source = payload.source,
-                                },
-                            },
+                            .body = .{ .track = payload },
                         },
                     },
                 };

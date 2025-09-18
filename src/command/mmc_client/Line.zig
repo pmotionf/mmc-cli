@@ -1,7 +1,7 @@
 const Line = @This();
 const std = @import("std");
 const api = @import("mmc-api");
-const Config = api.core_msg.Response.LineConfig;
+const Config = api.protobuf.mmc.core.Response.TrackConfig;
 
 index: Line.Index,
 id: Line.Id,
@@ -31,8 +31,8 @@ pub fn init(
     result.acceleration = 78;
     result.velocity = 12;
     result.length = .{
-        .axis = config.length.?.axis,
-        .carrier = config.length.?.carrier,
+        .axis = config.axis_length,
+        .carrier = config.carrier_length,
     };
     result.name = try allocator.dupe(u8, config.name);
     result.axes = @intCast(config.axes);
