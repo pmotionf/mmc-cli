@@ -793,6 +793,46 @@ pub fn init(c: Config) !void {
         .execute = &callbacks.showError,
     });
     errdefer command.registry.orderedRemove("PRINT_ERRORS");
+    try command.registry.put(.{
+        .name = "STOP",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line", .optional = true },
+        },
+        .short_description = "Stop any operation on the line(s).",
+        .long_description =
+        \\Stop any currently running operation and remove any queued commands for
+        \\the specified line. Not providing a line will stop the operation of
+        \\entire system.
+        ,
+        .execute = &callbacks.stopLine,
+    });
+    errdefer command.registry.orderedRemove("STOP");
+    try command.registry.put(.{
+        .name = "PAUSE",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line", .optional = true },
+        },
+        .short_description = "Pause any operation on the line(s).",
+        .long_description =
+        \\Pause any currently running operation for the specified line. Not 
+        \\providing a line will pause the operation of entire system.
+        ,
+        .execute = &callbacks.pauseLine,
+    });
+    errdefer command.registry.orderedRemove("PAUSE");
+    try command.registry.put(.{
+        .name = "RESUME",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line", .optional = true },
+        },
+        .short_description = "Resume the line(s) operation.",
+        .long_description =
+        \\Resume the specified line operation after being paused or stopped. Not
+        \\providing a line will resume the operation of entire system.
+        ,
+        .execute = &callbacks.resumeLine,
+    });
+    errdefer command.registry.orderedRemove("PAUSE");
 }
 
 pub fn deinit() void {
@@ -848,6 +888,7 @@ pub fn removeCommand(a: std.mem.Allocator, id: u32) !void {
             a,
             &reader.interface,
         );
+        std.log.debug("removed_id {}, id {}", .{ removed_id, id });
         if (removed_id == id) break;
     }
 }

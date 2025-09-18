@@ -1985,6 +1985,96 @@ pub fn removeLogInfo(params: [][]const u8) !void {
     try client.log.status();
 }
 
+pub fn stopLine(params: [][]const u8) !void {
+    var ids: [client.Line.max]u32 = @splat(0);
+    var ids_len: usize = 0;
+    if (params[0].len > 0) {
+        const line_name = params[0];
+        const line_idx = try client.matchLine(line_name);
+        ids[0] = @intCast(line_idx + 1);
+        ids_len += 1;
+    } else {
+        for (client.lines, 0..) |line, i| {
+            ids[i] = line.id;
+            ids_len += 1;
+        }
+    }
+    {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
+        try client.api.request.command.stop.encode(
+            client.allocator,
+            &writer.interface,
+            .{
+                .lines = .fromOwnedSlice(ids[0..ids_len]),
+            },
+        );
+        try writer.interface.flush();
+    }
+    try waitCommandReceived(client.allocator);
+}
+
+pub fn pauseLine(params: [][]const u8) !void {
+    var ids: [client.Line.max]u32 = @splat(0);
+    var ids_len: usize = 0;
+    if (params[0].len > 0) {
+        const line_name = params[0];
+        const line_idx = try client.matchLine(line_name);
+        ids[0] = @intCast(line_idx + 1);
+        ids_len += 1;
+    } else {
+        for (client.lines, 0..) |line, i| {
+            ids[i] = line.id;
+            ids_len += 1;
+        }
+    }
+    {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
+        try client.api.request.command.pause.encode(
+            client.allocator,
+            &writer.interface,
+            .{
+                .lines = .fromOwnedSlice(ids[0..ids_len]),
+            },
+        );
+        try writer.interface.flush();
+    }
+    try waitCommandReceived(client.allocator);
+}
+
+pub fn resumeLine(params: [][]const u8) !void {
+    var ids: [client.Line.max]u32 = @splat(0);
+    var ids_len: usize = 0;
+    if (params[0].len > 0) {
+        const line_name = params[0];
+        const line_idx = try client.matchLine(line_name);
+        ids[0] = @intCast(line_idx + 1);
+        ids_len += 1;
+    } else {
+        for (client.lines, 0..) |line, i| {
+            ids[i] = line.id;
+            ids_len += 1;
+        }
+    }
+    {
+        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
+        try client.net.socket.waitToWrite();
+        var writer = try client.net.socket.writer(&client.writer_buf);
+        try client.api.request.command.@"resume".encode(
+            client.allocator,
+            &writer.interface,
+            .{
+                .lines = .fromOwnedSlice(ids[0..ids_len]),
+            },
+        );
+        try writer.interface.flush();
+    }
+    try waitCommandReceived(client.allocator);
+}
+
 fn waitCommandReceived(allocator: std.mem.Allocator) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     var id: u32 = 0;
@@ -2020,6 +2110,7 @@ fn waitCommandReceived(allocator: std.mem.Allocator) !void {
         defer decoded.deinit(client.allocator);
         if (decoded.items.items.len > 1) return error.InvalidResponse;
         if (decoded.items.pop()) |comm| {
+            std.log.debug("{}", .{comm});
             switch (comm.status) {
                 .COMMAND_STATUS_PROGRESSING => {}, // continue the loop
                 .COMMAND_STATUS_COMPLETED => break,
