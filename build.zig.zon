@@ -8,6 +8,11 @@
             .url = "https://github.com/mochalins/network/archive/084fed7.tar.gz",
             .hash = "network-0.1.0-Pm-AgiMxAQCuaDrGAfSxVHeozUQ2gU3jINGLFxJ1Zpld",
         },
+        .zignet = .{
+            .path = "../zignet",
+            // .url = "https://github.com/aaumar25/zignet/archive/45ca57e.tar.gz",
+            // .hash = "zignet-0.0.1-BAu-rxdxAACjbKoqLPQ-DKJZ8Y8mF2u9fZrFbXPm7XfR",
+        },
         .mcl = .{
             .url = "https://github.com/pmotionf/mcl/archive/1e3edf0.tar.gz",
             .hash = "mcl-0.7.0-bTecRq6-AACgGZb5MWsG5USQ5rEUJssriL1H5uzaxVSp",

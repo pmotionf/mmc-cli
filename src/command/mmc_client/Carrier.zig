@@ -18,13 +18,14 @@ pub fn waitState(
     defer ids.deinit(allocator);
     try ids.append(allocator, id);
     var wait_timer = try std.time.Timer.start();
+    const socket = client.sock orelse return error.ServerNotConnected;
     while (true) {
         if (timeout != 0 and
             wait_timer.read() > timeout * std.time.ns_per_ms)
             return error.WaitTimeout;
         {
-            try client.net.socket.waitToWrite();
-            var writer = try client.net.socket.writer(&client.writer_buf);
+            try socket.waitToWrite(command.checkCommandInterrupt);
+            var writer = socket.writer(&client.writer_buf);
             try api.request.info.system.encode(
                 allocator,
                 &writer.interface,
@@ -38,8 +39,8 @@ pub fn waitState(
             );
             try writer.interface.flush();
         }
-        try client.net.socket.waitToRead();
-        var reader = try client.net.socket.reader(&client.reader_buf);
+        try socket.waitToRead(command.checkCommandInterrupt);
+        var reader = socket.reader(&client.reader_buf);
         var system = try api.response.info.system.decode(
             client.allocator,
             &reader.interface,

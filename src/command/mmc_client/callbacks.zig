@@ -6,40 +6,59 @@ const client = @import("../mmc_client.zig");
 const command = @import("../../command.zig");
 
 pub fn connect(params: [][]const u8) !void {
-    var endpoint: client.Network.Endpoint = undefined;
-    if (params[0].len != 0) {
-        var iterator = std.mem.tokenizeSequence(
-            u8,
-            params[0],
-            ":",
-        );
-        endpoint.name = @constCast(iterator.next() orelse
-            return error.MissingParameter);
-        if (endpoint.name.len > 63) return error.InvalidEndpoint;
-        endpoint.port = std.fmt.parseInt(
-            u16,
-            iterator.next() orelse return error.MissingParameter,
-            0,
-        ) catch return error.InvalidEndpoint;
-    } else {
-        endpoint = client.net.endpoint;
-    }
+    const endpoint: client.Config =
+        if (params[0].len != 0) endpoint: {
+            var iterator = std.mem.tokenizeSequence(
+                u8,
+                params[0],
+                ":",
+            );
+            const host = try client.allocator.dupe(
+                u8,
+                iterator.next() orelse return error.InvalidHost,
+            );
+            errdefer client.allocator.free(host);
+            if (host.len > 63) return error.InvalidEndpoint;
+            break :endpoint .{
+                .host = host,
+                .port = std.fmt.parseInt(
+                    u16,
+                    iterator.next() orelse return error.MissingParameter,
+                    0,
+                ) catch return error.InvalidEndpoint,
+            };
+        } else if (client.endpoint == null) .{
+            .host = try client.allocator.dupe(u8, client.config.host),
+            .port = client.config.port,
+        } else .{
+            .host = try std.fmt.allocPrint(
+                client.allocator,
+                "{f}",
+                .{client.endpoint.?.addr},
+            ),
+            .port = client.endpoint.?.port,
+        };
+    defer client.allocator.free(endpoint.host);
     std.log.info(
         "Trying to connect to {s}:{d}",
-        .{ endpoint.name, endpoint.port },
+        .{ endpoint.host, endpoint.port },
     );
-    try client.net.connectToHost(client.allocator, endpoint);
-    errdefer client.net.socket.close() catch {};
+    const socket = try client.zignet.Socket.connectToHost(
+        client.allocator,
+        endpoint.host,
+        endpoint.port,
+    );
+    errdefer socket.close();
     std.log.info(
         "Connected to {s}:{d}",
-        .{ client.net.endpoint.name, client.net.endpoint.port },
+        .{ endpoint.host, endpoint.port },
     );
     std.log.debug("Send API version request..", .{});
     // Asserting that API version matched between client and server
     {
         // Send API version request
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.core.encode(
             client.allocator,
             &writer.interface,
@@ -49,8 +68,8 @@ pub fn connect(params: [][]const u8) !void {
     }
     std.log.debug("Asserting API version..", .{});
     {
-        try client.net.socket.waitToRead();
-        var reader = try client.net.socket.reader(&client.reader_buf);
+        try socket.waitToRead(&command.checkCommandInterrupt);
+        var reader = socket.reader(&client.reader_buf);
         const response = try client.api.response.core.api_version.decode(
             client.allocator,
             &reader.interface,
@@ -64,8 +83,8 @@ pub fn connect(params: [][]const u8) !void {
     std.log.debug("Sending line config request..", .{});
     {
         // Send line configuration request
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.core.encode(
             client.allocator,
             &writer.interface,
@@ -75,8 +94,8 @@ pub fn connect(params: [][]const u8) !void {
     }
     std.log.debug("Getting line configuration..", .{});
     {
-        try client.net.socket.waitToRead();
-        var reader = try client.net.socket.reader(&client.reader_buf);
+        try socket.waitToRead(&command.checkCommandInterrupt);
+        var reader = socket.reader(&client.reader_buf);
         var response = try client.api.response.core.line_config.decode(
             client.allocator,
             &reader.interface,
@@ -109,11 +128,16 @@ pub fn connect(params: [][]const u8) !void {
         try stdout.interface.writeByte('\n');
         try stdout.interface.flush();
     }
+    client.endpoint = .{
+        .addr = .{ .ipv4 = try .parse(endpoint.host) },
+        .port = endpoint.port,
+    };
+    client.sock = socket;
     // Initialize memory for logging configuration
     client.log = try client.Log.init(
         client.allocator,
         client.lines,
-        client.net.endpoint,
+        client.endpoint.?,
     );
     for (client.log.configs, client.lines) |*config, line| {
         try config.init(client.allocator, line.id, line.name);
@@ -179,9 +203,10 @@ pub fn getAcceleration(params: [][]const u8) !void {
 }
 
 pub fn serverVersion(_: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.core.encode(
             client.allocator,
             &writer.interface,
@@ -189,8 +214,8 @@ pub fn serverVersion(_: [][]const u8) !void {
         );
         try writer.interface.flush();
     }
-    try client.net.socket.waitToRead();
-    var reader = try client.net.socket.reader(&client.reader_buf);
+    try socket.waitToRead(&command.checkCommandInterrupt);
+    var reader = socket.reader(&client.reader_buf);
     var server = try client.api.response.core.server.decode(
         client.allocator,
         &reader.interface,
@@ -218,9 +243,10 @@ pub fn showError(params: [][]const u8) !void {
             break :b .{ .start_id = axis_id, .end_id = axis_id };
         } else break :b null;
     };
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
             client.allocator,
             &writer.interface,
@@ -236,8 +262,8 @@ pub fn showError(params: [][]const u8) !void {
         );
         try writer.interface.flush();
     }
-    try client.net.socket.waitToRead();
-    var reader = try client.net.socket.reader(&client.reader_buf);
+    try socket.waitToRead(&command.checkCommandInterrupt);
+    var reader = socket.reader(&client.reader_buf);
     var system = try client.api.response.info.system.decode(
         client.allocator,
         &reader.interface,
@@ -284,9 +310,10 @@ pub fn axisInfo(params: [][]const u8) !void {
     const axis_id = try std.fmt.parseInt(u32, params[1], 0);
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
             client.allocator,
             &writer.interface,
@@ -303,8 +330,8 @@ pub fn axisInfo(params: [][]const u8) !void {
         );
         try writer.interface.flush();
     }
-    try client.net.socket.waitToRead();
-    var reader = try client.net.socket.reader(&client.reader_buf);
+    try socket.waitToRead(&command.checkCommandInterrupt);
+    var reader = socket.reader(&client.reader_buf);
     var system = try client.api.response.info.system.decode(
         client.allocator,
         &reader.interface,
@@ -329,9 +356,10 @@ pub fn driverInfo(params: [][]const u8) !void {
     const driver_id = try std.fmt.parseInt(u32, params[1], 0);
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
             client.allocator,
             &writer.interface,
@@ -348,8 +376,8 @@ pub fn driverInfo(params: [][]const u8) !void {
         );
         try writer.interface.flush();
     }
-    try client.net.socket.waitToRead();
-    var reader = try client.net.socket.reader(&client.reader_buf);
+    try socket.waitToRead(&command.checkCommandInterrupt);
+    var reader = socket.reader(&client.reader_buf);
     var system = try client.api.response.info.system.decode(
         client.allocator,
         &reader.interface,
@@ -374,12 +402,13 @@ pub fn carrierInfo(params: [][]const u8) !void {
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
         var ids: std.ArrayList(u32) = .empty;
         defer ids.deinit(client.allocator);
         try ids.append(client.allocator, carrier_id);
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
             client.allocator,
             &writer.interface,
@@ -393,8 +422,8 @@ pub fn carrierInfo(params: [][]const u8) !void {
         );
         try writer.interface.flush();
     }
-    try client.net.socket.waitToRead();
-    var reader = try client.net.socket.reader(&client.reader_buf);
+    try socket.waitToRead(&command.checkCommandInterrupt);
+    var reader = socket.reader(&client.reader_buf);
     var system = try client.api.response.info.system.decode(
         client.allocator,
         &reader.interface,
@@ -436,9 +465,10 @@ pub fn autoInitialize(params: [][]const u8) !void {
             try init_lines.append(client.allocator, line);
         }
     }
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.auto_initialize.encode(
             client.allocator,
             &writer.interface,
@@ -455,9 +485,10 @@ pub fn axisCarrier(params: [][]const u8) !void {
     const result_var: []const u8 = params[2];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
             client.allocator,
             &writer.interface,
@@ -474,8 +505,8 @@ pub fn axisCarrier(params: [][]const u8) !void {
         );
         try writer.interface.flush();
     }
-    try client.net.socket.waitToRead();
-    var reader = try client.net.socket.reader(&client.reader_buf);
+    try socket.waitToRead(&command.checkCommandInterrupt);
+    var reader = socket.reader(&client.reader_buf);
     var system = try client.api.response.info.system.decode(
         client.allocator,
         &reader.interface,
@@ -513,6 +544,7 @@ pub fn carrierId(params: [][]const u8) !void {
             return e;
         }
     }
+    const socket = client.sock orelse return error.ServerNotConnected;
 
     var line_idxs: std.ArrayList(usize) = .empty;
     defer line_idxs.deinit(client.allocator);
@@ -525,8 +557,8 @@ pub fn carrierId(params: [][]const u8) !void {
     for (line_idxs.items) |line_idx| {
         const line = client.lines[line_idx];
         {
-            try client.net.socket.waitToWrite();
-            var writer = try client.net.socket.writer(&client.writer_buf);
+            try socket.waitToWrite(&command.checkCommandInterrupt);
+            var writer = socket.writer(&client.writer_buf);
             try client.api.request.info.system.encode(
                 client.allocator,
                 &writer.interface,
@@ -538,8 +570,8 @@ pub fn carrierId(params: [][]const u8) !void {
             );
             try writer.interface.flush();
         }
-        try client.net.socket.waitToRead();
-        var reader = try client.net.socket.reader(&client.reader_buf);
+        try socket.waitToRead(&command.checkCommandInterrupt);
+        var reader = socket.reader(&client.reader_buf);
         var system = try client.api.response.info.system.decode(
             client.allocator,
             &reader.interface,
@@ -598,12 +630,13 @@ pub fn assertLocation(params: [][]const u8) !void {
         1.0;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
         var ids: std.ArrayList(u32) = .empty;
         defer ids.deinit(client.allocator);
         try ids.append(client.allocator, carrier_id);
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
             client.allocator,
             &writer.interface,
@@ -617,8 +650,8 @@ pub fn assertLocation(params: [][]const u8) !void {
         );
         try writer.interface.flush();
     }
-    try client.net.socket.waitToRead();
-    var reader = try client.net.socket.reader(&client.reader_buf);
+    try socket.waitToRead(&command.checkCommandInterrupt);
+    var reader = socket.reader(&client.reader_buf);
     var system = try client.api.response.info.system.decode(
         client.allocator,
         &reader.interface,
@@ -647,9 +680,10 @@ pub fn releaseServo(params: [][]const u8) !void {
         );
         axis_id = axis;
     }
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.release_control.encode(
             client.allocator,
             &writer.interface,
@@ -672,9 +706,10 @@ pub fn clearErrors(params: [][]const u8) !void {
         const axis = try std.fmt.parseInt(u32, params[1], 0);
         axis_id = axis;
     }
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.clear_errors.encode(
             client.allocator,
             &writer.interface,
@@ -700,9 +735,10 @@ pub fn clearCarrierInfo(params: [][]const u8) !void {
         const axis = try std.fmt.parseInt(u32, params[1], 0);
         axis_id = axis;
     }
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.clear_carriers.encode(
             client.allocator,
             &writer.interface,
@@ -717,10 +753,11 @@ pub fn clearCarrierInfo(params: [][]const u8) !void {
 }
 
 pub fn resetSystem(_: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     for (client.lines) |line| {
         {
-            try client.net.socket.waitToWrite();
-            var writer = try client.net.socket.writer(&client.writer_buf);
+            try socket.waitToWrite(&command.checkCommandInterrupt);
+            var writer = socket.writer(&client.writer_buf);
             try client.api.request.command.clear_carriers.encode(
                 client.allocator,
                 &writer.interface,
@@ -730,8 +767,8 @@ pub fn resetSystem(_: [][]const u8) !void {
         }
         try waitCommandReceived(client.allocator);
         {
-            try client.net.socket.waitToWrite();
-            var writer = try client.net.socket.writer(&client.writer_buf);
+            try socket.waitToWrite(&command.checkCommandInterrupt);
+            var writer = socket.writer(&client.writer_buf);
             try client.api.request.command.clear_errors.encode(
                 client.allocator,
                 &writer.interface,
@@ -741,8 +778,8 @@ pub fn resetSystem(_: [][]const u8) !void {
         }
         try waitCommandReceived(client.allocator);
         {
-            try client.net.socket.waitToWrite();
-            var writer = try client.net.socket.writer(&client.writer_buf);
+            try socket.waitToWrite(&command.checkCommandInterrupt);
+            var writer = socket.writer(&client.writer_buf);
             try client.api.request.command.stop_push_carrier.encode(
                 client.allocator,
                 &writer.interface,
@@ -752,8 +789,8 @@ pub fn resetSystem(_: [][]const u8) !void {
         }
         try waitCommandReceived(client.allocator);
         {
-            try client.net.socket.waitToWrite();
-            var writer = try client.net.socket.writer(&client.writer_buf);
+            try socket.waitToWrite(&command.checkCommandInterrupt);
+            var writer = socket.writer(&client.writer_buf);
             try client.api.request.command.stop_pull_carrier.encode(
                 client.allocator,
                 &writer.interface,
@@ -766,6 +803,7 @@ pub fn resetSystem(_: [][]const u8) !void {
 }
 
 pub fn carrierLocation(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
@@ -776,8 +814,8 @@ pub fn carrierLocation(params: [][]const u8) !void {
         var ids: std.ArrayList(u32) = .empty;
         defer ids.deinit(client.allocator);
         try ids.append(client.allocator, carrier_id);
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
             client.allocator,
             &writer.interface,
@@ -791,8 +829,8 @@ pub fn carrierLocation(params: [][]const u8) !void {
         );
         try writer.interface.flush();
     }
-    try client.net.socket.waitToRead();
-    var reader = try client.net.socket.reader(&client.reader_buf);
+    try socket.waitToRead(&command.checkCommandInterrupt);
+    var reader = socket.reader(&client.reader_buf);
     var system = try client.api.response.info.system.decode(
         client.allocator,
         &reader.interface,
@@ -816,6 +854,7 @@ pub fn carrierLocation(params: [][]const u8) !void {
 }
 
 pub fn carrierAxis(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
@@ -825,8 +864,8 @@ pub fn carrierAxis(params: [][]const u8) !void {
         var ids: std.ArrayList(u32) = .empty;
         defer ids.deinit(client.allocator);
         try ids.append(client.allocator, carrier_id);
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
             client.allocator,
             &writer.interface,
@@ -840,8 +879,8 @@ pub fn carrierAxis(params: [][]const u8) !void {
         );
         try writer.interface.flush();
     }
-    try client.net.socket.waitToRead();
-    var reader = try client.net.socket.reader(&client.reader_buf);
+    try socket.waitToRead(&command.checkCommandInterrupt);
+    var reader = socket.reader(&client.reader_buf);
     var system = try client.api.response.info.system.decode(
         client.allocator,
         &reader.interface,
@@ -864,6 +903,7 @@ pub fn carrierAxis(params: [][]const u8) !void {
 }
 
 pub fn hallStatus(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     var axis_id: ?u32 = null;
     const line_idx = try client.matchLine(line_name);
@@ -874,8 +914,8 @@ pub fn hallStatus(params: [][]const u8) !void {
     }
     if (axis_id) |id| {
         {
-            try client.net.socket.waitToWrite();
-            var writer = try client.net.socket.writer(&client.writer_buf);
+            try socket.waitToWrite(&command.checkCommandInterrupt);
+            var writer = socket.writer(&client.writer_buf);
             try client.api.request.info.system.encode(
                 client.allocator,
                 &writer.interface,
@@ -892,8 +932,8 @@ pub fn hallStatus(params: [][]const u8) !void {
             );
             try writer.interface.flush();
         }
-        try client.net.socket.waitToRead();
-        var reader = try client.net.socket.reader(&client.reader_buf);
+        try socket.waitToRead(&command.checkCommandInterrupt);
+        var reader = socket.reader(&client.reader_buf);
         var system = try client.api.response.info.system.decode(
             client.allocator,
             &reader.interface,
@@ -912,8 +952,8 @@ pub fn hallStatus(params: [][]const u8) !void {
         );
     } else {
         {
-            try client.net.socket.waitToWrite();
-            var writer = try client.net.socket.writer(&client.writer_buf);
+            try socket.waitToWrite(&command.checkCommandInterrupt);
+            var writer = socket.writer(&client.writer_buf);
             try client.api.request.info.system.encode(
                 client.allocator,
                 &writer.interface,
@@ -925,8 +965,8 @@ pub fn hallStatus(params: [][]const u8) !void {
             );
             try writer.interface.flush();
         }
-        try client.net.socket.waitToRead();
-        var reader = try client.net.socket.reader(&client.reader_buf);
+        try socket.waitToRead(&command.checkCommandInterrupt);
+        var reader = socket.reader(&client.reader_buf);
         var system = try client.api.response.info.system.decode(
             client.allocator,
             &reader.interface,
@@ -972,9 +1012,10 @@ pub fn assertHall(params: [][]const u8) !void {
             alarm_on = true;
         } else return error.InvalidHallAlarmState;
     }
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
             client.allocator,
             &writer.interface,
@@ -991,8 +1032,8 @@ pub fn assertHall(params: [][]const u8) !void {
         );
         try writer.interface.flush();
     }
-    try client.net.socket.waitToRead();
-    var reader = try client.net.socket.reader(&client.reader_buf);
+    try socket.waitToRead(&command.checkCommandInterrupt);
+    var reader = socket.reader(&client.reader_buf);
     var system = try client.api.response.info.system.decode(
         client.allocator,
         &reader.interface,
@@ -1020,9 +1061,10 @@ pub fn calibrate(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.calibrate.encode(
             client.allocator,
             &writer.interface,
@@ -1037,9 +1079,10 @@ pub fn setLineZero(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.set_line_zero.encode(
             client.allocator,
             &writer.interface,
@@ -1084,9 +1127,10 @@ pub fn isolate(params: [][]const u8) !void {
             } else return error.InvalidIsolateLinkAxis;
         } else break :link null;
     };
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.isolate_carrier.encode(
             client.allocator,
             &writer.interface,
@@ -1160,9 +1204,10 @@ pub fn carrierPosMoveAxis(params: [][]const u8) !void {
 
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.move_carrier.encode(
             client.allocator,
             &writer.interface,
@@ -1194,9 +1239,10 @@ pub fn carrierPosMoveLocation(params: [][]const u8) !void {
 
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.move_carrier.encode(
             client.allocator,
             &writer.interface,
@@ -1227,9 +1273,10 @@ pub fn carrierPosMoveDistance(params: [][]const u8) !void {
         return error.InvalidCasConfiguration;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.move_carrier.encode(
             client.allocator,
             &writer.interface,
@@ -1260,9 +1307,10 @@ pub fn carrierSpdMoveAxis(params: [][]const u8) !void {
         true
     else
         return error.InvalidCasConfiguration;
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.move_carrier.encode(
             client.allocator,
             &writer.interface,
@@ -1294,9 +1342,10 @@ pub fn carrierSpdMoveLocation(params: [][]const u8) !void {
 
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.move_carrier.encode(
             client.allocator,
             &writer.interface,
@@ -1327,9 +1376,10 @@ pub fn carrierSpdMoveDistance(params: [][]const u8) !void {
         true
     else
         return error.InvalidCasConfiguration;
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.move_carrier.encode(
             client.allocator,
             &writer.interface,
@@ -1360,10 +1410,11 @@ pub fn carrierPushForward(params: [][]const u8) !void {
 
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
+    const socket = client.sock orelse return error.ServerNotConnected;
     if (axis_id) |axis| {
         {
-            try client.net.socket.waitToWrite();
-            var writer = try client.net.socket.writer(&client.writer_buf);
+            try socket.waitToWrite(&command.checkCommandInterrupt);
+            var writer = socket.writer(&client.writer_buf);
             try client.api.request.command.move_carrier.encode(
                 client.allocator,
                 &writer.interface,
@@ -1389,8 +1440,8 @@ pub fn carrierPushForward(params: [][]const u8) !void {
         try waitCommandReceived(client.allocator);
     }
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.push_carrier.encode(
             client.allocator,
             &writer.interface,
@@ -1420,10 +1471,11 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
 
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
+    const socket = client.sock orelse return error.ServerNotConnected;
     if (axis_id) |axis| {
         {
-            try client.net.socket.waitToWrite();
-            var writer = try client.net.socket.writer(&client.writer_buf);
+            try socket.waitToWrite(&command.checkCommandInterrupt);
+            var writer = socket.writer(&client.writer_buf);
             try client.api.request.command.move_carrier.encode(
                 client.allocator,
                 &writer.interface,
@@ -1449,8 +1501,8 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
         try waitCommandReceived(client.allocator);
     }
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.push_carrier.encode(
             client.allocator,
             &writer.interface,
@@ -1484,9 +1536,10 @@ pub fn carrierPullForward(params: [][]const u8) !void {
         true
     else
         return error.InvalidCasConfiguration;
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.pull_carrier.encode(
             client.allocator,
             &writer.interface,
@@ -1530,9 +1583,10 @@ pub fn carrierPullBackward(params: [][]const u8) !void {
         true
     else
         return error.InvalidCasConfiguration;
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.pull_carrier.encode(
             client.allocator,
             &writer.interface,
@@ -1588,9 +1642,10 @@ pub fn carrierStopPull(params: [][]const u8) !void {
         const axis = try std.fmt.parseInt(u32, params[1], 0);
         axis_id = axis;
     }
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.stop_pull_carrier.encode(
             client.allocator,
             &writer.interface,
@@ -1613,9 +1668,10 @@ pub fn carrierStopPush(params: [][]const u8) !void {
         const axis = try std.fmt.parseInt(u32, params[1], 0);
         axis_id = axis;
     }
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.stop_push_carrier.encode(
             client.allocator,
             &writer.interface,
@@ -1638,13 +1694,14 @@ pub fn waitAxisEmpty(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     var wait_timer = try std.time.Timer.start();
+    const socket = client.sock orelse return error.ServerNotConnected;
     while (true) {
         if (timeout != 0 and
             wait_timer.read() > timeout * std.time.ns_per_ms)
             return error.WaitTimeout;
         {
-            try client.net.socket.waitToWrite();
-            var writer = try client.net.socket.writer(&client.writer_buf);
+            try socket.waitToWrite(&command.checkCommandInterrupt);
+            var writer = socket.writer(&client.writer_buf);
             try client.api.request.info.system.encode(
                 client.allocator,
                 &writer.interface,
@@ -1661,8 +1718,8 @@ pub fn waitAxisEmpty(params: [][]const u8) !void {
             );
             try writer.interface.flush();
         }
-        try client.net.socket.waitToRead();
-        var reader = try client.net.socket.reader(&client.reader_buf);
+        try socket.waitToRead(&command.checkCommandInterrupt);
+        var reader = socket.reader(&client.reader_buf);
         var system = try client.api.response.info.system.decode(
             client.allocator,
             &reader.interface,
@@ -1787,9 +1844,10 @@ pub fn removeLogInfo(params: [][]const u8) !void {
 
 fn waitCommandReceived(allocator: std.mem.Allocator) !void {
     var id: u32 = 0;
+    const socket = client.sock orelse return error.ServerNotConnected;
     {
-        try client.net.socket.waitToRead();
-        var reader = try client.net.socket.reader(&client.reader_buf);
+        try socket.waitToRead(&command.checkCommandInterrupt);
+        var reader = socket.reader(&client.reader_buf);
         id = try client.api.response.command.id.decode(
             client.allocator,
             &reader.interface,
@@ -1798,8 +1856,8 @@ fn waitCommandReceived(allocator: std.mem.Allocator) !void {
     defer client.clearCommand(allocator, id) catch {};
     while (true) {
         {
-            try client.net.socket.waitToWrite();
-            var writer = try client.net.socket.writer(&client.writer_buf);
+            try socket.waitToWrite(&command.checkCommandInterrupt);
+            var writer = socket.writer(&client.writer_buf);
             try client.api.request.info.commands.encode(
                 allocator,
                 &writer.interface,
@@ -1809,8 +1867,8 @@ fn waitCommandReceived(allocator: std.mem.Allocator) !void {
             );
             try writer.interface.flush();
         }
-        try client.net.socket.waitToRead();
-        var reader = try client.net.socket.reader(&client.reader_buf);
+        try socket.waitToRead(&command.checkCommandInterrupt);
+        var reader = socket.reader(&client.reader_buf);
         var decoded = try client.api.response.info.commands.decode(
             allocator,
             &reader.interface,

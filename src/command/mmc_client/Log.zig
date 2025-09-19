@@ -7,7 +7,6 @@ const api_helper = @import("api.zig");
 const SystemResponse = api_helper.api.info_msg.Response.System;
 const client = @import("../mmc_client.zig");
 const command = @import("../../command.zig");
-const Network = @import("Network.zig");
 const main = @import("../../main.zig");
 /// Determine whether the log has been started or not. Deinit function behavior
 /// depends on this flag.
@@ -23,7 +22,7 @@ allocator: std.mem.Allocator,
 path: ?[]const u8,
 configs: []Config,
 data: ?CircularBufferAlloc(Data),
-endpoint: Network.Endpoint,
+endpoint: client.zignet.Endpoint,
 
 /// Kind of info to log
 pub const Kind = enum { axis, driver };
@@ -135,15 +134,15 @@ pub const Data = struct {
         allocator: std.mem.Allocator,
         /// Logging configurations
         configs: []Config,
-        net: *Network,
+        socket: *client.zignet.Socket,
     ) !void {
         var axis_idx: usize = 0;
         var driver_idx: usize = 0;
         for (configs) |config| {
             if (config.axis_id_range.start == 0) continue;
             {
-                try net.socket.waitToWrite();
-                var writer = try net.socket.writer(&writer_buf);
+                try socket.waitToWrite(command.checkCommandInterrupt);
+                var writer = socket.writer(&writer_buf);
                 try api_helper.request.info.system.encode(
                     allocator,
                     &writer.interface,
@@ -162,8 +161,8 @@ pub const Data = struct {
                 );
                 try writer.interface.flush();
             }
-            try net.socket.waitToRead();
-            var reader = try net.socket.reader(&reader_buf);
+            try socket.waitToRead(command.checkCommandInterrupt);
+            var reader = socket.reader(&reader_buf);
             var response = try api_helper.response.info.system.decode(
                 allocator,
                 &reader.interface,
@@ -255,7 +254,7 @@ pub fn init(
     allocator: std.mem.Allocator,
     /// Number of lines from mcl configuration
     lines: []client.Line,
-    endpoint: Network.Endpoint,
+    endpoint: client.zignet.Endpoint,
 ) !Log {
     return .{
         .allocator = allocator,
@@ -271,7 +270,7 @@ pub fn deinit(self: *Log) void {
         config.deinit(self.allocator);
     }
     self.allocator.free(self.configs);
-    self.endpoint = .{ .name = &.{}, .port = 0 };
+    self.endpoint = undefined;
     self.reset();
 }
 
@@ -482,13 +481,8 @@ pub fn handler(duration: f64) !void {
     const log_file = try std.fs.cwd().createFile(client.log.path.?, .{});
     defer log_file.close();
     const logging_size = @as(usize, @intFromFloat(logging_size_float));
-    var net = try Network.init(
-        client.log.allocator,
-        "Logging",
-        client.log.endpoint,
-    );
-    defer net.deinit(client.log.allocator);
-    try net.connectToHost(client.log.allocator, client.log.endpoint);
+    var socket = try client.zignet.Socket.connect(client.log.endpoint);
+    defer socket.close();
     var data = std.mem.zeroInit(Data, .{});
     client.log.data = try .initCapacity(
         client.log.allocator,
@@ -519,7 +513,11 @@ pub fn handler(duration: f64) !void {
         ) / std.time.us_per_s;
         timer.reset();
         data.timestamp = timestamp;
-        data.get(client.log.allocator, client.log.configs, &net) catch |e| {
+        data.get(
+            client.log.allocator,
+            client.log.configs,
+            &socket,
+        ) catch |e| {
             std.log.debug("{t}", .{e});
             std.log.debug("{?f}", .{@errorReturnTrace()});
             // NOTE: Should the main thread be notified to stop any running
