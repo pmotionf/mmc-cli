@@ -827,18 +827,20 @@ pub fn matchLine(name: []const u8) !usize {
 }
 
 pub fn clearCommand(a: std.mem.Allocator, id: u32) !void {
+    const socket = sock orelse return error.ServerNotConnected;
     while (true) {
-        const s = sock orelse return error.ServerNotConnected;
-        try s.waitToRead(&command.checkCommandInterrupt);
-        var writer = s.writer(&writer_buf);
-        try api.request.command.clear_commands.encode(
-            a,
-            &writer.interface,
-            .{ .command_id = id },
-        );
-        try writer.interface.flush();
-        try s.waitToRead(&command.checkCommandInterrupt);
-        var reader = s.reader(&reader_buf);
+        {
+            try socket.waitToWrite(&command.checkCommandInterrupt);
+            var writer = socket.writer(&writer_buf);
+            try api.request.command.clear_commands.encode(
+                a,
+                &writer.interface,
+                .{ .command_id = id },
+            );
+            try writer.interface.flush();
+        }
+        try socket.waitToRead(&command.checkCommandInterrupt);
+        var reader = socket.reader(&reader_buf);
         const completed = try api.response.command.operation.decode(
             a,
             &reader.interface,
