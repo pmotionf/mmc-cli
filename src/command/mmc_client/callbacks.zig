@@ -128,10 +128,12 @@ pub fn connect(params: [][]const u8) !void {
         try stdout.interface.writeByte('\n');
         try stdout.interface.flush();
     }
-    client.endpoint = .{
-        .addr = .{ .ipv4 = try .parse(endpoint.host) },
-        .port = endpoint.port,
+    const sockaddr: *const std.posix.sockaddr = switch (socket.sockaddr) {
+        .any => |any| &any,
+        .ipv4 => |in| @ptrCast(&in),
+        .ipv6 => |in6| @ptrCast(&in6),
     };
+    client.endpoint = try .fromSockAddr(sockaddr);
     client.sock = socket;
     // Initialize memory for logging configuration
     client.log = try client.Log.init(
