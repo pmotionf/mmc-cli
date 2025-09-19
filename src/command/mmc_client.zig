@@ -809,6 +809,7 @@ pub fn deinit() void {
 /// Free all memory EXCEPT the endpoint, so that client can reconnect to the
 /// latest server.
 pub fn disconnect() void {
+    Log.stop.store(true, .monotonic);
     // Wait until the log finish storing log data and cleanup
     while (Log.start.load(.monotonic)) {}
     if (sock) |s| s.close() else return;
