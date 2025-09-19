@@ -796,7 +796,7 @@ pub fn init(c: Config) !void {
 }
 
 pub fn deinit() void {
-    disconnect() catch {};
+    disconnect();
     allocator.free(config.host);
     if (debug_allocator.detectLeaks()) {
         std.log.debug("Leaks detected", .{});
@@ -808,10 +808,10 @@ pub fn deinit() void {
 
 /// Free all memory EXCEPT the endpoint, so that client can reconnect to the
 /// latest server.
-pub fn disconnect() error{ServerNotConnected}!void {
+pub fn disconnect() void {
     // Wait until the log finish storing log data and cleanup
     while (Log.start.load(.monotonic)) {}
-    if (sock) |s| s.close();
+    if (sock) |s| s.close() else return;
     sock = null;
     log.deinit();
     for (lines) |*line| {

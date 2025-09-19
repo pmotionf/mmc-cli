@@ -6,6 +6,7 @@ const client = @import("../mmc_client.zig");
 const command = @import("../../command.zig");
 
 pub fn connect(params: [][]const u8) !void {
+    if (client.sock) |_| client.disconnect();
     const endpoint: client.Config =
         if (params[0].len != 0) endpoint: {
             var iterator = std.mem.tokenizeSequence(
@@ -148,7 +149,11 @@ pub fn connect(params: [][]const u8) !void {
 
 /// Serve as a callback of a `DISCONNECT` command, requires parameter.
 pub fn disconnect(_: [][]const u8) error{ServerNotConnected}!void {
-    try client.disconnect();
+    if (client.sock) |_| client.disconnect() else return error.ServerNotConnected;
+    std.log.info(
+        "Disconnected from {f}:{}",
+        .{ client.endpoint.?.addr, client.endpoint.?.port },
+    );
 }
 
 pub fn setSpeed(params: [][]const u8) !void {
@@ -232,6 +237,7 @@ pub fn serverVersion(_: [][]const u8) !void {
 }
 
 pub fn showError(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -245,7 +251,6 @@ pub fn showError(params: [][]const u8) !void {
             break :b .{ .start_id = axis_id, .end_id = axis_id };
         } else break :b null;
     };
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
@@ -308,11 +313,11 @@ pub fn showError(params: [][]const u8) !void {
 }
 
 pub fn axisInfo(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(u32, params[1], 0);
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
@@ -354,11 +359,11 @@ pub fn axisInfo(params: [][]const u8) !void {
 }
 
 pub fn driverInfo(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const driver_id = try std.fmt.parseInt(u32, params[1], 0);
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
@@ -400,11 +405,11 @@ pub fn driverInfo(params: [][]const u8) !void {
 }
 
 pub fn carrierInfo(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         var ids: std.ArrayList(u32) = .empty;
         defer ids.deinit(client.allocator);
@@ -441,6 +446,7 @@ pub fn carrierInfo(params: [][]const u8) !void {
 }
 
 pub fn autoInitialize(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     var init_lines: std.ArrayList(
         client.api.api.command_msg.Request.AutoInitialize.Line,
     ) = .empty;
@@ -467,7 +473,6 @@ pub fn autoInitialize(params: [][]const u8) !void {
             try init_lines.append(client.allocator, line);
         }
     }
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
@@ -482,12 +487,12 @@ pub fn autoInitialize(params: [][]const u8) !void {
 }
 
 pub fn axisCarrier(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(u32, params[1], 0);
     const result_var: []const u8 = params[2];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
@@ -528,6 +533,7 @@ pub fn axisCarrier(params: [][]const u8) !void {
 }
 
 pub fn carrierId(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     var line_name_iterator = std.mem.tokenizeSequence(
         u8,
         params[0],
@@ -546,7 +552,6 @@ pub fn carrierId(params: [][]const u8) !void {
             return e;
         }
     }
-    const socket = client.sock orelse return error.ServerNotConnected;
 
     var line_idxs: std.ArrayList(usize) = .empty;
     defer line_idxs.deinit(client.allocator);
@@ -622,6 +627,7 @@ pub fn carrierId(params: [][]const u8) !void {
 }
 
 pub fn assertLocation(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     const expected_location: f32 = try std.fmt.parseFloat(f32, params[2]);
@@ -632,7 +638,6 @@ pub fn assertLocation(params: [][]const u8) !void {
         1.0;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         var ids: std.ArrayList(u32) = .empty;
         defer ids.deinit(client.allocator);
@@ -670,6 +675,7 @@ pub fn assertLocation(params: [][]const u8) !void {
 }
 
 pub fn releaseServo(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -682,7 +688,6 @@ pub fn releaseServo(params: [][]const u8) !void {
         );
         axis_id = axis;
     }
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
@@ -700,6 +705,7 @@ pub fn releaseServo(params: [][]const u8) !void {
 }
 
 pub fn clearErrors(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -708,7 +714,6 @@ pub fn clearErrors(params: [][]const u8) !void {
         const axis = try std.fmt.parseInt(u32, params[1], 0);
         axis_id = axis;
     }
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
@@ -729,6 +734,7 @@ pub fn clearErrors(params: [][]const u8) !void {
 }
 
 pub fn clearCarrierInfo(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -737,7 +743,6 @@ pub fn clearCarrierInfo(params: [][]const u8) !void {
         const axis = try std.fmt.parseInt(u32, params[1], 0);
         axis_id = axis;
     }
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
@@ -992,6 +997,7 @@ pub fn hallStatus(params: [][]const u8) !void {
 }
 
 pub fn assertHall(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(u32, params[1], 0);
     const side: client.api.api.command_msg.Direction =
@@ -1014,7 +1020,6 @@ pub fn assertHall(params: [][]const u8) !void {
             alarm_on = true;
         } else return error.InvalidHallAlarmState;
     }
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
@@ -1060,10 +1065,10 @@ pub fn assertHall(params: [][]const u8) !void {
 }
 
 pub fn calibrate(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
@@ -1078,10 +1083,10 @@ pub fn calibrate(params: [][]const u8) !void {
 }
 
 pub fn setLineZero(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
@@ -1096,6 +1101,7 @@ pub fn setLineZero(params: [][]const u8) !void {
 }
 
 pub fn isolate(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(u32, params[1], 0);
 
@@ -1129,7 +1135,6 @@ pub fn isolate(params: [][]const u8) !void {
             } else return error.InvalidIsolateLinkAxis;
         } else break :link null;
     };
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
@@ -1190,6 +1195,7 @@ pub fn waitMoveCarrier(params: [][]const u8) !void {
 }
 
 pub fn carrierPosMoveAxis(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
     const axis_id = try std.fmt.parseInt(
@@ -1206,7 +1212,6 @@ pub fn carrierPosMoveAxis(params: [][]const u8) !void {
 
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
@@ -1229,6 +1234,7 @@ pub fn carrierPosMoveAxis(params: [][]const u8) !void {
 }
 
 pub fn carrierPosMoveLocation(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
@@ -1241,7 +1247,6 @@ pub fn carrierPosMoveLocation(params: [][]const u8) !void {
 
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
@@ -1264,6 +1269,7 @@ pub fn carrierPosMoveLocation(params: [][]const u8) !void {
 }
 
 pub fn carrierPosMoveDistance(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     const distance = try std.fmt.parseFloat(f32, params[2]);
@@ -1275,7 +1281,6 @@ pub fn carrierPosMoveDistance(params: [][]const u8) !void {
         return error.InvalidCasConfiguration;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
@@ -1298,6 +1303,7 @@ pub fn carrierPosMoveDistance(params: [][]const u8) !void {
 }
 
 pub fn carrierSpdMoveAxis(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
     const axis_id = try std.fmt.parseInt(u32, params[2], 0);
@@ -1309,7 +1315,6 @@ pub fn carrierSpdMoveAxis(params: [][]const u8) !void {
         true
     else
         return error.InvalidCasConfiguration;
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
@@ -1332,6 +1337,7 @@ pub fn carrierSpdMoveAxis(params: [][]const u8) !void {
 }
 
 pub fn carrierSpdMoveLocation(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
@@ -1344,7 +1350,6 @@ pub fn carrierSpdMoveLocation(params: [][]const u8) !void {
 
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
@@ -1367,6 +1372,7 @@ pub fn carrierSpdMoveLocation(params: [][]const u8) !void {
 }
 
 pub fn carrierSpdMoveDistance(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     const distance = try std.fmt.parseFloat(f32, params[2]);
@@ -1378,7 +1384,6 @@ pub fn carrierSpdMoveDistance(params: [][]const u8) !void {
         true
     else
         return error.InvalidCasConfiguration;
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
@@ -1401,6 +1406,7 @@ pub fn carrierSpdMoveDistance(params: [][]const u8) !void {
 }
 
 pub fn carrierPushForward(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
@@ -1412,7 +1418,6 @@ pub fn carrierPushForward(params: [][]const u8) !void {
 
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const socket = client.sock orelse return error.ServerNotConnected;
     if (axis_id) |axis| {
         {
             try socket.waitToWrite(&command.checkCommandInterrupt);
@@ -1462,6 +1467,7 @@ pub fn carrierPushForward(params: [][]const u8) !void {
 }
 
 pub fn carrierPushBackward(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
@@ -1473,7 +1479,6 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
 
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const socket = client.sock orelse return error.ServerNotConnected;
     if (axis_id) |axis| {
         {
             try socket.waitToWrite(&command.checkCommandInterrupt);
@@ -1523,6 +1528,7 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
 }
 
 pub fn carrierPullForward(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
     const axis_id = try std.fmt.parseInt(u32, params[1], 0);
     const carrier_id = try std.fmt.parseInt(u10, params[2], 0);
@@ -1538,7 +1544,6 @@ pub fn carrierPullForward(params: [][]const u8) !void {
         true
     else
         return error.InvalidCasConfiguration;
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
@@ -1569,6 +1574,7 @@ pub fn carrierPullForward(params: [][]const u8) !void {
 }
 
 pub fn carrierPullBackward(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
     const axis_id = try std.fmt.parseInt(u32, params[1], 0);
     const carrier_id = try std.fmt.parseInt(u10, params[2], 0);
@@ -1585,7 +1591,6 @@ pub fn carrierPullBackward(params: [][]const u8) !void {
         true
     else
         return error.InvalidCasConfiguration;
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
@@ -1636,6 +1641,7 @@ pub fn carrierWaitPull(params: [][]const u8) !void {
 }
 
 pub fn carrierStopPull(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -1644,7 +1650,6 @@ pub fn carrierStopPull(params: [][]const u8) !void {
         const axis = try std.fmt.parseInt(u32, params[1], 0);
         axis_id = axis;
     }
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
@@ -1662,6 +1667,7 @@ pub fn carrierStopPull(params: [][]const u8) !void {
 }
 
 pub fn carrierStopPush(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -1670,7 +1676,6 @@ pub fn carrierStopPush(params: [][]const u8) !void {
         const axis = try std.fmt.parseInt(u32, params[1], 0);
         axis_id = axis;
     }
-    const socket = client.sock orelse return error.ServerNotConnected;
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
@@ -1687,6 +1692,7 @@ pub fn carrierStopPush(params: [][]const u8) !void {
 }
 
 pub fn waitAxisEmpty(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
     const axis_id = try std.fmt.parseInt(u32, params[1], 0);
     const timeout = if (params[2].len > 0)
@@ -1696,7 +1702,6 @@ pub fn waitAxisEmpty(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     var wait_timer = try std.time.Timer.start();
-    const socket = client.sock orelse return error.ServerNotConnected;
     while (true) {
         if (timeout != 0 and
             wait_timer.read() > timeout * std.time.ns_per_ms)
@@ -1845,8 +1850,8 @@ pub fn removeLogInfo(params: [][]const u8) !void {
 }
 
 fn waitCommandReceived(allocator: std.mem.Allocator) !void {
-    var id: u32 = 0;
     const socket = client.sock orelse return error.ServerNotConnected;
+    var id: u32 = 0;
     {
         try socket.waitToRead(&command.checkCommandInterrupt);
         var reader = socket.reader(&client.reader_buf);

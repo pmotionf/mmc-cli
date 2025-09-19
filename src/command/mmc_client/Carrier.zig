@@ -14,11 +14,11 @@ pub fn waitState(
     state: SystemResponse.Carrier.Info.State,
     timeout: u64,
 ) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     var ids: std.ArrayList(u32) = .empty;
     defer ids.deinit(allocator);
     try ids.append(allocator, id);
     var wait_timer = try std.time.Timer.start();
-    const socket = client.sock orelse return error.ServerNotConnected;
     while (true) {
         if (timeout != 0 and
             wait_timer.read() > timeout * std.time.ns_per_ms)
