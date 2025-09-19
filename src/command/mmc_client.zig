@@ -19,10 +19,10 @@ pub var lines: []Line = &.{};
 /// `log` is initialized once the client is connected to a server. Deinitialized
 /// once disconnected from a server.
 pub var log: Log = undefined;
-/// Currently connected socket.
+/// Currently connected socket. Nulled when disconnect.
 pub var sock: ?zignet.Socket = null;
 /// Currently saved endpoint. The endpoint will be overwritten if the client
-/// is connected to a different server
+/// is connected to a different server. Stays null before connected to a socket.
 pub var endpoint: ?zignet.Endpoint = null;
 
 var arena: std.heap.ArenaAllocator = undefined;
@@ -812,6 +812,7 @@ pub fn disconnect() error{ServerNotConnected}!void {
     // Wait until the log finish storing log data and cleanup
     while (Log.start.load(.monotonic)) {}
     if (sock) |s| s.close();
+    sock = null;
     log.deinit();
     for (lines) |*line| {
         line.deinit(allocator);
