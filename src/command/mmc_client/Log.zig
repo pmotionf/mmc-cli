@@ -11,6 +11,8 @@ const main = @import("../../main.zig");
 /// Determine whether the log has been started or not. Deinit function behavior
 /// depends on this flag.
 pub var start = std.atomic.Value(bool).init(false);
+/// Stop the logging process from other thread.
+pub var stop = std.atomic.Value(bool).init(false);
 // NOTE: The following buffer differ from the client buffer as they are working
 //       on different thread.
 /// Reader buffer for network stream
@@ -498,7 +500,7 @@ pub fn handler(duration: f64) !void {
     var timer = try std.time.Timer.start();
     var timestamp: f64 = undefined;
     while (true) {
-        if (main.exit.load(.monotonic)) break;
+        if (stop.load(.monotonic)) break;
         // Check if there is an error after the log started, including the
         // command cancellation.
         command.checkError() catch |e| {
