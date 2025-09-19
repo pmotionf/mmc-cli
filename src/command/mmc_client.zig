@@ -8,7 +8,7 @@ const CircularBufferAlloc =
 const command = @import("../command.zig");
 pub const Line = @import("mmc_client/Line.zig");
 pub const Log = @import("mmc_client/Log.zig");
-pub const Network = @import("mmc_client/Network.zig");
+pub const zignet = @import("zignet");
 pub const carrier = @import("mmc_client/Carrier.zig");
 pub const api = @import("mmc_client/api.zig");
 const callbacks = @import("mmc_client/callbacks.zig");
@@ -19,19 +19,22 @@ pub var lines: []Line = &.{};
 /// `log` is initialized once the client is connected to a server. Deinitialized
 /// once disconnected from a server.
 pub var log: Log = undefined;
-/// `net` is initialized once the configuration is loaded. `net` might be
-/// modified when attempting to connect to a server. Deinitialized once the
-/// configuration is deinitialized from `command.zig`.
-pub var net: Network = undefined;
+/// Currently connected socket. Nulled when disconnect.
+pub var sock: ?zignet.Socket = null;
+/// Currently saved endpoint. The endpoint will be overwritten if the client
+/// is connected to a different server. Stays null before connected to a socket.
+pub var endpoint: ?zignet.Endpoint = null;
 
 var arena: std.heap.ArenaAllocator = undefined;
 pub var allocator: std.mem.Allocator = undefined;
 
 pub var log_allocator: std.mem.Allocator = undefined;
 pub const Config = struct {
-    IP_address: []u8,
+    host: []u8,
     port: u16,
 };
+/// Store the configuration.
+pub var config: Config = undefined;
 
 /// Reader buffer for network stream
 pub var reader_buf: [4096]u8 = undefined;
@@ -47,12 +50,11 @@ pub fn init(c: Config) !void {
         debug_allocator.allocator()
     else
         arena.allocator();
-    net = try Network.init(
-        allocator,
-        "Client",
-        .{ .name = c.IP_address, .port = c.port },
-    );
-    errdefer net.deinit(allocator);
+    config = .{
+        .host = try allocator.dupe(u8, c.host),
+        .port = c.port,
+    };
+    errdefer allocator.free(config.host);
 
     try command.registry.put(.{
         .name = "SERVER_VERSION",
@@ -795,7 +797,7 @@ pub fn init(c: Config) !void {
 
 pub fn deinit() void {
     disconnect() catch {};
-    net.deinit(allocator);
+    allocator.free(config.host);
     if (debug_allocator.detectLeaks()) {
         std.log.debug("Leaks detected", .{});
     } else {
@@ -809,7 +811,8 @@ pub fn deinit() void {
 pub fn disconnect() error{ServerNotConnected}!void {
     // Wait until the log finish storing log data and cleanup
     while (Log.start.load(.monotonic)) {}
-    try net.socket.close();
+    if (sock) |s| s.close();
+    sock = null;
     log.deinit();
     for (lines) |*line| {
         line.deinit(allocator);
@@ -825,17 +828,20 @@ pub fn matchLine(name: []const u8) !usize {
 }
 
 pub fn clearCommand(a: std.mem.Allocator, id: u32) !void {
+    const socket = sock orelse return error.ServerNotConnected;
     while (true) {
-        try net.socket.waitToWrite();
-        var writer = try net.socket.writer(&writer_buf);
-        try api.request.command.clear_commands.encode(
-            a,
-            &writer.interface,
-            .{ .command_id = id },
-        );
-        try writer.interface.flush();
-        try net.socket.waitToRead();
-        var reader = try net.socket.reader(&reader_buf);
+        {
+            try socket.waitToWrite(&command.checkCommandInterrupt);
+            var writer = socket.writer(&writer_buf);
+            try api.request.command.clear_commands.encode(
+                a,
+                &writer.interface,
+                .{ .command_id = id },
+            );
+            try writer.interface.flush();
+        }
+        try socket.waitToRead(&command.checkCommandInterrupt);
+        var reader = socket.reader(&reader_buf);
         const completed = try api.response.command.operation.decode(
             a,
             &reader.interface,
