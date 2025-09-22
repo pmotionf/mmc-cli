@@ -143,6 +143,7 @@ pub const Data = struct {
         for (configs) |config| {
             if (config.axis_id_range.start == 0) continue;
             {
+                try client.removeIgnoredMessage(socket.*);
                 try socket.waitToWrite(command.checkCommandInterrupt);
                 var writer = socket.writer(&writer_buf);
                 try api_helper.request.info.system.encode(

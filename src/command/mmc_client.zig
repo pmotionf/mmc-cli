@@ -832,6 +832,7 @@ pub fn clearCommand(a: std.mem.Allocator, id: u32) !void {
     const socket = sock orelse return error.ServerNotConnected;
     while (true) {
         {
+            try removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&writer_buf);
             try api.request.command.clear_commands.encode(
@@ -848,5 +849,13 @@ pub fn clearCommand(a: std.mem.Allocator, id: u32) !void {
             &reader.interface,
         );
         if (completed) break;
+    }
+}
+
+pub fn removeIgnoredMessage(socket: zignet.Socket) !void {
+    if (try zignet.Socket.readyToRead(socket.fd, 0)) {
+        var buf: [4096]u8 = undefined;
+        var reader = socket.reader(&buf);
+        _ = try reader.interface.peekByte();
     }
 }

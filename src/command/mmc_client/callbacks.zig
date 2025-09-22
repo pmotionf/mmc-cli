@@ -58,6 +58,7 @@ pub fn connect(params: [][]const u8) !void {
     // Asserting that API version matched between client and server
     {
         // Send API version request
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.core.encode(
@@ -84,6 +85,7 @@ pub fn connect(params: [][]const u8) !void {
     std.log.debug("Sending line config request..", .{});
     {
         // Send line configuration request
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.core.encode(
@@ -212,6 +214,7 @@ pub fn getAcceleration(params: [][]const u8) !void {
 pub fn serverVersion(_: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.core.encode(
@@ -252,6 +255,7 @@ pub fn showError(params: [][]const u8) !void {
         } else break :b null;
     };
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
@@ -319,6 +323,7 @@ pub fn axisInfo(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
@@ -365,6 +370,7 @@ pub fn driverInfo(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
@@ -414,6 +420,7 @@ pub fn carrierInfo(params: [][]const u8) !void {
         var ids: std.ArrayList(u32) = .empty;
         defer ids.deinit(client.allocator);
         try ids.append(client.allocator, carrier_id);
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
@@ -474,6 +481,7 @@ pub fn autoInitialize(params: [][]const u8) !void {
         }
     }
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.auto_initialize.encode(
@@ -494,6 +502,7 @@ pub fn axisCarrier(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
@@ -564,6 +573,7 @@ pub fn carrierId(params: [][]const u8) !void {
     for (line_idxs.items) |line_idx| {
         const line = client.lines[line_idx];
         {
+            try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
             try client.api.request.info.system.encode(
@@ -642,6 +652,7 @@ pub fn assertLocation(params: [][]const u8) !void {
         var ids: std.ArrayList(u32) = .empty;
         defer ids.deinit(client.allocator);
         try ids.append(client.allocator, carrier_id);
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
@@ -689,6 +700,7 @@ pub fn releaseServo(params: [][]const u8) !void {
         axis_id = axis;
     }
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.release_control.encode(
@@ -715,6 +727,7 @@ pub fn clearErrors(params: [][]const u8) !void {
         axis_id = axis;
     }
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.clear_errors.encode(
@@ -744,6 +757,7 @@ pub fn clearCarrierInfo(params: [][]const u8) !void {
         axis_id = axis;
     }
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.clear_carriers.encode(
@@ -763,6 +777,7 @@ pub fn resetSystem(_: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     for (client.lines) |line| {
         {
+            try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
             try client.api.request.command.clear_carriers.encode(
@@ -774,6 +789,7 @@ pub fn resetSystem(_: [][]const u8) !void {
         }
         try waitCommandReceived(client.allocator);
         {
+            try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
             try client.api.request.command.clear_errors.encode(
@@ -785,6 +801,7 @@ pub fn resetSystem(_: [][]const u8) !void {
         }
         try waitCommandReceived(client.allocator);
         {
+            try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
             try client.api.request.command.stop_push_carrier.encode(
@@ -796,6 +813,7 @@ pub fn resetSystem(_: [][]const u8) !void {
         }
         try waitCommandReceived(client.allocator);
         {
+            try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
             try client.api.request.command.stop_pull_carrier.encode(
@@ -821,6 +839,7 @@ pub fn carrierLocation(params: [][]const u8) !void {
         var ids: std.ArrayList(u32) = .empty;
         defer ids.deinit(client.allocator);
         try ids.append(client.allocator, carrier_id);
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
@@ -871,6 +890,7 @@ pub fn carrierAxis(params: [][]const u8) !void {
         var ids: std.ArrayList(u32) = .empty;
         defer ids.deinit(client.allocator);
         try ids.append(client.allocator, carrier_id);
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
@@ -921,6 +941,7 @@ pub fn hallStatus(params: [][]const u8) !void {
     }
     if (axis_id) |id| {
         {
+            try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
             try client.api.request.info.system.encode(
@@ -959,6 +980,7 @@ pub fn hallStatus(params: [][]const u8) !void {
         );
     } else {
         {
+            try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
             try client.api.request.info.system.encode(
@@ -1021,6 +1043,7 @@ pub fn assertHall(params: [][]const u8) !void {
         } else return error.InvalidHallAlarmState;
     }
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.info.system.encode(
@@ -1070,6 +1093,7 @@ pub fn calibrate(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.calibrate.encode(
@@ -1088,6 +1112,7 @@ pub fn setLineZero(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.set_line_zero.encode(
@@ -1136,6 +1161,7 @@ pub fn isolate(params: [][]const u8) !void {
         } else break :link null;
     };
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.isolate_carrier.encode(
@@ -1213,6 +1239,7 @@ pub fn carrierPosMoveAxis(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.move_carrier.encode(
@@ -1248,6 +1275,7 @@ pub fn carrierPosMoveLocation(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.move_carrier.encode(
@@ -1282,6 +1310,7 @@ pub fn carrierPosMoveDistance(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.move_carrier.encode(
@@ -1316,6 +1345,7 @@ pub fn carrierSpdMoveAxis(params: [][]const u8) !void {
     else
         return error.InvalidCasConfiguration;
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.move_carrier.encode(
@@ -1351,6 +1381,7 @@ pub fn carrierSpdMoveLocation(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.move_carrier.encode(
@@ -1385,6 +1416,7 @@ pub fn carrierSpdMoveDistance(params: [][]const u8) !void {
     else
         return error.InvalidCasConfiguration;
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.move_carrier.encode(
@@ -1420,6 +1452,7 @@ pub fn carrierPushForward(params: [][]const u8) !void {
     const line = client.lines[line_idx];
     if (axis_id) |axis| {
         {
+            try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
             try client.api.request.command.move_carrier.encode(
@@ -1447,6 +1480,7 @@ pub fn carrierPushForward(params: [][]const u8) !void {
         try waitCommandReceived(client.allocator);
     }
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.push_carrier.encode(
@@ -1481,6 +1515,7 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
     const line = client.lines[line_idx];
     if (axis_id) |axis| {
         {
+            try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
             try client.api.request.command.move_carrier.encode(
@@ -1508,6 +1543,7 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
         try waitCommandReceived(client.allocator);
     }
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.push_carrier.encode(
@@ -1545,6 +1581,7 @@ pub fn carrierPullForward(params: [][]const u8) !void {
     else
         return error.InvalidCasConfiguration;
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.pull_carrier.encode(
@@ -1592,6 +1629,7 @@ pub fn carrierPullBackward(params: [][]const u8) !void {
     else
         return error.InvalidCasConfiguration;
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.pull_carrier.encode(
@@ -1651,6 +1689,7 @@ pub fn carrierStopPull(params: [][]const u8) !void {
         axis_id = axis;
     }
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.stop_pull_carrier.encode(
@@ -1677,6 +1716,7 @@ pub fn carrierStopPush(params: [][]const u8) !void {
         axis_id = axis;
     }
     {
+        try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.stop_push_carrier.encode(
@@ -1707,6 +1747,7 @@ pub fn waitAxisEmpty(params: [][]const u8) !void {
             wait_timer.read() > timeout * std.time.ns_per_ms)
             return error.WaitTimeout;
         {
+            try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
             try client.api.request.info.system.encode(
@@ -1863,6 +1904,7 @@ fn waitCommandReceived(allocator: std.mem.Allocator) !void {
     defer client.clearCommand(allocator, id) catch {};
     while (true) {
         {
+            try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
             try client.api.request.info.commands.encode(
