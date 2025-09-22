@@ -24,6 +24,7 @@ pub fn waitState(
             wait_timer.read() > timeout * std.time.ns_per_ms)
             return error.WaitTimeout;
         {
+            try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
             try api.request.info.system.encode(
