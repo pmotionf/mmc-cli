@@ -1471,7 +1471,6 @@ pub fn carrierPushForward(params: [][]const u8) !void {
         }
         try waitCommandReceived(client.allocator);
         {
-            try client.net.socket.removeIgnoredMessage(&client.reader_buf);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
             try client.api.request.command.push.encode(
@@ -1986,6 +1985,7 @@ pub fn removeLogInfo(params: [][]const u8) !void {
 }
 
 pub fn stopLine(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     var ids: [client.Line.max]u32 = @splat(0);
     var ids_len: usize = 0;
     if (params[0].len > 0) {
@@ -2000,9 +2000,8 @@ pub fn stopLine(params: [][]const u8) !void {
         }
     }
     {
-        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.stop.encode(
             client.allocator,
             &writer.interface,
@@ -2016,6 +2015,7 @@ pub fn stopLine(params: [][]const u8) !void {
 }
 
 pub fn pauseLine(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     var ids: [client.Line.max]u32 = @splat(0);
     var ids_len: usize = 0;
     if (params[0].len > 0) {
@@ -2030,9 +2030,8 @@ pub fn pauseLine(params: [][]const u8) !void {
         }
     }
     {
-        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.pause.encode(
             client.allocator,
             &writer.interface,
@@ -2046,6 +2045,7 @@ pub fn pauseLine(params: [][]const u8) !void {
 }
 
 pub fn resumeLine(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
     var ids: [client.Line.max]u32 = @splat(0);
     var ids_len: usize = 0;
     if (params[0].len > 0) {
@@ -2060,9 +2060,8 @@ pub fn resumeLine(params: [][]const u8) !void {
         }
     }
     {
-        try client.net.socket.removeIgnoredMessage(&client.reader_buf);
-        try client.net.socket.waitToWrite();
-        var writer = try client.net.socket.writer(&client.writer_buf);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.@"resume".encode(
             client.allocator,
             &writer.interface,
