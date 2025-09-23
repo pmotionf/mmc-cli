@@ -85,8 +85,8 @@ pub const Data = struct {
     pub const Axis = struct {
         hall: struct { back: bool, front: bool },
         motor_active: bool,
-        pulling: bool,
-        pushing: bool,
+        waiting_pull: bool,
+        waiting_push: bool,
         carrier: Carrier,
         err: Error,
         pub const Carrier = struct {
@@ -102,8 +102,8 @@ pub const Data = struct {
 
     pub const Driver = struct {
         connected: bool,
-        available: bool,
-        servo_enabled: bool,
+        busy: bool,
+        motor_disabled: bool,
         stopped: bool,
         paused: bool,
         err: Error,
@@ -190,8 +190,8 @@ pub const Data = struct {
                         .back = axis_info.hall_alarm_back,
                     },
                     .motor_active = axis_info.motor_active,
-                    .pulling = axis_info.waiting_pull,
-                    .pushing = axis_info.waiting_push,
+                    .waiting_pull = axis_info.waiting_pull,
+                    .waiting_push = axis_info.waiting_push,
                     .err = .{
                         .overcurrent = axis_err.overcurrent,
                     },
@@ -233,9 +233,8 @@ pub const Data = struct {
             ) |driver_info, driver_err| {
                 self.drivers[driver_idx] = .{
                     .connected = driver_info.connected,
-                    // TODO: Ensure the value is correct
-                    .available = !driver_info.busy,
-                    .servo_enabled = !driver_info.motor_disabled,
+                    .busy = driver_info.busy,
+                    .motor_disabled = driver_info.motor_disabled,
                     .stopped = driver_info.stopped,
                     .paused = driver_info.paused,
                     .err = .{
