@@ -306,7 +306,6 @@ pub fn showError(params: [][]const u8) !void {
     }
 }
 
-// TODO: Only show axis state
 pub fn axisInfo(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
@@ -355,7 +354,6 @@ pub fn axisInfo(params: [][]const u8) !void {
     try client.api.response.info.track.axis.err.print(err, writer);
 }
 
-// TODO: Only show driver state
 pub fn driverInfo(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
@@ -739,7 +737,6 @@ pub fn clearErrors(params: [][]const u8) !void {
     try waitCommandReceived(client.allocator);
 }
 
-// TODO: Rename to deinitialize
 pub fn clearCarrierInfo(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
