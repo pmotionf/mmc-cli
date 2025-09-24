@@ -13,7 +13,6 @@ const build = @import("build.zig.zon");
 const config = @import("config");
 
 // Command modules.
-const mcl = if (config.mcl) @import("command/mcl.zig") else void;
 const return_demo2 =
     if (config.return_demo2) @import("command/return_demo2.zig") else void;
 const mmc_client =
@@ -786,6 +785,7 @@ fn deinitModules() void {
                         initialized_modules.set(module, false);
                     }
                 },
+                else => unreachable,
             }
         }
     }
@@ -873,6 +873,7 @@ fn loadConfig(params: [][]const u8) !void {
                     );
                 }
             },
+            else => unreachable,
         }
     }
     conf.deinit();

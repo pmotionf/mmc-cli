@@ -4,7 +4,6 @@ const builtin = @import("builtin");
 const std = @import("std");
 const config = @import("config");
 
-const MclConfig = if (config.mcl) @import("command/mcl.zig").Config else void;
 const ReturnDemo2Config = if (config.return_demo2)
     @import("command/return_demo2.zig").Config
 else
@@ -17,14 +16,12 @@ const Mes07Config =
 parsed: std.json.Parsed(Parse),
 
 pub const Module = enum {
-    mcl,
     return_demo2,
     mmc_client,
     mes07,
 };
 
 const ModuleConfig = union(Module) {
-    mcl: MclConfig,
     return_demo2: ReturnDemo2Config,
     mmc_client: ClientCliConfig,
     mes07: Mes07Config,

@@ -62,20 +62,8 @@ jobs:
         run: |
           zig build \
             -Doptimize=ReleaseSafe \
-            -Dmcl=false \
             -Dtarget=x86_64-windows-msvc
           zip -j "windows-${NAME}-${VERSION}.zip" \
-            "./zig-out/bin/${NAME}.exe" \
-            "./zig-out/bin/${NAME}.pdb"
-
-      - name: Build Windows MCL
-        if: ${{ steps.check-version.outputs.EXISTS == '' }}
-        run: |
-          zig build \
-            -Doptimize=ReleaseSafe \
-            -Dmdfunc=$MDFUNC_PATH \
-            -Dtarget=x86_64-windows-msvc
-          zip -j "windows-mcl-${NAME}-${VERSION}.zip" \
             "./zig-out/bin/${NAME}.exe" \
             "./zig-out/bin/${NAME}.pdb"
 
@@ -91,7 +79,6 @@ jobs:
         run: |
           gh release create --generate-notes "${VERSION}" \
             windows-${NAME}-${VERSION}.zip \
-            windows-mcl-${NAME}-${VERSION}.zip \
             linux-${NAME}-${VERSION}.zip
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

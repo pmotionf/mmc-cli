@@ -37,10 +37,5 @@ jobs:
         if: matrix.os == 'Linux'
         run: zig fmt --check .
 
-      - name: Run tests on Windows
-        if: matrix.os == 'Windows'
-        run: zig build test -freference-trace -Dmdfunc=$MDFUNC_PATH --summary all
-
-      - name: Run tests on Linux
-        if: matrix.os == 'Linux'
+      - name: Run tests
         run: zig build test -freference-trace --summary all

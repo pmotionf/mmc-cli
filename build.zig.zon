@@ -12,11 +12,6 @@
             .url = "https://github.com/aaumar25/zignet/archive/3036ad9.tar.gz",
             .hash = "zignet-0.0.1-BAu-r5B0AACmayxQmd1UTHVi6ytOx2GJrDqTT9R-dSk-",
         },
-        .mcl = .{
-            .url = "https://github.com/pmotionf/mcl/archive/1e3edf0.tar.gz",
-            .hash = "mcl-0.7.0-bTecRq6-AACgGZb5MWsG5USQ5rEUJssriL1H5uzaxVSp",
-            .lazy = true,
-        },
         .chrono = .{
             .url = "https://github.com/pmotionf/chrono/archive/31e31b0.tar.gz",
             .hash = "chrono-0.1.0-uVd76I_AAwCMh8lYH9E-5ia0tI-tda4Q2FjFoIdE2dYG",
