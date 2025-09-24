@@ -6,12 +6,6 @@ pub fn build(b: *std.Build) !void {
 
     const options = b.addOptions();
     // Enable/disable backends selectively through options.
-    const mcl = if (target.result.os.tag == .windows) b.option(
-        bool,
-        "mcl",
-        "Enable the `MCL` backend (default true).",
-    ) orelse true else false;
-    options.addOption(bool, "mcl", mcl);
     const return_demo2 = b.option(
         bool,
         "return_demo2",
@@ -30,20 +24,6 @@ pub fn build(b: *std.Build) !void {
         "Enable the `mes07` backend (default true).",
     ) orelse true else false;
     options.addOption(bool, "mes07", mes07);
-
-    const mdfunc_lib_path = if (target.result.os.tag == .windows) (b.option(
-        []const u8,
-        "mdfunc",
-        "Specify the path to the MELSEC static library artifact.",
-    ) orelse if (target.result.cpu.arch == .x86_64)
-        "vendor/mdfunc/lib/x64/MdFunc32.lib"
-    else
-        "vendor/mdfunc/lib/mdfunc32.lib") else "";
-    const mdfunc_mock_build = if (target.result.os.tag == .windows) (b.option(
-        bool,
-        "mdfunc_mock",
-        "Enable building a mock version of the MELSEC data link library.",
-    ) orelse (target.result.os.tag != .windows)) else false;
 
     const network_dep = b.dependency("network", .{
         .target = target,
@@ -92,17 +72,6 @@ pub fn build(b: *std.Build) !void {
         }),
     });
     try setupModule(b, exe.root_module, setup_options);
-    if (target.result.os.tag == .windows and mcl) {
-        const mcl_dep = b.lazyDependency("mcl", .{
-            .target = target,
-            .optimize = optimize,
-            .mdfunc = mdfunc_lib_path,
-            .mdfunc_mock = mdfunc_mock_build,
-        });
-        if (mcl_dep) |dep| {
-            exe.root_module.addImport("mcl", dep.module("mcl"));
-        }
-    }
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
@@ -124,17 +93,6 @@ pub fn build(b: *std.Build) !void {
         }),
     });
     try setupModule(b, check_exe.root_module, setup_options);
-    if (target.result.os.tag == .windows and mcl) {
-        const mcl_mock = b.lazyDependency("mcl", .{
-            .target = target,
-            .optimize = optimize,
-            .mdfunc = mdfunc_lib_path,
-            .mdfunc_mock = true,
-        });
-        if (mcl_mock) |dep| {
-            check_exe.root_module.addImport("mcl", dep.module("mcl"));
-        }
-    }
     const check = b.step("check", "Check if `mmc-cli` compiles");
     check.dependOn(&check_exe.step);
 
@@ -146,17 +104,6 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     }) });
     try setupModule(b, unit_tests.root_module, setup_options);
-    if (target.result.os.tag == .windows and mcl) {
-        const mcl_mock = b.lazyDependency("mcl", .{
-            .target = target,
-            .optimize = optimize,
-            .mdfunc = mdfunc_lib_path,
-            .mdfunc_mock = true,
-        });
-        if (mcl_mock) |dep| {
-            unit_tests.root_module.addImport("mcl", dep.module("mcl"));
-        }
-    }
     const run_unit_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
