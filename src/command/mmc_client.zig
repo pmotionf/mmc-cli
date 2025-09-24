@@ -351,21 +351,22 @@ pub fn init(c: Config) !void {
     });
     errdefer command.registry.orderedRemove("CLEAR_CARRIER_INFO");
     try command.registry.put(.{
-        .name = "RELEASE_AXIS_SERVO",
+        .name = "RELEASE_CARRIER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "axis", .optional = true },
+            .{ .name = "carrier", .optional = true },
         },
-        .short_description = "Release the servo of axis.",
+        .short_description = "Release the carrier for being controlled",
         .long_description =
-        \\Release the servo of a given axis, allowing for free carrier movement.
-        \\This command should be run before carriers move within or exit from
-        \\the system due to external influence. If no axis is given, release the
-        \\servo of all axis on the line. 
+        \\Release the motor that control the given carrier, allowing for free 
+        \\carrier movement. This command should be run before carriers move 
+        \\within or exit from the track due to external influence. If no carrier 
+        \\is given, all carriers on the provided line will be released from 
+        \\control. 
         ,
-        .execute = &callbacks.releaseServo,
+        .execute = &callbacks.releaseCarrier,
     });
-    errdefer command.registry.orderedRemove("RELEASE_AXIS_SERVO");
+    errdefer command.registry.orderedRemove("RELEASE_CARRIER");
     try command.registry.put(.{
         .name = "AUTO_INITIALIZE",
         .parameters = &[_]command.Command.Parameter{
@@ -386,9 +387,9 @@ pub fn init(c: Config) !void {
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
         },
-        .short_description = "Calibrate a system line.",
+        .short_description = "Calibrate a track line.",
         .long_description =
-        \\Calibrate a system line. An uninitialized carrier must be positioned
+        \\Calibrate a track line. An uninitialized carrier must be positioned
         \\at the start of the line such that the first axis has both hall
         \\alarms active.
         ,
@@ -402,9 +403,8 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Set line zero position.",
         .long_description =
-        \\Set a system line's zero position based on a current carrier's
-        \\position. Aforementioned carrier must be located at first axis of
-        \\system line.
+        \\Set a line's zero position based on a current carrier's position. 
+        \\Aforementioned carrier must be located at first axis of line.
         ,
         .execute = &callbacks.setLineZero,
     });
@@ -793,6 +793,46 @@ pub fn init(c: Config) !void {
         .execute = &callbacks.showError,
     });
     errdefer command.registry.orderedRemove("PRINT_ERRORS");
+    try command.registry.put(.{
+        .name = "STOP",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line", .optional = true },
+        },
+        .short_description = "Stop any operation on the line(s).",
+        .long_description =
+        \\Stop any currently running operation and remove any queued commands for
+        \\the specified line. Not providing a line will stop the operation of
+        \\entire system.
+        ,
+        .execute = &callbacks.stopLine,
+    });
+    errdefer command.registry.orderedRemove("STOP");
+    try command.registry.put(.{
+        .name = "PAUSE",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line", .optional = true },
+        },
+        .short_description = "Pause any operation on the line(s).",
+        .long_description =
+        \\Pause any currently running operation for the specified line. Not 
+        \\providing a line will pause the operation of entire system.
+        ,
+        .execute = &callbacks.pauseLine,
+    });
+    errdefer command.registry.orderedRemove("PAUSE");
+    try command.registry.put(.{
+        .name = "RESUME",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line", .optional = true },
+        },
+        .short_description = "Resume the line(s) operation.",
+        .long_description =
+        \\Resume the specified line operation after being paused or stopped. Not
+        \\providing a line will resume the operation of entire system.
+        ,
+        .execute = &callbacks.resumeLine,
+    });
+    errdefer command.registry.orderedRemove("PAUSE");
 }
 
 pub fn deinit() void {
@@ -811,7 +851,7 @@ pub fn deinit() void {
 pub fn disconnect() void {
     Log.stop.store(true, .monotonic);
     // Wait until the log finish storing log data and cleanup
-    while (Log.start.load(.monotonic)) {}
+    while (Log.executing.load(.monotonic)) {}
     if (sock) |s| s.close() else return;
     sock = null;
     log.deinit();
@@ -828,27 +868,28 @@ pub fn matchLine(name: []const u8) !usize {
     } else return error.LineNameNotFound;
 }
 
-pub fn clearCommand(a: std.mem.Allocator, id: u32) !void {
+pub fn removeCommand(a: std.mem.Allocator, id: u32) !void {
     const socket = sock orelse return error.ServerNotConnected;
     while (true) {
         {
             try removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
             var writer = socket.writer(&writer_buf);
-            try api.request.command.clear_commands.encode(
+            try api.request.command.remove_commands.encode(
                 a,
                 &writer.interface,
-                .{ .command_id = id },
+                .{ .command = id },
             );
             try writer.interface.flush();
         }
         try socket.waitToRead(&command.checkCommandInterrupt);
         var reader = socket.reader(&reader_buf);
-        const completed = try api.response.command.operation.decode(
+        const removed_id = try api.response.command.removed_id.decode(
             a,
             &reader.interface,
         );
-        if (completed) break;
+        std.log.debug("removed_id {}, id {}", .{ removed_id, id });
+        if (removed_id == id) break;
     }
 }
 

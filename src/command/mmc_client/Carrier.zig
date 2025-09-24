@@ -2,16 +2,16 @@ const std = @import("std");
 const client = @import("../mmc_client.zig");
 const command = @import("../../command.zig");
 const api = @import("api.zig");
-const SystemResponse = api.api.info_msg.Response.System;
+const SystemResponse = api.api.protobuf.mmc.info.Response.Track;
 
 pub const max = 2048;
 pub const Id = std.math.IntFittingRange(1, max);
 
 pub fn waitState(
     allocator: std.mem.Allocator,
-    line_id: u32,
+    line: u32,
     id: Id,
-    state: SystemResponse.Carrier.Info.State,
+    state: SystemResponse.Carrier.State.State,
     timeout: u64,
 ) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
@@ -27,13 +27,13 @@ pub fn waitState(
             try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(command.checkCommandInterrupt);
             var writer = socket.writer(&client.writer_buf);
-            try api.request.info.system.encode(
+            try api.request.info.track.encode(
                 allocator,
                 &writer.interface,
                 .{
-                    .line_id = line_id,
-                    .carrier = true,
-                    .source = .{
+                    .line = line,
+                    .info_carrier_state = true,
+                    .filter = .{
                         .carriers = .{ .ids = ids },
                     },
                 },
@@ -42,13 +42,13 @@ pub fn waitState(
         }
         try socket.waitToRead(command.checkCommandInterrupt);
         var reader = socket.reader(&client.reader_buf);
-        var system = try api.response.info.system.decode(
+        var track = try api.response.info.track.decode(
             client.allocator,
             &reader.interface,
         );
-        defer system.deinit(client.allocator);
-        if (system.line_id != line_id) return error.InvalidResponse;
-        const carrier = system.carrier_infos.pop() orelse return error.InvalidResponse;
+        defer track.deinit(client.allocator);
+        if (track.line != line) return error.InvalidResponse;
+        const carrier = track.carrier_state.pop() orelse return error.InvalidResponse;
         if (carrier.state == state) return;
     }
 }
