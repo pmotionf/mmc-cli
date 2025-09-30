@@ -82,7 +82,7 @@ pub fn connect(params: [][]const u8) !void {
             return error.APIVersionMismatch;
         }
     }
-    std.log.debug("Sending line config request..", .{});
+    std.log.debug("Sending track config request..", .{});
     {
         // Send line configuration request
         try client.removeIgnoredMessage(socket);
@@ -95,7 +95,7 @@ pub fn connect(params: [][]const u8) !void {
         );
         try writer.interface.flush();
     }
-    std.log.debug("Getting line configuration..", .{});
+    std.log.debug("Getting track configuration..", .{});
     {
         try socket.waitToRead(&command.checkCommandInterrupt);
         var reader = socket.reader(&client.reader_buf);
@@ -113,6 +113,7 @@ pub fn connect(params: [][]const u8) !void {
             client.lines,
             0..,
         ) |config, *line, idx| {
+            std.log.debug("{}", .{config});
             line.* = try client.Line.init(
                 client.allocator,
                 @intCast(idx),
@@ -459,13 +460,6 @@ pub fn autoInitialize(params: [][]const u8) !void {
         while (iterator.next()) |line_name| {
             const line_idx = try client.matchLine(line_name);
             const _line = client.lines[line_idx];
-            const line: client.api.api.protobuf.mmc.command.Request.AutoInitialize.Line = .{
-                .line = _line.id,
-            };
-            try init_lines.append(client.allocator, line);
-        }
-    } else {
-        for (client.lines) |_line| {
             const line: client.api.api.protobuf.mmc.command.Request.AutoInitialize.Line = .{
                 .line = _line.id,
             };
@@ -1821,6 +1815,32 @@ pub fn carrierStopPush(params: [][]const u8) !void {
         );
         try writer.interface.flush();
     }
+    try waitCommandReceived(client.allocator);
+}
+
+pub fn setCarrierId(params: [][]const u8) !void {
+    const socket = client.sock orelse return error.ServerNotConnected;
+    const line_name = params[0];
+    const line_idx = try client.matchLine(line_name);
+    const line = client.lines[line_idx];
+    const carrier = try std.fmt.parseInt(u32, params[1], 0);
+    const new_carrier = try std.fmt.parseInt(u32, params[2], 0);
+    {
+        try client.removeIgnoredMessage(socket);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        var writer = socket.writer(&client.writer_buf);
+        try client.api.request.command.set_carrier_id.encode(
+            client.allocator,
+            &writer.interface,
+            .{
+                .line = line.id,
+                .carrier = carrier,
+                .new_carrier = new_carrier,
+            },
+        );
+        try writer.interface.flush();
+    }
+    try waitCommandReceived(client.allocator);
 }
 
 pub fn waitAxisEmpty(params: [][]const u8) !void {
@@ -1983,18 +2003,11 @@ pub fn removeLogInfo(params: [][]const u8) !void {
 
 pub fn stopLine(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
-    var ids: [client.Line.max]u32 = @splat(0);
-    var ids_len: usize = 0;
+    var ids: [1]u32 = .{0};
     if (params[0].len > 0) {
         const line_name = params[0];
         const line_idx = try client.matchLine(line_name);
         ids[0] = @intCast(line_idx + 1);
-        ids_len += 1;
-    } else {
-        for (client.lines, 0..) |line, i| {
-            ids[i] = line.id;
-            ids_len += 1;
-        }
     }
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
@@ -2003,7 +2016,7 @@ pub fn stopLine(params: [][]const u8) !void {
             client.allocator,
             &writer.interface,
             .{
-                .lines = .fromOwnedSlice(ids[0..ids_len]),
+                .lines = .fromOwnedSlice(if (ids[0] > 0) &ids else &.{}),
             },
         );
         try writer.interface.flush();
@@ -2013,18 +2026,11 @@ pub fn stopLine(params: [][]const u8) !void {
 
 pub fn pauseLine(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
-    var ids: [client.Line.max]u32 = @splat(0);
-    var ids_len: usize = 0;
+    var ids: [1]u32 = .{0};
     if (params[0].len > 0) {
         const line_name = params[0];
         const line_idx = try client.matchLine(line_name);
         ids[0] = @intCast(line_idx + 1);
-        ids_len += 1;
-    } else {
-        for (client.lines, 0..) |line, i| {
-            ids[i] = line.id;
-            ids_len += 1;
-        }
     }
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
@@ -2033,7 +2039,7 @@ pub fn pauseLine(params: [][]const u8) !void {
             client.allocator,
             &writer.interface,
             .{
-                .lines = .fromOwnedSlice(ids[0..ids_len]),
+                .lines = .fromOwnedSlice(if (ids[0] > 0) &ids else &.{}),
             },
         );
         try writer.interface.flush();
@@ -2043,18 +2049,11 @@ pub fn pauseLine(params: [][]const u8) !void {
 
 pub fn resumeLine(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
-    var ids: [client.Line.max]u32 = @splat(0);
-    var ids_len: usize = 0;
+    var ids: [1]u32 = .{0};
     if (params[0].len > 0) {
         const line_name = params[0];
         const line_idx = try client.matchLine(line_name);
         ids[0] = @intCast(line_idx + 1);
-        ids_len += 1;
-    } else {
-        for (client.lines, 0..) |line, i| {
-            ids[i] = line.id;
-            ids_len += 1;
-        }
     }
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
@@ -2063,7 +2062,7 @@ pub fn resumeLine(params: [][]const u8) !void {
             client.allocator,
             &writer.interface,
             .{
-                .lines = .fromOwnedSlice(ids[0..ids_len]),
+                .lines = .fromOwnedSlice(if (ids[0] > 0) &ids else &.{}),
             },
         );
         try writer.interface.flush();
@@ -2113,9 +2112,13 @@ fn waitCommandReceived(allocator: std.mem.Allocator) !void {
                 .COMMAND_STATUS_FAILED => {
                     return switch (comm.@"error".?) {
                         .COMMAND_ERROR_INVALID_SYSTEM_STATE => error.InvalidSystemState,
-                        .COMMAND_ERROR_INVALID_CARRIER_ID => error.InvalidCarrierId,
                         .COMMAND_ERROR_DRIVER_DISCONNECTED => error.DriverDisconnected,
                         .COMMAND_ERROR_UNEXPECTED => error.Unexpected,
+                        .COMMAND_ERROR_CARRIER_NOT_FOUND => error.CarrierNotFound,
+                        .COMMAND_ERROR_CONFLICTING_CARRIER_ID => error.ConflictingCarrierId,
+                        .COMMAND_ERROR_CARRIER_ALREADY_INITIALIZED => error.CarrierAlreadyInitialized,
+                        .COMMAND_ERROR_INVALID_CARRIER_TARGET => error.InvalidCarrierTarget,
+                        .COMMAND_ERROR_DRIVER_STOPPED => error.DriverStopped,
                         else => error.UnexpectedResponse,
                     };
                 },

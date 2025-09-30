@@ -833,6 +833,21 @@ pub fn init(c: Config) !void {
         .execute = &callbacks.resumeLine,
     });
     errdefer command.registry.orderedRemove("PAUSE");
+    try command.registry.put(.{
+        .name = "SET_CARRIER_ID",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line" },
+            .{ .name = "carrier" },
+            .{ .name = "new carrier id" },
+        },
+        .short_description = "Update carrier ID to a new one.",
+        .long_description =
+        \\Update an initialized carrier ID into a new one. The new carrier ID
+        \\shall not be used by other carriers on the same line.
+        ,
+        .execute = &callbacks.setCarrierId,
+    });
+    errdefer command.registry.orderedRemove("PAUSE");
 }
 
 pub fn deinit() void {
