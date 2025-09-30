@@ -157,23 +157,24 @@ pub const response = struct {
         };
         fn error_handler(err: api.protobuf.mmc.command.Request.Error) anyerror {
             return switch (err) {
-                .COMMAND_REQUEST_ERROR_UNSPECIFIED => error.InvalidResponse,
+                .COMMAND_REQUEST_ERROR_UNSPECIFIED,
+                .COMMAND_REQUEST_ERROR_INVALID_LOCATION,
+                .COMMAND_REQUEST_ERROR_INVALID_DISTANCE,
+                .COMMAND_REQUEST_ERROR_CC_LINK_DISCONNECTED,
+                => error.InvalidResponse,
                 .COMMAND_REQUEST_ERROR_INVALID_LINE => error.InvalidLine,
                 .COMMAND_REQUEST_ERROR_INVALID_AXIS => error.InvalidAxis,
                 .COMMAND_REQUEST_ERROR_INVALID_DRIVER => error.InvalidDriver,
                 .COMMAND_REQUEST_ERROR_INVALID_ACCELERATION => error.InvalidAcceleration,
                 .COMMAND_REQUEST_ERROR_INVALID_VELOCITY => error.InvalidSpeed,
                 .COMMAND_REQUEST_ERROR_INVALID_DIRECTION => error.InvalidDirection,
-                .COMMAND_REQUEST_ERROR_INVALID_LOCATION => error.InvalidLocation,
-                .COMMAND_REQUEST_ERROR_INVALID_DISTANCE => error.InvalidDistance,
                 .COMMAND_REQUEST_ERROR_INVALID_CARRIER => error.InvalidCarrier,
                 .COMMAND_REQUEST_ERROR_MISSING_PARAMETER => error.MissingParameter,
                 .COMMAND_REQUEST_ERROR_COMMAND_NOT_FOUND => error.CommandNotFound,
                 .COMMAND_REQUEST_ERROR_CARRIER_NOT_FOUND => error.CarrierNotFound,
-                .COMMAND_REQUEST_ERROR_CC_LINK_DISCONNECTED => error.CCLinkDisconnected,
                 .COMMAND_REQUEST_ERROR_OUT_OF_MEMORY => error.ServerRunningOutOfMemory,
                 .COMMAND_REQUEST_ERROR_MAXIMUM_AUTO_INITIALIZE_EXCEEDED => error.MaximumAutoInitializeExceeded,
-                .COMMAND_REQUEST_ERROR_CARRIER_ALREADY_EXISTS => error.CarrierAlreadyExists,
+                .COMMAND_REQUEST_ERROR_CONFLICTING_CARRIER_ID => error.ConflictingCarrierId,
                 _ => unreachable,
             };
         }

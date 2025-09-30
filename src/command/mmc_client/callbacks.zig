@@ -82,7 +82,7 @@ pub fn connect(params: [][]const u8) !void {
             return error.APIVersionMismatch;
         }
     }
-    std.log.debug("Sending line config request..", .{});
+    std.log.debug("Sending track config request..", .{});
     {
         // Send line configuration request
         try client.removeIgnoredMessage(socket);
@@ -95,7 +95,7 @@ pub fn connect(params: [][]const u8) !void {
         );
         try writer.interface.flush();
     }
-    std.log.debug("Getting line configuration..", .{});
+    std.log.debug("Getting track configuration..", .{});
     {
         try socket.waitToRead(&command.checkCommandInterrupt);
         var reader = socket.reader(&client.reader_buf);
@@ -113,6 +113,7 @@ pub fn connect(params: [][]const u8) !void {
             client.lines,
             0..,
         ) |config, *line, idx| {
+            std.log.debug("{}", .{config});
             line.* = try client.Line.init(
                 client.allocator,
                 @intCast(idx),
@@ -2114,7 +2115,9 @@ fn waitCommandReceived(allocator: std.mem.Allocator) !void {
                         .COMMAND_ERROR_DRIVER_DISCONNECTED => error.DriverDisconnected,
                         .COMMAND_ERROR_UNEXPECTED => error.Unexpected,
                         .COMMAND_ERROR_CARRIER_NOT_FOUND => error.CarrierNotFound,
-                        .COMMAND_ERROR_CARRIER_ALREADY_EXISTS => error.CarrierAlreadyExists,
+                        .COMMAND_ERROR_CONFLICTING_CARRIER_ID => error.ConflictingCarrierId,
+                        .COMMAND_ERROR_CARRIER_ALREADY_INITIALIZED => error.CarrierAlreadyInitialized,
+                        .COMMAND_ERROR_INVALID_CARRIER_TARGET => error.InvalidCarrierTarget,
                         .COMMAND_ERROR_DRIVER_STOPPED => error.DriverStopped,
                         else => error.UnexpectedResponse,
                     };
