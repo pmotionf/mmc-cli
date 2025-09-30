@@ -173,6 +173,7 @@ pub const response = struct {
                 .COMMAND_REQUEST_ERROR_CC_LINK_DISCONNECTED => error.CCLinkDisconnected,
                 .COMMAND_REQUEST_ERROR_OUT_OF_MEMORY => error.ServerRunningOutOfMemory,
                 .COMMAND_REQUEST_ERROR_MAXIMUM_AUTO_INITIALIZE_EXCEEDED => error.MaximumAutoInitializeExceeded,
+                .COMMAND_REQUEST_ERROR_CARRIER_ALREADY_EXISTS => error.CarrierAlreadyExists,
                 _ => unreachable,
             };
         }
@@ -761,6 +762,24 @@ pub const request = struct {
                     .body = .{
                         .command = .{
                             .body = .{ .@"resume" = payload },
+                        },
+                    },
+                };
+                try msg.encode(writer, allocator);
+            }
+        };
+        pub const set_carrier_id = struct {
+            /// Validate payload and encode to protobuf string. Caller shall free
+            /// the memory.
+            pub fn encode(
+                allocator: std.mem.Allocator,
+                writer: *std.Io.Writer,
+                payload: api.protobuf.mmc.command.Request.SetCarrierId,
+            ) !void {
+                const msg: api.protobuf.mmc.Request = .{
+                    .body = .{
+                        .command = .{
+                            .body = .{ .set_carrier_id = payload },
                         },
                     },
                 };
