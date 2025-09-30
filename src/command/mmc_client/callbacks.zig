@@ -464,13 +464,6 @@ pub fn autoInitialize(params: [][]const u8) !void {
             };
             try init_lines.append(client.allocator, line);
         }
-    } else {
-        for (client.lines) |_line| {
-            const line: client.api.api.protobuf.mmc.command.Request.AutoInitialize.Line = .{
-                .line = _line.id,
-            };
-            try init_lines.append(client.allocator, line);
-        }
     }
     {
         try client.removeIgnoredMessage(socket);
@@ -2009,18 +2002,11 @@ pub fn removeLogInfo(params: [][]const u8) !void {
 
 pub fn stopLine(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
-    var ids: [client.Line.max]u32 = @splat(0);
-    var ids_len: usize = 0;
+    var ids: [1]u32 = .{0};
     if (params[0].len > 0) {
         const line_name = params[0];
         const line_idx = try client.matchLine(line_name);
         ids[0] = @intCast(line_idx + 1);
-        ids_len += 1;
-    } else {
-        for (client.lines, 0..) |line, i| {
-            ids[i] = line.id;
-            ids_len += 1;
-        }
     }
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
@@ -2029,7 +2015,7 @@ pub fn stopLine(params: [][]const u8) !void {
             client.allocator,
             &writer.interface,
             .{
-                .lines = .fromOwnedSlice(ids[0..ids_len]),
+                .lines = .fromOwnedSlice(if (ids[0] > 0) &ids else &.{}),
             },
         );
         try writer.interface.flush();
@@ -2039,18 +2025,11 @@ pub fn stopLine(params: [][]const u8) !void {
 
 pub fn pauseLine(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
-    var ids: [client.Line.max]u32 = @splat(0);
-    var ids_len: usize = 0;
+    var ids: [1]u32 = .{0};
     if (params[0].len > 0) {
         const line_name = params[0];
         const line_idx = try client.matchLine(line_name);
         ids[0] = @intCast(line_idx + 1);
-        ids_len += 1;
-    } else {
-        for (client.lines, 0..) |line, i| {
-            ids[i] = line.id;
-            ids_len += 1;
-        }
     }
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
@@ -2059,7 +2038,7 @@ pub fn pauseLine(params: [][]const u8) !void {
             client.allocator,
             &writer.interface,
             .{
-                .lines = .fromOwnedSlice(ids[0..ids_len]),
+                .lines = .fromOwnedSlice(if (ids[0] > 0) &ids else &.{}),
             },
         );
         try writer.interface.flush();
@@ -2069,18 +2048,11 @@ pub fn pauseLine(params: [][]const u8) !void {
 
 pub fn resumeLine(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
-    var ids: [client.Line.max]u32 = @splat(0);
-    var ids_len: usize = 0;
+    var ids: [1]u32 = .{0};
     if (params[0].len > 0) {
         const line_name = params[0];
         const line_idx = try client.matchLine(line_name);
         ids[0] = @intCast(line_idx + 1);
-        ids_len += 1;
-    } else {
-        for (client.lines, 0..) |line, i| {
-            ids[i] = line.id;
-            ids_len += 1;
-        }
     }
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
@@ -2089,7 +2061,7 @@ pub fn resumeLine(params: [][]const u8) !void {
             client.allocator,
             &writer.interface,
             .{
-                .lines = .fromOwnedSlice(ids[0..ids_len]),
+                .lines = .fromOwnedSlice(if (ids[0] > 0) &ids else &.{}),
             },
         );
         try writer.interface.flush();
