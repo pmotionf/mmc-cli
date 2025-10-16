@@ -5,6 +5,64 @@ const chrono = @import("chrono");
 const client = @import("../mmc_client.zig");
 const command = @import("../../command.zig");
 
+const Filter = union(enum) {
+    carrier: [1]u32,
+    driver: u32,
+    axis: u32,
+
+    pub fn parse(filter: []const u8) (error{InvalidParameter} || std.fmt.ParseIntError)!Filter {
+        if (filter.len < 2) return error.InvalidParameter;
+        if (std.ascii.isDigit(filter[1])) {
+            if (std.ascii.eqlIgnoreCase(filter[0..1], "c")) {
+                return Filter{
+                    .carrier = [1]u32{try std.fmt.parseUnsigned(u32, filter[1..], 0)},
+                };
+            } else if (std.ascii.eqlIgnoreCase(filter[0..1], "a")) {
+                return Filter{
+                    .axis = try std.fmt.parseUnsigned(u32, filter[1..], 0),
+                };
+            } else if (std.ascii.eqlIgnoreCase(filter[0..1], "d")) {
+                return Filter{
+                    .driver = try std.fmt.parseUnsigned(u32, filter[1..], 0),
+                };
+            }
+        } else if (filter.len > 4 and std.ascii.eqlIgnoreCase(filter[0..4], "axis")) {
+            return Filter{
+                .axis = try std.fmt.parseUnsigned(u32, filter[4..], 0),
+            };
+        } else if (filter.len > 6 and std.ascii.eqlIgnoreCase(filter[0..6], "driver")) {
+            return Filter{
+                .driver = try std.fmt.parseUnsigned(u32, filter[6..], 0),
+            };
+        } else if (filter.len > 7 and std.ascii.eqlIgnoreCase(filter[0..7], "carrier")) {
+            return Filter{
+                .carrier = [1]u32{try std.fmt.parseUnsigned(u32, filter[7..], 0)},
+            };
+        }
+        return error.InvalidParameter;
+    }
+
+    pub fn toProtobuf(filter: *Filter) client.api.api.protobuf.mmc.info.Request.Track.filter_union {
+        return switch (filter.*) {
+            .axis => |axis_id| .{
+                .axes = .{
+                    .start = axis_id,
+                    .end = axis_id,
+                },
+            },
+            .driver => |driver_id| .{
+                .drivers = .{
+                    .start = driver_id,
+                    .end = driver_id,
+                },
+            },
+            .carrier => .{
+                .carriers = .{ .ids = .fromOwnedSlice(&filter.carrier) },
+            },
+        };
+    }
+};
+
 pub fn connect(params: [][]const u8) !void {
     if (client.sock) |_| client.disconnect();
     const endpoint: client.Config =
@@ -245,16 +303,10 @@ pub fn showError(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const filter: ?client.api.api.protobuf.root.Range = b: {
-        if (params[1].len > 0) {
-            const axis_id = try std.fmt.parseInt(
-                u32,
-                params[1],
-                0,
-            );
-            break :b .{ .start = axis_id, .end = axis_id };
-        } else break :b null;
-    };
+    var filter: ?Filter = null;
+    if (params[1].len > 0) {
+        filter = try .parse(params[1]);
+    }
     {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
@@ -266,8 +318,8 @@ pub fn showError(params: [][]const u8) !void {
                 .line = line.id,
                 .info_axis_errors = true,
                 .info_driver_errors = true,
-                .filter = if (filter) |range|
-                    .{ .axes = range }
+                .filter = if (filter) |*_filter|
+                    _filter.toProtobuf()
                 else
                     null,
             },
@@ -310,7 +362,7 @@ pub fn showError(params: [][]const u8) !void {
 pub fn axisInfo(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
-    const axis_id = try std.fmt.parseInt(u32, params[1], 0);
+    var filter: Filter = try .parse(params[1]);
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
@@ -324,12 +376,7 @@ pub fn axisInfo(params: [][]const u8) !void {
                 .line = line.id,
                 .info_axis_errors = true,
                 .info_axis_state = true,
-                .filter = .{
-                    .axes = .{
-                        .start = axis_id,
-                        .end = axis_id,
-                    },
-                },
+                .filter = filter.toProtobuf(),
             },
         );
         try writer.interface.flush();
@@ -342,23 +389,22 @@ pub fn axisInfo(params: [][]const u8) !void {
     );
     defer track.deinit(client.allocator);
     if (track.line != line.id) return error.InvalidResponse;
-    var axis_state = track.axis_state;
-    var axis_errors = track.axis_errors;
-    if (axis_state.items.len != axis_errors.items.len and
-        axis_state.items.len != 1)
+    const axis_state = track.axis_state;
+    const axis_errors = track.axis_errors;
+    if (axis_state.items.len != axis_errors.items.len)
         return error.InvalidResponse;
-    const info = axis_state.pop().?;
-    const err = axis_errors.pop().?;
     var stdout = std.fs.File.stdout().writer(&.{});
     const writer = &stdout.interface;
-    try client.api.response.info.track.axis.state.print(info, writer);
-    try client.api.response.info.track.axis.err.print(err, writer);
+    for (axis_state.items, axis_errors.items) |info, err| {
+        try client.api.response.info.track.axis.state.print(info, writer);
+        try client.api.response.info.track.axis.err.print(err, writer);
+    }
 }
 
 pub fn driverInfo(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
-    const driver_id = try std.fmt.parseInt(u32, params[1], 0);
+    var filter: Filter = try .parse(params[1]);
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
@@ -372,12 +418,7 @@ pub fn driverInfo(params: [][]const u8) !void {
                 .line = line.id,
                 .info_driver_state = true,
                 .info_driver_errors = true,
-                .filter = .{
-                    .drivers = .{
-                        .start = driver_id,
-                        .end = driver_id,
-                    },
-                },
+                .filter = filter.toProtobuf(),
             },
         );
         try writer.interface.flush();
@@ -390,29 +431,25 @@ pub fn driverInfo(params: [][]const u8) !void {
     );
     defer track.deinit(client.allocator);
     if (track.line != line.id) return error.InvalidResponse;
-    var driver_state = track.driver_state;
-    var driver_errors = track.driver_errors;
-    if (driver_state.items.len != driver_errors.items.len and
-        driver_errors.items.len != 1)
+    const driver_state = track.driver_state;
+    const driver_errors = track.driver_errors;
+    if (driver_state.items.len != driver_errors.items.len)
         return error.InvalidResponse;
-    const info = driver_state.pop().?;
-    const err = driver_errors.pop().?;
     var stdout = std.fs.File.stdout().writer(&.{});
     const writer = &stdout.interface;
-    try client.api.response.info.track.driver.state.print(info, writer);
-    try client.api.response.info.track.driver.err.print(err, writer);
+    for (driver_state.items, driver_errors.items) |info, err| {
+        try client.api.response.info.track.driver.state.print(info, writer);
+        try client.api.response.info.track.driver.err.print(err, writer);
+    }
 }
 
 pub fn carrierInfo(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
-    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    var filter: Filter = try .parse(params[1]);
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
-        var ids: std.ArrayList(u32) = .empty;
-        defer ids.deinit(client.allocator);
-        try ids.append(client.allocator, carrier_id);
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
         var writer = socket.writer(&client.writer_buf);
@@ -422,9 +459,7 @@ pub fn carrierInfo(params: [][]const u8) !void {
             .{
                 .line = line.id,
                 .info_carrier_state = true,
-                .filter = .{
-                    .carriers = .{ .ids = ids },
-                },
+                .filter = filter.toProtobuf(),
             },
         );
         try writer.interface.flush();
@@ -437,12 +472,13 @@ pub fn carrierInfo(params: [][]const u8) !void {
     );
     defer track.deinit(client.allocator);
     if (track.line != line.id) return error.InvalidResponse;
-    var carriers = track.carrier_state;
-    if (carriers.items.len > 1) return error.InvalidResponse;
-    const carrier = carriers.pop() orelse return error.CarrierNotFound;
+    const carriers = track.carrier_state;
+    if (carriers.items.len == 0) return error.CarrierNotFound;
     var stdout = std.fs.File.stdout().writer(&.{});
     const writer = &stdout.interface;
-    try client.api.response.info.track.carrier.print(carrier, writer);
+    for (carriers.items) |carrier| {
+        try client.api.response.info.track.carrier.print(carrier, writer);
+    }
 }
 
 pub fn autoInitialize(params: [][]const u8) !void {
@@ -665,14 +701,44 @@ pub fn releaseCarrier(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    var carrier_id: ?u32 = null;
+    var filter: ?Filter = null;
     if (params[1].len > 0) {
-        carrier_id = try std.fmt.parseInt(
-            u32,
-            params[1],
-            0,
-        );
+        filter = try .parse(params[1]);
     }
+    const carrier_id: ?u32 = if (filter) |*_filter| b: {
+        switch (_filter.*) {
+            .axis => {
+                {
+                    try client.removeIgnoredMessage(socket);
+                    try socket.waitToWrite(&command.checkCommandInterrupt);
+                    var writer = socket.writer(&client.writer_buf);
+                    try client.api.request.info.track.encode(
+                        client.allocator,
+                        &writer.interface,
+                        .{
+                            .line = line.id,
+                            .info_axis_state = true,
+                            .filter = _filter.toProtobuf(),
+                        },
+                    );
+                    try writer.interface.flush();
+                }
+                try socket.waitToRead(&command.checkCommandInterrupt);
+                var reader = socket.reader(&client.reader_buf);
+                var track = try client.api.response.info.track.decode(
+                    client.allocator,
+                    &reader.interface,
+                );
+                defer track.deinit(client.allocator);
+                if (track.line != line.id) return error.InvalidResponse;
+                const axis = track.axis_state.pop() orelse return error.InvalidResponse;
+                if (axis.carrier == 0) return error.CarrierNotFound;
+                break :b axis.carrier;
+            },
+            .driver => return error.InvalidParameter,
+            .carrier => |carrier_id| break :b carrier_id[0],
+        }
+    } else null;
     {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
@@ -695,11 +761,45 @@ pub fn clearErrors(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    var driver_id: ?u32 = null;
+    var filter: ?Filter = null;
     if (params[1].len > 0) {
-        const axis = try std.fmt.parseInt(u32, params[1], 0);
-        driver_id = axis / 3;
+        filter = try .parse(params[1]);
     }
+    const driver_id: ?u32 = if (filter) |*_filter| b: {
+        switch (_filter.*) {
+            .axis => |axis| break :b axis / 3,
+            .driver => |driver| break :b driver,
+            .carrier => {
+                {
+                    try client.removeIgnoredMessage(socket);
+                    try socket.waitToWrite(&command.checkCommandInterrupt);
+                    var writer = socket.writer(&client.writer_buf);
+                    try client.api.request.info.track.encode(
+                        client.allocator,
+                        &writer.interface,
+                        .{
+                            .line = line.id,
+                            .info_carrier_state = true,
+                            .filter = _filter.toProtobuf(),
+                        },
+                    );
+                    try writer.interface.flush();
+                }
+                try socket.waitToRead(&command.checkCommandInterrupt);
+                var reader = socket.reader(&client.reader_buf);
+                var track = try client.api.response.info.track.decode(
+                    client.allocator,
+                    &reader.interface,
+                );
+                defer track.deinit(client.allocator);
+                if (track.line != line.id) return error.InvalidResponse;
+                var carriers = track.carrier_state;
+                if (carriers.items.len > 1) return error.InvalidResponse;
+                const carrier = carriers.pop() orelse return error.CarrierNotFound;
+                break :b carrier.axis_main / 3;
+            },
+        }
+    } else null;
     {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
@@ -725,11 +825,45 @@ pub fn clearCarrierInfo(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    var axis_id: ?u32 = null;
+    var filter: ?Filter = null;
     if (params[1].len > 0) {
-        const axis = try std.fmt.parseInt(u32, params[1], 0);
-        axis_id = axis;
+        filter = try .parse(params[1]);
     }
+    const axis_id: ?u32 = if (filter) |*_filter| b: {
+        switch (_filter.*) {
+            .axis => |axis| break :b axis,
+            .driver => return error.InvalidParameter,
+            .carrier => {
+                {
+                    try client.removeIgnoredMessage(socket);
+                    try socket.waitToWrite(&command.checkCommandInterrupt);
+                    var writer = socket.writer(&client.writer_buf);
+                    try client.api.request.info.track.encode(
+                        client.allocator,
+                        &writer.interface,
+                        .{
+                            .line = line.id,
+                            .info_carrier_state = true,
+                            .filter = _filter.toProtobuf(),
+                        },
+                    );
+                    try writer.interface.flush();
+                }
+                try socket.waitToRead(&command.checkCommandInterrupt);
+                var reader = socket.reader(&client.reader_buf);
+                var track = try client.api.response.info.track.decode(
+                    client.allocator,
+                    &reader.interface,
+                );
+                defer track.deinit(client.allocator);
+                if (track.line != line.id) return error.InvalidResponse;
+                var carriers = track.carrier_state;
+                if (carriers.items.len > 1) return error.InvalidResponse;
+                const carrier = carriers.pop() orelse return error.CarrierNotFound;
+                break :b carrier.axis_main;
+            },
+        }
+    } else null;
     {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
@@ -907,14 +1041,13 @@ pub fn carrierAxis(params: [][]const u8) !void {
 pub fn hallStatus(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
-    var axis_id: ?u32 = null;
+    var filter: ?Filter = null;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     if (params[1].len > 0) {
-        const axis = try std.fmt.parseInt(u32, params[1], 0);
-        axis_id = axis;
+        filter = try .parse(params[1]);
     }
-    if (axis_id) |id| {
+    if (filter) |*_filter| {
         {
             try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
@@ -925,12 +1058,7 @@ pub fn hallStatus(params: [][]const u8) !void {
                 .{
                     .line = line.id,
                     .info_axis_state = true,
-                    .filter = .{
-                        .axes = .{
-                            .start = id,
-                            .end = id,
-                        },
-                    },
+                    .filter = _filter.toProtobuf(),
                 },
             );
             try writer.interface.flush();
@@ -943,15 +1071,16 @@ pub fn hallStatus(params: [][]const u8) !void {
         );
         defer track.deinit(client.allocator);
         if (track.line != line.id) return error.InvalidResponse;
-        const axis = track.axis_state.pop() orelse return error.InvalidResponse;
-        std.log.info(
-            "Axis {} Hall Sensor:\n\t BACK - {s}\n\t FRONT - {s}",
-            .{
-                axis.id,
-                if (axis.hall_alarm_back) "ON" else "OFF",
-                if (axis.hall_alarm_front) "ON" else "OFF",
-            },
-        );
+        for (track.axis_state.items) |axis| {
+            std.log.info(
+                "Axis {} Hall Sensor:\n\t BACK - {s}\n\t FRONT - {s}",
+                .{
+                    axis.id,
+                    if (axis.hall_alarm_back) "ON" else "OFF",
+                    if (axis.hall_alarm_front) "ON" else "OFF",
+                },
+            );
+        }
     } else {
         {
             try client.removeIgnoredMessage(socket);
@@ -1752,11 +1881,45 @@ pub fn carrierStopPull(params: [][]const u8) !void {
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    var axis_id: ?u32 = null;
+    var filter: ?Filter = null;
     if (params[1].len > 0) {
-        const axis = try std.fmt.parseInt(u32, params[1], 0);
-        axis_id = axis;
+        filter = try .parse(params[1]);
     }
+    const axis_id: ?u32 = if (filter) |*_filter| b: {
+        switch (_filter.*) {
+            .axis => |axis| break :b axis,
+            .driver => return error.InvalidParameter,
+            .carrier => {
+                {
+                    try client.removeIgnoredMessage(socket);
+                    try socket.waitToWrite(&command.checkCommandInterrupt);
+                    var writer = socket.writer(&client.writer_buf);
+                    try client.api.request.info.track.encode(
+                        client.allocator,
+                        &writer.interface,
+                        .{
+                            .line = line.id,
+                            .info_carrier_state = true,
+                            .filter = _filter.toProtobuf(),
+                        },
+                    );
+                    try writer.interface.flush();
+                }
+                try socket.waitToRead(&command.checkCommandInterrupt);
+                var reader = socket.reader(&client.reader_buf);
+                var track = try client.api.response.info.track.decode(
+                    client.allocator,
+                    &reader.interface,
+                );
+                defer track.deinit(client.allocator);
+                if (track.line != line.id) return error.InvalidResponse;
+                var carriers = track.carrier_state;
+                if (carriers.items.len > 1) return error.InvalidResponse;
+                const carrier = carriers.pop() orelse return error.CarrierNotFound;
+                break :b carrier.axis_main;
+            },
+        }
+    } else null;
     {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
@@ -1782,11 +1945,45 @@ pub fn carrierStopPush(params: [][]const u8) !void {
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    var axis_id: ?u32 = null;
+    var filter: ?Filter = null;
     if (params[1].len > 0) {
-        const axis = try std.fmt.parseInt(u32, params[1], 0);
-        axis_id = axis;
+        filter = try .parse(params[1]);
     }
+    const axis_id: ?u32 = if (filter) |*_filter| b: {
+        switch (_filter.*) {
+            .axis => |axis| break :b axis,
+            .driver => return error.InvalidParameter,
+            .carrier => {
+                {
+                    try client.removeIgnoredMessage(socket);
+                    try socket.waitToWrite(&command.checkCommandInterrupt);
+                    var writer = socket.writer(&client.writer_buf);
+                    try client.api.request.info.track.encode(
+                        client.allocator,
+                        &writer.interface,
+                        .{
+                            .line = line.id,
+                            .info_carrier_state = true,
+                            .filter = _filter.toProtobuf(),
+                        },
+                    );
+                    try writer.interface.flush();
+                }
+                try socket.waitToRead(&command.checkCommandInterrupt);
+                var reader = socket.reader(&client.reader_buf);
+                var track = try client.api.response.info.track.decode(
+                    client.allocator,
+                    &reader.interface,
+                );
+                defer track.deinit(client.allocator);
+                if (track.line != line.id) return error.InvalidResponse;
+                var carriers = track.carrier_state;
+                if (carriers.items.len > 1) return error.InvalidResponse;
+                const carrier = carriers.pop() orelse return error.CarrierNotFound;
+                break :b carrier.axis_main;
+            },
+        }
+    } else null;
     {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
