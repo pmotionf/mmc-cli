@@ -1885,39 +1885,14 @@ pub fn carrierStopPull(params: [][]const u8) !void {
     if (params[1].len > 0) {
         filter = try .parse(params[1]);
     }
-    const axis_id: ?u32 = if (filter) |*_filter| b: {
+    const axis_id: ?struct { start: u32, end: u32 } = if (filter) |*_filter| b: {
         switch (_filter.*) {
-            .axis => |axis| break :b axis,
-            .driver => return error.InvalidParameter,
-            .carrier => {
-                {
-                    try client.removeIgnoredMessage(socket);
-                    try socket.waitToWrite(&command.checkCommandInterrupt);
-                    var writer = socket.writer(&client.writer_buf);
-                    try client.api.request.info.track.encode(
-                        client.allocator,
-                        &writer.interface,
-                        .{
-                            .line = line.id,
-                            .info_carrier_state = true,
-                            .filter = _filter.toProtobuf(),
-                        },
-                    );
-                    try writer.interface.flush();
-                }
-                try socket.waitToRead(&command.checkCommandInterrupt);
-                var reader = socket.reader(&client.reader_buf);
-                var track = try client.api.response.info.track.decode(
-                    client.allocator,
-                    &reader.interface,
-                );
-                defer track.deinit(client.allocator);
-                if (track.line != line.id) return error.InvalidResponse;
-                var carriers = track.carrier_state;
-                if (carriers.items.len > 1) return error.InvalidResponse;
-                const carrier = carriers.pop() orelse return error.CarrierNotFound;
-                break :b carrier.axis_main;
+            .axis => |axis| break :b .{ .start = axis, .end = axis },
+            .driver => |driver| break :b .{
+                .start = driver * 3 - 2,
+                .end = driver * 3,
             },
+            .carrier => return error.InvalidParameter,
         }
     } else null;
     {
@@ -1930,7 +1905,7 @@ pub fn carrierStopPull(params: [][]const u8) !void {
             .{
                 .line = line.id,
                 .axes = if (axis_id) |id|
-                    .{ .start = id, .end = id }
+                    .{ .start = id.start, .end = id.end }
                 else
                     null,
             },
@@ -1949,39 +1924,14 @@ pub fn carrierStopPush(params: [][]const u8) !void {
     if (params[1].len > 0) {
         filter = try .parse(params[1]);
     }
-    const axis_id: ?u32 = if (filter) |*_filter| b: {
+    const axis_id: ?struct { start: u32, end: u32 } = if (filter) |*_filter| b: {
         switch (_filter.*) {
-            .axis => |axis| break :b axis,
-            .driver => return error.InvalidParameter,
-            .carrier => {
-                {
-                    try client.removeIgnoredMessage(socket);
-                    try socket.waitToWrite(&command.checkCommandInterrupt);
-                    var writer = socket.writer(&client.writer_buf);
-                    try client.api.request.info.track.encode(
-                        client.allocator,
-                        &writer.interface,
-                        .{
-                            .line = line.id,
-                            .info_carrier_state = true,
-                            .filter = _filter.toProtobuf(),
-                        },
-                    );
-                    try writer.interface.flush();
-                }
-                try socket.waitToRead(&command.checkCommandInterrupt);
-                var reader = socket.reader(&client.reader_buf);
-                var track = try client.api.response.info.track.decode(
-                    client.allocator,
-                    &reader.interface,
-                );
-                defer track.deinit(client.allocator);
-                if (track.line != line.id) return error.InvalidResponse;
-                var carriers = track.carrier_state;
-                if (carriers.items.len > 1) return error.InvalidResponse;
-                const carrier = carriers.pop() orelse return error.CarrierNotFound;
-                break :b carrier.axis_main;
+            .axis => |axis| break :b .{ .start = axis, .end = axis },
+            .driver => |driver| break :b .{
+                .start = driver * 3 - 2,
+                .end = driver * 3,
             },
+            .carrier => return error.InvalidParameter,
         }
     } else null;
     {
@@ -1994,7 +1944,7 @@ pub fn carrierStopPush(params: [][]const u8) !void {
             .{
                 .line = line.id,
                 .axes = if (axis_id) |id|
-                    .{ .start = id, .end = id }
+                    .{ .start = id.start, .end = id.end }
                 else
                     null,
             },
