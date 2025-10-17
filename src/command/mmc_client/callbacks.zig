@@ -555,7 +555,7 @@ pub fn carrierId(params: [][]const u8) !void {
         try line_idxs.append(client.allocator, try client.matchLine(line_name));
     }
 
-    var variable_count: usize = 1;
+    var count: usize = 1;
     for (line_idxs.items) |line_idx| {
         const line = client.lines[line_idx];
         {
@@ -583,41 +583,30 @@ pub fn carrierId(params: [][]const u8) !void {
         if (track.line != line.id) return error.InvalidResponse;
         const axis_state = track.axis_state;
         if (axis_state.items.len != line.axes) return error.InvalidResponse;
+        var last_carrier: u32 = 0;
         for (axis_state.items) |axis| {
-            if (axis.carrier == 0) continue;
+            if (axis.carrier == 0 or last_carrier == axis.carrier) continue;
             std.log.info(
                 "Carrier {d} on line {s} axis {d}",
                 .{ axis.carrier, line.name, axis.id },
             );
             if (result_var.len > 0) {
                 var int_buf: [8]u8 = undefined;
-                var var_buf: [36]u8 = undefined;
-                const variable_key = try std.fmt.bufPrint(
+                var var_buf: [40]u8 = undefined;
+                const key = try std.fmt.bufPrint(
                     &var_buf,
                     "{s}_{d}",
-                    .{ result_var, variable_count },
+                    .{ result_var, count },
                 );
-                const variable_value = try std.fmt.bufPrint(
+                const value = try std.fmt.bufPrint(
                     &int_buf,
                     "{d}",
                     .{axis.carrier},
                 );
-                var iterator = command.variables.iterator();
-                var isValueExists: bool = false;
-                while (iterator.next()) |entry| {
-                    if (std.mem.eql(u8, variable_value, entry.value_ptr.*)) {
-                        isValueExists = true;
-                        break;
-                    }
-                }
-                if (!isValueExists) {
-                    try command.variables.put(
-                        variable_key,
-                        variable_value,
-                    );
-                    variable_count += 1;
-                }
+                try command.variables.put(key, value);
+                count += 1;
             }
+            last_carrier = axis.carrier;
         }
     }
 }
