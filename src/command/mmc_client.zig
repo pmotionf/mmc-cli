@@ -150,7 +150,7 @@ pub fn init(c: Config) !void {
         .name = "PRINT_AXIS_INFO",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "axis" },
+            .{ .name = "filter" },
         },
         .short_description = "Print the axis information.",
         .long_description =
@@ -163,7 +163,7 @@ pub fn init(c: Config) !void {
         .name = "PRINT_DRIVER_INFO",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "driver" },
+            .{ .name = "filter" },
         },
         .short_description = "Print the driver information.",
         .long_description =
@@ -176,7 +176,7 @@ pub fn init(c: Config) !void {
         .name = "PRINT_CARRIER_INFO",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "carrier" },
+            .{ .name = "filter" },
         },
         .short_description = "Print the carrier information.",
         .long_description =
@@ -283,7 +283,7 @@ pub fn init(c: Config) !void {
         .name = "HALL_STATUS",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "axis", .optional = true },
+            .{ .name = "filter", .optional = true },
         },
         .short_description = "Display currently active hall sensors.",
         .long_description =
@@ -316,7 +316,7 @@ pub fn init(c: Config) !void {
         .name = "CLEAR_ERRORS",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "axis", .optional = true },
+            .{ .name = "filter", .optional = true },
         },
         .short_description = "Clear driver errors.",
         .long_description =
@@ -330,7 +330,7 @@ pub fn init(c: Config) !void {
         .name = "CLEAR_CARRIER_INFO",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "axis", .optional = true },
+            .{ .name = "filter", .optional = true },
         },
         .short_description = "Clear carrier information.",
         .long_description =
@@ -354,7 +354,7 @@ pub fn init(c: Config) !void {
         .name = "RELEASE_CARRIER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "carrier", .optional = true },
+            .{ .name = "filter", .optional = true },
         },
         .short_description = "Release the carrier for being controlled",
         .long_description =
@@ -679,7 +679,7 @@ pub fn init(c: Config) !void {
         .name = "STOP_PULL_CARRIER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "axis", .optional = true },
+            .{ .name = "filter", .optional = true },
         },
         .short_description = "Stop active carrier pull at axis.",
         .long_description =
@@ -692,7 +692,7 @@ pub fn init(c: Config) !void {
         .name = "STOP_PUSH_CARRIER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "axis", .optional = true },
+            .{ .name = "filter", .optional = true },
         },
         .short_description = "Stop active carrier push at axis.",
         .long_description =
@@ -783,7 +783,7 @@ pub fn init(c: Config) !void {
         .name = "PRINT_ERRORS",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line" },
-            .{ .name = "axis", .optional = true },
+            .{ .name = "filter", .optional = true },
         },
         .short_description = "Print axis and driver errors.",
         .long_description =
