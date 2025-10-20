@@ -822,10 +822,14 @@ pub fn clearCarrierInfo(params: [][]const u8) !void {
     if (params[1].len > 0) {
         filter = try .parse(params[1]);
     }
-    const axis_id: ?u32 = if (filter) |*_filter| b: {
+    const axis_id: ?struct { start: u32, end: u32 } = if (filter) |*_filter| b: {
         switch (_filter.*) {
-            .axis => |axis| break :b axis,
-            .driver => return error.InvalidParameter,
+            .axis => |axis| break :b .{ .start = axis, .end = axis },
+            .driver => |driver| {
+                const start = (driver - 1) * 3 + 1;
+                const end = (driver - 1) * 3 + 3;
+                break :b .{ .start = start, .end = end };
+            },
             .carrier => {
                 {
                     try client.removeIgnoredMessage(socket);
@@ -853,7 +857,7 @@ pub fn clearCarrierInfo(params: [][]const u8) !void {
                 var carriers = track.carrier_state;
                 if (carriers.items.len > 1) return error.InvalidResponse;
                 const carrier = carriers.pop() orelse return error.CarrierNotFound;
-                break :b carrier.axis_main;
+                break :b .{ .start = carrier.axis_main, .end = carrier.axis_main };
             },
         }
     } else null;
@@ -867,7 +871,7 @@ pub fn clearCarrierInfo(params: [][]const u8) !void {
             .{
                 .line = line.id,
                 .axes = if (axis_id) |id|
-                    .{ .start = id, .end = id }
+                    .{ .start = id.start, .end = id.end }
                 else
                     null,
             },
