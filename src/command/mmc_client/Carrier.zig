@@ -49,6 +49,7 @@ pub fn waitState(
         defer track.deinit(client.allocator);
         if (track.line != line) return error.InvalidResponse;
         const carrier = track.carrier_state.pop() orelse return error.InvalidResponse;
+        if (carrier.state == .CARRIER_STATE_OVERCURRENT) return error.Overcurrent;
         if (carrier.state == state) return;
     }
 }
