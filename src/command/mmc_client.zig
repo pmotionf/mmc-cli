@@ -154,7 +154,11 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Print the axis information.",
         .long_description =
-        \\Print the information tied to an axis.
+        \\Print the axis information. The information is shown based on the 
+        \\given filter, which shall be provided with the prefix followed by an 
+        \\ID. The supported prefixes are "c" or "carrier" for filtering based on 
+        \\carrier, "d" or "driver" for filtering based on "driver", and "a" or 
+        \\"axis" for filtering based on "axis".
         ,
         .execute = &callbacks.axisInfo,
     });
@@ -167,7 +171,11 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Print the driver information.",
         .long_description =
-        \\Print the information tied to a driver.
+        \\Print the information information. The information is shown based on 
+        \\the given filter, which shall be provided with the prefix followed by an ID. 
+        \\The supported prefixes are "c" or "carrier" for filtering based on 
+        \\carrier, "d" or "driver" for filtering based on "driver", and "a" or 
+        \\"axis" for filtering based on "axis".
         ,
         .execute = &callbacks.driverInfo,
     });
@@ -180,7 +188,11 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Print the carrier information.",
         .long_description =
-        \\Print the information tied to a carrier.
+        \\Print the carrier information. The information is shown based on the 
+        \\given filter, which shall be provided with the prefix followed by an 
+        \\ID. The supported prefixes are "c" or "carrier" for filtering based on 
+        \\carrier, "d" or "driver" for filtering based on "driver", and "a" or 
+        \\"axis" for filtering based on "axis".
         ,
         .execute = &callbacks.carrierInfo,
     });
@@ -285,11 +297,14 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "filter", .optional = true },
         },
-        .short_description = "Display currently active hall sensors.",
+        .short_description = "Display hall status state.",
         .long_description =
-        \\List all active hall sensors. If an axis is provided, only hall
-        \\sensors in that axis will be listed. Otherwise, all active hall
-        \\sensors in the line will be listed.
+        \\Display hall status state. The information is shown based on the 
+        \\given filter, which shall be provided with the prefix followed by an 
+        \\ID. The supported prefixes are "c" or "carrier" for filtering based on 
+        \\carrier, "d" or "driver" for filtering based on "driver", and "a" or 
+        \\"axis" for filtering based on "axis". If no filter is provided, show
+        \\all hall status across the line.
         ,
         .execute = &callbacks.hallStatus,
     });
@@ -318,10 +333,14 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "filter", .optional = true },
         },
-        .short_description = "Clear driver errors.",
+        .short_description = "Clear errors state.",
         .long_description =
-        \\Clear driver errors of specified axis. If no axis is provided, clear
-        \\driver errors of all axis.
+        \\Clear errors state on axis and driver. The driver in which error to be 
+        \\cleared is selected based on the given filter, which shall be provided 
+        \\with the prefix followed by an ID. The supported prefixes are "c" or 
+        \\"carrier" for filtering based on carrier, "d" or "driver" for 
+        \\filtering based on "driver", and "a" or "axis" for filtering based on 
+        \\"axis". If no filter is provided, clear errors on all drivers.
         ,
         .execute = &callbacks.clearErrors,
     });
@@ -334,8 +353,12 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Clear carrier information.",
         .long_description =
-        \\Clear carrier information at specified axis. If no axis is provided,
-        \\clear carrier information at all axis
+        \\Clear carrier information. The carrier to be cleared is selected based 
+        \\on the given filter, which shall be provided with the prefix followed 
+        \\by an ID. The supported prefixes are "c" or "carrier" for filtering 
+        \\based on carrier, "d" or "driver" for filtering based on "driver", and 
+        \\"a" or "axis" for filtering based on "axis". If no filter is provided, 
+        \\clear errors on all drivers.
         ,
         .execute = &callbacks.clearCarrierInfo,
     });
@@ -358,11 +381,15 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Release the carrier for being controlled",
         .long_description =
-        \\Release the motor that control the given carrier, allowing for free 
+        \\Release the motor that control the carrier, allowing for free 
         \\carrier movement. This command should be run before carriers move 
-        \\within or exit from the track due to external influence. If no carrier 
-        \\is given, all carriers on the provided line will be released from 
-        \\control. 
+        \\within or exit from the track due to external influence. The carrier
+        \\to be released from control is selected based on the given filter, 
+        \\which shall be provided with the prefix followed by an ID. The 
+        \\supported prefixes are "c" or "carrier" for filtering based on 
+        \\carrier, "d" or "driver" for filtering based on "driver", and "a" or 
+        \\"axis" for filtering based on "axis". If no filter is provided, clear 
+        \\errors on all drivers.
         ,
         .execute = &callbacks.releaseCarrier,
     });
@@ -683,7 +710,11 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Stop active carrier pull at axis.",
         .long_description =
-        \\Stop active carrier pull at axis.
+        \\Stop active carrier pull at axis. The axis is selected based on the 
+        \\given filter, which shall be provided with the prefix followed by an 
+        \\ID. The supported prefixes are "d" or "driver" for filtering based on 
+        \\"driver" and "a" or "axis" for filtering based on "axis". If no 
+        \\filter is provided, clear errors on all drivers.
         ,
         .execute = &callbacks.carrierStopPull,
     });
@@ -696,7 +727,11 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Stop active carrier push at axis.",
         .long_description =
-        \\Stop active carrier push at axis.
+        \\Stop active carrier push at axis. The axis is selected based on the 
+        \\given filter, which shall be provided with the prefix followed by an 
+        \\ID. The supported prefixes are "d" or "driver" for filtering based on 
+        \\"driver" and "a" or "axis" for filtering based on "axis". If no 
+        \\filter is provided, clear errors on all drivers.
         ,
         .execute = &callbacks.carrierStopPush,
     });
@@ -787,8 +822,12 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Print axis and driver errors.",
         .long_description =
-        \\Print axis and driver errors on a line, if any. Providing axis
-        \\prints axis and driver errors on the specified axis only, if any.
+        \\Print axis and driver errors on a line, if any. The errors to be shown
+        \\are filtered based on the given filter, which shall be provided with 
+        \\the prefix followed by an ID. The supported prefixes are "d" or 
+        \\"driver" for filtering based on "driver" and "a" or "axis" for 
+        \\filtering based on "axis". If no filter is provided, clear errors on 
+        \\all drivers.
         ,
         .execute = &callbacks.showError,
     });
