@@ -919,12 +919,6 @@ pub fn disconnect() void {
     lines = &.{};
 }
 
-pub fn matchLine(name: []const u8) !usize {
-    for (lines) |line| {
-        if (std.mem.eql(u8, line.name, name)) return line.index;
-    } else return error.LineNameNotFound;
-}
-
 pub fn removeIgnoredMessage(socket: zignet.Socket) !void {
     if (try zignet.Socket.readyToRead(socket.fd, 0)) {
         var buf: [4096]u8 = undefined;

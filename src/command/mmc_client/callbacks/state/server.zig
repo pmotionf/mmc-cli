@@ -35,7 +35,7 @@ pub fn serverVersion(_: [][]const u8) !void {
 pub fn showError(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     var filter: ?callbacks.Filter = null;
     if (params[1].len > 0) {
@@ -90,7 +90,7 @@ pub fn axisInfo(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     var filter: callbacks.Filter = try .parse(params[1]);
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     {
         try client.removeIgnoredMessage(socket);
@@ -132,7 +132,7 @@ pub fn driverInfo(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     var filter: callbacks.Filter = try .parse(params[1]);
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     {
         try client.removeIgnoredMessage(socket);
@@ -174,7 +174,7 @@ pub fn carrierInfo(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     var filter: callbacks.Filter = try .parse(params[1]);
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     {
         try client.removeIgnoredMessage(socket);
@@ -213,7 +213,7 @@ pub fn axisCarrier(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(u32, params[1], 0);
     const result_var: []const u8 = params[2];
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     {
         try client.removeIgnoredMessage(socket);
@@ -268,7 +268,7 @@ pub fn carrierId(params: [][]const u8) !void {
     // Validate line names, avoid heap allocation
     var line_counter: usize = 0;
     while (line_name_iterator.next()) |line_name| {
-        if (client.matchLine(line_name)) |_| {
+        if (callbacks.matchLine(line_name)) |_| {
             line_counter += 1;
         } else |e| {
             std.log.info("Line {s} not found", .{line_name});
@@ -280,7 +280,7 @@ pub fn carrierId(params: [][]const u8) !void {
     defer line_idxs.deinit(client.allocator);
     line_name_iterator.reset();
     while (line_name_iterator.next()) |line_name| {
-        try line_idxs.append(client.allocator, try client.matchLine(line_name));
+        try line_idxs.append(client.allocator, try callbacks.matchLine(line_name));
     }
 
     var count: usize = 1;
@@ -349,7 +349,7 @@ pub fn assertLocation(params: [][]const u8) !void {
         try std.fmt.parseFloat(f32, params[3])
     else
         1.0;
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     {
         var ids: std.ArrayList(u32) = .empty;
@@ -394,7 +394,7 @@ pub fn carrierLocation(params: [][]const u8) !void {
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     const result_var: []const u8 = params[2];
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     {
         var ids: std.ArrayList(u32) = .empty;
@@ -445,7 +445,7 @@ pub fn carrierAxis(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     {
         var ids: std.ArrayList(u32) = .empty;
@@ -492,7 +492,7 @@ pub fn hallStatus(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     var filter: ?callbacks.Filter = null;
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     if (params[1].len > 0) {
         filter = try .parse(params[1]);
@@ -584,7 +584,7 @@ pub fn assertHall(params: [][]const u8) !void {
             .DIRECTION_FORWARD
         else
             return error.InvalidHallAlarmSide;
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
 
     var alarm_on: bool = true;

@@ -1,5 +1,6 @@
 const std = @import("std");
 const api = @import("api.zig");
+const client = @import("../mmc_client.zig");
 pub const command = @import("callbacks/command.zig");
 pub const connection = @import("callbacks/connection.zig");
 pub const logging = @import("callbacks/logging.zig");
@@ -62,3 +63,9 @@ pub const Filter = union(enum) {
         };
     }
 };
+
+pub fn matchLine(name: []const u8) !usize {
+    for (client.lines) |line| {
+        if (std.mem.eql(u8, line.name, name)) return line.index;
+    } else return error.LineNameNotFound;
+}

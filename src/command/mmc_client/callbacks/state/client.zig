@@ -9,7 +9,7 @@ pub fn setSpeed(params: [][]const u8) !void {
     const carrier_speed = try std.fmt.parseFloat(f32, params[1]);
     if (carrier_speed <= 0.0 or carrier_speed > 6.0) return error.InvalidSpeed;
 
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     client.lines[line_idx].velocity = @intFromFloat(carrier_speed * 10.0);
 
     std.log.info("Set speed to {d}m/s.", .{
@@ -23,7 +23,7 @@ pub fn setAcceleration(params: [][]const u8) !void {
     if (carrier_acceleration <= 0.0 or carrier_acceleration > 24.5)
         return error.InvalidAcceleration;
 
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     client.lines[line_idx].acceleration = @intFromFloat(carrier_acceleration * 10.0);
 
     std.log.info("Set acceleration to {d}m/s^2.", .{
@@ -34,7 +34,7 @@ pub fn setAcceleration(params: [][]const u8) !void {
 pub fn getSpeed(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
 
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     std.log.info(
         "Line {s} speed: {d}m/s",
         .{
@@ -47,7 +47,7 @@ pub fn getSpeed(params: [][]const u8) !void {
 pub fn getAcceleration(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
 
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     std.log.info(
         "Line {s} acceleration: {d}m/s",
         .{

@@ -17,7 +17,7 @@ pub fn autoInitialize(params: [][]const u8) !void {
             ",",
         );
         while (iterator.next()) |line_name| {
-            const line_idx = try client.matchLine(line_name);
+            const line_idx = try callbacks.matchLine(line_name);
             const _line = client.lines[line_idx];
             const line: client.api.api.protobuf.mmc.command.Request.AutoInitialize.Line = .{
                 .line = _line.id,
@@ -42,7 +42,7 @@ pub fn autoInitialize(params: [][]const u8) !void {
 pub fn releaseCarrier(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     var filter: ?callbacks.Filter = null;
     if (params[1].len > 0) {
@@ -146,7 +146,7 @@ pub fn releaseCarrier(params: [][]const u8) !void {
 pub fn clearErrors(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     var filter: ?callbacks.Filter = null;
     if (params[1].len > 0) {
@@ -210,7 +210,7 @@ pub fn clearErrors(params: [][]const u8) !void {
 pub fn clearCarrierInfo(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     var filter: ?callbacks.Filter = null;
     if (params[1].len > 0) {
@@ -332,7 +332,7 @@ pub fn resetSystem(_: [][]const u8) !void {
 pub fn calibrate(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     {
         try client.removeIgnoredMessage(socket);
@@ -351,7 +351,7 @@ pub fn calibrate(params: [][]const u8) !void {
 pub fn setLineZero(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     {
         try client.removeIgnoredMessage(socket);
@@ -372,7 +372,7 @@ pub fn isolate(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(u32, params[1], 0);
 
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
 
     const dir: client.api.api.protobuf.mmc.command.Request.Direction = dir_parse: {
@@ -431,7 +431,7 @@ pub fn waitIsolate(params: [][]const u8) !void {
         0;
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     try client.carrier.waitState(
         client.allocator,
@@ -451,7 +451,7 @@ pub fn waitMoveCarrier(params: [][]const u8) !void {
         0;
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     try client.carrier.waitState(
         client.allocator,
@@ -478,7 +478,7 @@ pub fn carrierPosMoveAxis(params: [][]const u8) !void {
     else
         return error.InvalidCasConfiguration;
 
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     {
         try client.removeIgnoredMessage(socket);
@@ -514,7 +514,7 @@ pub fn carrierPosMoveLocation(params: [][]const u8) !void {
     else
         return error.InvalidCasConfiguration;
 
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     {
         try client.removeIgnoredMessage(socket);
@@ -549,7 +549,7 @@ pub fn carrierPosMoveDistance(params: [][]const u8) !void {
         true
     else
         return error.InvalidCasConfiguration;
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     {
         try client.removeIgnoredMessage(socket);
@@ -578,7 +578,7 @@ pub fn carrierSpdMoveAxis(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
     const axis_id = try std.fmt.parseInt(u32, params[2], 0);
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     const disable_cas = if (params[3].len == 0)
         false
@@ -620,7 +620,7 @@ pub fn carrierSpdMoveLocation(params: [][]const u8) !void {
     else
         return error.InvalidCasConfiguration;
 
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     {
         try client.removeIgnoredMessage(socket);
@@ -649,7 +649,7 @@ pub fn carrierSpdMoveDistance(params: [][]const u8) !void {
     const line_name = params[0];
     const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
     const distance = try std.fmt.parseFloat(f32, params[2]);
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     const disable_cas = if (params[3].len == 0)
         false
@@ -690,7 +690,7 @@ pub fn carrierPushForward(params: [][]const u8) !void {
     else
         null;
 
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     if (axis_id) |axis| {
         {
@@ -801,7 +801,7 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
     else
         null;
 
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     if (axis_id) |axis| {
         {
@@ -910,7 +910,7 @@ pub fn carrierPullForward(params: [][]const u8) !void {
         try std.fmt.parseFloat(f32, params[3])
     else
         null;
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     const disable_cas = if (params[4].len == 0)
         false
@@ -958,7 +958,7 @@ pub fn carrierPullBackward(params: [][]const u8) !void {
     else
         null;
 
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     const disable_cas = if (params[4].len == 0)
         false
@@ -1005,7 +1005,7 @@ pub fn carrierWaitPull(params: [][]const u8) !void {
         0;
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     try client.carrier.waitState(
         client.allocator,
@@ -1019,7 +1019,7 @@ pub fn carrierWaitPull(params: [][]const u8) !void {
 pub fn carrierStopPull(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     var filter: ?callbacks.Filter = null;
     if (params[1].len > 0) {
@@ -1058,7 +1058,7 @@ pub fn carrierStopPull(params: [][]const u8) !void {
 pub fn carrierStopPush(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     var filter: ?callbacks.Filter = null;
     if (params[1].len > 0) {
@@ -1097,7 +1097,7 @@ pub fn carrierStopPush(params: [][]const u8) !void {
 pub fn setCarrierId(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     const carrier = try std.fmt.parseInt(u32, params[1], 0);
     const new_carrier = try std.fmt.parseInt(u32, params[2], 0);
@@ -1127,7 +1127,7 @@ pub fn waitAxisEmpty(params: [][]const u8) !void {
         try std.fmt.parseInt(u64, params[2], 0)
     else
         0;
-    const line_idx = try client.matchLine(line_name);
+    const line_idx = try callbacks.matchLine(line_name);
     const line = client.lines[line_idx];
     var wait_timer = try std.time.Timer.start();
     while (true) {
@@ -1179,7 +1179,7 @@ pub fn stopLine(params: [][]const u8) !void {
     var ids: [1]u32 = .{0};
     if (params[0].len > 0) {
         const line_name = params[0];
-        const line_idx = try client.matchLine(line_name);
+        const line_idx = try callbacks.matchLine(line_name);
         ids[0] = @intCast(line_idx + 1);
     }
     {
@@ -1202,7 +1202,7 @@ pub fn pauseLine(params: [][]const u8) !void {
     var ids: [1]u32 = .{0};
     if (params[0].len > 0) {
         const line_name = params[0];
-        const line_idx = try client.matchLine(line_name);
+        const line_idx = try callbacks.matchLine(line_name);
         ids[0] = @intCast(line_idx + 1);
     }
     {
@@ -1225,7 +1225,7 @@ pub fn resumeLine(params: [][]const u8) !void {
     var ids: [1]u32 = .{0};
     if (params[0].len > 0) {
         const line_name = params[0];
-        const line_idx = try client.matchLine(line_name);
+        const line_idx = try callbacks.matchLine(line_name);
         ids[0] = @intCast(line_idx + 1);
     }
     {
