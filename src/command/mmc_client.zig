@@ -95,6 +95,7 @@ pub fn init(c: Config) !void {
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
             .{ .name = "speed" },
+            .{ .name = "low", .optional = true },
         },
         .short_description = "Set the speed of carrier movement for a line.",
         .long_description =

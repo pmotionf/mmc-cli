@@ -225,12 +225,17 @@ pub fn setSpeed(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_speed = try std.fmt.parseFloat(f32, params[1]);
     if (carrier_speed <= 0.0 or carrier_speed > 6.0) return error.InvalidSpeed;
+    const low = if (std.ascii.eqlIgnoreCase("low", params[2])) true else false;
 
     const line_idx = try client.matchLine(line_name);
-    client.lines[line_idx].velocity = @intFromFloat(carrier_speed * 10.0);
+    client.lines[line_idx].velocity = .{
+        .value = @intFromFloat(carrier_speed * 10.0),
+        .low = low,
+    };
+    std.log.debug("low: {}", .{low});
 
     std.log.info("Set speed to {d}m/s.", .{
-        @as(f32, @floatFromInt(client.lines[line_idx].velocity)) / 10.0,
+        @as(f32, @floatFromInt(client.lines[line_idx].velocity.value)) / 10.0,
     });
 }
 
@@ -243,7 +248,7 @@ pub fn setAcceleration(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     client.lines[line_idx].acceleration = @intFromFloat(carrier_acceleration * 10.0);
 
-    std.log.info("Set acceleration to {d}m/s^2.", .{
+    std.log.info("Set acceleration to {d} m/s^2.", .{
         @as(f32, @floatFromInt(client.lines[line_idx].acceleration)) / 10.0,
     });
 }
@@ -253,10 +258,11 @@ pub fn getSpeed(params: [][]const u8) !void {
 
     const line_idx = try client.matchLine(line_name);
     std.log.info(
-        "Line {s} speed: {d}m/s",
+        "Line {s} speed: {d} {s}",
         .{
             line_name,
-            @as(f32, @floatFromInt(client.lines[line_idx].velocity)) / 10.0,
+            @as(f32, @floatFromInt(client.lines[line_idx].velocity.value)) / 10.0,
+            if (client.lines[line_idx].velocity.low) "mm/s" else "m/s",
         },
     );
 }
@@ -1400,7 +1406,8 @@ pub fn carrierPosMoveAxis(params: [][]const u8) !void {
             .{
                 .line = line.id,
                 .carrier = carrier_id,
-                .velocity = client.lines[line_idx].velocity,
+                .velocity = client.lines[line_idx].velocity.value,
+                .velocity_mode = if (client.lines[line_idx].velocity.low) .low else .normal,
                 .acceleration = client.lines[line_idx].acceleration,
                 .target = .{ .axis = axis_id },
                 .disable_cas = disable_cas,
@@ -1436,7 +1443,8 @@ pub fn carrierPosMoveLocation(params: [][]const u8) !void {
             .{
                 .line = line.id,
                 .carrier = carrier_id,
-                .velocity = client.lines[line_idx].velocity,
+                .velocity = client.lines[line_idx].velocity.value,
+                .velocity_mode = if (client.lines[line_idx].velocity.low) .low else .normal,
                 .acceleration = client.lines[line_idx].acceleration,
                 .target = .{ .location = location },
                 .disable_cas = disable_cas,
@@ -1471,7 +1479,8 @@ pub fn carrierPosMoveDistance(params: [][]const u8) !void {
             .{
                 .line = line.id,
                 .carrier = carrier_id,
-                .velocity = client.lines[line_idx].velocity,
+                .velocity = client.lines[line_idx].velocity.value,
+                .velocity_mode = if (client.lines[line_idx].velocity.low) .low else .normal,
                 .acceleration = client.lines[line_idx].acceleration,
                 .target = .{ .distance = distance },
                 .disable_cas = disable_cas,
@@ -1506,7 +1515,8 @@ pub fn carrierSpdMoveAxis(params: [][]const u8) !void {
             .{
                 .line = line.id,
                 .carrier = carrier_id,
-                .velocity = client.lines[line_idx].velocity,
+                .velocity = client.lines[line_idx].velocity.value,
+                .velocity_mode = if (client.lines[line_idx].velocity.low) .low else .normal,
                 .acceleration = client.lines[line_idx].acceleration,
                 .target = .{ .axis = axis_id },
                 .disable_cas = disable_cas,
@@ -1542,7 +1552,8 @@ pub fn carrierSpdMoveLocation(params: [][]const u8) !void {
             .{
                 .line = line.id,
                 .carrier = carrier_id,
-                .velocity = client.lines[line_idx].velocity,
+                .velocity = client.lines[line_idx].velocity.value,
+                .velocity_mode = if (client.lines[line_idx].velocity.low) .low else .normal,
                 .acceleration = client.lines[line_idx].acceleration,
                 .target = .{ .location = location },
                 .disable_cas = disable_cas,
@@ -1577,7 +1588,8 @@ pub fn carrierSpdMoveDistance(params: [][]const u8) !void {
             .{
                 .line = line.id,
                 .carrier = carrier_id,
-                .velocity = client.lines[line_idx].velocity,
+                .velocity = client.lines[line_idx].velocity.value,
+                .velocity_mode = if (client.lines[line_idx].velocity.low) .low else .normal,
                 .acceleration = client.lines[line_idx].acceleration,
                 .target = .{ .distance = distance },
                 .disable_cas = disable_cas,
@@ -1613,7 +1625,8 @@ pub fn carrierPushForward(params: [][]const u8) !void {
                 .{
                     .line = line.id,
                     .carrier = carrier_id,
-                    .velocity = client.lines[line_idx].velocity,
+                    .velocity = client.lines[line_idx].velocity.value,
+                    .velocity_mode = if (client.lines[line_idx].velocity.low) .low else .normal,
                     .acceleration = client.lines[line_idx].acceleration,
                     .target = .{
                         .location = line.length.axis * @as(
@@ -1638,7 +1651,8 @@ pub fn carrierPushForward(params: [][]const u8) !void {
                 .{
                     .line = line.id,
                     .carrier = carrier_id,
-                    .velocity = client.lines[line_idx].velocity,
+                    .velocity = client.lines[line_idx].velocity.value,
+                    .velocity_mode = if (client.lines[line_idx].velocity.low) .low else .normal,
                     .acceleration = client.lines[line_idx].acceleration,
                     .direction = .DIRECTION_FORWARD,
                     .axis = axis,
@@ -1689,7 +1703,8 @@ pub fn carrierPushForward(params: [][]const u8) !void {
             .{
                 .line = line.id,
                 .carrier = carrier.id,
-                .velocity = client.lines[line_idx].velocity,
+                .velocity = client.lines[line_idx].velocity.value,
+                .velocity_mode = if (client.lines[line_idx].velocity.low) .low else .normal,
                 .acceleration = client.lines[line_idx].acceleration,
                 .direction = .DIRECTION_FORWARD,
                 .axis = carrier.axis_main,
@@ -1724,7 +1739,8 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
                 .{
                     .line = line.id,
                     .carrier = carrier_id,
-                    .velocity = client.lines[line_idx].velocity,
+                    .velocity = client.lines[line_idx].velocity.value,
+                    .velocity_mode = if (client.lines[line_idx].velocity.low) .low else .normal,
                     .acceleration = client.lines[line_idx].acceleration,
                     .target = .{
                         .location = line.length.axis * @as(
@@ -1749,7 +1765,8 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
                 .{
                     .line = line.id,
                     .carrier = carrier_id,
-                    .velocity = client.lines[line_idx].velocity,
+                    .velocity = client.lines[line_idx].velocity.value,
+                    .velocity_mode = if (client.lines[line_idx].velocity.low) .low else .normal,
                     .acceleration = client.lines[line_idx].acceleration,
                     .direction = .DIRECTION_BACKWARD,
                     .axis = axis,
@@ -1800,7 +1817,8 @@ pub fn carrierPushBackward(params: [][]const u8) !void {
             .{
                 .line = line.id,
                 .carrier = carrier.id,
-                .velocity = client.lines[line_idx].velocity,
+                .velocity = client.lines[line_idx].velocity.value,
+                .velocity_mode = if (client.lines[line_idx].velocity.low) .low else .normal,
                 .acceleration = client.lines[line_idx].acceleration,
                 .direction = .DIRECTION_BACKWARD,
                 .axis = carrier.axis_main,
@@ -1839,7 +1857,8 @@ pub fn carrierPullForward(params: [][]const u8) !void {
                 .line = line.id,
                 .axis = axis_id,
                 .carrier = carrier_id,
-                .velocity = client.lines[line_idx].velocity,
+                .velocity = client.lines[line_idx].velocity.value,
+                .velocity_mode = if (client.lines[line_idx].velocity.low) .low else .normal,
                 .acceleration = client.lines[line_idx].acceleration,
                 .direction = .DIRECTION_FORWARD,
                 .transition = blk: {
@@ -1887,7 +1906,8 @@ pub fn carrierPullBackward(params: [][]const u8) !void {
                 .line = line.id,
                 .axis = axis_id,
                 .carrier = carrier_id,
-                .velocity = client.lines[line_idx].velocity,
+                .velocity = client.lines[line_idx].velocity.value,
+                .velocity_mode = if (client.lines[line_idx].velocity.low) .low else .normal,
                 .acceleration = client.lines[line_idx].acceleration,
                 .direction = .DIRECTION_BACKWARD,
                 .transition = blk: {
