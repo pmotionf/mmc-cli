@@ -769,7 +769,9 @@ pub fn releaseCarrier(params: [][]const u8) !void {
                             &writer.interface,
                             .{
                                 .line = line.id,
-                                .carrier = carrier.id,
+                                .target = .{
+                                    .carrier = carrier.id,
+                                },
                             },
                         );
                         try writer.interface.flush();
@@ -789,7 +791,9 @@ pub fn releaseCarrier(params: [][]const u8) !void {
             &writer.interface,
             .{
                 .line = line.id,
-                .carrier = if (carrier_id) |carrier| carrier else null,
+                .target = if (carrier_id) |carrier| .{
+                    .carrier = carrier,
+                } else null,
             },
         );
         try writer.interface.flush();
@@ -850,10 +854,9 @@ pub fn clearErrors(params: [][]const u8) !void {
             &writer.interface,
             .{
                 .line = line.id,
-                .drivers = if (driver_id) |id|
-                    .{ .start = id, .end = id }
-                else
-                    null,
+                .target = if (driver_id) |id| .{
+                    .drivers = .{ .start = id, .end = id },
+                } else null,
             },
         );
         try writer.interface.flush();
@@ -918,10 +921,12 @@ pub fn clearCarrierInfo(params: [][]const u8) !void {
             &writer.interface,
             .{
                 .line = line.id,
-                .axes = if (axis_id) |id|
-                    .{ .start = id.start, .end = id.end }
-                else
-                    null,
+                .target = if (axis_id) |id| .{
+                    .axes = .{
+                        .start = id.start,
+                        .end = id.end,
+                    },
+                } else null,
             },
         );
         try writer.interface.flush();
