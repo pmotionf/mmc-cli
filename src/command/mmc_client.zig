@@ -442,7 +442,7 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "axis" },
             .{ .name = "direction" },
-            .{ .name = "carrier id", .optional = true },
+            .{ .name = "carrier id" },
             .{ .name = "link axis", .resolve = false, .optional = true },
         },
         .short_description = "Isolate an uninitialized carrier backwards.",
