@@ -1,11 +1,10 @@
-//! This file contains callbacks for managing the connection with the server.
 const std = @import("std");
 const client = @import("../../mmc_client.zig");
-const callbacks = @import("../callbacks.zig");
 const command = @import("../../../command.zig");
+const disconnect = @import("disconnect.zig");
 
-pub fn connect(params: [][]const u8) !void {
-    if (client.sock) |_| client.disconnect();
+pub fn impl(params: [][]const u8) !void {
+    if (client.sock) |_| disconnect.impl(&.{}) catch unreachable;
     const endpoint: client.Config =
         if (params[0].len != 0) endpoint: {
             var iterator = std.mem.tokenizeSequence(
@@ -147,13 +146,4 @@ pub fn connect(params: [][]const u8) !void {
     for (client.log.configs, client.lines) |*config, line| {
         try config.init(client.allocator, line.id, line.name);
     }
-}
-
-/// Serve as a callback of a `DISCONNECT` command, requires parameter.
-pub fn disconnect(_: [][]const u8) error{ServerNotConnected}!void {
-    if (client.sock) |_| client.disconnect() else return error.ServerNotConnected;
-    std.log.info(
-        "Disconnected from {f}:{}",
-        .{ client.endpoint.?.addr, client.endpoint.?.port },
-    );
 }

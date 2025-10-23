@@ -1,13 +1,11 @@
-//! This file contains callbacks for managing the server-side state.
 const std = @import("std");
 const client = @import("../../mmc_client.zig");
-const callbacks = @import("../callbacks.zig");
 const command = @import("../../../command.zig");
 const chrono = @import("chrono");
 
 pub fn add(params: [][]const u8) !void {
     const line_name = params[0];
-    const line_idx = try callbacks.matchLine(line_name);
+    const line_idx = try client.matchLine(line_name);
     const kind = params[1];
     if (kind.len == 0) return error.MissingParameter;
     const line = client.lines[line_idx];
@@ -98,7 +96,7 @@ pub fn status(_: [][]const u8) !void {
 pub fn remove(params: [][]const u8) !void {
     if (params[0].len > 0) {
         const line_name = params[0];
-        const line_idx = try callbacks.matchLine(line_name);
+        const line_idx = try client.matchLine(line_name);
         client.log.configs[line_idx].deinit(client.log.allocator);
     } else {
         for (client.log.configs) |*config| {

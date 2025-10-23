@@ -9,9 +9,56 @@ const command = @import("../command.zig");
 pub const Line = @import("mmc_client/Line.zig");
 pub const Log = @import("mmc_client/Log.zig");
 pub const zignet = @import("zignet");
-pub const carrier = @import("mmc_client/Carrier.zig");
 pub const api = @import("mmc_client/api.zig");
-const callbacks = @import("mmc_client/callbacks.zig");
+
+const commands = struct {
+    const auto_initialize =
+        @import("mmc_client/commands/auto_initialize.zig");
+    const release_carrier =
+        @import("mmc_client/commands/release_carrier.zig");
+    const clear_errors = @import("mmc_client/commands/clear_errors.zig");
+    const clear_carrier_info =
+        @import("mmc_client/commands/clear_carrier_info.zig");
+    const reset_system = @import("mmc_client/commands/reset_system.zig");
+    const calibrate = @import("mmc_client/commands/calibrate.zig");
+    const set_line_zero = @import("mmc_client/commands/set_line_zero.zig");
+    const isolate = @import("mmc_client/commands/isolate.zig");
+    const wait = @import("mmc_client/commands/wait.zig");
+    const move = @import("mmc_client/commands/move.zig");
+    const push = @import("mmc_client/commands/push.zig");
+    const pull = @import("mmc_client/commands/pull.zig");
+    const stop_pull = @import("mmc_client/commands/stop_pull.zig");
+    const stop_push = @import("mmc_client/commands/stop_push.zig");
+    const set_carrier_id = @import("mmc_client/commands/set_carrier_id.zig");
+    const stop = @import("mmc_client/commands/stop.zig");
+    const pause = @import("mmc_client/commands/pause.zig");
+    const @"resume" = @import("mmc_client/commands/resume.zig");
+    const connect = @import("mmc_client/commands/connect.zig");
+    const disconnect = @import("mmc_client/commands/disconnect.zig");
+    const log = @import("mmc_client/commands/log.zig");
+    const set_speed = @import("mmc_client/commands/set_speed.zig");
+    const get_speed = @import("mmc_client/commands/get_speed.zig");
+    const set_acceleration =
+        @import("mmc_client/commands/set_acceleration.zig");
+    const get_acceleration =
+        @import("mmc_client/commands/get_acceleration.zig");
+    const assert_hall = @import("mmc_client/commands/assert_hall.zig");
+    const hall_status = @import("mmc_client/commands/hall_status.zig");
+    const carrier_axis = @import("mmc_client/commands/carrier_axis.zig");
+    const carrier_location =
+        @import("mmc_client/commands/carrier_location.zig");
+    const assert_location = @import("mmc_client/commands/assert_location.zig");
+    const carrier_id = @import("mmc_client/commands/carrier_id.zig");
+    const axis_carrier = @import("mmc_client/commands/axis_carrier.zig");
+    const print_carrier_info =
+        @import("mmc_client/commands/print_carrier_info.zig");
+    const print_axis_info =
+        @import("mmc_client/commands/print_axis_info.zig");
+    const print_driver_info =
+        @import("mmc_client/commands/print_driver_info.zig");
+    const show_errors = @import("mmc_client/commands/show_errors.zig");
+    const server_version = @import("mmc_client/commands/server_version.zig");
+};
 
 /// `lines` is initialized once the client is connected to a server.
 /// Deinitialized once disconnected from a server.
@@ -63,7 +110,7 @@ pub fn init(c: Config) !void {
         \\Print the currently running version of the MMC server in Semantic
         \\Version format.
         ,
-        .execute = &callbacks.state.server.serverVersion,
+        .execute = &commands.server_version.impl,
     });
     errdefer command.registry.orderedRemove("SERVER_VERSION");
     try command.registry.put(.{
@@ -78,7 +125,7 @@ pub fn init(c: Config) !void {
         \\and IP address can be overwritten by providing the new port and IP
         \\address by specifying the endpoint as "IP_ADDRESS:PORT".
         ,
-        .execute = &callbacks.connection.connect,
+        .execute = &commands.connect.impl,
     });
     errdefer command.registry.orderedRemove("CONNECT");
     try command.registry.put(.{
@@ -87,7 +134,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\End connection with the mmc server.
         ,
-        .execute = &callbacks.connection.disconnect,
+        .execute = &commands.disconnect.impl,
     });
     errdefer command.registry.orderedRemove("DISCONNECT");
     try command.registry.put(.{
@@ -102,7 +149,7 @@ pub fn init(c: Config) !void {
         \\by its name. The speed must be greater than 0 and less than or equal
         \\to 6.0 meters-per-second.
         ,
-        .execute = &callbacks.state.client.setSpeed,
+        .execute = &commands.set_speed.impl,
     });
     errdefer command.registry.orderedRemove("SET_SPEED");
     try command.registry.put(.{
@@ -117,7 +164,7 @@ pub fn init(c: Config) !void {
         \\referenced by its name. The acceleration must be greater than 0 and
         \\less than or equal to 24.5 meters-per-second-squared.
         ,
-        .execute = &callbacks.state.client.setAcceleration,
+        .execute = &commands.set_acceleration.impl,
     });
     errdefer command.registry.orderedRemove("SET_ACCELERATION");
     try command.registry.put(.{
@@ -130,7 +177,7 @@ pub fn init(c: Config) !void {
         \\Get the speed of carrier movement for a line. The line is referenced
         \\by name. Speed is in meters-per-second.
         ,
-        .execute = &callbacks.state.client.getSpeed,
+        .execute = &commands.get_speed.impl,
     });
     errdefer command.registry.orderedRemove("GET_SPEED");
     try command.registry.put(.{
@@ -143,7 +190,7 @@ pub fn init(c: Config) !void {
         \\Get the acceleration of carrier movement for a line. The line is
         \\referenced by name. Acceleration is in meters-per-second-squared.
         ,
-        .execute = &callbacks.state.client.getAcceleration,
+        .execute = &commands.get_acceleration.impl,
     });
     errdefer command.registry.orderedRemove("GET_ACCELERATION");
     try command.registry.put(.{
@@ -160,7 +207,7 @@ pub fn init(c: Config) !void {
         \\carrier, "d" or "driver" for filtering based on "driver", and "a" or 
         \\"axis" for filtering based on "axis".
         ,
-        .execute = &callbacks.state.server.axisInfo,
+        .execute = &commands.print_axis_info.impl,
     });
     errdefer command.registry.orderedRemove("PRINT_AXIS_INFO");
     try command.registry.put(.{
@@ -177,7 +224,7 @@ pub fn init(c: Config) !void {
         \\based on carrier, "d" or "driver" for filtering based on "driver", and
         \\"a" or "axis" for filtering based on "axis".
         ,
-        .execute = &callbacks.state.server.driverInfo,
+        .execute = &commands.print_driver_info.impl,
     });
     errdefer command.registry.orderedRemove("PRINT_DRIVER_INFO");
     try command.registry.put(.{
@@ -194,7 +241,7 @@ pub fn init(c: Config) !void {
         \\carrier, "d" or "driver" for filtering based on "driver", and "a" or 
         \\"axis" for filtering based on "axis".
         ,
-        .execute = &callbacks.state.server.carrierInfo,
+        .execute = &commands.print_carrier_info.impl,
     });
     errdefer command.registry.orderedRemove("PRINT_CARRIER_INFO");
     try command.registry.put(.{
@@ -215,7 +262,7 @@ pub fn init(c: Config) !void {
         \\the variable. The result variable is case sensitive and shall not 
         \\begin with digit.
         ,
-        .execute = &callbacks.state.server.axisCarrier,
+        .execute = &commands.axis_carrier.impl,
     });
     errdefer _ = command.registry.orderedRemove("AXIS_CARRIER");
     try command.registry.put(.{
@@ -239,7 +286,7 @@ pub fn init(c: Config) !void {
         \\two carriers exist on the provided line(s). The result variable prefix 
         \\is case sensitive and shall not begin with digit.
         ,
-        .execute = &callbacks.state.server.carrierId,
+        .execute = &commands.carrier_id.impl,
     });
     errdefer command.registry.orderedRemove("CARRIER_ID");
     try command.registry.put(.{
@@ -256,7 +303,7 @@ pub fn init(c: Config) !void {
         \\within the threshold. The default threshold value is 1 mm. Both the
         \\location and threshold must be provided in millimeters.
         ,
-        .execute = &callbacks.state.server.assertLocation,
+        .execute = &commands.assert_location.impl,
     });
     errdefer command.registry.orderedRemove("ASSERT_CARRIER_LOCATION");
     try command.registry.put(.{
@@ -277,7 +324,7 @@ pub fn init(c: Config) !void {
         \\the carrier's location in the variable. The result variable is case 
         \\sensitive and shall not begin with digit.
         ,
-        .execute = &callbacks.state.server.carrierLocation,
+        .execute = &commands.carrier_location.impl,
     });
     errdefer command.registry.orderedRemove("CARRIER_LOCATION");
     try command.registry.put(.{
@@ -291,7 +338,7 @@ pub fn init(c: Config) !void {
         \\Print a given carrier's axis if it is currently recognized in the
         \\provided line.
         ,
-        .execute = &callbacks.state.server.carrierAxis,
+        .execute = &commands.carrier_axis.impl,
     });
     errdefer command.registry.orderedRemove("CARRIER_AXIS");
     try command.registry.put(.{
@@ -309,7 +356,7 @@ pub fn init(c: Config) !void {
         \\"axis" for filtering based on "axis". If no filter is provided, show
         \\all hall status across the line.
         ,
-        .execute = &callbacks.state.server.hallStatus,
+        .execute = &commands.hall_status.impl,
     });
     errdefer command.registry.orderedRemove("HALL_STATUS");
     try command.registry.put(.{
@@ -327,7 +374,7 @@ pub fn init(c: Config) !void {
         \\"front"). Can optionally specify the expected hall alarm state as
         \\"off" or "on"; if not specified, will default to "on".
         ,
-        .execute = &callbacks.state.server.assertHall,
+        .execute = &commands.assert_hall.impl,
     });
     errdefer command.registry.orderedRemove("ASSERT_HALL");
     try command.registry.put(.{
@@ -345,7 +392,7 @@ pub fn init(c: Config) !void {
         \\filtering based on "driver", and "a" or "axis" for filtering based on 
         \\"axis". If no filter is provided, clear errors on all drivers.
         ,
-        .execute = &callbacks.command.clearErrors,
+        .execute = &commands.clear_errors.impl,
     });
     errdefer command.registry.orderedRemove("CLEAR_ERRORS");
     try command.registry.put(.{
@@ -363,7 +410,7 @@ pub fn init(c: Config) !void {
         \\"a" or "axis" for filtering based on "axis". If no filter is provided, 
         \\clear errors on all drivers.
         ,
-        .execute = &callbacks.command.clearCarrierInfo,
+        .execute = &commands.clear_carrier_info.impl,
     });
     errdefer command.registry.orderedRemove("CLEAR_CARRIER_INFO");
     try command.registry.put(.{
@@ -373,9 +420,9 @@ pub fn init(c: Config) !void {
         \\Clear any carrier and errors occurred across the system. In addition,
         \\reset any push and pull state on every axis.
         ,
-        .execute = &callbacks.command.resetSystem,
+        .execute = &commands.reset_system.impl,
     });
-    errdefer command.registry.orderedRemove("CLEAR_CARRIER_INFO");
+    errdefer command.registry.orderedRemove("RESET_SYSTEM");
     try command.registry.put(.{
         .name = "RELEASE_CARRIER",
         .parameters = &[_]command.Command.Parameter{
@@ -394,7 +441,7 @@ pub fn init(c: Config) !void {
         \\"axis" for filtering based on "axis". If no filter is provided, clear 
         \\errors on all drivers.
         ,
-        .execute = &callbacks.command.releaseCarrier,
+        .execute = &commands.release_carrier.impl,
     });
     errdefer command.registry.orderedRemove("RELEASE_CARRIER");
     try command.registry.put(.{
@@ -409,7 +456,7 @@ pub fn init(c: Config) !void {
         \\initialize all unisolated carriers for all lines. Multiple lines should
         \\be separated by comma, e.g. "AUTO_INITIALIZE front,back"
         ,
-        .execute = &callbacks.command.autoInitialize,
+        .execute = &commands.auto_initialize.impl,
     });
     errdefer command.registry.orderedRemove("AUTO_INITIALIZE");
     try command.registry.put(.{
@@ -423,7 +470,7 @@ pub fn init(c: Config) !void {
         \\at the start of the line such that the first axis has both hall
         \\alarms active.
         ,
-        .execute = &callbacks.command.calibrate,
+        .execute = &commands.calibrate.impl,
     });
     errdefer command.registry.orderedRemove("CALIBRATE");
     try command.registry.put(.{
@@ -436,7 +483,7 @@ pub fn init(c: Config) !void {
         \\Set a line's zero position based on a current carrier's position. 
         \\Aforementioned carrier must be located at first axis of line.
         ,
-        .execute = &callbacks.command.setLineZero,
+        .execute = &commands.set_line_zero.impl,
     });
     errdefer command.registry.orderedRemove("SET_LINE_ZERO");
     try command.registry.put(.{
@@ -457,7 +504,7 @@ pub fn init(c: Config) !void {
         \\can also be linked for isolation movement. Linked axis parameter
         \\values must be one of "prev", "next", "left", or "right".
         ,
-        .execute = &callbacks.command.isolate,
+        .execute = &commands.isolate.impl,
     });
     errdefer command.registry.orderedRemove("ISOLATE");
     try command.registry.put(.{
@@ -475,7 +522,7 @@ pub fn init(c: Config) !void {
         \\the specified timeout duration. The timeout must be provided in
         \\milliseconds.
         ,
-        .execute = &callbacks.command.waitIsolate,
+        .execute = &commands.wait.isolate,
     });
     errdefer command.registry.orderedRemove("WAIT_ISOLATE");
     try command.registry.put(.{
@@ -493,7 +540,7 @@ pub fn init(c: Config) !void {
         \\the specified timeout duration. The timeout must be provided in
         \\milliseconds.
         ,
-        .execute = &callbacks.command.waitMoveCarrier,
+        .execute = &commands.wait.moveCarrier,
     });
     errdefer command.registry.orderedRemove("WAIT_MOVE_CARRIER");
     try command.registry.put(.{
@@ -510,7 +557,7 @@ pub fn init(c: Config) !void {
         \\currently recognized within the motion system. Provide "true" to disable
         \\CAS (collision avoidance system) for the command.
         ,
-        .execute = &callbacks.command.carrierPosMoveAxis,
+        .execute = &commands.move.posAxis,
     });
     errdefer command.registry.orderedRemove("MOVE_CARRIER_AXIS");
     try command.registry.put(.{
@@ -528,7 +575,7 @@ pub fn init(c: Config) !void {
         \\provided in millimeters as a whole or decimal number. Provide "true" to
         \\disable CAS (collision avoidance system) for the command.
         ,
-        .execute = &callbacks.command.carrierPosMoveLocation,
+        .execute = &commands.move.posLocation,
     });
     errdefer command.registry.orderedRemove("MOVE_CARRIER_LOCATION");
     try command.registry.put(.{
@@ -547,7 +594,7 @@ pub fn init(c: Config) !void {
         \\may be negative for backward movement. Provide "true" to disable
         \\CAS (collision avoidance system) for the command.
         ,
-        .execute = &callbacks.command.carrierPosMoveDistance,
+        .execute = &commands.move.posDistance,
     });
     errdefer command.registry.orderedRemove("MOVE_CARRIER_DISTANCE");
     try command.registry.put(.{
@@ -565,7 +612,7 @@ pub fn init(c: Config) !void {
         \\carrier with speed profile feedback. Provide "true" to disable CAS
         \\(collision avoidance system) for the command.
         ,
-        .execute = &callbacks.command.carrierSpdMoveAxis,
+        .execute = &commands.move.spdAxis,
     });
     errdefer command.registry.orderedRemove("SPD_MOVE_CARRIER_AXIS");
     try command.registry.put(.{
@@ -584,7 +631,7 @@ pub fn init(c: Config) !void {
         \\moves the carrier with speed profile feedback. Provide "true" to disable
         \\CAS (collision avoidance system) for the command.
         ,
-        .execute = &callbacks.command.carrierSpdMoveLocation,
+        .execute = &commands.move.spdLocation,
     });
     errdefer command.registry.orderedRemove("SPD_MOVE_CARRIER_LOCATION");
     try command.registry.put(.{
@@ -604,7 +651,7 @@ pub fn init(c: Config) !void {
         \\with speed profile feedback. Provide "true" to disable CAS (collision
         \\avoidance system) for the command.
         ,
-        .execute = &callbacks.command.carrierSpdMoveDistance,
+        .execute = &commands.move.spdDistance,
     });
     errdefer command.registry.orderedRemove("SPD_MOVE_CARRIER_DISTANCE");
     try command.registry.put(.{
@@ -624,7 +671,7 @@ pub fn init(c: Config) !void {
         \\at the given axis; otherwise, the carrier will be pushed immediately
         \\from its current position.
         ,
-        .execute = &callbacks.command.carrierPushForward,
+        .execute = &commands.push.forward,
     });
     errdefer command.registry.orderedRemove("PUSH_CARRIER_FORWARD");
     try command.registry.put(.{
@@ -644,7 +691,7 @@ pub fn init(c: Config) !void {
         \\at the given axis; otherwise, the carrier will be pushed immediately
         \\from its current position.
         ,
-        .execute = &callbacks.command.carrierPushBackward,
+        .execute = &commands.push.backward,
     });
     errdefer command.registry.orderedRemove("PUSH_CARRIER_BACKWARD");
     try command.registry.put(.{
@@ -664,7 +711,7 @@ pub fn init(c: Config) !void {
         \\completed. Provide "true" to disable CAS (collision avoidance system)
         \\for the command when the final destination is provided.
         ,
-        .execute = &callbacks.command.carrierPullForward,
+        .execute = &commands.pull.forward,
     });
     errdefer command.registry.orderedRemove("PULL_CARRIER_FORWARD");
     try command.registry.put(.{
@@ -684,7 +731,7 @@ pub fn init(c: Config) !void {
         \\completed. Provide "true" to disable CAS (collision avoidance system)
         \\for the command when the final destination is provided.
         ,
-        .execute = &callbacks.command.carrierPullBackward,
+        .execute = &commands.pull.backward,
     });
     errdefer command.registry.orderedRemove("PULL_CARRIER_BACKWARD");
     try command.registry.put(.{
@@ -702,7 +749,7 @@ pub fn init(c: Config) !void {
         \\takes longer than the specified timeout duration. The timeout must be
         \\provided in milliseconds.
         ,
-        .execute = &callbacks.command.carrierWaitPull,
+        .execute = &commands.wait.pull,
     });
     errdefer command.registry.orderedRemove("WAIT_PULL_CARRIER");
     try command.registry.put(.{
@@ -719,7 +766,7 @@ pub fn init(c: Config) !void {
         \\"driver" and "a" or "axis" for filtering based on "axis". If no 
         \\filter is provided, clear errors on all drivers.
         ,
-        .execute = &callbacks.command.carrierStopPull,
+        .execute = &commands.stop_pull.impl,
     });
     errdefer command.registry.orderedRemove("STOP_PULL_CARRIER");
     try command.registry.put(.{
@@ -736,7 +783,7 @@ pub fn init(c: Config) !void {
         \\"driver" and "a" or "axis" for filtering based on "axis". If no 
         \\filter is provided, clear errors on all drivers.
         ,
-        .execute = &callbacks.command.carrierStopPush,
+        .execute = &commands.stop_push.impl,
     });
     errdefer command.registry.orderedRemove("STOP_PUSH_CARRIER");
     try command.registry.put(.{
@@ -754,7 +801,7 @@ pub fn init(c: Config) !void {
         \\action takes longer than the specified timeout duration. The timeout
         \\must be provided in milliseconds.
         ,
-        .execute = &callbacks.command.waitAxisEmpty,
+        .execute = &commands.wait.axisEmpty,
     });
     errdefer command.registry.orderedRemove("WAIT_AXIS_EMPTY");
     try command.registry.put(.{
@@ -774,7 +821,7 @@ pub fn init(c: Config) !void {
         \\to log from axis 1 to 9. Leaving the range will log every axis on the
         \\line.
         ,
-        .execute = &callbacks.logging.add,
+        .execute = &commands.log.add,
     });
     errdefer command.registry.orderedRemove("ADD_LOG_INFO");
     try command.registry.put(.{
@@ -791,7 +838,7 @@ pub fn init(c: Config) !void {
         \\If no path is provided, a default log file will be created in the
         \\current working directory as: "mmc-logging-YYYY.MM.DD-HH.MM.SS.csv".
         ,
-        .execute = &callbacks.logging.start,
+        .execute = &commands.log.start,
     });
     errdefer command.registry.orderedRemove("START_LOG_INFO");
     try command.registry.put(.{
@@ -805,7 +852,7 @@ pub fn init(c: Config) !void {
         \\the logging configuration for the specified line. Otherwise, removes
         \\the logging configurations for all lines.
         ,
-        .execute = &callbacks.logging.remove,
+        .execute = &commands.log.remove,
     });
     errdefer command.registry.orderedRemove("REMOVE_LOG_INFO");
     try command.registry.put(.{
@@ -814,7 +861,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Show the logging configuration for each line, if any.
         ,
-        .execute = &callbacks.logging.status,
+        .execute = &commands.log.status,
     });
     errdefer command.registry.orderedRemove("STATUS_LOG_INFO");
     try command.registry.put(.{
@@ -832,7 +879,7 @@ pub fn init(c: Config) !void {
         \\filtering based on "axis". If no filter is provided, clear errors on 
         \\all drivers.
         ,
-        .execute = &callbacks.state.server.showError,
+        .execute = &commands.show_errors.impl,
     });
     errdefer command.registry.orderedRemove("PRINT_ERRORS");
     try command.registry.put(.{
@@ -846,7 +893,7 @@ pub fn init(c: Config) !void {
         \\the specified line. Not providing a line will stop the operation of
         \\entire system.
         ,
-        .execute = &callbacks.command.stopLine,
+        .execute = &commands.stop.impl,
     });
     errdefer command.registry.orderedRemove("STOP");
     try command.registry.put(.{
@@ -859,7 +906,7 @@ pub fn init(c: Config) !void {
         \\Pause any currently running operation for the specified line. Not 
         \\providing a line will pause the operation of entire system.
         ,
-        .execute = &callbacks.command.pauseLine,
+        .execute = &commands.pause.impl,
     });
     errdefer command.registry.orderedRemove("PAUSE");
     try command.registry.put(.{
@@ -872,9 +919,9 @@ pub fn init(c: Config) !void {
         \\Resume the specified line operation after being paused or stopped. Not
         \\providing a line will resume the operation of entire system.
         ,
-        .execute = &callbacks.command.resumeLine,
+        .execute = &commands.@"resume".impl,
     });
-    errdefer command.registry.orderedRemove("PAUSE");
+    errdefer command.registry.orderedRemove("RESUME");
     try command.registry.put(.{
         .name = "SET_CARRIER_ID",
         .parameters = &[_]command.Command.Parameter{
@@ -887,13 +934,13 @@ pub fn init(c: Config) !void {
         \\Update an initialized carrier ID into a new one. The new carrier ID
         \\shall not be used by other carriers on the same line.
         ,
-        .execute = &callbacks.command.setCarrierId,
+        .execute = &commands.set_carrier_id.impl,
     });
-    errdefer command.registry.orderedRemove("PAUSE");
+    errdefer command.registry.orderedRemove("SET_CARRIER_ID");
 }
 
 pub fn deinit() void {
-    disconnect();
+    commands.disconnect.impl(&.{}) catch {};
     allocator.free(config.host);
     if (debug_allocator.detectLeaks()) {
         std.log.debug("Leaks detected", .{});
@@ -903,26 +950,162 @@ pub fn deinit() void {
     if (builtin.os.tag == .windows) std.os.windows.WSACleanup() catch return;
 }
 
-/// Free all memory EXCEPT the endpoint, so that client can reconnect to the
-/// latest server.
-pub fn disconnect() void {
-    Log.stop.store(true, .monotonic);
-    // Wait until the log finish storing log data and cleanup
-    while (Log.executing.load(.monotonic)) {}
-    if (sock) |s| s.close() else return;
-    sock = null;
-    log.deinit();
-    for (lines) |*line| {
-        line.deinit(allocator);
-    }
-    allocator.free(lines);
-    lines = &.{};
-}
-
 pub fn removeIgnoredMessage(socket: zignet.Socket) !void {
     if (try zignet.Socket.readyToRead(socket.fd, 0)) {
         var buf: [4096]u8 = undefined;
         var reader = socket.reader(&buf);
         _ = try reader.interface.peekByte();
+    }
+}
+
+pub const Filter = union(enum) {
+    carrier: [1]u32,
+    driver: u32,
+    axis: u32,
+
+    pub fn parse(filter: []const u8) (error{InvalidParameter} || std.fmt.ParseIntError)!Filter {
+        // NOTE:
+        // Since values parsed from this function may be processed by caller,
+        // values returned from this function shall assert that the ID given
+        // by the user is not zero.
+        if (filter.len < 2) return error.InvalidParameter;
+        if (std.ascii.isDigit(filter[1])) {
+            if (std.ascii.eqlIgnoreCase(filter[0..1], "c")) {
+                const carrier = try std.fmt.parseUnsigned(u32, filter[1..], 0);
+                if (carrier == 0) return error.InvalidParameter;
+                return Filter{ .carrier = [1]u32{carrier} };
+            } else if (std.ascii.eqlIgnoreCase(filter[0..1], "a")) {
+                const axis = try std.fmt.parseUnsigned(u32, filter[1..], 0);
+                if (axis == 0) return error.InvalidParameter;
+                return Filter{ .axis = axis };
+            } else if (std.ascii.eqlIgnoreCase(filter[0..1], "d")) {
+                const driver = try std.fmt.parseUnsigned(u32, filter[1..], 0);
+                if (driver == 0) return error.InvalidParameter;
+                return Filter{ .driver = driver };
+            }
+        } else if (filter.len > 4 and std.ascii.eqlIgnoreCase(filter[0..4], "axis")) {
+            const axis = try std.fmt.parseUnsigned(u32, filter[4..], 0);
+            if (axis == 0) return error.InvalidParameter;
+            return Filter{ .axis = axis };
+        } else if (filter.len > 6 and std.ascii.eqlIgnoreCase(filter[0..6], "driver")) {
+            const driver = try std.fmt.parseUnsigned(u32, filter[6..], 0);
+            if (driver == 0) return error.InvalidParameter;
+            return Filter{ .driver = driver };
+        } else if (filter.len > 7 and std.ascii.eqlIgnoreCase(filter[0..7], "carrier")) {
+            const carrier = try std.fmt.parseUnsigned(u32, filter[7..], 0);
+            if (carrier == 0) return error.InvalidParameter;
+            return Filter{ .carrier = [1]u32{carrier} };
+        }
+        return error.InvalidParameter;
+    }
+
+    pub fn toProtobuf(filter: *Filter) api.api.protobuf.mmc.info.Request.Track.filter_union {
+        return switch (filter.*) {
+            .axis => |axis_id| .{
+                .axes = .{
+                    .start = axis_id,
+                    .end = axis_id,
+                },
+            },
+            .driver => |driver_id| .{
+                .drivers = .{
+                    .start = driver_id,
+                    .end = driver_id,
+                },
+            },
+            .carrier => .{
+                .carriers = .{ .ids = .fromOwnedSlice(&filter.carrier) },
+            },
+        };
+    }
+};
+
+pub fn matchLine(name: []const u8) !usize {
+    for (lines) |line| {
+        if (std.mem.eql(u8, line.name, name)) return line.index;
+    } else return error.LineNameNotFound;
+}
+
+/// Get the command ID and track that command until completed.
+pub fn waitCommandReceived() !void {
+    const socket = sock orelse return error.ServerNotConnected;
+    var id: u32 = 0;
+    {
+        try socket.waitToRead(&command.checkCommandInterrupt);
+        var reader = socket.reader(&reader_buf);
+        id = try api.response.command.id.decode(
+            allocator,
+            &reader.interface,
+        );
+    }
+    defer removeCommand(id) catch {};
+    while (true) {
+        {
+            try removeIgnoredMessage(socket);
+            try socket.waitToWrite(&command.checkCommandInterrupt);
+            var writer = socket.writer(&writer_buf);
+            try api.request.info.command.encode(
+                allocator,
+                &writer.interface,
+                .{
+                    .id = id,
+                },
+            );
+            try writer.interface.flush();
+        }
+        try socket.waitToRead(&command.checkCommandInterrupt);
+        var reader = socket.reader(&reader_buf);
+        var decoded = try api.response.info.command.decode(
+            allocator,
+            &reader.interface,
+        );
+        defer decoded.deinit(allocator);
+        if (decoded.items.items.len > 1) return error.InvalidResponse;
+        if (decoded.items.pop()) |comm| {
+            std.log.debug("{}", .{comm});
+            switch (comm.status) {
+                .COMMAND_STATUS_PROGRESSING => {}, // continue the loop
+                .COMMAND_STATUS_COMPLETED => break,
+                .COMMAND_STATUS_FAILED => {
+                    return switch (comm.@"error".?) {
+                        .COMMAND_ERROR_INVALID_SYSTEM_STATE => error.InvalidSystemState,
+                        .COMMAND_ERROR_DRIVER_DISCONNECTED => error.DriverDisconnected,
+                        .COMMAND_ERROR_UNEXPECTED => error.Unexpected,
+                        .COMMAND_ERROR_CARRIER_NOT_FOUND => error.CarrierNotFound,
+                        .COMMAND_ERROR_CONFLICTING_CARRIER_ID => error.ConflictingCarrierId,
+                        .COMMAND_ERROR_CARRIER_ALREADY_INITIALIZED => error.CarrierAlreadyInitialized,
+                        .COMMAND_ERROR_INVALID_CARRIER_TARGET => error.InvalidCarrierTarget,
+                        .COMMAND_ERROR_DRIVER_STOPPED => error.DriverStopped,
+                        else => error.UnexpectedResponse,
+                    };
+                },
+                else => return error.UnexpectedResponse,
+            }
+        } else return error.InvalidResponse;
+    }
+}
+
+fn removeCommand(id: u32) !void {
+    const socket = sock orelse return error.ServerNotConnected;
+    while (true) {
+        {
+            try removeIgnoredMessage(socket);
+            try socket.waitToWrite(&command.checkCommandInterrupt);
+            var writer = socket.writer(&writer_buf);
+            try api.request.command.remove_commands.encode(
+                allocator,
+                &writer.interface,
+                .{ .command = id },
+            );
+            try writer.interface.flush();
+        }
+        try socket.waitToRead(&command.checkCommandInterrupt);
+        var reader = socket.reader(&reader_buf);
+        const removed_id = try api.response.command.removed_id.decode(
+            allocator,
+            &reader.interface,
+        );
+        std.log.debug("removed_id {}, id {}", .{ removed_id, id });
+        if (removed_id == id) break;
     }
 }
