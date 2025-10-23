@@ -11,38 +11,34 @@ const Filter = union(enum) {
     axis: u32,
 
     pub fn parse(filter: []const u8) (error{InvalidParameter} || std.fmt.ParseIntError)!Filter {
-        // NOTE:
-        // Since values parsed from this function may be processed by caller,
-        // values returned from this function shall assert that the ID given
-        // by the user is not zero.
-        if (filter.len < 2) return error.InvalidParameter;
-        if (std.ascii.isDigit(filter[1])) {
-            if (std.ascii.eqlIgnoreCase(filter[0..1], "c")) {
-                const carrier = try std.fmt.parseUnsigned(u32, filter[1..], 0);
-                if (carrier == 0) return error.InvalidParameter;
-                return Filter{ .carrier = [1]u32{carrier} };
-            } else if (std.ascii.eqlIgnoreCase(filter[0..1], "a")) {
-                const axis = try std.fmt.parseUnsigned(u32, filter[1..], 0);
-                if (axis == 0) return error.InvalidParameter;
-                return Filter{ .axis = axis };
-            } else if (std.ascii.eqlIgnoreCase(filter[0..1], "d")) {
-                const driver = try std.fmt.parseUnsigned(u32, filter[1..], 0);
-                if (driver == 0) return error.InvalidParameter;
-                return Filter{ .driver = driver };
-            }
-        } else if (filter.len > 4 and std.ascii.eqlIgnoreCase(filter[0..4], "axis")) {
-            const axis = try std.fmt.parseUnsigned(u32, filter[4..], 0);
-            if (axis == 0) return error.InvalidParameter;
-            return Filter{ .axis = axis };
-        } else if (filter.len > 6 and std.ascii.eqlIgnoreCase(filter[0..6], "driver")) {
-            const driver = try std.fmt.parseUnsigned(u32, filter[6..], 0);
-            if (driver == 0) return error.InvalidParameter;
-            return Filter{ .driver = driver };
-        } else if (filter.len > 7 and std.ascii.eqlIgnoreCase(filter[0..7], "carrier")) {
-            const carrier = try std.fmt.parseUnsigned(u32, filter[7..], 0);
-            if (carrier == 0) return error.InvalidParameter;
-            return Filter{ .carrier = [1]u32{carrier} };
+        var suffix_idx: usize = 0;
+        for (filter) |c| {
+            if (std.ascii.isDigit(c)) suffix_idx += 1 else break;
         }
+        // No digit is recognized.
+        if (suffix_idx == 0) return error.InvalidParameter;
+        const id = try std.fmt.parseUnsigned(u32, filter[0..suffix_idx], 0);
+
+        // Check for single character suffix.
+        if (filter.len - suffix_idx == 1) {
+            if (std.ascii.eqlIgnoreCase(filter[suffix_idx..], "a"))
+                return Filter{ .axis = id }
+            else if (std.ascii.eqlIgnoreCase(filter[suffix_idx..], "c"))
+                return Filter{ .carrier = [1]u32{id} }
+            else if (std.ascii.eqlIgnoreCase(filter[suffix_idx..], "d"))
+                return Filter{ .driver = id };
+        }
+        // Check for `axis` suffix
+        else if (filter.len - suffix_idx == 4 and
+            std.ascii.eqlIgnoreCase(filter[suffix_idx..], "axis"))
+            return Filter{ .axis = id }
+            // Check for `driver` suffix
+        else if (filter.len - suffix_idx == 6 and
+            std.ascii.eqlIgnoreCase(filter[suffix_idx..], "driver"))
+            return Filter{ .driver = id }
+            // Check for `carrier` suffix
+        else if (std.ascii.eqlIgnoreCase(filter[suffix_idx..], "carrier"))
+            return Filter{ .carrier = [1]u32{id} };
         return error.InvalidParameter;
     }
 
