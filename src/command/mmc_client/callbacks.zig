@@ -544,15 +544,15 @@ pub fn axisCarrier(params: [][]const u8) !void {
     );
     defer track.deinit(client.allocator);
     if (track.line != line.id) return error.InvalidResponse;
-    var carriers = track.carrier_state;
-    const carrier = carriers.pop() orelse return error.InvalidResponse;
-    std.log.info("Carrier {d} on axis {d}.\n", .{ carrier.id, axis_id });
-    if (result_var.len > 0) {
-        var int_buf: [8]u8 = undefined;
-        try command.variables.put(
-            result_var,
-            try std.fmt.bufPrint(&int_buf, "{d}", .{carrier.id}),
-        );
+    for (track.carrier_state.items) |carrier| {
+        std.log.info("Carrier {d} on axis {d}.\n", .{ carrier.id, axis_id });
+        if (result_var.len > 0) {
+            var int_buf: [8]u8 = undefined;
+            try command.variables.put(
+                result_var,
+                try std.fmt.bufPrint(&int_buf, "{d}", .{carrier.id}),
+            );
+        }
     }
 }
 
@@ -643,7 +643,18 @@ pub fn carrierId(params: [][]const u8) !void {
 pub fn assertLocation(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
-    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    const carrier_id = try std.fmt.parseInt(u10, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     const expected_location: f32 = try std.fmt.parseFloat(f32, params[2]);
     // Default location threshold value is 1 mm
     const location_thr = if (params[3].len > 0)
@@ -682,7 +693,7 @@ pub fn assertLocation(params: [][]const u8) !void {
     if (track.line != line.id) return error.InvalidResponse;
     var carriers = track.carrier_state;
     if (track.line != line.id) return error.InvalidResponse;
-    const carrier = carriers.pop() orelse return error.InvalidResponse;
+    const carrier = carriers.pop() orelse return error.CarrierNotFound;
     const location = carrier.position;
     if (location < expected_location - location_thr or
         location > expected_location + location_thr)
@@ -982,7 +993,18 @@ pub fn resetSystem(_: [][]const u8) !void {
 pub fn carrierLocation(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
-    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    const carrier_id = try std.fmt.parseInt(u10, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     const result_var: []const u8 = params[2];
     const line_idx = try client.matchLine(line_name);
@@ -1015,26 +1037,37 @@ pub fn carrierLocation(params: [][]const u8) !void {
     );
     defer track.deinit(client.allocator);
     if (track.line != line.id) return error.InvalidResponse;
-    var carriers = track.carrier_state;
-    const carrier = carriers.pop() orelse return error.InvalidResponse;
-    std.log.info(
-        "Carrier {d} location: {d} mm",
-        .{ carrier.id, carrier.position },
-    );
-    if (result_var.len > 0) {
-        var float_buf: [12]u8 = undefined;
-        try command.variables.put(result_var, try std.fmt.bufPrint(
-            &float_buf,
-            "{d}",
-            .{carrier.position},
-        ));
+    for (track.carrier_state.items) |carrier| {
+        std.log.info(
+            "Carrier {d} location: {d} mm",
+            .{ carrier.id, carrier.position },
+        );
+        if (result_var.len > 0) {
+            var float_buf: [12]u8 = undefined;
+            try command.variables.put(result_var, try std.fmt.bufPrint(
+                &float_buf,
+                "{d}",
+                .{carrier.position},
+            ));
+        }
     }
 }
 
 pub fn carrierAxis(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
-    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    const carrier_id = try std.fmt.parseInt(u10, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -1066,17 +1099,17 @@ pub fn carrierAxis(params: [][]const u8) !void {
     );
     defer track.deinit(client.allocator);
     if (track.line != line.id) return error.InvalidResponse;
-    var carriers = track.carrier_state;
-    const carrier = carriers.pop() orelse return error.InvalidResponse;
-    std.log.info(
-        "Carrier {d} axis: {}",
-        .{ carrier.id, carrier.axis_main },
-    );
-    if (carrier.axis_auxiliary) |aux|
+    for (track.carrier_state.items) |carrier| {
         std.log.info(
             "Carrier {d} axis: {}",
-            .{ carrier.id, aux },
+            .{ carrier.id, carrier.axis_main },
         );
+        if (carrier.axis_auxiliary) |aux|
+            std.log.info(
+                "Carrier {d} axis: {}",
+                .{ carrier.id, aux },
+            );
+    }
 }
 
 pub fn hallStatus(params: [][]const u8) !void {
@@ -1286,10 +1319,18 @@ pub fn isolate(params: [][]const u8) !void {
         }
     };
 
-    const carrier_id: u10 = if (params[3].len > 0)
-        try std.fmt.parseInt(u10, params[3], 0)
-    else
-        0;
+    const carrier_id = try std.fmt.parseUnsigned(u32, b: {
+        const input = params[3];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     const link_axis: ?client.api.api.protobuf.mmc.command.Request.Direction = link: {
         if (params[4].len > 0) {
             if (std.ascii.eqlIgnoreCase("next", params[4]) or
@@ -1325,7 +1366,18 @@ pub fn isolate(params: [][]const u8) !void {
 
 pub fn waitIsolate(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    const carrier_id = try std.fmt.parseInt(u10, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     const timeout = if (params[2].len > 0)
         try std.fmt.parseInt(u64, params[2], 0)
     else
@@ -1345,7 +1397,18 @@ pub fn waitIsolate(params: [][]const u8) !void {
 
 pub fn waitMoveCarrier(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    const carrier_id = try std.fmt.parseInt(u10, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     const timeout = if (params[2].len > 0)
         try std.fmt.parseInt(u64, params[2], 0)
     else
@@ -1366,7 +1429,18 @@ pub fn waitMoveCarrier(params: [][]const u8) !void {
 pub fn carrierPosMoveAxis(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
-    const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
+    const carrier_id: u10 = try std.fmt.parseInt(u10, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     const axis_id = try std.fmt.parseInt(
         u32,
         params[2],
@@ -1406,7 +1480,18 @@ pub fn carrierPosMoveAxis(params: [][]const u8) !void {
 pub fn carrierPosMoveLocation(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
-    const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
+    const carrier_id: u10 = try std.fmt.parseInt(u10, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
     const disable_cas = if (params[3].len == 0)
         false
@@ -1442,7 +1527,18 @@ pub fn carrierPosMoveLocation(params: [][]const u8) !void {
 pub fn carrierPosMoveDistance(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
-    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    const carrier_id = try std.fmt.parseInt(u10, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     const distance = try std.fmt.parseFloat(f32, params[2]);
     const disable_cas = if (params[3].len == 0)
         false
@@ -1477,7 +1573,18 @@ pub fn carrierPosMoveDistance(params: [][]const u8) !void {
 pub fn carrierSpdMoveAxis(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
-    const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
+    const carrier_id: u10 = try std.fmt.parseInt(u10, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     const axis_id = try std.fmt.parseInt(u32, params[2], 0);
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -1512,7 +1619,18 @@ pub fn carrierSpdMoveAxis(params: [][]const u8) !void {
 pub fn carrierSpdMoveLocation(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
-    const carrier_id: u10 = try std.fmt.parseInt(u10, params[1], 0);
+    const carrier_id: u10 = try std.fmt.parseInt(u10, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
     const disable_cas = if (params[3].len == 0)
         false
@@ -1548,7 +1666,18 @@ pub fn carrierSpdMoveLocation(params: [][]const u8) !void {
 pub fn carrierSpdMoveDistance(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
-    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    const carrier_id = try std.fmt.parseInt(u10, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     const distance = try std.fmt.parseFloat(f32, params[2]);
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -1583,7 +1712,18 @@ pub fn carrierSpdMoveDistance(params: [][]const u8) !void {
 pub fn carrierPushForward(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
-    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    const carrier_id = try std.fmt.parseInt(u10, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
     const axis_id: ?u32 = if (params[2].len > 0)
@@ -1694,7 +1834,18 @@ pub fn carrierPushForward(params: [][]const u8) !void {
 pub fn carrierPushBackward(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
-    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    const carrier_id = try std.fmt.parseInt(u10, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
     const axis_id: ?u32 = if (params[2].len > 0)
@@ -1806,7 +1957,18 @@ pub fn carrierPullForward(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
     const axis_id = try std.fmt.parseInt(u32, params[1], 0);
-    const carrier_id = try std.fmt.parseInt(u10, params[2], 0);
+    const carrier_id = try std.fmt.parseInt(u10, b: {
+        const input = params[2];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     const destination: ?f32 = if (params[3].len > 0)
         try std.fmt.parseFloat(f32, params[3])
     else
@@ -1853,7 +2015,18 @@ pub fn carrierPullBackward(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
     const axis_id = try std.fmt.parseInt(u32, params[1], 0);
-    const carrier_id = try std.fmt.parseInt(u10, params[2], 0);
+    const carrier_id = try std.fmt.parseInt(u10, b: {
+        const input = params[2];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     const destination: ?f32 = if (params[3].len > 0)
         try std.fmt.parseFloat(f32, params[3])
     else
@@ -1899,7 +2072,18 @@ pub fn carrierPullBackward(params: [][]const u8) !void {
 
 pub fn carrierWaitPull(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    const carrier_id = try std.fmt.parseInt(u10, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     const timeout = if (params[2].len > 0)
         try std.fmt.parseInt(u64, params[2], 0)
     else
@@ -2000,8 +2184,30 @@ pub fn setCarrierId(params: [][]const u8) !void {
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const carrier = try std.fmt.parseInt(u32, params[1], 0);
-    const new_carrier = try std.fmt.parseInt(u32, params[2], 0);
+    const carrier = try std.fmt.parseUnsigned(u32, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
+    const new_carrier = try std.fmt.parseUnsigned(u32, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
