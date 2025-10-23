@@ -513,7 +513,9 @@ pub fn axisCarrier(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(u32, params[1], 0);
-    const result_var: []const u8 = params[2];
+    const save_var: []const u8 = params[2];
+    if (save_var.len > 0 and std.ascii.isDigit(save_var[0]))
+        return error.InvalidParameter;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
@@ -546,10 +548,10 @@ pub fn axisCarrier(params: [][]const u8) !void {
     if (track.line != line.id) return error.InvalidResponse;
     for (track.carrier_state.items) |carrier| {
         std.log.info("Carrier {d} on axis {d}.\n", .{ carrier.id, axis_id });
-        if (result_var.len > 0) {
+        if (save_var.len > 0) {
             var int_buf: [8]u8 = undefined;
             try command.variables.put(
-                result_var,
+                save_var,
                 try std.fmt.bufPrint(&int_buf, "{d}", .{carrier.id}),
             );
         }
@@ -563,8 +565,10 @@ pub fn carrierId(params: [][]const u8) !void {
         params[0],
         ",",
     );
-    const result_var: []const u8 = params[1];
-    if (result_var.len > 32) return error.PrefixTooLong;
+    const save_var: []const u8 = params[1];
+    if (save_var.len > 0 and std.ascii.isDigit(save_var[0]))
+        return error.InvalidParameter;
+    if (save_var.len > 32) return error.PrefixTooLong;
 
     // Validate line names, avoid heap allocation
     var line_counter: usize = 0;
@@ -619,13 +623,13 @@ pub fn carrierId(params: [][]const u8) !void {
                 "Carrier {d} on line {s} axis {d}",
                 .{ axis.carrier, line.name, axis.id },
             );
-            if (result_var.len > 0) {
+            if (save_var.len > 0) {
                 var int_buf: [8]u8 = undefined;
                 var var_buf: [40]u8 = undefined;
                 const key = try std.fmt.bufPrint(
                     &var_buf,
                     "{s}_{d}",
-                    .{ result_var, count },
+                    .{ save_var, count },
                 );
                 const value = try std.fmt.bufPrint(
                     &int_buf,
@@ -1006,7 +1010,9 @@ pub fn carrierLocation(params: [][]const u8) !void {
         } else break :b input;
     }, 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
-    const result_var: []const u8 = params[2];
+    const save_var: []const u8 = params[2];
+    if (save_var.len > 0 and std.ascii.isDigit(save_var[0]))
+        return error.InvalidParameter;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
@@ -1042,9 +1048,9 @@ pub fn carrierLocation(params: [][]const u8) !void {
             "Carrier {d} location: {d} mm",
             .{ carrier.id, carrier.position },
         );
-        if (result_var.len > 0) {
+        if (save_var.len > 0) {
             var float_buf: [12]u8 = undefined;
-            try command.variables.put(result_var, try std.fmt.bufPrint(
+            try command.variables.put(save_var, try std.fmt.bufPrint(
                 &float_buf,
                 "{d}",
                 .{carrier.position},

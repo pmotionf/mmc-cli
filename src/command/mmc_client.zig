@@ -212,7 +212,8 @@ pub fn init(c: Config) !void {
         .long_description =
         \\If a carrier is recognized on the provided axis, print its ID.
         \\If a result variable name was provided, also store the carrier ID in
-        \\the variable.
+        \\the variable. The result variable is case sensitive and shall not 
+        \\begin with digit.
         ,
         .execute = &callbacks.axisCarrier,
     });
@@ -232,10 +233,11 @@ pub fn init(c: Config) !void {
         \\Scan the line, starting from the first axis, and print all recognized
         \\carrier IDs on the given line in the order of their first appearance.
         \\This command support to scan multiple lines at once by providing line
-        \\parameter with comma separator, e.g., "front,back,tr". If a result variable
-        \\prefix is provided, store all carrier IDs in the variable with the
-        \\variable name: prefix_[num], e.g., prefix_1 and prefix_2 if two carriers
-        \\exist on the provided line(s).
+        \\parameter with comma separator, e.g., "front,back,tr". If a result 
+        \\variable prefix is provided, store all carrier IDs in the variable 
+        \\with the variable name: prefix_[num], e.g., prefix_1 and prefix_2 if 
+        \\two carriers exist on the provided line(s). The result variable prefix 
+        \\is case sensitive and shall not begin with digit.
         ,
         .execute = &callbacks.carrierId,
     });
@@ -272,7 +274,8 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Print a given carrier's location if it is currently recognized in
         \\the provided line. If a result variable name is provided, then store
-        \\the carrier's location in the variable.
+        \\the carrier's location in the variable. The result variable is case 
+        \\sensitive and shall not begin with digit.
         ,
         .execute = &callbacks.carrierLocation,
     });
