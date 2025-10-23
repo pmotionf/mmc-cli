@@ -224,7 +224,6 @@ pub fn disconnect(_: [][]const u8) error{ServerNotConnected}!void {
 pub fn setSpeed(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_speed = try std.fmt.parseFloat(f32, params[1]);
-    if (carrier_speed <= 0.0 or carrier_speed > 6.0) return error.InvalidSpeed;
     const low = if (std.ascii.eqlIgnoreCase("low", params[2])) true else false;
 
     const line_idx = try client.matchLine(line_name);
@@ -232,10 +231,10 @@ pub fn setSpeed(params: [][]const u8) !void {
         .value = @intFromFloat(carrier_speed * 10.0),
         .low = low,
     };
-    std.log.debug("low: {}", .{low});
 
-    std.log.info("Set speed to {d}m/s.", .{
+    std.log.info("Set speed to {d} {s}.", .{
         @as(f32, @floatFromInt(client.lines[line_idx].velocity.value)) / 10.0,
+        if (client.lines[line_idx].velocity.low) "mm/s" else "m/s",
     });
 }
 
@@ -257,11 +256,12 @@ pub fn getSpeed(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
 
     const line_idx = try client.matchLine(line_name);
+    const velocity = client.lines[line_idx].velocity;
     std.log.info(
         "Line {s} speed: {d} {s}",
         .{
             line_name,
-            @as(f32, @floatFromInt(client.lines[line_idx].velocity.value)) / 10.0,
+            @as(f32, @floatFromInt(velocity.value)) / 10,
             if (client.lines[line_idx].velocity.low) "mm/s" else "m/s",
         },
     );
