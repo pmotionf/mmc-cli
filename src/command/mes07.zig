@@ -52,7 +52,8 @@ pub fn init(_: Config) !void {
         },
         .short_description = "Read laser device measurement value.",
         .long_description =
-        \\Read laser device measurement value, and print to output.
+        \\Read laser device measurement value, and print to output. Variable 
+        \\names are case sensitive and shall not begin with digit.
         ,
         .execute = &read,
     });
@@ -233,6 +234,8 @@ fn process() void {
 
 fn read(params: [][]const u8) !void {
     const save_var = params[0];
+    if (save_var.len > 0 and std.ascii.isDigit(save_var[0]))
+        return error.InvalidParameter;
 
     if (read_laser_value.load(.monotonic) or !processing.load(.monotonic)) {
         std.log.err(

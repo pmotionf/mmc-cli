@@ -320,7 +320,8 @@ pub fn init() !void {
         .short_description = "Set a variable equal to a value.",
         .long_description =
         \\Create a variable name that resolves to the provided value in all
-        \\future commands. Variable names are case sensitive.
+        \\future commands. Variable names are case sensitive and shall not begin
+        \\with digit.
         ,
         .execute = &set,
     });
@@ -665,6 +666,7 @@ fn version(_: [][]const u8) !void {
 }
 
 fn set(params: [][]const u8) !void {
+    if (std.ascii.isDigit(params[0][0])) return error.InvalidParameter;
     try variables.put(params[0], params[1]);
 }
 
