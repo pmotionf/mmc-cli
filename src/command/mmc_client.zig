@@ -155,8 +155,8 @@ pub fn init(c: Config) !void {
         .short_description = "Print the axis information.",
         .long_description =
         \\Print the axis information. The information is shown based on the 
-        \\given filter, which shall be provided with the prefix followed by an 
-        \\ID. The supported prefixes are "c" or "carrier" for filtering based on 
+        \\given filter, which shall be provided with the ID followed by suffix. 
+        \\The supported suffixes are "c" or "carrier" for filtering based on 
         \\carrier, "d" or "driver" for filtering based on "driver", and "a" or 
         \\"axis" for filtering based on "axis".
         ,
@@ -172,10 +172,10 @@ pub fn init(c: Config) !void {
         .short_description = "Print the driver information.",
         .long_description =
         \\Print the information information. The information is shown based on 
-        \\the given filter, which shall be provided with the prefix followed by an ID. 
-        \\The supported prefixes are "c" or "carrier" for filtering based on 
-        \\carrier, "d" or "driver" for filtering based on "driver", and "a" or 
-        \\"axis" for filtering based on "axis".
+        \\the given filter, which shall be provided with the ID followed by 
+        \\suffix. The supported suffixes are "c" or "carrier" for filtering 
+        \\based on carrier, "d" or "driver" for filtering based on "driver", and
+        \\"a" or "axis" for filtering based on "axis".
         ,
         .execute = &callbacks.driverInfo,
     });
@@ -189,8 +189,8 @@ pub fn init(c: Config) !void {
         .short_description = "Print the carrier information.",
         .long_description =
         \\Print the carrier information. The information is shown based on the 
-        \\given filter, which shall be provided with the prefix followed by an 
-        \\ID. The supported prefixes are "c" or "carrier" for filtering based on 
+        \\given filter, which shall be provided with the ID followed by suffix 
+        \\The supported suffixes are "c" or "carrier" for filtering based on 
         \\carrier, "d" or "driver" for filtering based on "driver", and "a" or 
         \\"axis" for filtering based on "axis".
         ,
@@ -300,8 +300,8 @@ pub fn init(c: Config) !void {
         .short_description = "Display hall status state.",
         .long_description =
         \\Display hall status state. The information is shown based on the 
-        \\given filter, which shall be provided with the prefix followed by an 
-        \\ID. The supported prefixes are "c" or "carrier" for filtering based on 
+        \\given filter, which shall be provided with the ID followed by suffix 
+        \\The supported suffixes are "c" or "carrier" for filtering based on 
         \\carrier, "d" or "driver" for filtering based on "driver", and "a" or 
         \\"axis" for filtering based on "axis". If no filter is provided, show
         \\all hall status across the line.
@@ -337,7 +337,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Clear errors state on axis and driver. The driver in which error to be 
         \\cleared is selected based on the given filter, which shall be provided 
-        \\with the prefix followed by an ID. The supported prefixes are "c" or 
+        \\with the ID followed by suffix. The supported suffixes are "c" or 
         \\"carrier" for filtering based on carrier, "d" or "driver" for 
         \\filtering based on "driver", and "a" or "axis" for filtering based on 
         \\"axis". If no filter is provided, clear errors on all drivers.
@@ -354,8 +354,8 @@ pub fn init(c: Config) !void {
         .short_description = "Clear carrier information.",
         .long_description =
         \\Clear carrier information. The carrier to be cleared is selected based 
-        \\on the given filter, which shall be provided with the prefix followed 
-        \\by an ID. The supported prefixes are "c" or "carrier" for filtering 
+        \\on the given filter, which shall be provided with the ID followed by 
+        \\suffix. The supported suffixes are "c" or "carrier" for filtering 
         \\based on carrier, "d" or "driver" for filtering based on "driver", and 
         \\"a" or "axis" for filtering based on "axis". If no filter is provided, 
         \\clear errors on all drivers.
@@ -385,8 +385,8 @@ pub fn init(c: Config) !void {
         \\carrier movement. This command should be run before carriers move 
         \\within or exit from the track due to external influence. The carrier
         \\to be released from control is selected based on the given filter, 
-        \\which shall be provided with the prefix followed by an ID. The 
-        \\supported prefixes are "c" or "carrier" for filtering based on 
+        \\which shall be provided with the ID followed by suffix. The 
+        \\supported suffixes are "c" or "carrier" for filtering based on 
         \\carrier, "d" or "driver" for filtering based on "driver", and "a" or 
         \\"axis" for filtering based on "axis". If no filter is provided, clear 
         \\errors on all drivers.
@@ -711,8 +711,8 @@ pub fn init(c: Config) !void {
         .short_description = "Stop active carrier pull at axis.",
         .long_description =
         \\Stop active carrier pull at axis. The axis is selected based on the 
-        \\given filter, which shall be provided with the prefix followed by an 
-        \\ID. The supported prefixes are "d" or "driver" for filtering based on 
+        \\given filter, which shall be provided with the ID followed by suffix. 
+        \\The supported suffixes are "d" or "driver" for filtering based on 
         \\"driver" and "a" or "axis" for filtering based on "axis". If no 
         \\filter is provided, clear errors on all drivers.
         ,
@@ -728,8 +728,8 @@ pub fn init(c: Config) !void {
         .short_description = "Stop active carrier push at axis.",
         .long_description =
         \\Stop active carrier push at axis. The axis is selected based on the 
-        \\given filter, which shall be provided with the prefix followed by an 
-        \\ID. The supported prefixes are "d" or "driver" for filtering based on 
+        \\given filter, which shall be provided with the ID followed by suffix. 
+        \\The supported suffixes are "d" or "driver" for filtering based on 
         \\"driver" and "a" or "axis" for filtering based on "axis". If no 
         \\filter is provided, clear errors on all drivers.
         ,
@@ -824,7 +824,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Print axis and driver errors on a line, if any. The errors to be shown
         \\are filtered based on the given filter, which shall be provided with 
-        \\the prefix followed by an ID. The supported prefixes are "d" or 
+        \\the ID followed by suffix. The supported suffixes are "d" or 
         \\"driver" for filtering based on "driver" and "a" or "axis" for 
         \\filtering based on "axis". If no filter is provided, clear errors on 
         \\all drivers.
