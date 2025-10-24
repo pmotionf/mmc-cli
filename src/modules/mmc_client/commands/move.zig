@@ -32,9 +32,9 @@ pub fn posAxis(params: [][]const u8) !void {
                 .carrier = carrier_id,
                 .velocity = client.lines[line_idx].velocity.value,
                 .velocity_mode = if (client.lines[line_idx].velocity.low)
-                    .low
+                    .VELOCITY_MODE_LOW
                 else
-                    .normal,
+                    .VELOCITY_MODE_NORMAL,
                 .acceleration = client.lines[line_idx].acceleration,
                 .target = .{ .axis = axis_id },
                 .disable_cas = disable_cas,
@@ -72,9 +72,9 @@ pub fn posLocation(params: [][]const u8) !void {
                 .carrier = carrier_id,
                 .velocity = client.lines[line_idx].velocity.value,
                 .velocity_mode = if (client.lines[line_idx].velocity.low)
-                    .low
+                    .VELOCITY_MODE_LOW
                 else
-                    .normal,
+                    .VELOCITY_MODE_NORMAL,
                 .acceleration = client.lines[line_idx].acceleration,
                 .target = .{ .location = location },
                 .disable_cas = disable_cas,
@@ -111,9 +111,9 @@ pub fn posDistance(params: [][]const u8) !void {
                 .carrier = carrier_id,
                 .velocity = client.lines[line_idx].velocity.value,
                 .velocity_mode = if (client.lines[line_idx].velocity.low)
-                    .low
+                    .VELOCITY_MODE_LOW
                 else
-                    .normal,
+                    .VELOCITY_MODE_NORMAL,
                 .acceleration = client.lines[line_idx].acceleration,
                 .target = .{ .distance = distance },
                 .disable_cas = disable_cas,
@@ -150,9 +150,9 @@ pub fn spdAxis(params: [][]const u8) !void {
                 .carrier = carrier_id,
                 .velocity = client.lines[line_idx].velocity.value,
                 .velocity_mode = if (client.lines[line_idx].velocity.low)
-                    .low
+                    .VELOCITY_MODE_LOW
                 else
-                    .normal,
+                    .VELOCITY_MODE_NORMAL,
                 .acceleration = client.lines[line_idx].acceleration,
                 .target = .{ .axis = axis_id },
                 .disable_cas = disable_cas,
@@ -190,9 +190,9 @@ pub fn spdLocation(params: [][]const u8) !void {
                 .carrier = carrier_id,
                 .velocity = client.lines[line_idx].velocity.value,
                 .velocity_mode = if (client.lines[line_idx].velocity.low)
-                    .low
+                    .VELOCITY_MODE_LOW
                 else
-                    .normal,
+                    .VELOCITY_MODE_NORMAL,
                 .acceleration = client.lines[line_idx].acceleration,
                 .target = .{ .location = location },
                 .disable_cas = disable_cas,
@@ -229,9 +229,9 @@ pub fn spdDistance(params: [][]const u8) !void {
                 .carrier = carrier_id,
                 .velocity = client.lines[line_idx].velocity.value,
                 .velocity_mode = if (client.lines[line_idx].velocity.low)
-                    .low
+                    .VELOCITY_MODE_LOW
                 else
-                    .normal,
+                    .VELOCITY_MODE_NORMAL,
                 .acceleration = client.lines[line_idx].acceleration,
                 .target = .{ .distance = distance },
                 .disable_cas = disable_cas,

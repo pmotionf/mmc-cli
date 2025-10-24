@@ -32,9 +32,9 @@ pub fn forward(params: [][]const u8) !void {
                 .carrier = carrier_id,
                 .velocity = client.lines[line_idx].velocity.value,
                 .velocity_mode = if (client.lines[line_idx].velocity.low)
-                    .low
+                    .VELOCITY_MODE_LOW
                 else
-                    .normal,
+                    .VELOCITY_MODE_NORMAL,
                 .acceleration = client.lines[line_idx].acceleration,
                 .direction = .DIRECTION_FORWARD,
                 .transition = blk: {
@@ -84,9 +84,9 @@ pub fn backward(params: [][]const u8) !void {
                 .carrier = carrier_id,
                 .velocity = client.lines[line_idx].velocity.value,
                 .velocity_mode = if (client.lines[line_idx].velocity.low)
-                    .low
+                    .VELOCITY_MODE_LOW
                 else
-                    .normal,
+                    .VELOCITY_MODE_NORMAL,
                 .acceleration = client.lines[line_idx].acceleration,
                 .direction = .DIRECTION_BACKWARD,
                 .transition = blk: {
