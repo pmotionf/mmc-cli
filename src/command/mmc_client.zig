@@ -235,7 +235,7 @@ pub fn init(c: Config) !void {
         \\This command support to scan multiple lines at once by providing line
         \\parameter with comma separator, e.g., "front,back,tr". If a result 
         \\variable prefix is provided, store all carrier IDs in the variable 
-        \\with the variable name: prefix_[num], e.g., prefix_1 and prefix_2 if 
+        \\with the variable name: prefix[num], e.g., prefix1 and prefix2 if 
         \\two carriers exist on the provided line(s). The result variable prefix 
         \\is case sensitive and shall not begin with digit.
         ,
