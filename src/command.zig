@@ -14,10 +14,10 @@ const config = @import("config");
 
 // Command modules.
 const return_demo2 =
-    if (config.return_demo2) @import("command/return_demo2.zig") else void;
+    if (config.return_demo2) @import("modules/return_demo2.zig") else void;
 const mmc_client =
-    if (config.mmc_client) @import("command/mmc_client.zig") else void;
-const mes07 = if (config.mes07) @import("command/mes07.zig") else void;
+    if (config.mmc_client) @import("modules/mmc_client.zig") else void;
+const mes07 = if (config.mes07) @import("modules/mes07.zig") else void;
 
 const Config = @import("Config.zig");
 

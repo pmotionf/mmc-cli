@@ -5,13 +5,13 @@ const std = @import("std");
 const config = @import("config");
 
 const ReturnDemo2Config = if (config.return_demo2)
-    @import("command/return_demo2.zig").Config
+    @import("modules/return_demo2.zig").Config
 else
     void;
 const ClientCliConfig =
-    if (config.mmc_client) @import("command/mmc_client.zig").Config else void;
+    if (config.mmc_client) @import("modules/mmc_client.zig").Config else void;
 const Mes07Config =
-    if (config.mes07) @import("command/mes07.zig").Config else void;
+    if (config.mes07) @import("modules/mes07.zig").Config else void;
 
 parsed: std.json.Parsed(Parse),
 
