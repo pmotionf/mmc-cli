@@ -7,7 +7,7 @@ index: Line.Index,
 id: Line.Id,
 axes: u10,
 name: []u8,
-velocity: u6,
+velocity: struct { value: u10, low: bool },
 acceleration: u8,
 length: struct {
     axis: f32,
@@ -29,7 +29,7 @@ pub fn init(
     result.index = index;
     result.id = @as(Id, index) + 1;
     result.acceleration = 78;
-    result.velocity = 12;
+    result.velocity = .{ .value = 12, .low = false };
     result.length = .{
         .axis = config.axis_length,
         .carrier = config.carrier_length,
@@ -43,7 +43,7 @@ pub fn deinit(self: *Line, allocator: std.mem.Allocator) void {
     self.index = 0;
     self.id = 0;
     self.acceleration = 0;
-    self.velocity = 0;
+    self.velocity = .{ .value = 0, .low = false };
     self.length = .{ .axis = 0, .carrier = 0 };
     allocator.free(self.name);
     self.name = &.{};

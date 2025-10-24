@@ -26,7 +26,11 @@ pub fn forward(params: [][]const u8) !void {
                 .{
                     .line = line.id,
                     .carrier = carrier_id,
-                    .velocity = client.lines[line_idx].velocity,
+                    .velocity = client.lines[line_idx].velocity.value,
+                    .velocity_mode = if (client.lines[line_idx].velocity.low)
+                        .low
+                    else
+                        .normal,
                     .acceleration = client.lines[line_idx].acceleration,
                     .target = .{
                         .location = line.length.axis * @as(
@@ -51,7 +55,11 @@ pub fn forward(params: [][]const u8) !void {
                 .{
                     .line = line.id,
                     .carrier = carrier_id,
-                    .velocity = client.lines[line_idx].velocity,
+                    .velocity = client.lines[line_idx].velocity.value,
+                    .velocity_mode = if (client.lines[line_idx].velocity.low)
+                        .low
+                    else
+                        .normal,
                     .acceleration = client.lines[line_idx].acceleration,
                     .direction = .DIRECTION_FORWARD,
                     .axis = axis,
@@ -102,7 +110,11 @@ pub fn forward(params: [][]const u8) !void {
             .{
                 .line = line.id,
                 .carrier = carrier.id,
-                .velocity = client.lines[line_idx].velocity,
+                .velocity = client.lines[line_idx].velocity.value,
+                .velocity_mode = if (client.lines[line_idx].velocity.low)
+                    .low
+                else
+                    .normal,
                 .acceleration = client.lines[line_idx].acceleration,
                 .direction = .DIRECTION_FORWARD,
                 .axis = carrier.axis_main,
@@ -137,7 +149,11 @@ pub fn backward(params: [][]const u8) !void {
                 .{
                     .line = line.id,
                     .carrier = carrier_id,
-                    .velocity = client.lines[line_idx].velocity,
+                    .velocity = client.lines[line_idx].velocity.value,
+                    .velocity_mode = if (client.lines[line_idx].velocity.low)
+                        .low
+                    else
+                        .normal,
                     .acceleration = client.lines[line_idx].acceleration,
                     .target = .{
                         .location = line.length.axis * @as(
@@ -162,7 +178,11 @@ pub fn backward(params: [][]const u8) !void {
                 .{
                     .line = line.id,
                     .carrier = carrier_id,
-                    .velocity = client.lines[line_idx].velocity,
+                    .velocity = client.lines[line_idx].velocity.value,
+                    .velocity_mode = if (client.lines[line_idx].velocity.low)
+                        .low
+                    else
+                        .normal,
                     .acceleration = client.lines[line_idx].acceleration,
                     .direction = .DIRECTION_BACKWARD,
                     .axis = axis,
@@ -213,7 +233,11 @@ pub fn backward(params: [][]const u8) !void {
             .{
                 .line = line.id,
                 .carrier = carrier.id,
-                .velocity = client.lines[line_idx].velocity,
+                .velocity = client.lines[line_idx].velocity.value,
+                .velocity_mode = if (client.lines[line_idx].velocity.low)
+                    .low
+                else
+                    .normal,
                 .acceleration = client.lines[line_idx].acceleration,
                 .direction = .DIRECTION_BACKWARD,
                 .axis = carrier.axis_main,
