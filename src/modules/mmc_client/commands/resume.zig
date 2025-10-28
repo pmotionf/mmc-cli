@@ -15,15 +15,14 @@ pub fn impl(params: [][]const u8) !void {
     }
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
-        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.@"resume".encode(
             client.allocator,
-            &writer.interface,
+            &client.writer.interface,
             .{
                 .lines = .fromOwnedSlice(if (ids[0] > 0) &ids else &.{}),
             },
         );
-        try writer.interface.flush();
+        try client.writer.interface.flush();
     }
     try client.waitCommandReceived();
 }

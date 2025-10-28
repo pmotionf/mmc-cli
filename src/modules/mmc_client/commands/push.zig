@@ -33,10 +33,9 @@ pub fn forward(params: [][]const u8) !void {
         {
             try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
-            var writer = socket.writer(&client.writer_buf);
             try client.api.request.command.move.encode(
                 client.allocator,
-                &writer.interface,
+                &client.writer.interface,
                 .{
                     .line = line.id,
                     .carrier = carrier_id,
@@ -57,15 +56,14 @@ pub fn forward(params: [][]const u8) !void {
                     .control = .CONTROL_POSITION,
                 },
             );
-            try writer.interface.flush();
+            try client.writer.interface.flush();
         }
         try client.waitCommandReceived();
         {
             try socket.waitToWrite(&command.checkCommandInterrupt);
-            var writer = socket.writer(&client.writer_buf);
             try client.api.request.command.push.encode(
                 client.allocator,
-                &writer.interface,
+                &client.writer.interface,
                 .{
                     .line = line.id,
                     .carrier = carrier_id,
@@ -79,7 +77,7 @@ pub fn forward(params: [][]const u8) !void {
                     .axis = axis,
                 },
             );
-            try writer.interface.flush();
+            try client.writer.interface.flush();
         }
         try client.waitCommandReceived();
         return;
@@ -87,11 +85,10 @@ pub fn forward(params: [][]const u8) !void {
     // Get the axis information
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
-        var writer = socket.writer(&client.writer_buf);
         var ids: [1]u32 = .{carrier_id};
         try client.api.request.info.track.encode(
             client.allocator,
-            &writer.interface,
+            &client.writer.interface,
             .{
                 .line = line.id,
                 .info_carrier_state = true,
@@ -100,14 +97,13 @@ pub fn forward(params: [][]const u8) !void {
                 },
             },
         );
-        try writer.interface.flush();
+        try client.writer.interface.flush();
     }
     const carrier = carrier: {
         try socket.waitToRead(&command.checkCommandInterrupt);
-        var reader = socket.reader(&client.reader_buf);
         var track = try client.api.response.info.track.decode(
             client.allocator,
-            &reader.interface,
+            &client.reader.interface,
         );
         defer track.deinit(client.allocator);
         if (track.line != line.id) return error.InvalidResponse;
@@ -117,10 +113,9 @@ pub fn forward(params: [][]const u8) !void {
     {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
-        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.push.encode(
             client.allocator,
-            &writer.interface,
+            &client.writer.interface,
             .{
                 .line = line.id,
                 .carrier = carrier.id,
@@ -134,7 +129,7 @@ pub fn forward(params: [][]const u8) !void {
                 .axis = carrier.axis_main,
             },
         );
-        try writer.interface.flush();
+        try client.writer.interface.flush();
     }
     try client.waitCommandReceived();
 }
@@ -169,10 +164,9 @@ pub fn backward(params: [][]const u8) !void {
         {
             try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
-            var writer = socket.writer(&client.writer_buf);
             try client.api.request.command.move.encode(
                 client.allocator,
-                &writer.interface,
+                &client.writer.interface,
                 .{
                     .line = line.id,
                     .carrier = carrier_id,
@@ -193,15 +187,14 @@ pub fn backward(params: [][]const u8) !void {
                     .control = .CONTROL_POSITION,
                 },
             );
-            try writer.interface.flush();
+            try client.writer.interface.flush();
         }
         try client.waitCommandReceived();
         {
             try socket.waitToWrite(&command.checkCommandInterrupt);
-            var writer = socket.writer(&client.writer_buf);
             try client.api.request.command.push.encode(
                 client.allocator,
-                &writer.interface,
+                &client.writer.interface,
                 .{
                     .line = line.id,
                     .carrier = carrier_id,
@@ -215,7 +208,7 @@ pub fn backward(params: [][]const u8) !void {
                     .axis = axis,
                 },
             );
-            try writer.interface.flush();
+            try client.writer.interface.flush();
         }
         try client.waitCommandReceived();
         return;
@@ -223,11 +216,10 @@ pub fn backward(params: [][]const u8) !void {
     // Get the axis information
     {
         try socket.waitToWrite(&command.checkCommandInterrupt);
-        var writer = socket.writer(&client.writer_buf);
         var ids: [1]u32 = .{carrier_id};
         try client.api.request.info.track.encode(
             client.allocator,
-            &writer.interface,
+            &client.writer.interface,
             .{
                 .line = line.id,
                 .info_carrier_state = true,
@@ -236,14 +228,13 @@ pub fn backward(params: [][]const u8) !void {
                 },
             },
         );
-        try writer.interface.flush();
+        try client.writer.interface.flush();
     }
     const carrier = carrier: {
         try socket.waitToRead(&command.checkCommandInterrupt);
-        var reader = socket.reader(&client.reader_buf);
         var track = try client.api.response.info.track.decode(
             client.allocator,
-            &reader.interface,
+            &client.reader.interface,
         );
         defer track.deinit(client.allocator);
         if (track.line != line.id) return error.InvalidResponse;
@@ -253,10 +244,9 @@ pub fn backward(params: [][]const u8) !void {
     {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
-        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.push.encode(
             client.allocator,
-            &writer.interface,
+            &client.writer.interface,
             .{
                 .line = line.id,
                 .carrier = carrier.id,
@@ -270,7 +260,7 @@ pub fn backward(params: [][]const u8) !void {
                 .axis = carrier.axis_main,
             },
         );
-        try writer.interface.flush();
+        try client.writer.interface.flush();
     }
     try client.waitCommandReceived();
 }

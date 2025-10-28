@@ -11,49 +11,45 @@ pub fn impl(_: [][]const u8) !void {
         {
             try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
-            var writer = socket.writer(&client.writer_buf);
             try client.api.request.command.deinitialize.encode(
                 client.allocator,
-                &writer.interface,
+                &client.writer.interface,
                 .{ .line = line.id },
             );
-            try writer.interface.flush();
+            try client.writer.interface.flush();
         }
         try client.waitCommandReceived();
         {
             try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
-            var writer = socket.writer(&client.writer_buf);
             try client.api.request.command.clear_errors.encode(
                 client.allocator,
-                &writer.interface,
+                &client.writer.interface,
                 .{ .line = line.id },
             );
-            try writer.interface.flush();
+            try client.writer.interface.flush();
         }
         try client.waitCommandReceived();
         {
             try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
-            var writer = socket.writer(&client.writer_buf);
             try client.api.request.command.stop_push.encode(
                 client.allocator,
-                &writer.interface,
+                &client.writer.interface,
                 .{ .line = line.id },
             );
-            try writer.interface.flush();
+            try client.writer.interface.flush();
         }
         try client.waitCommandReceived();
         {
             try client.removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
-            var writer = socket.writer(&client.writer_buf);
             try client.api.request.command.stop_pull.encode(
                 client.allocator,
-                &writer.interface,
+                &client.writer.interface,
                 .{ .line = line.id },
             );
-            try writer.interface.flush();
+            try client.writer.interface.flush();
         }
         try client.waitCommandReceived();
     }

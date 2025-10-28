@@ -88,6 +88,9 @@ pub var reader_buf: [4096]u8 = undefined;
 /// Writer buffer for network stream
 pub var writer_buf: [4096]u8 = undefined;
 
+pub var reader: zignet.Socket.Reader = undefined;
+pub var writer: zignet.Socket.Writer = undefined;
+
 var debug_allocator = std.heap.DebugAllocator(.{}){};
 
 pub fn init(c: Config) !void {
@@ -952,8 +955,6 @@ pub fn deinit() void {
 
 pub fn removeIgnoredMessage(socket: zignet.Socket) !void {
     if (try zignet.Socket.readyToRead(socket.fd, 0)) {
-        var buf: [4096]u8 = undefined;
-        var reader = socket.reader(&buf);
         _ = try reader.interface.peekByte();
     }
 }
@@ -1028,7 +1029,6 @@ pub fn waitCommandReceived() !void {
     var id: u32 = 0;
     {
         try socket.waitToRead(&command.checkCommandInterrupt);
-        var reader = socket.reader(&reader_buf);
         id = try api.response.command.id.decode(
             allocator,
             &reader.interface,
@@ -1039,7 +1039,6 @@ pub fn waitCommandReceived() !void {
         {
             try removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
-            var writer = socket.writer(&writer_buf);
             try api.request.info.command.encode(
                 allocator,
                 &writer.interface,
@@ -1050,7 +1049,6 @@ pub fn waitCommandReceived() !void {
             try writer.interface.flush();
         }
         try socket.waitToRead(&command.checkCommandInterrupt);
-        var reader = socket.reader(&reader_buf);
         var decoded = try api.response.info.command.decode(
             allocator,
             &reader.interface,
@@ -1087,7 +1085,6 @@ fn removeCommand(id: u32) !void {
         {
             try removeIgnoredMessage(socket);
             try socket.waitToWrite(&command.checkCommandInterrupt);
-            var writer = socket.writer(&writer_buf);
             try api.request.command.remove_commands.encode(
                 allocator,
                 &writer.interface,
@@ -1096,7 +1093,6 @@ fn removeCommand(id: u32) !void {
             try writer.interface.flush();
         }
         try socket.waitToRead(&command.checkCommandInterrupt);
-        var reader = socket.reader(&reader_buf);
         const removed_id = try api.response.command.removed_id.decode(
             allocator,
             &reader.interface,

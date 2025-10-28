@@ -50,7 +50,13 @@ pub fn impl(params: [][]const u8) !void {
         endpoint.host,
         endpoint.port,
     );
-    errdefer socket.close();
+    client.reader = socket.reader(&client.reader_buf);
+    client.writer = socket.writer(&client.writer_buf);
+    errdefer {
+        client.reader = undefined;
+        client.writer = undefined;
+        socket.close();
+    }
     std.log.info(
         "Connected to {s}:{d}",
         .{ endpoint.host, endpoint.port },
@@ -61,21 +67,19 @@ pub fn impl(params: [][]const u8) !void {
         // Send API version request
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
-        var writer = socket.writer(&client.writer_buf);
         try client.api.request.core.encode(
             client.allocator,
-            &writer.interface,
+            &client.writer.interface,
             .CORE_REQUEST_KIND_API_VERSION,
         );
-        try writer.interface.flush();
+        try client.writer.interface.flush();
     }
     std.log.debug("Asserting API version..", .{});
     {
         try socket.waitToRead(&command.checkCommandInterrupt);
-        var reader = socket.reader(&client.reader_buf);
         const response = try client.api.response.core.api_version.decode(
             client.allocator,
-            &reader.interface,
+            &client.reader.interface,
         );
         if (client.api.api.version.major != response.major or
             client.api.api.version.minor > response.minor)
@@ -97,21 +101,19 @@ pub fn impl(params: [][]const u8) !void {
         // Send line configuration request
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
-        var writer = socket.writer(&client.writer_buf);
         try client.api.request.core.encode(
             client.allocator,
-            &writer.interface,
+            &client.writer.interface,
             .CORE_REQUEST_KIND_TRACK_CONFIG,
         );
-        try writer.interface.flush();
+        try client.writer.interface.flush();
     }
     std.log.debug("Getting track configuration..", .{});
     {
         try socket.waitToRead(&command.checkCommandInterrupt);
-        var reader = socket.reader(&client.reader_buf);
         var response = try client.api.response.core.track_config.decode(
             client.allocator,
-            &reader.interface,
+            &client.reader.interface,
         );
         defer response.deinit(client.allocator);
         client.lines = try client.allocator.alloc(
