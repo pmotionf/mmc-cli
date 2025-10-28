@@ -2,6 +2,7 @@ const std = @import("std");
 const client = @import("../../mmc_client.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
+const api = @import("mmc-api");
 
 pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "stop_push");
@@ -24,21 +25,25 @@ pub fn impl(params: [][]const u8) !void {
             .carrier => return error.InvalidParameter,
         }
     } else null;
-    {
-        try client.removeIgnoredMessage(socket);
-        try socket.waitToWrite(&command.checkCommandInterrupt);
-        try client.api.request.command.stop_push.encode(
-            client.allocator,
-            &client.writer.interface,
-            .{
-                .line = line.id,
-                .axes = if (axis_id) |id|
-                    .{ .start = id.start, .end = id.end }
-                else
-                    null,
+    const request: api.protobuf.mmc.Request = .{
+        .body = .{
+            .command = .{
+                .body = .{
+                    .stop_push = .{
+                        .line = line.id,
+                        .axes = if (axis_id) |id|
+                            .{ .start = id.start, .end = id.end }
+                        else
+                            null,
+                    },
+                },
             },
-        );
-        try client.writer.interface.flush();
-    }
+        },
+    };
+    try client.removeIgnoredMessage(socket);
+    try socket.waitToWrite(&command.checkCommandInterrupt);
+    // Send message
+    try request.encode(&client.writer.interface, client.allocator);
+    try client.writer.interface.flush();
     try client.waitCommandReceived();
 }

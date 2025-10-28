@@ -2,6 +2,7 @@ const std = @import("std");
 const client = @import("../../mmc_client.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
+const api = @import("mmc-api");
 
 pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "assert_hall");
@@ -9,7 +10,7 @@ pub fn impl(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(u32, params[1], 0);
-    const side: client.api.api.protobuf.mmc.command.Request.Direction =
+    const side: api.protobuf.mmc.command.Request.Direction =
         if (std.ascii.eqlIgnoreCase("back", params[2]) or
         std.ascii.eqlIgnoreCase("left", params[2]))
             .DIRECTION_BACKWARD
@@ -29,31 +30,50 @@ pub fn impl(params: [][]const u8) !void {
             alarm_on = true;
         } else return error.InvalidHallAlarmState;
     }
-    {
-        try client.removeIgnoredMessage(socket);
-        try socket.waitToWrite(&command.checkCommandInterrupt);
-        try client.api.request.info.track.encode(
-            client.allocator,
-            &client.writer.interface,
-            .{
-                .line = line.id,
-                .info_axis_state = true,
-                .filter = .{
-                    .axes = .{
-                        .start = axis_id,
-                        .end = axis_id,
+    const request: api.protobuf.mmc.Request = .{
+        .body = .{
+            .info = .{
+                .body = .{
+                    .track = .{
+                        .line = line.id,
+                        .info_axis_state = true,
+                        .filter = .{
+                            .axes = .{
+                                .start = axis_id,
+                                .end = axis_id,
+                            },
+                        },
                     },
                 },
             },
-        );
-        try client.writer.interface.flush();
-    }
+        },
+    };
+    try client.removeIgnoredMessage(socket);
+    try socket.waitToWrite(&command.checkCommandInterrupt);
+    // Send message
+    try request.encode(&client.writer.interface, client.allocator);
+    try client.writer.interface.flush();
+    // Receive response
     try socket.waitToRead(&command.checkCommandInterrupt);
-    var track = try client.api.response.info.track.decode(
-        client.allocator,
+    var decoded: api.protobuf.mmc.Response = try .decode(
         &client.reader.interface,
+        client.allocator,
     );
-    defer track.deinit(client.allocator);
+    defer decoded.deinit(client.allocator);
+    var track = switch (decoded.body orelse return error.InvalidResponse) {
+        .info => |info_resp| switch (info_resp.body orelse
+            return error.InvalidResponse) {
+            .track => |track_resp| track_resp,
+            .request_error => |req_err| {
+                return client.error_response.throwInfoError(req_err);
+            },
+            else => return error.InvalidResponse,
+        },
+        .request_error => |req_err| {
+            return client.error_response.throwMmcError(req_err);
+        },
+        else => return error.InvalidResponse,
+    };
     if (track.line != line.id) return error.InvalidResponse;
     const axis = track.axis_state.pop() orelse return error.InvalidResponse;
     switch (side) {

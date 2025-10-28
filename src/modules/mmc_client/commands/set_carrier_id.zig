@@ -2,6 +2,7 @@ const std = @import("std");
 const client = @import("../../mmc_client.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
+const api = @import("mmc-api");
 
 pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "set_carrier_id");
@@ -34,19 +35,23 @@ pub fn impl(params: [][]const u8) !void {
             break :b input[0..ignore_idx];
         } else break :b input;
     }, 0);
-    {
-        try client.removeIgnoredMessage(socket);
-        try socket.waitToWrite(&command.checkCommandInterrupt);
-        try client.api.request.command.set_carrier_id.encode(
-            client.allocator,
-            &client.writer.interface,
-            .{
-                .line = line.id,
-                .carrier = carrier,
-                .new_carrier = new_carrier,
+    const request: api.protobuf.mmc.Request = .{
+        .body = .{
+            .command = .{
+                .body = .{
+                    .set_carrier_id = .{
+                        .line = line.id,
+                        .carrier = carrier,
+                        .new_carrier = new_carrier,
+                    },
+                },
             },
-        );
-        try client.writer.interface.flush();
-    }
+        },
+    };
+    try client.removeIgnoredMessage(socket);
+    try socket.waitToWrite(&command.checkCommandInterrupt);
+    // Send message
+    try request.encode(&client.writer.interface, client.allocator);
+    try client.writer.interface.flush();
     try client.waitCommandReceived();
 }

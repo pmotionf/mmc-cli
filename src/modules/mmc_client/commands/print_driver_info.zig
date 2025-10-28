@@ -2,6 +2,7 @@ const std = @import("std");
 const client = @import("../../mmc_client.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
+const api = @import("mmc-api");
 
 pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "print_driver_info");
@@ -11,28 +12,46 @@ pub fn impl(params: [][]const u8) !void {
     var filter: client.Filter = try .parse(params[1]);
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    {
-        try client.removeIgnoredMessage(socket);
-        try socket.waitToWrite(&command.checkCommandInterrupt);
-        try client.api.request.info.track.encode(
-            client.allocator,
-            &client.writer.interface,
-            .{
-                .line = line.id,
-                .info_driver_state = true,
-                .info_driver_errors = true,
-                .filter = filter.toProtobuf(),
+    const request: api.protobuf.mmc.Request = .{
+        .body = .{
+            .info = .{
+                .body = .{
+                    .track = .{
+                        .line = line.id,
+                        .info_driver_state = true,
+                        .info_driver_errors = true,
+                        .filter = filter.toProtobuf(),
+                    },
+                },
             },
-        );
-        try client.writer.interface.flush();
-    }
+        },
+    };
+    try client.removeIgnoredMessage(socket);
+    try socket.waitToWrite(&command.checkCommandInterrupt);
+    // Send message
+    try request.encode(&client.writer.interface, client.allocator);
+    try client.writer.interface.flush();
+    // Receive response
     try socket.waitToRead(&command.checkCommandInterrupt);
-    var track = try client.api.response.info.track.decode(
-        client.allocator,
+    var decoded: api.protobuf.mmc.Response = try .decode(
         &client.reader.interface,
+        client.allocator,
     );
-    defer track.deinit(client.allocator);
-    if (track.line != line.id) return error.InvalidResponse;
+    defer decoded.deinit(client.allocator);
+    const track = switch (decoded.body orelse return error.InvalidResponse) {
+        .info => |info_resp| switch (info_resp.body orelse
+            return error.InvalidResponse) {
+            .track => |track_resp| track_resp,
+            .request_error => |req_err| {
+                return client.error_response.throwInfoError(req_err);
+            },
+            else => return error.InvalidResponse,
+        },
+        .request_error => |req_err| {
+            return client.error_response.throwMmcError(req_err);
+        },
+        else => return error.InvalidResponse,
+    };
     const driver_state = track.driver_state;
     const driver_errors = track.driver_errors;
     if (driver_state.items.len != driver_errors.items.len)
@@ -40,7 +59,18 @@ pub fn impl(params: [][]const u8) !void {
     var stdout = std.fs.File.stdout().writer(&.{});
     const writer = &stdout.interface;
     for (driver_state.items, driver_errors.items) |info, err| {
-        try client.api.response.info.track.driver.state.print(info, writer);
-        try client.api.response.info.track.driver.err.print(err, writer);
+        _ = try client.nestedWrite(
+            "Driver state",
+            info,
+            0,
+            writer,
+        );
+        _ = try client.nestedWrite(
+            "Driver error",
+            err,
+            0,
+            writer,
+        );
+        try writer.flush();
     }
 }

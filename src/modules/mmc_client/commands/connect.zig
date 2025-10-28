@@ -3,6 +3,7 @@ const client = @import("../../mmc_client.zig");
 const command = @import("../../../command.zig");
 const disconnect = @import("disconnect.zig");
 const tracy = @import("tracy");
+const api = @import("mmc-api");
 
 pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "connect");
@@ -50,11 +51,23 @@ pub fn impl(params: [][]const u8) !void {
         endpoint.host,
         endpoint.port,
     );
+    const sockaddr: *const std.posix.sockaddr = switch (socket.sockaddr) {
+        .any => |any| &any,
+        .ipv4 => |in| @ptrCast(&in),
+        .ipv6 => |in6| @ptrCast(&in6),
+    };
+    client.endpoint = try .fromSockAddr(sockaddr);
+    client.sock = socket;
     client.reader = socket.reader(&client.reader_buf);
     client.writer = socket.writer(&client.writer_buf);
     errdefer {
         client.reader = undefined;
         client.writer = undefined;
+        for (client.lines) |*line| {
+            line.deinit(client.allocator);
+        }
+        client.allocator.free(client.lines);
+        client.sock = null;
         socket.close();
     }
     std.log.info(
@@ -64,93 +77,113 @@ pub fn impl(params: [][]const u8) !void {
     std.log.debug("Send API version request..", .{});
     // Asserting that API version matched between client and server
     {
-        // Send API version request
+        const request: api.protobuf.mmc.Request = .{
+            .body = .{
+                .core = .{ .kind = .CORE_REQUEST_KIND_API_VERSION },
+            },
+        };
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
-        try client.api.request.core.encode(
-            client.allocator,
-            &client.writer.interface,
-            .CORE_REQUEST_KIND_API_VERSION,
-        );
+        // Send message
+        try request.encode(&client.writer.interface, client.allocator);
         try client.writer.interface.flush();
-    }
-    std.log.debug("Asserting API version..", .{});
-    {
+        // Receive response
         try socket.waitToRead(&command.checkCommandInterrupt);
-        const response = try client.api.response.core.api_version.decode(
-            client.allocator,
+        const decoded: api.protobuf.mmc.Response = try .decode(
             &client.reader.interface,
+            client.allocator,
         );
-        if (client.api.api.version.major != response.major or
-            client.api.api.version.minor > response.minor)
+        const server_api_version = switch (decoded.body orelse
+            return error.InvalidResponse) {
+            .core => |core_resp| switch (core_resp.body orelse
+                return error.InvalidResponse) {
+                .api_version => |api_version| api_version,
+                .request_error => |req_err| {
+                    return client.error_response.throwCoreError(req_err);
+                },
+                else => return error.InvalidResponse,
+            },
+            .request_error => |req_err| {
+                return client.error_response.throwMmcError(req_err);
+            },
+            else => return error.InvalidResponse,
+        };
+        if (api.version.major != server_api_version.major or
+            api.version.minor > server_api_version.minor)
         {
             std.log.info(
                 "Client API version: {f}, Server API version: {}.{}.{}",
                 .{
-                    client.api.api.version,
-                    response.major,
-                    response.minor,
-                    response.patch,
+                    api.version,
+                    server_api_version.major,
+                    server_api_version.minor,
+                    server_api_version.patch,
                 },
             );
             return error.APIVersionMismatch;
         }
     }
-    std.log.debug("Sending track config request..", .{});
+    // Getting track configuration
     {
-        // Send line configuration request
+        const request: api.protobuf.mmc.Request = .{
+            .body = .{
+                .core = .{ .kind = .CORE_REQUEST_KIND_TRACK_CONFIG },
+            },
+        };
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
-        try client.api.request.core.encode(
-            client.allocator,
-            &client.writer.interface,
-            .CORE_REQUEST_KIND_TRACK_CONFIG,
-        );
+        // Send message
+        try request.encode(&client.writer.interface, client.allocator);
         try client.writer.interface.flush();
-    }
-    std.log.debug("Getting track configuration..", .{});
-    {
+        // Receive response
         try socket.waitToRead(&command.checkCommandInterrupt);
-        var response = try client.api.response.core.track_config.decode(
-            client.allocator,
+        var decoded: api.protobuf.mmc.Response = try .decode(
             &client.reader.interface,
+            client.allocator,
         );
-        defer response.deinit(client.allocator);
+        defer decoded.deinit(client.allocator);
+        const track_config = switch (decoded.body orelse
+            return error.InvalidResponse) {
+            .core => |core_resp| switch (core_resp.body orelse
+                return error.InvalidResponse) {
+                .track_config => |track_config| track_config,
+                .request_error => |req_err| {
+                    return client.error_response.throwCoreError(req_err);
+                },
+                else => return error.InvalidResponse,
+            },
+            .request_error => |req_err| {
+                return client.error_response.throwMmcError(req_err);
+            },
+            else => return error.InvalidResponse,
+        };
         client.lines = try client.allocator.alloc(
             client.Line,
-            response.lines.items.len,
+            track_config.lines.items.len,
         );
         for (
-            response.lines.items,
+            track_config.lines.items,
             client.lines,
             0..,
         ) |config, *line, idx| {
-            std.log.debug("{}", .{config});
             line.* = try client.Line.init(
                 client.allocator,
                 @intCast(idx),
                 config,
             );
         }
+        std.log.info(
+            "Received the line configuration for the following {s}:",
+            .{if (client.lines.len <= 1) "line" else "lines"},
+        );
+        var stdout = std.fs.File.stdout().writer(&.{});
+        for (client.lines) |line| {
+            try stdout.interface.writeByte('\t');
+            try stdout.interface.writeAll(line.name);
+            try stdout.interface.writeByte('\n');
+            try stdout.interface.flush();
+        }
     }
-    std.log.info(
-        "Received the line configuration for the following line(s):",
-        .{},
-    );
-    var stdout = std.fs.File.stdout().writer(&.{});
-    for (client.lines) |line| {
-        try stdout.interface.writeByte('\t');
-        try stdout.interface.writeAll(line.name);
-        try stdout.interface.writeByte('\n');
-        try stdout.interface.flush();
-    }
-    const sockaddr: *const std.posix.sockaddr = switch (socket.sockaddr) {
-        .any => |any| &any,
-        .ipv4 => |in| @ptrCast(&in),
-        .ipv6 => |in6| @ptrCast(&in6),
-    };
-    client.endpoint = try .fromSockAddr(sockaddr);
-    client.sock = socket;
     // Initialize memory for logging configuration
     client.log = try client.Log.init(
         client.allocator,
