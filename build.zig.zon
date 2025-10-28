@@ -25,6 +25,11 @@
             .hash = "soem-1.4.0-hMH6QwH7DQDhU4QpnIidSZbzZlVoljUcay_9RIbl4jPj",
             .lazy = true,
         },
+        .tracy = .{
+            .url = "https://github.com/wolfpld/tracy/archive/refs/tags/v0.12.2.tar.gz",
+            .hash = "N-V-__8AANptPwE8EYOS5w6KRzVyfllpOBthYRcuuQvYhhxb",
+            .lazy = true,
+        },
     },
     .paths = .{
         "build.zig",

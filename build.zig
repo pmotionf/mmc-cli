@@ -24,6 +24,50 @@ pub fn build(b: *std.Build) !void {
         "Enable the `mes07` backend (default true).",
     ) orelse true else false;
     options.addOption(bool, "mes07", mes07);
+    const tracy_options, const tracy_enable = blk: {
+        const tracy_options = b.addOptions();
+        tracy_options.step.name = "tracy options";
+
+        const enable = b.option(
+            bool,
+            "enable-tracy",
+            "Whether tracy should be enabled.",
+        ) orelse false;
+        const enable_allocation = b.option(
+            bool,
+            "enable-tracy-allocation",
+            "Enable using TracyAllocator to monitor allocations.",
+        ) orelse enable;
+        const enable_callstack = b.option(
+            bool,
+            "enable-tracy-callstack",
+            "Enable callstack graphs.",
+        ) orelse enable;
+        if (!enable) std.debug.assert(!enable_allocation and !enable_callstack);
+
+        tracy_options.addOption(bool, "enable", enable);
+        tracy_options.addOption(
+            bool,
+            "enable_allocation",
+            enable and enable_allocation,
+        );
+        tracy_options.addOption(
+            bool,
+            "enable_callstack",
+            enable and enable_callstack,
+        );
+
+        break :blk .{ tracy_options.createModule(), enable };
+    };
+    const tracy_module = createTracyModule(
+        b,
+        .{
+            .target = target,
+            .optimize = optimize,
+            .enable = tracy_enable,
+            .tracy_options = tracy_options,
+        },
+    );
 
     const network_dep = b.dependency("network", .{
         .target = target,
@@ -55,6 +99,7 @@ pub fn build(b: *std.Build) !void {
         .{ .name = "network", .module = network_dep.module("network") },
         .{ .name = "chrono", .module = chrono.module("chrono") },
         .{ .name = "zignet", .module = zignet.module("zignet") },
+        .{ .name = "tracy", .module = tracy_module },
     };
     const setup_options: SetupOptions = .{
         .target = target,
@@ -143,4 +188,45 @@ fn setupModule(
             return error.UnsupportedOs;
         },
     }
+}
+
+fn createTracyModule(
+    b: *std.Build,
+    options: struct {
+        target: std.Build.ResolvedTarget,
+        optimize: std.builtin.OptimizeMode,
+        enable: bool,
+        tracy_options: *std.Build.Module,
+    },
+) *std.Build.Module {
+    const tracy_module = b.createModule(.{
+        .root_source_file = b.path("src/tracy.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+        .imports = &.{
+            .{ .name = "options", .module = options.tracy_options },
+        },
+        .link_libc = options.enable,
+        .link_libcpp = options.enable,
+        .sanitize_c = .off,
+    });
+    if (!options.enable) return tracy_module;
+
+    const tracy_dependency = b.lazyDependency("tracy", .{
+        .target = options.target,
+        .optimize = options.optimize,
+    }) orelse return tracy_module;
+
+    tracy_module.addCMacro("TRACY_ENABLE", "1");
+    tracy_module.addIncludePath(tracy_dependency.path(""));
+    tracy_module.addCSourceFile(.{
+        .file = tracy_dependency.path("public/TracyClient.cpp"),
+    });
+
+    if (options.target.result.os.tag == .windows) {
+        tracy_module.linkSystemLibrary("dbghelp", .{});
+        tracy_module.linkSystemLibrary("ws2_32", .{});
+    }
+
+    return tracy_module;
 }
