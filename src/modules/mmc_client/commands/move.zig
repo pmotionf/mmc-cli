@@ -1,8 +1,11 @@
 const std = @import("std");
 const client = @import("../../mmc_client.zig");
 const command = @import("../../../command.zig");
+const tracy = @import("tracy");
 
 pub fn posAxis(params: [][]const u8) !void {
+    const tracy_zone = tracy.traceNamed(@src(), "move_pos_axis");
+    defer tracy_zone.end();
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const carrier_id: u10 = try std.fmt.parseInt(u10, b: {
@@ -58,6 +61,8 @@ pub fn posAxis(params: [][]const u8) !void {
 }
 
 pub fn posLocation(params: [][]const u8) !void {
+    const tracy_zone = tracy.traceNamed(@src(), "move_pos_location");
+    defer tracy_zone.end();
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const carrier_id: u10 = try std.fmt.parseInt(u10, b: {
@@ -109,6 +114,8 @@ pub fn posLocation(params: [][]const u8) !void {
 }
 
 pub fn posDistance(params: [][]const u8) !void {
+    const tracy_zone = tracy.traceNamed(@src(), "move_pos_distance");
+    defer tracy_zone.end();
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
     const carrier_id: u10 = try std.fmt.parseInt(u10, b: {
@@ -159,6 +166,8 @@ pub fn posDistance(params: [][]const u8) !void {
 }
 
 pub fn spdAxis(params: [][]const u8) !void {
+    const tracy_zone = tracy.traceNamed(@src(), "move_spd_axis");
+    defer tracy_zone.end();
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const carrier_id: u10 = try std.fmt.parseInt(u10, b: {
@@ -209,6 +218,8 @@ pub fn spdAxis(params: [][]const u8) !void {
 }
 
 pub fn spdLocation(params: [][]const u8) !void {
+    const tracy_zone = tracy.traceNamed(@src(), "move_spd_location");
+    defer tracy_zone.end();
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const carrier_id: u10 = try std.fmt.parseInt(u10, b: {
@@ -260,6 +271,8 @@ pub fn spdLocation(params: [][]const u8) !void {
 }
 
 pub fn spdDistance(params: [][]const u8) !void {
+    const tracy_zone = tracy.traceNamed(@src(), "move_spd_distance");
+    defer tracy_zone.end();
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
     const carrier_id: u10 = try std.fmt.parseInt(u10, b: {

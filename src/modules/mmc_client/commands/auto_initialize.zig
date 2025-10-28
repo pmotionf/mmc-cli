@@ -2,8 +2,11 @@
 const std = @import("std");
 const client = @import("../../mmc_client.zig");
 const command = @import("../../../command.zig");
+const tracy = @import("tracy");
 
 pub fn impl(params: [][]const u8) !void {
+    const tracy_zone = tracy.traceNamed(@src(), "auto_initialize");
+    defer tracy_zone.end();
     const socket = client.sock orelse return error.ServerNotConnected;
     var init_lines: std.ArrayList(
         client.api.api.protobuf.mmc.command.Request.AutoInitialize.Line,

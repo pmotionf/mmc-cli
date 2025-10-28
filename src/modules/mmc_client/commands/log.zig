@@ -2,8 +2,11 @@ const std = @import("std");
 const client = @import("../../mmc_client.zig");
 const command = @import("../../../command.zig");
 const chrono = @import("chrono");
+const tracy = @import("tracy");
 
 pub fn add(params: [][]const u8) !void {
+    const tracy_zone = tracy.traceNamed(@src(), "add_log");
+    defer tracy_zone.end();
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
     const kind = params[1];
@@ -54,6 +57,8 @@ pub fn add(params: [][]const u8) !void {
 }
 
 pub fn start(params: [][]const u8) !void {
+    const tracy_zone = tracy.traceNamed(@src(), "start_log");
+    defer tracy_zone.end();
     errdefer client.log.reset();
     const duration = try std.fmt.parseFloat(f64, params[0]);
     const path = params[1];
@@ -90,10 +95,14 @@ pub fn start(params: [][]const u8) !void {
 }
 
 pub fn status(_: [][]const u8) !void {
+    const tracy_zone = tracy.traceNamed(@src(), "status_log");
+    defer tracy_zone.end();
     try client.log.status();
 }
 
 pub fn remove(params: [][]const u8) !void {
+    const tracy_zone = tracy.traceNamed(@src(), "remove_log");
+    defer tracy_zone.end();
     if (params[0].len > 0) {
         const line_name = params[0];
         const line_idx = try client.matchLine(line_name);
