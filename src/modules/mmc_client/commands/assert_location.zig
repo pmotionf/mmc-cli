@@ -11,7 +11,7 @@ pub fn impl(params: [][]const u8) !void {
     const location_thr = if (params[3].len > 0)
         try std.fmt.parseFloat(f32, params[3])
     else
-        1.0;
+        0.001;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
