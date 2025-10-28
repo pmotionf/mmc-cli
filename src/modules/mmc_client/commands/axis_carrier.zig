@@ -6,7 +6,9 @@ pub fn impl(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(u32, params[1], 0);
-    const result_var: []const u8 = params[2];
+    const save_var: []const u8 = params[2];
+    if (save_var.len > 0 and std.ascii.isDigit(save_var[0]))
+        return error.InvalidParameter;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     {
@@ -40,10 +42,10 @@ pub fn impl(params: [][]const u8) !void {
     var carriers = track.carrier_state;
     const carrier = carriers.pop() orelse return error.InvalidResponse;
     std.log.info("Carrier {d} on axis {d}.\n", .{ carrier.id, axis_id });
-    if (result_var.len > 0) {
+    if (save_var.len > 0) {
         var int_buf: [8]u8 = undefined;
         try command.variables.put(
-            result_var,
+            save_var,
             try std.fmt.bufPrint(&int_buf, "{d}", .{carrier.id}),
         );
     }
