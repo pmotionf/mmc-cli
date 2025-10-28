@@ -4,7 +4,18 @@ const command = @import("../../../command.zig");
 
 pub fn isolate(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    const carrier_id = try std.fmt.parseInt(u10, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     const timeout = if (params[2].len > 0)
         try std.fmt.parseInt(u64, params[2], 0)
     else
@@ -23,7 +34,18 @@ pub fn isolate(params: [][]const u8) !void {
 
 pub fn moveCarrier(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    const carrier_id = try std.fmt.parseInt(u10, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     const timeout = if (params[2].len > 0)
         try std.fmt.parseInt(u64, params[2], 0)
     else
@@ -42,7 +64,18 @@ pub fn moveCarrier(params: [][]const u8) !void {
 
 pub fn pull(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    const carrier_id = try std.fmt.parseInt(u10, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     const timeout = if (params[2].len > 0)
         try std.fmt.parseInt(u64, params[2], 0)
     else

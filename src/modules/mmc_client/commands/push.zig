@@ -5,7 +5,18 @@ const command = @import("../../../command.zig");
 pub fn forward(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
-    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    const carrier_id = try std.fmt.parseInt(u10, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
     const axis_id: ?u32 = if (params[2].len > 0)
@@ -128,7 +139,18 @@ pub fn forward(params: [][]const u8) !void {
 pub fn backward(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
-    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    const carrier_id = try std.fmt.parseInt(u10, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
     const axis_id: ?u32 = if (params[2].len > 0)

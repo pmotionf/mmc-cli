@@ -20,10 +20,18 @@ pub fn impl(params: [][]const u8) !void {
         }
     };
 
-    const carrier_id: u10 = if (params[3].len > 0)
-        try std.fmt.parseInt(u10, params[3], 0)
-    else
-        0;
+    const carrier_id = try std.fmt.parseUnsigned(u32, b: {
+        const input = params[3];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     const link_axis: ?client.api.api.protobuf.mmc.command.Request.Direction = link: {
         if (params[4].len > 0) {
             if (std.ascii.eqlIgnoreCase("next", params[4]) or
