@@ -665,17 +665,18 @@ fn insertCodepoint(self: *Prompt, cp: []const u8) void {
     @memcpy(self.input_buffer[self.cursor.raw..][0..cp.len], cp);
     self.input = self.input_buffer[0 .. self.input.len + cp.len];
     self.cursor.moveRight();
-    if (self.history.selection) |*selection| {
+    if (self.history.selection) |*selection| cancel_history: {
         const hist_item = selection.slice();
         // Cancel selection if input length exceeds history item length.
         if (self.input.len >= hist_item.len) {
             self.history.selection = null;
+            break :cancel_history;
         }
         // Cancel selection if insert does not match.
         for (cp, 0..) |c, i| {
             if (c != hist_item[self.input.len - cp.len + i]) {
                 self.history.selection = null;
-                break;
+                break :cancel_history;
             }
         }
     }
