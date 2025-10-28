@@ -78,8 +78,17 @@ pub fn impl(params: [][]const u8) !void {
             &reader.interface,
         );
         if (client.api.api.version.major != response.major or
-            client.api.api.version.minor != response.minor)
+            client.api.api.version.minor > response.minor)
         {
+            std.log.info(
+                "Client API version: {f}, Server API version: {}.{}.{}",
+                .{
+                    client.api.api.version,
+                    response.major,
+                    response.minor,
+                    response.patch,
+                },
+            );
             return error.APIVersionMismatch;
         }
     }
