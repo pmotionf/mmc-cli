@@ -3,8 +3,8 @@ const Log = @This();
 const std = @import("std");
 const CircularBufferAlloc =
     @import("../../circular_buffer.zig").CircularBufferAlloc;
-const api_helper = @import("api.zig");
-const SystemResponse = api_helper.api.protobuf.mmc.info.Response.Track;
+const api = @import("mmc-api");
+const SystemResponse = api.protobuf.mmc.info.Response.Track;
 const client = @import("../mmc_client.zig");
 const command = @import("../../command.zig");
 const main = @import("../../main.zig");
@@ -144,40 +144,60 @@ pub const Data = struct {
         var driver_idx: usize = 0;
         for (configs) |config| {
             if (config.axis_id_range.start == 0) continue;
-            {
-                try client.removeIgnoredMessage(socket.*);
-                try socket.waitToWrite(command.checkCommandInterrupt);
-                try api_helper.request.info.track.encode(
-                    allocator,
-                    &writer.interface,
-                    .{
-                        .line = config.id,
-                        .info_axis_errors = if (config.axis) true else false,
-                        .info_axis_state = if (config.axis) true else false,
-                        .info_carrier_state = if (config.axis) true else false,
-                        .info_driver_errors = if (config.driver) true else false,
-                        .info_driver_state = if (config.driver) true else false,
-                        .filter = .{
-                            .axes = .{
-                                .start = config.axis_id_range.start,
-                                .end = config.axis_id_range.end,
+            const request: api.protobuf.mmc.Request = .{
+                .body = .{
+                    .info = .{
+                        .body = .{
+                            .track = .{
+                                .line = config.id,
+                                .info_axis_errors = if (config.axis) true else false,
+                                .info_axis_state = if (config.axis) true else false,
+                                .info_carrier_state = if (config.axis) true else false,
+                                .info_driver_errors = if (config.driver) true else false,
+                                .info_driver_state = if (config.driver) true else false,
+                                .filter = .{
+                                    .axes = .{
+                                        .start = config.axis_id_range.start,
+                                        .end = config.axis_id_range.end,
+                                    },
+                                },
                             },
                         },
                     },
-                );
-                try writer.interface.flush();
-            }
-            try socket.waitToRead(command.checkCommandInterrupt);
-            var response = try api_helper.response.info.track.decode(
-                allocator,
+                },
+            };
+            try client.removeIgnoredMessage(socket.*);
+            try socket.waitToWrite(&command.checkCommandInterrupt);
+            // Send message
+            try request.encode(&writer.interface, allocator);
+            try writer.interface.flush();
+            // Receive response
+            try socket.waitToRead(&command.checkCommandInterrupt);
+            var decoded: api.protobuf.mmc.Response = try .decode(
                 &reader.interface,
+                allocator,
             );
-            defer response.deinit(allocator);
-            const axis_state = response.axis_state;
-            const axis_errors = response.axis_errors;
-            const driver_state = response.driver_state;
-            const driver_errors = response.driver_errors;
-            const carriers = response.carrier_state;
+            defer decoded.deinit(allocator);
+            const track = switch (decoded.body orelse return error.InvalidResponse) {
+                .info => |info_resp| switch (info_resp.body orelse
+                    return error.InvalidResponse) {
+                    .track => |track_resp| track_resp,
+                    .request_error => |req_err| {
+                        return client.error_response.throwInfoError(req_err);
+                    },
+                    else => return error.InvalidResponse,
+                },
+                .request_error => |req_err| {
+                    return client.error_response.throwMmcError(req_err);
+                },
+                else => return error.InvalidResponse,
+            };
+            if (track.line != config.id) return error.InvalidResponse;
+            const axis_state = track.axis_state;
+            const axis_errors = track.axis_errors;
+            const driver_state = track.driver_state;
+            const driver_errors = track.driver_errors;
+            const carriers = track.carrier_state;
             // Parse axes informations
             for (
                 axis_state.items,

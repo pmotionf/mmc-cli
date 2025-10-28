@@ -2,6 +2,7 @@ const std = @import("std");
 const client = @import("../../mmc_client.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
+const api = @import("mmc-api");
 
 pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "clear_carrier_info");
@@ -14,28 +15,32 @@ pub fn impl(params: [][]const u8) !void {
     if (params[1].len > 0) {
         filter = try .parse(params[1]);
     }
-    {
-        try client.removeIgnoredMessage(socket);
-        try socket.waitToWrite(&command.checkCommandInterrupt);
-        try client.api.request.command.deinitialize.encode(
-            client.allocator,
-            &client.writer.interface,
-            .{
-                .line = line.id,
-                .target = if (filter) |f| b: switch (f) {
-                    .axis => |axis| break :b .{
-                        .axes = .{ .start = axis, .end = axis },
+    const request: api.protobuf.mmc.Request = .{
+        .body = .{
+            .command = .{
+                .body = .{
+                    .deinitialize = .{
+                        .line = line.id,
+                        .target = if (filter) |f| b: switch (f) {
+                            .axis => |axis| break :b .{
+                                .axes = .{ .start = axis, .end = axis },
+                            },
+                            .driver => |driver| break :b .{
+                                .drivers = .{ .start = driver, .end = driver },
+                            },
+                            .carrier => |carrier| break :b .{
+                                .carrier = carrier[0],
+                            },
+                        } else null,
                     },
-                    .driver => |driver| break :b .{
-                        .drivers = .{ .start = driver, .end = driver },
-                    },
-                    .carrier => |carrier| break :b .{
-                        .carrier = carrier[0],
-                    },
-                } else null,
+                },
             },
-        );
-        try client.writer.interface.flush();
-    }
+        },
+    };
+    try client.removeIgnoredMessage(socket);
+    try socket.waitToWrite(&command.checkCommandInterrupt);
+    // Send message
+    try request.encode(&client.writer.interface, client.allocator);
+    try client.writer.interface.flush();
     try client.waitCommandReceived();
 }

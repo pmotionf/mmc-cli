@@ -9,7 +9,8 @@ const command = @import("../command.zig");
 pub const Line = @import("mmc_client/Line.zig");
 pub const Log = @import("mmc_client/Log.zig");
 pub const zignet = @import("zignet");
-pub const api = @import("mmc_client/api.zig");
+// pub const api = @import("mmc_client/api.zig");
+pub const api = @import("mmc-api");
 
 const commands = struct {
     const auto_initialize =
@@ -58,6 +59,118 @@ const commands = struct {
         @import("mmc_client/commands/print_driver_info.zig");
     const show_errors = @import("mmc_client/commands/show_errors.zig");
     const server_version = @import("mmc_client/commands/server_version.zig");
+};
+
+pub const error_response = struct {
+    /// Throw an error if receive response of core request error
+    pub fn throwCoreError(err: api.protobuf.mmc.core.Request.Error) anyerror {
+        return switch (err) {
+            .CORE_REQUEST_ERROR_UNSPECIFIED => error.InvalidResponse,
+            .CORE_REQUEST_ERROR_REQUEST_UNKNOWN => error.RequestUnknown,
+            _ => return error.UnexpectedResponse,
+        };
+    }
+
+    pub fn throwCommandError(err: api.protobuf.mmc.command.Request.Error) anyerror {
+        return switch (err) {
+            .COMMAND_REQUEST_ERROR_UNSPECIFIED,
+            .COMMAND_REQUEST_ERROR_INVALID_LOCATION,
+            .COMMAND_REQUEST_ERROR_INVALID_DISTANCE,
+            .COMMAND_REQUEST_ERROR_CC_LINK_DISCONNECTED,
+            => error.InvalidResponse,
+            .COMMAND_REQUEST_ERROR_INVALID_LINE => error.InvalidLine,
+            .COMMAND_REQUEST_ERROR_INVALID_AXIS => error.InvalidAxis,
+            .COMMAND_REQUEST_ERROR_INVALID_DRIVER => error.InvalidDriver,
+            .COMMAND_REQUEST_ERROR_INVALID_ACCELERATION => error.InvalidAcceleration,
+            .COMMAND_REQUEST_ERROR_INVALID_VELOCITY => error.InvalidSpeed,
+            .COMMAND_REQUEST_ERROR_INVALID_DIRECTION => error.InvalidDirection,
+            .COMMAND_REQUEST_ERROR_INVALID_CARRIER => error.InvalidCarrier,
+            .COMMAND_REQUEST_ERROR_MISSING_PARAMETER => error.MissingParameter,
+            .COMMAND_REQUEST_ERROR_COMMAND_NOT_FOUND => error.CommandNotFound,
+            .COMMAND_REQUEST_ERROR_CARRIER_NOT_FOUND => error.CarrierNotFound,
+            .COMMAND_REQUEST_ERROR_OUT_OF_MEMORY => error.ServerRunningOutOfMemory,
+            .COMMAND_REQUEST_ERROR_MAXIMUM_AUTO_INITIALIZE_EXCEEDED => error.MaximumAutoInitializeExceeded,
+            .COMMAND_REQUEST_ERROR_CONFLICTING_CARRIER_ID => error.ConflictingCarrierId,
+            _ => return error.UnexpectedResponse,
+        };
+    }
+
+    pub fn throwInfoError(err: api.protobuf.mmc.info.Request.Error) anyerror {
+        return switch (err) {
+            .INFO_REQUEST_ERROR_UNSPECIFIED => error.InvalidResponse,
+            .INFO_REQUEST_ERROR_INVALID_LINE => error.InvalidLine,
+            .INFO_REQUEST_ERROR_INVALID_AXIS => error.InvalidAxis,
+            .INFO_REQUEST_ERROR_INVALID_DRIVER => error.InvalidDriver,
+            .INFO_REQUEST_ERROR_MISSING_PARAMETER => error.MissingParameter,
+            _ => return error.UnexpectedResponse,
+        };
+    }
+
+    pub fn throwMmcError(err: api.protobuf.mmc.Request.Error) anyerror {
+        return switch (err) {
+            .MMC_REQUEST_ERROR_UNSPECIFIED => error.InvalidResponse,
+            .MMC_REQUEST_ERROR_INVALID_MESSAGE => error.InvalidMessage,
+            _ => return error.UnexpectedResponse,
+        };
+    }
+};
+
+pub const Filter = union(enum) {
+    carrier: [1]u32,
+    driver: u32,
+    axis: u32,
+
+    pub fn parse(filter: []const u8) (error{InvalidParameter} || std.fmt.ParseIntError)!Filter {
+        var suffix_idx: usize = 0;
+        for (filter) |c| {
+            if (std.ascii.isDigit(c)) suffix_idx += 1 else break;
+        }
+        // No digit is recognized.
+        if (suffix_idx == 0) return error.InvalidParameter;
+        const id = try std.fmt.parseUnsigned(u32, filter[0..suffix_idx], 0);
+
+        // Check for single character suffix.
+        if (filter.len - suffix_idx == 1) {
+            if (std.ascii.eqlIgnoreCase(filter[suffix_idx..], "a"))
+                return Filter{ .axis = id }
+            else if (std.ascii.eqlIgnoreCase(filter[suffix_idx..], "c"))
+                return Filter{ .carrier = [1]u32{id} }
+            else if (std.ascii.eqlIgnoreCase(filter[suffix_idx..], "d"))
+                return Filter{ .driver = id };
+        }
+        // Check for `axis` suffix
+        else if (filter.len - suffix_idx == 4 and
+            std.ascii.eqlIgnoreCase(filter[suffix_idx..], "axis"))
+            return Filter{ .axis = id }
+            // Check for `driver` suffix
+        else if (filter.len - suffix_idx == 6 and
+            std.ascii.eqlIgnoreCase(filter[suffix_idx..], "driver"))
+            return Filter{ .driver = id }
+            // Check for `carrier` suffix
+        else if (std.ascii.eqlIgnoreCase(filter[suffix_idx..], "carrier"))
+            return Filter{ .carrier = [1]u32{id} };
+        return error.InvalidParameter;
+    }
+
+    pub fn toProtobuf(filter: *Filter) api.protobuf.mmc.info.Request.Track.filter_union {
+        return switch (filter.*) {
+            .axis => |axis_id| .{
+                .axes = .{
+                    .start = axis_id,
+                    .end = axis_id,
+                },
+            },
+            .driver => |driver_id| .{
+                .drivers = .{
+                    .start = driver_id,
+                    .end = driver_id,
+                },
+            },
+            .carrier => .{
+                .carriers = .{ .ids = .fromOwnedSlice(&filter.carrier) },
+            },
+        };
+    }
 };
 
 /// `lines` is initialized once the client is connected to a server.
@@ -959,145 +1072,226 @@ pub fn removeIgnoredMessage(socket: zignet.Socket) !void {
     }
 }
 
-pub const Filter = union(enum) {
-    carrier: [1]u32,
-    driver: u32,
-    axis: u32,
-
-    pub fn parse(filter: []const u8) (error{InvalidParameter} || std.fmt.ParseIntError)!Filter {
-        var suffix_idx: usize = 0;
-        for (filter) |c| {
-            if (std.ascii.isDigit(c)) suffix_idx += 1 else break;
-        }
-        // No digit is recognized.
-        if (suffix_idx == 0) return error.InvalidParameter;
-        const id = try std.fmt.parseUnsigned(u32, filter[0..suffix_idx], 0);
-
-        // Check for single character suffix.
-        if (filter.len - suffix_idx == 1) {
-            if (std.ascii.eqlIgnoreCase(filter[suffix_idx..], "a"))
-                return Filter{ .axis = id }
-            else if (std.ascii.eqlIgnoreCase(filter[suffix_idx..], "c"))
-                return Filter{ .carrier = [1]u32{id} }
-            else if (std.ascii.eqlIgnoreCase(filter[suffix_idx..], "d"))
-                return Filter{ .driver = id };
-        }
-        // Check for `axis` suffix
-        else if (filter.len - suffix_idx == 4 and
-            std.ascii.eqlIgnoreCase(filter[suffix_idx..], "axis"))
-            return Filter{ .axis = id }
-            // Check for `driver` suffix
-        else if (filter.len - suffix_idx == 6 and
-            std.ascii.eqlIgnoreCase(filter[suffix_idx..], "driver"))
-            return Filter{ .driver = id }
-            // Check for `carrier` suffix
-        else if (std.ascii.eqlIgnoreCase(filter[suffix_idx..], "carrier"))
-            return Filter{ .carrier = [1]u32{id} };
-        return error.InvalidParameter;
-    }
-
-    pub fn toProtobuf(filter: *Filter) api.api.protobuf.mmc.info.Request.Track.filter_union {
-        return switch (filter.*) {
-            .axis => |axis_id| .{
-                .axes = .{
-                    .start = axis_id,
-                    .end = axis_id,
-                },
-            },
-            .driver => |driver_id| .{
-                .drivers = .{
-                    .start = driver_id,
-                    .end = driver_id,
-                },
-            },
-            .carrier => .{
-                .carriers = .{ .ids = .fromOwnedSlice(&filter.carrier) },
-            },
-        };
-    }
-};
-
 pub fn matchLine(name: []const u8) !usize {
     for (lines) |line| {
         if (std.mem.eql(u8, line.name, name)) return line.index;
     } else return error.LineNameNotFound;
 }
 
-/// Get the command ID and track that command until completed.
+/// Track a command until it executed completely followed by removing that
+/// command from the server.
 pub fn waitCommandReceived() !void {
     const socket = sock orelse return error.ServerNotConnected;
-    var id: u32 = 0;
-    {
+    const command_id = b: {
+        // Receive response
         try socket.waitToRead(&command.checkCommandInterrupt);
-        id = try api.response.command.id.decode(
-            allocator,
+        const decoded: api.protobuf.mmc.Response = try .decode(
             &reader.interface,
+            allocator,
         );
-    }
-    defer removeCommand(id) catch {};
-    while (true) {
-        {
-            try removeIgnoredMessage(socket);
-            try socket.waitToWrite(&command.checkCommandInterrupt);
-            try api.request.info.command.encode(
-                allocator,
-                &writer.interface,
-                .{
-                    .id = id,
+        break :b switch (decoded.body orelse return error.InvalidResponse) {
+            .request_error => |req_err| {
+                return error_response.throwMmcError(req_err);
+            },
+            .command => |command_resp| switch (command_resp.body orelse
+                return error.InvalidResponse) {
+                .id => |id| id,
+                .request_error => |req_err| {
+                    return error_response.throwCommandError(req_err);
                 },
-            );
-            try writer.interface.flush();
-        }
+                else => return error.InvalidResponse,
+            },
+            else => return error.InvalidResponse,
+        };
+    };
+    defer removeCommand(command_id) catch {};
+    while (true) {
+        const request: api.protobuf.mmc.Request = .{
+            .body = .{
+                .info = .{
+                    .body = .{
+                        .command = .{ .id = command_id },
+                    },
+                },
+            },
+        };
+        try removeIgnoredMessage(socket);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        // Send message
+        try request.encode(&writer.interface, allocator);
+        try writer.interface.flush();
+        // Receive response
         try socket.waitToRead(&command.checkCommandInterrupt);
-        var decoded = try api.response.info.command.decode(
-            allocator,
+        var decoded: api.protobuf.mmc.Response = try .decode(
             &reader.interface,
+            allocator,
         );
         defer decoded.deinit(allocator);
-        if (decoded.items.items.len > 1) return error.InvalidResponse;
-        if (decoded.items.pop()) |comm| {
-            std.log.debug("{}", .{comm});
-            switch (comm.status) {
-                .COMMAND_STATUS_PROGRESSING => {}, // continue the loop
-                .COMMAND_STATUS_COMPLETED => break,
-                .COMMAND_STATUS_FAILED => {
-                    return switch (comm.@"error".?) {
-                        .COMMAND_ERROR_INVALID_SYSTEM_STATE => error.InvalidSystemState,
-                        .COMMAND_ERROR_DRIVER_DISCONNECTED => error.DriverDisconnected,
-                        .COMMAND_ERROR_UNEXPECTED => error.Unexpected,
-                        .COMMAND_ERROR_CARRIER_NOT_FOUND => error.CarrierNotFound,
-                        .COMMAND_ERROR_CONFLICTING_CARRIER_ID => error.ConflictingCarrierId,
-                        .COMMAND_ERROR_CARRIER_ALREADY_INITIALIZED => error.CarrierAlreadyInitialized,
-                        .COMMAND_ERROR_INVALID_CARRIER_TARGET => error.InvalidCarrierTarget,
-                        .COMMAND_ERROR_DRIVER_STOPPED => error.DriverStopped,
-                        else => error.UnexpectedResponse,
-                    };
+        var commands_resp = switch (decoded.body orelse
+            return error.InvalidResponse) {
+            .request_error => |req_err| {
+                return error_response.throwMmcError(req_err);
+            },
+            .info => |info_resp| switch (info_resp.body orelse
+                return error.InvalidResponse) {
+                .command => |commands_resp| commands_resp,
+                .request_error => |req_err| {
+                    return error_response.throwInfoError(req_err);
                 },
-                else => return error.UnexpectedResponse,
-            }
-        } else return error.InvalidResponse;
+                else => return error.InvalidResponse,
+            },
+            else => return error.InvalidResponse,
+        };
+        const comm = commands_resp.items.pop() orelse
+            return error.InvalidResponse;
+        switch (comm.status) {
+            .COMMAND_STATUS_PROGRESSING => {}, // continue the loop
+            .COMMAND_STATUS_COMPLETED => break,
+            .COMMAND_STATUS_FAILED => {
+                return switch (comm.@"error".?) {
+                    .COMMAND_ERROR_INVALID_SYSTEM_STATE => error.InvalidSystemState,
+                    .COMMAND_ERROR_DRIVER_DISCONNECTED => error.DriverDisconnected,
+                    .COMMAND_ERROR_UNEXPECTED => error.Unexpected,
+                    .COMMAND_ERROR_CARRIER_NOT_FOUND => error.CarrierNotFound,
+                    .COMMAND_ERROR_CONFLICTING_CARRIER_ID => error.ConflictingCarrierId,
+                    .COMMAND_ERROR_CARRIER_ALREADY_INITIALIZED => error.CarrierAlreadyInitialized,
+                    .COMMAND_ERROR_INVALID_CARRIER_TARGET => error.InvalidCarrierTarget,
+                    .COMMAND_ERROR_DRIVER_STOPPED => error.DriverStopped,
+                    else => error.UnexpectedResponse,
+                };
+            },
+            else => return error.UnexpectedResponse,
+        }
     }
 }
 
 fn removeCommand(id: u32) !void {
     const socket = sock orelse return error.ServerNotConnected;
-    while (true) {
-        {
-            try removeIgnoredMessage(socket);
-            try socket.waitToWrite(&command.checkCommandInterrupt);
-            try api.request.command.remove_commands.encode(
-                allocator,
-                &writer.interface,
-                .{ .command = id },
-            );
-            try writer.interface.flush();
-        }
-        try socket.waitToRead(&command.checkCommandInterrupt);
-        const removed_id = try api.response.command.removed_id.decode(
-            allocator,
-            &reader.interface,
-        );
-        std.log.debug("removed_id {}, id {}", .{ removed_id, id });
-        if (removed_id == id) break;
+    const request: api.protobuf.mmc.Request = .{
+        .body = .{
+            .command = .{
+                .body = .{
+                    .remove_command = .{ .command = id },
+                },
+            },
+        },
+    };
+    try removeIgnoredMessage(socket);
+    try socket.waitToWrite(&command.checkCommandInterrupt);
+    // Send message
+    try request.encode(&writer.interface, allocator);
+    try writer.interface.flush();
+    // Receive message
+    try socket.waitToRead(&command.checkCommandInterrupt);
+    const decoded: api.protobuf.mmc.Response = try .decode(
+        &reader.interface,
+        allocator,
+    );
+    const removed_id = switch (decoded.body orelse
+        return error.InvalidResponse) {
+        .command => |command_resp| switch (command_resp.body orelse
+            return error.InvalidResponse) {
+            .removed_id => |removed_id| removed_id,
+            .request_error => |req_err| {
+                return error_response.throwCommandError(req_err);
+            },
+            else => return error.InvalidResponse,
+        },
+        .request_error => |req_err| {
+            return error_response.throwMmcError(req_err);
+        },
+        else => return error.InvalidResponse,
+    };
+    std.log.debug("removed_id {}, id {}", .{ removed_id, id });
+}
+
+pub fn nestedWrite(
+    name: []const u8,
+    val: anytype,
+    indent: usize,
+    w: *std.Io.Writer,
+) !usize {
+    var written_bytes: usize = 0;
+    const ti = @typeInfo(@TypeOf(val));
+    switch (ti) {
+        .optional => {
+            if (val) |v| {
+                written_bytes += try nestedWrite(
+                    name,
+                    v,
+                    indent,
+                    w,
+                );
+            } else {
+                try w.splatBytesAll("    ", indent);
+                written_bytes += 4 * indent;
+                try w.print("{s}: ", .{name});
+                written_bytes += name.len + 2;
+                try w.print("None,\n", .{});
+                written_bytes += std.fmt.count("None,\n", .{});
+            }
+        },
+        .@"struct" => {
+            try w.splatBytesAll("    ", indent);
+            written_bytes += 4 * indent;
+            try w.print("{s}: {{\n", .{name});
+            written_bytes += name.len + 4;
+            inline for (ti.@"struct".fields) |field| {
+                if (field.name[0] == '_') {
+                    continue;
+                }
+                written_bytes += try nestedWrite(
+                    field.name,
+                    @field(val, field.name),
+                    indent + 1,
+                    w,
+                );
+            }
+            try w.splatBytesAll("    ", indent);
+            written_bytes += 4 * indent;
+            try w.writeAll("},\n");
+            written_bytes += 3;
+        },
+        .bool, .int => {
+            try w.splatBytesAll("    ", indent);
+            written_bytes += 4 * indent;
+            try w.print("{s}: ", .{name});
+            written_bytes += name.len + 2;
+            try w.print("{},\n", .{val});
+            written_bytes += std.fmt.count("{},\n", .{val});
+        },
+        .float => {
+            try w.splatBytesAll("    ", indent);
+            written_bytes += 4 * indent;
+            try w.print("{s}: ", .{name});
+            written_bytes += name.len + 2;
+            try w.print("{d},\n", .{val});
+            written_bytes += std.fmt.count("{d},\n", .{val});
+        },
+        .@"enum" => {
+            try w.splatBytesAll("    ", indent);
+            written_bytes += 4 * indent;
+            try w.print("{s}: ", .{name});
+            written_bytes += name.len + 2;
+            try w.print("{t},\n", .{val});
+            written_bytes += std.fmt.count("{t},\n", .{val});
+        },
+        .@"union" => {
+            switch (val) {
+                inline else => |_, tag| {
+                    const union_val = @field(val, @tagName(tag));
+                    try w.splatBytesAll("    ", indent);
+                    written_bytes += 4 * indent;
+                    try w.print("{s}: ", .{name});
+                    written_bytes += name.len + 2;
+                    try w.print("{d},\n", .{union_val});
+                    written_bytes += std.fmt.count("{d},\n", .{union_val});
+                },
+            }
+        },
+        else => {
+            error.InvalidValueType;
+        },
     }
+    return written_bytes;
 }

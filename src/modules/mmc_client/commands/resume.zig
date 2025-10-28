@@ -2,6 +2,7 @@ const std = @import("std");
 const client = @import("../../mmc_client.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
+const api = @import("mmc-api");
 
 pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "resume");
@@ -13,16 +14,21 @@ pub fn impl(params: [][]const u8) !void {
         const line_idx = try client.matchLine(line_name);
         ids[0] = @intCast(line_idx + 1);
     }
-    {
-        try socket.waitToWrite(&command.checkCommandInterrupt);
-        try client.api.request.command.@"resume".encode(
-            client.allocator,
-            &client.writer.interface,
-            .{
-                .lines = .fromOwnedSlice(if (ids[0] > 0) &ids else &.{}),
+    const request: api.protobuf.mmc.Request = .{
+        .body = .{
+            .command = .{
+                .body = .{
+                    .@"resume" = .{
+                        .lines = .fromOwnedSlice(if (ids[0] > 0) &ids else &.{}),
+                    },
+                },
             },
-        );
-        try client.writer.interface.flush();
-    }
+        },
+    };
+    try client.removeIgnoredMessage(socket);
+    try socket.waitToWrite(&command.checkCommandInterrupt);
+    // Send message
+    try request.encode(&client.writer.interface, client.allocator);
+    try client.writer.interface.flush();
     try client.waitCommandReceived();
 }

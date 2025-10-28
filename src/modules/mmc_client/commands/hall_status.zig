@@ -2,6 +2,7 @@ const std = @import("std");
 const client = @import("../../mmc_client.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
+const api = @import("mmc-api");
 
 pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "hall_status");
@@ -14,72 +15,67 @@ pub fn impl(params: [][]const u8) !void {
     if (params[1].len > 0) {
         filter = try .parse(params[1]);
     }
-    if (filter) |*_filter| {
-        {
-            try client.removeIgnoredMessage(socket);
-            try socket.waitToWrite(&command.checkCommandInterrupt);
-            try client.api.request.info.track.encode(
-                client.allocator,
-                &client.writer.interface,
-                .{
-                    .line = line.id,
-                    .info_axis_state = true,
-                    .filter = _filter.toProtobuf(),
+    const request: api.protobuf.mmc.Request = .{
+        .body = .{
+            .info = .{
+                .body = .{
+                    .track = .{
+                        .line = line.id,
+                        .info_axis_state = true,
+                        .filter = if (filter) |*_filter|
+                            _filter.toProtobuf()
+                        else
+                            null,
+                    },
                 },
-            );
-            try client.writer.interface.flush();
-        }
-        try socket.waitToRead(&command.checkCommandInterrupt);
-        var track = try client.api.response.info.track.decode(
-            client.allocator,
-            &client.reader.interface,
-        );
-        defer track.deinit(client.allocator);
-        if (track.line != line.id) return error.InvalidResponse;
-        for (track.axis_state.items) |axis| {
-            std.log.info(
-                "Axis {} Hall Sensor:\n\t BACK - {s}\n\t FRONT - {s}",
-                .{
-                    axis.id,
-                    if (axis.hall_alarm_back) "ON" else "OFF",
-                    if (axis.hall_alarm_front) "ON" else "OFF",
-                },
-            );
+            },
+        },
+    };
+    try client.removeIgnoredMessage(socket);
+    try socket.waitToWrite(&command.checkCommandInterrupt);
+    // Send message
+    try request.encode(&client.writer.interface, client.allocator);
+    try client.writer.interface.flush();
+    // Receive response
+    try socket.waitToRead(&command.checkCommandInterrupt);
+    var decoded: api.protobuf.mmc.Response = try .decode(
+        &client.reader.interface,
+        client.allocator,
+    );
+    defer decoded.deinit(client.allocator);
+    const track = switch (decoded.body orelse return error.InvalidResponse) {
+        .info => |info_resp| switch (info_resp.body orelse
+            return error.InvalidResponse) {
+            .track => |track_resp| track_resp,
+            .request_error => |req_err| {
+                return client.error_response.throwInfoError(req_err);
+            },
+            else => return error.InvalidResponse,
+        },
+        .request_error => |req_err| {
+            return client.error_response.throwMmcError(req_err);
+        },
+        else => return error.InvalidResponse,
+    };
+    if (track.line != line.id) return error.InvalidResponse;
+    if (filter) |_filter| {
+        switch (_filter) {
+            .axis => if (track.axis_state.items.len != 1)
+                return error.InvalidResponse,
+            else => {},
         }
     } else {
-        {
-            try client.removeIgnoredMessage(socket);
-            try socket.waitToWrite(&command.checkCommandInterrupt);
-            try client.api.request.info.track.encode(
-                client.allocator,
-                &client.writer.interface,
-                .{
-                    .line = line.id,
-                    .info_axis_state = true,
-                    .filter = null,
-                },
-            );
-            try client.writer.interface.flush();
-        }
-        try socket.waitToRead(&command.checkCommandInterrupt);
-        var track = try client.api.response.info.track.decode(
-            client.allocator,
-            &client.reader.interface,
-        );
-        defer track.deinit(client.allocator);
-        if (track.line != line.id and
-            track.axis_state.items.len != line.axes)
+        if (track.axis_state.items.len != line.axes)
             return error.InvalidResponse;
-        // Starts printing hall status
-        for (track.axis_state.items) |axis| {
-            std.log.info(
-                "Axis {} Hall Sensor:\n\t BACK - {s}\n\t FRONT - {s}",
-                .{
-                    axis.id,
-                    if (axis.hall_alarm_back) "ON" else "OFF",
-                    if (axis.hall_alarm_front) "ON" else "OFF",
-                },
-            );
-        }
+    }
+    for (track.axis_state.items) |axis| {
+        std.log.info(
+            "Axis {} Hall Sensor:\n\t BACK - {s}\n\t FRONT - {s}",
+            .{
+                axis.id,
+                if (axis.hall_alarm_back) "ON" else "OFF",
+                if (axis.hall_alarm_front) "ON" else "OFF",
+            },
+        );
     }
 }

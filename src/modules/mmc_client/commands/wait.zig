@@ -2,6 +2,7 @@ const std = @import("std");
 const client = @import("../../mmc_client.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
+const api = @import("mmc-api");
 
 pub fn isolate(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_isolate");
@@ -116,31 +117,50 @@ pub fn axisEmpty(params: [][]const u8) !void {
         if (timeout != 0 and
             wait_timer.read() > timeout * std.time.ns_per_ms)
             return error.WaitTimeout;
-        {
-            try client.removeIgnoredMessage(socket);
-            try socket.waitToWrite(&command.checkCommandInterrupt);
-            try client.api.request.info.track.encode(
-                client.allocator,
-                &client.writer.interface,
-                .{
-                    .line = line.id,
-                    .info_axis_state = true,
-                    .filter = .{
-                        .axes = .{
-                            .start = axis_id,
-                            .end = axis_id,
+        const request: api.protobuf.mmc.Request = .{
+            .body = .{
+                .info = .{
+                    .body = .{
+                        .track = .{
+                            .line = line.id,
+                            .info_axis_state = true,
+                            .filter = .{
+                                .axes = .{
+                                    .start = axis_id,
+                                    .end = axis_id,
+                                },
+                            },
                         },
                     },
                 },
-            );
-            try client.writer.interface.flush();
-        }
+            },
+        };
+        try client.removeIgnoredMessage(socket);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        // Send message
+        try request.encode(&client.writer.interface, client.allocator);
+        try client.writer.interface.flush();
+        // Receive response
         try socket.waitToRead(&command.checkCommandInterrupt);
-        var track = try client.api.response.info.track.decode(
-            client.allocator,
+        var decoded: api.protobuf.mmc.Response = try .decode(
             &client.reader.interface,
+            client.allocator,
         );
-        defer track.deinit(client.allocator);
+        defer decoded.deinit(client.allocator);
+        var track = switch (decoded.body orelse return error.InvalidResponse) {
+            .info => |info_resp| switch (info_resp.body orelse
+                return error.InvalidResponse) {
+                .track => |track_resp| track_resp,
+                .request_error => |req_err| {
+                    return client.error_response.throwInfoError(req_err);
+                },
+                else => return error.InvalidResponse,
+            },
+            .request_error => |req_err| {
+                return client.error_response.throwMmcError(req_err);
+            },
+            else => return error.InvalidResponse,
+        };
         if (track.line != line.id) return error.InvalidResponse;
         const axis = track.axis_state.pop() orelse return error.InvalidResponse;
         if (axis.carrier == 0 and
@@ -157,7 +177,7 @@ pub fn axisEmpty(params: [][]const u8) !void {
 fn waitCarrierState(
     line: u32,
     id: std.math.IntFittingRange(1, 1023),
-    state: client.api.api.protobuf.mmc.info.Response.Track.Carrier.State.State,
+    state: api.protobuf.mmc.info.Response.Track.Carrier.State.State,
     timeout: u64,
 ) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
@@ -167,32 +187,49 @@ fn waitCarrierState(
         if (timeout != 0 and
             wait_timer.read() > timeout * std.time.ns_per_ms)
             return error.WaitTimeout;
-        {
-            try client.removeIgnoredMessage(socket);
-            try socket.waitToWrite(command.checkCommandInterrupt);
-
-            try client.api.request.info.track.encode(
-                client.allocator,
-                &client.writer.interface,
-                .{
-                    .line = line,
-                    .info_carrier_state = true,
-                    .filter = .{
-                        .carriers = .{ .ids = .fromOwnedSlice(&ids) },
+        const request: api.protobuf.mmc.Request = .{
+            .body = .{
+                .info = .{
+                    .body = .{
+                        .track = .{
+                            .line = line,
+                            .info_carrier_state = true,
+                            .filter = .{
+                                .carriers = .{ .ids = .fromOwnedSlice(&ids) },
+                            },
+                        },
                     },
                 },
-            );
-            try client.writer.interface.flush();
-        }
-        try socket.waitToRead(command.checkCommandInterrupt);
-
-        var track = try client.api.response.info.track.decode(
-            client.allocator,
+            },
+        };
+        try client.removeIgnoredMessage(socket);
+        try socket.waitToWrite(&command.checkCommandInterrupt);
+        // Send message
+        try request.encode(&client.writer.interface, client.allocator);
+        try client.writer.interface.flush();
+        // Receive response
+        try socket.waitToRead(&command.checkCommandInterrupt);
+        var decoded: api.protobuf.mmc.Response = try .decode(
             &client.reader.interface,
+            client.allocator,
         );
-        defer track.deinit(client.allocator);
+        defer decoded.deinit(client.allocator);
+        var track = switch (decoded.body orelse return error.InvalidResponse) {
+            .info => |info_resp| switch (info_resp.body orelse
+                return error.InvalidResponse) {
+                .track => |track_resp| track_resp,
+                .request_error => |req_err| {
+                    return client.error_response.throwInfoError(req_err);
+                },
+                else => return error.InvalidResponse,
+            },
+            .request_error => |req_err| {
+                return client.error_response.throwMmcError(req_err);
+            },
+            else => return error.InvalidResponse,
+        };
         if (track.line != line) return error.InvalidResponse;
-        const carrier = track.carrier_state.pop() orelse return error.InvalidResponse;
+        const carrier = track.carrier_state.pop() orelse return error.CarrierNotFound;
         if (carrier.state == .CARRIER_STATE_OVERCURRENT) return error.Overcurrent;
         if (carrier.state == state) return;
     }
