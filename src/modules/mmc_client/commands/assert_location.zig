@@ -5,7 +5,18 @@ const command = @import("../../../command.zig");
 pub fn impl(params: [][]const u8) !void {
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
-    const carrier_id = try std.fmt.parseInt(u10, params[1], 0);
+    const carrier_id = try std.fmt.parseInt(u10, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     const expected_location: f32 = try std.fmt.parseFloat(f32, params[2]);
     // Default location threshold value is 1 mm
     const location_thr = if (params[3].len > 0)

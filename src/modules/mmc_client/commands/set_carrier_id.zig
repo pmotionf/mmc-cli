@@ -7,8 +7,30 @@ pub fn impl(params: [][]const u8) !void {
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const carrier = try std.fmt.parseInt(u32, params[1], 0);
-    const new_carrier = try std.fmt.parseInt(u32, params[2], 0);
+    const carrier = try std.fmt.parseUnsigned(u32, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
+    const new_carrier = try std.fmt.parseUnsigned(u32, b: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :b input[0..ignore_idx];
+        } else break :b input;
+    }, 0);
     {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
