@@ -1,8 +1,11 @@
 const std = @import("std");
 const client = @import("../../mmc_client.zig");
 const command = @import("../../../command.zig");
+const tracy = @import("tracy");
 
 pub fn impl(params: [][]const u8) !void {
+    const tracy_zone = tracy.traceNamed(@src(), "carrier_location");
+    defer tracy_zone.end();
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, b: {

@@ -1,8 +1,11 @@
 const std = @import("std");
 const client = @import("../../mmc_client.zig");
 const command = @import("../../../command.zig");
+const tracy = @import("tracy");
 
 pub fn forward(params: [][]const u8) !void {
+    const tracy_zone = tracy.traceNamed(@src(), "pull_forward");
+    defer tracy_zone.end();
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
     const axis_id = try std.fmt.parseInt(u32, params[1], 0);
@@ -65,6 +68,8 @@ pub fn forward(params: [][]const u8) !void {
 }
 
 pub fn backward(params: [][]const u8) !void {
+    const tracy_zone = tracy.traceNamed(@src(), "pull_backward");
+    defer tracy_zone.end();
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
     const axis_id = try std.fmt.parseInt(u32, params[1], 0);

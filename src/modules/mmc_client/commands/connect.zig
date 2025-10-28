@@ -5,7 +5,7 @@ const disconnect = @import("disconnect.zig");
 const tracy = @import("tracy");
 
 pub fn impl(params: [][]const u8) !void {
-    const tracy_zone = tracy.trace(@src());
+    const tracy_zone = tracy.traceNamed(@src(), "connect");
     defer tracy_zone.end();
     if (client.sock) |_| disconnect.impl(&.{}) catch unreachable;
     const endpoint: client.Config =
