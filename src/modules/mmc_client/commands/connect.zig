@@ -2,8 +2,11 @@ const std = @import("std");
 const client = @import("../../mmc_client.zig");
 const command = @import("../../../command.zig");
 const disconnect = @import("disconnect.zig");
+const tracy = @import("tracy");
 
 pub fn impl(params: [][]const u8) !void {
+    const tracy_zone = tracy.trace(@src());
+    defer tracy_zone.end();
     if (client.sock) |_| disconnect.impl(&.{}) catch unreachable;
     const endpoint: client.Config =
         if (params[0].len != 0) endpoint: {
