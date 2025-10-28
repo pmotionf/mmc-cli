@@ -37,17 +37,16 @@ pub fn impl(params: [][]const u8) !void {
     {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
-        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.set_carrier_id.encode(
             client.allocator,
-            &writer.interface,
+            &client.writer.interface,
             .{
                 .line = line.id,
                 .carrier = carrier,
                 .new_carrier = new_carrier,
             },
         );
-        try writer.interface.flush();
+        try client.writer.interface.flush();
     }
     try client.waitCommandReceived();
 }

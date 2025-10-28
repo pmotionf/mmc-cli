@@ -32,10 +32,9 @@ pub fn impl(params: [][]const u8) !void {
     {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
-        var writer = socket.writer(&client.writer_buf);
         try client.api.request.info.track.encode(
             client.allocator,
-            &writer.interface,
+            &client.writer.interface,
             .{
                 .line = line.id,
                 .info_axis_state = true,
@@ -47,13 +46,12 @@ pub fn impl(params: [][]const u8) !void {
                 },
             },
         );
-        try writer.interface.flush();
+        try client.writer.interface.flush();
     }
     try socket.waitToRead(&command.checkCommandInterrupt);
-    var reader = socket.reader(&client.reader_buf);
     var track = try client.api.response.info.track.decode(
         client.allocator,
-        &reader.interface,
+        &client.reader.interface,
     );
     defer track.deinit(client.allocator);
     if (track.line != line.id) return error.InvalidResponse;

@@ -17,10 +17,9 @@ pub fn impl(params: [][]const u8) !void {
     {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
-        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.clear_errors.encode(
             client.allocator,
-            &writer.interface,
+            &client.writer.interface,
             .{
                 .line = line.id,
                 .target = if (filter) |f| b: switch (f) {
@@ -36,7 +35,7 @@ pub fn impl(params: [][]const u8) !void {
                 } else null,
             },
         );
-        try writer.interface.flush();
+        try client.writer.interface.flush();
     }
     try client.waitCommandReceived();
 }

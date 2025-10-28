@@ -37,10 +37,9 @@ pub fn posAxis(params: [][]const u8) !void {
     {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
-        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.move.encode(
             client.allocator,
-            &writer.interface,
+            &client.writer.interface,
             .{
                 .line = line.id,
                 .carrier = carrier_id,
@@ -55,7 +54,7 @@ pub fn posAxis(params: [][]const u8) !void {
                 .control = .CONTROL_POSITION,
             },
         );
-        try writer.interface.flush();
+        try client.writer.interface.flush();
     }
     try client.waitCommandReceived();
 }
@@ -90,10 +89,9 @@ pub fn posLocation(params: [][]const u8) !void {
     {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
-        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.move.encode(
             client.allocator,
-            &writer.interface,
+            &client.writer.interface,
             .{
                 .line = line.id,
                 .carrier = carrier_id,
@@ -108,7 +106,7 @@ pub fn posLocation(params: [][]const u8) !void {
                 .control = .CONTROL_POSITION,
             },
         );
-        try writer.interface.flush();
+        try client.writer.interface.flush();
     }
     try client.waitCommandReceived();
 }
@@ -142,10 +140,9 @@ pub fn posDistance(params: [][]const u8) !void {
     {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
-        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.move.encode(
             client.allocator,
-            &writer.interface,
+            &client.writer.interface,
             .{
                 .line = line.id,
                 .carrier = carrier_id,
@@ -160,7 +157,7 @@ pub fn posDistance(params: [][]const u8) !void {
                 .control = .CONTROL_POSITION,
             },
         );
-        try writer.interface.flush();
+        try client.writer.interface.flush();
     }
     try client.waitCommandReceived();
 }
@@ -194,10 +191,9 @@ pub fn spdAxis(params: [][]const u8) !void {
     {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
-        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.move.encode(
             client.allocator,
-            &writer.interface,
+            &client.writer.interface,
             .{
                 .line = line.id,
                 .carrier = carrier_id,
@@ -212,7 +208,7 @@ pub fn spdAxis(params: [][]const u8) !void {
                 .control = .CONTROL_VELOCITY,
             },
         );
-        try writer.interface.flush();
+        try client.writer.interface.flush();
     }
     try client.waitCommandReceived();
 }
@@ -247,10 +243,9 @@ pub fn spdLocation(params: [][]const u8) !void {
     {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
-        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.move.encode(
             client.allocator,
-            &writer.interface,
+            &client.writer.interface,
             .{
                 .line = line.id,
                 .carrier = carrier_id,
@@ -265,7 +260,7 @@ pub fn spdLocation(params: [][]const u8) !void {
                 .control = .CONTROL_VELOCITY,
             },
         );
-        try writer.interface.flush();
+        try client.writer.interface.flush();
     }
     try client.waitCommandReceived();
 }
@@ -299,10 +294,9 @@ pub fn spdDistance(params: [][]const u8) !void {
     {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
-        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.move.encode(
             client.allocator,
-            &writer.interface,
+            &client.writer.interface,
             .{
                 .line = line.id,
                 .carrier = carrier_id,
@@ -317,7 +311,7 @@ pub fn spdDistance(params: [][]const u8) !void {
                 .control = .CONTROL_VELOCITY,
             },
         );
-        try writer.interface.flush();
+        try client.writer.interface.flush();
     }
     try client.waitCommandReceived();
 }

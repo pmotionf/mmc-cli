@@ -16,9 +16,11 @@ pub var stop = std.atomic.Value(bool).init(false);
 // NOTE: The following buffer differ from the client buffer as they are working
 //       on different thread.
 /// Reader buffer for network stream
-pub var reader_buf: [4096]u8 = undefined;
+var reader_buf: [4096]u8 = undefined;
 /// Writer buffer for network stream
-pub var writer_buf: [4096]u8 = undefined;
+var writer_buf: [4096]u8 = undefined;
+var reader: client.zignet.Socket.Reader = undefined;
+var writer: client.zignet.Socket.Writer = undefined;
 
 allocator: std.mem.Allocator,
 path: ?[]const u8,
@@ -145,7 +147,6 @@ pub const Data = struct {
             {
                 try client.removeIgnoredMessage(socket.*);
                 try socket.waitToWrite(command.checkCommandInterrupt);
-                var writer = socket.writer(&writer_buf);
                 try api_helper.request.info.track.encode(
                     allocator,
                     &writer.interface,
@@ -167,7 +168,6 @@ pub const Data = struct {
                 try writer.interface.flush();
             }
             try socket.waitToRead(command.checkCommandInterrupt);
-            var reader = socket.reader(&reader_buf);
             var response = try api_helper.response.info.track.decode(
                 allocator,
                 &reader.interface,
@@ -331,7 +331,7 @@ pub fn status(self: *Log) !void {
 }
 
 fn writeHeaders(
-    writer: *std.Io.Writer,
+    w: *std.Io.Writer,
     prefix: []const u8,
     comptime parent: []const u8,
     comptime Parent: type,
@@ -341,26 +341,26 @@ fn writeHeaders(
         if (@typeInfo(field.type) == .@"struct") {
             if (parent.len == 0)
                 try writeHeaders(
-                    writer,
+                    w,
                     prefix,
                     field.name,
                     field.type,
                 )
             else
                 try writeHeaders(
-                    writer,
+                    w,
                     prefix,
                     parent ++ "." ++ field.name,
                     field.type,
                 );
         } else {
             if (parent.len == 0)
-                try writer.print(
+                try w.print(
                     "{s}_{s},",
                     .{ prefix, field.name },
                 )
             else
-                try writer.print(
+                try w.print(
                     "{s}_{s},",
                     .{ prefix, parent ++ "." ++ field.name },
                 );
@@ -368,23 +368,23 @@ fn writeHeaders(
     }
 }
 
-fn writeValues(writer: *std.Io.Writer, parent: anytype) !void {
+fn writeValues(w: *std.Io.Writer, parent: anytype) !void {
     const parent_ti = @typeInfo(@TypeOf(parent)).@"struct";
     inline for (parent_ti.fields) |field| {
         if (@typeInfo(field.type) == .@"struct")
-            try writeValues(writer, @field(parent, field.name))
+            try writeValues(w, @field(parent, field.name))
         else {
             if (@typeInfo(field.type) == .optional) {
                 if (@field(parent, field.name)) |value|
-                    try writer.print("{},", .{value})
+                    try w.print("{},", .{value})
                 else
-                    try writer.write("None,");
+                    try w.write("None,");
             } else if (@typeInfo(field.type) == .@"enum") {
-                try writer.print(
+                try w.print(
                     "{d},",
                     .{@intFromEnum(@field(parent, field.name))},
                 );
-            } else try writer.print(
+            } else try w.print(
                 "{},",
                 .{@field(parent, field.name)},
             );
@@ -395,12 +395,12 @@ fn writeValues(writer: *std.Io.Writer, parent: anytype) !void {
 /// Write the logged data into the logging file
 fn write(
     self: *Log,
-    writer: *std.Io.Writer,
+    w: *std.Io.Writer,
     duration: f64,
     last_timestamp: f64,
 ) !void {
     // Write header for the logging file
-    try writer.writeAll("timestamp,");
+    try w.writeAll("timestamp,");
     for (self.configs) |config| {
         var buf: [64]u8 = undefined;
         if (!config.axis and !config.driver) continue;
@@ -409,7 +409,7 @@ fn write(
             const end = (config.axis_id_range.end - 1) / 3 + 1;
             for (start..end + 1) |id| {
                 try writeHeaders(
-                    writer,
+                    w,
                     try std.fmt.bufPrint(
                         &buf,
                         "{s}_driver{d}",
@@ -425,7 +425,7 @@ fn write(
             const end = config.axis_id_range.end;
             for (start..end + 1) |id| {
                 try writeHeaders(
-                    writer,
+                    w,
                     try std.fmt.bufPrint(
                         &buf,
                         "{s}_axis{d}",
@@ -440,8 +440,8 @@ fn write(
     // Write the data to the logging file
     while (self.data.?.readItem()) |data| {
         if (last_timestamp - data.timestamp > duration) continue;
-        try writer.writeByte('\n');
-        try writer.print(
+        try w.writeByte('\n');
+        try w.print(
             "{d},",
             .{data.timestamp},
         );
@@ -450,14 +450,14 @@ fn write(
                 const start = (config.axis_id_range.start - 1) / 3 + 1;
                 const end = (config.axis_id_range.end - 1) / 3 + 1;
                 for (start - 1..end) |idx| {
-                    try writeValues(writer, data.drivers[idx]);
+                    try writeValues(w, data.drivers[idx]);
                 }
             }
             if (config.axis) {
                 const start = config.axis_id_range.start;
                 const end = config.axis_id_range.end;
                 for (start - 1..end) |idx| {
-                    try writeValues(writer, data.axes[idx]);
+                    try writeValues(w, data.axes[idx]);
                 }
             }
         }
@@ -491,7 +491,13 @@ pub fn handler(duration: f64) !void {
     defer log_file.close();
     const logging_size = @as(usize, @intFromFloat(logging_size_float));
     var socket = try client.zignet.Socket.connect(client.log.endpoint);
-    defer socket.close();
+    reader = socket.reader(&reader_buf);
+    writer = socket.writer(&writer_buf);
+    defer {
+        writer = undefined;
+        reader = undefined;
+        socket.close();
+    }
     var data = std.mem.zeroInit(Data, .{});
     client.log.data = try .initCapacity(
         client.log.allocator,

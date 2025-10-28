@@ -51,10 +51,9 @@ pub fn impl(params: [][]const u8) !void {
     {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
-        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.initialize.encode(
             client.allocator,
-            &writer.interface,
+            &client.writer.interface,
             .{
                 .line = line.id,
                 .axis = axis_id,
@@ -63,7 +62,7 @@ pub fn impl(params: [][]const u8) !void {
                 .direction = dir,
             },
         );
-        try writer.interface.flush();
+        try client.writer.interface.flush();
     }
     try client.waitCommandReceived();
 }

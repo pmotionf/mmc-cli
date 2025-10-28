@@ -30,13 +30,12 @@ pub fn impl(params: [][]const u8) !void {
     {
         try client.removeIgnoredMessage(socket);
         try socket.waitToWrite(&command.checkCommandInterrupt);
-        var writer = socket.writer(&client.writer_buf);
         try client.api.request.command.auto_initialize.encode(
             client.allocator,
-            &writer.interface,
+            &client.writer.interface,
             .{ .lines = init_lines },
         );
-        try writer.interface.flush();
+        try client.writer.interface.flush();
     }
     try client.waitCommandReceived();
 }
