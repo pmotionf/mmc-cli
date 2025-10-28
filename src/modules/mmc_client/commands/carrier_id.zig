@@ -9,8 +9,10 @@ pub fn impl(params: [][]const u8) !void {
         params[0],
         ",",
     );
-    const result_var: []const u8 = params[1];
-    if (result_var.len > 32) return error.PrefixTooLong;
+    const save_var: []const u8 = params[1];
+    if (save_var.len > 0 and std.ascii.isDigit(save_var[0]))
+        return error.InvalidParameter;
+    if (save_var.len > 32) return error.PrefixTooLong;
 
     // Validate line names, avoid heap allocation
     var line_counter: usize = 0;
@@ -65,13 +67,13 @@ pub fn impl(params: [][]const u8) !void {
                 "Carrier {d} on line {s} axis {d}",
                 .{ axis.carrier, line.name, axis.id },
             );
-            if (result_var.len > 0) {
+            if (save_var.len > 0) {
                 var int_buf: [8]u8 = undefined;
                 var var_buf: [40]u8 = undefined;
                 const key = try std.fmt.bufPrint(
                     &var_buf,
                     "{s}_{d}",
-                    .{ result_var, count },
+                    .{ save_var, count },
                 );
                 const value = try std.fmt.bufPrint(
                     &int_buf,
