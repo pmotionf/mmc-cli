@@ -72,12 +72,12 @@ pub fn impl(params: [][]const u8) !void {
                 var var_buf: [40]u8 = undefined;
                 const key = try std.fmt.bufPrint(
                     &var_buf,
-                    "{s}_{d}",
+                    "{s}{d}",
                     .{ save_var, count },
                 );
                 const value = try std.fmt.bufPrint(
                     &int_buf,
-                    "{d}",
+                    "{d}c",
                     .{axis.carrier},
                 );
                 try command.variables.put(key, value);
