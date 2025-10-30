@@ -24,8 +24,6 @@ pub fn isolate(params: [][]const u8) !void {
         try std.fmt.parseInt(u64, params[2], 0)
     else
         0;
-    if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
-
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     try waitCarrierState(
@@ -56,7 +54,6 @@ pub fn moveCarrier(params: [][]const u8) !void {
         try std.fmt.parseInt(u64, params[2], 0)
     else
         0;
-    if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -88,7 +85,6 @@ pub fn pull(params: [][]const u8) !void {
         try std.fmt.parseInt(u64, params[2], 0)
     else
         0;
-    if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];

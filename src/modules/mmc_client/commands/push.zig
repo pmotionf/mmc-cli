@@ -36,7 +36,6 @@ fn impl(
             break :b input[0..ignore_idx];
         } else break :b input;
     }, 0);
-    if (carrier_id == 0 or carrier_id > 254) return error.InvalidCarrierId;
 
     const axis_id: ?u32 = if (params[2].len > 0)
         try std.fmt.parseInt(u32, params[2], 0)
