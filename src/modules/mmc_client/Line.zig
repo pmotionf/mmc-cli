@@ -5,7 +5,7 @@ const Config = api.protobuf.mmc.core.Response.TrackConfig;
 
 index: Line.Index,
 id: Line.Id,
-axes: u10,
+axes: std.math.IntFittingRange(1, max_axis),
 name: []u8,
 velocity: struct { value: u10, low: bool },
 acceleration: u8,
@@ -18,6 +18,7 @@ length: struct {
 pub const max = 64 * 4;
 pub const Index = std.math.IntFittingRange(0, max - 1);
 pub const Id = std.math.IntFittingRange(1, max);
+pub const max_axis = max * 3;
 
 pub fn init(
     allocator: std.mem.Allocator,
