@@ -18,8 +18,9 @@ pub fn backward(params: [][]const u8) !void {
 
 fn impl(
     params: [][]const u8,
-    dir: api.protobuf.mmc.command.Request.Direction,
+    comptime dir: api.protobuf.mmc.command.Request.Direction,
 ) !void {
+    if (dir == .DIRECTION_UNSPECIFIED) @compileError("InvalidDirection");
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
@@ -45,6 +46,13 @@ fn impl(
     if (axis_id) |axis| {
         // Send move command to the provided axis.
         {
+            const location =
+                line.length.axis * @as(f32, @floatFromInt(axis - 1)) +
+                switch (dir) {
+                    .DIRECTION_BACKWARD => -line.length.axis / 2.0,
+                    .DIRECTION_FORWARD => line.length.axis / 2.0,
+                    else => unreachable,
+                };
             const request: api.protobuf.mmc.Request = .{
                 .body = .{
                     .command = .{
@@ -58,13 +66,7 @@ fn impl(
                                 else
                                     .VELOCITY_MODE_NORMAL,
                                 .acceleration = line.acceleration,
-                                .target = .{
-                                    .location = line.length.axis * @as(
-                                        f32,
-                                        @floatFromInt(axis - 1),
-                                    ) - 0.15,
-                                    // 0.15: offset for continuous push
-                                },
+                                .target = .{ .location = location },
                                 .disable_cas = true,
                                 .control = .CONTROL_POSITION,
                             },
