@@ -1,3 +1,5 @@
+const log = @This();
+
 const std = @import("std");
 const api = @import("mmc-api");
 const zignet = @import("zignet");
@@ -15,6 +17,7 @@ pub const Config = struct {
     /// config, even for the line that is not going to be logged.
     lines: []Line,
 
+    /// Line configuration of mmc logging.
     const Line = struct {
         /// Line ID, similar to track configuration.
         id: client.Line.Id,
@@ -22,41 +25,666 @@ pub const Config = struct {
         drivers: []bool,
         /// Tracking which axes to be logged.
         axes: []bool,
+
+        pub fn isInitialized(line: Line) bool {
+            for (line.axes) |axis|
+                if (axis) return true;
+            for (line.drivers) |driver|
+                if (driver) return true;
+            return false;
+        }
     };
 
-    /// Initialize the lines for storing the logging configuration.
     pub fn init(allocator: std.mem.Allocator, lines: []client.Line) !Config {
         var result: Config = undefined;
         result.lines = try allocator.alloc(Line, lines.len);
-        errdefer allocator.free(result.lines);
+        errdefer result.deinit(allocator);
         for (result.lines, lines) |*config_line, track_line| {
             config_line.id = track_line.id;
-            config_line.axes = allocator.alloc(bool, track_line.axes);
-            // TODO: Currently, there is no way to now the maximum number of
-            // drivers in the system. It is best to caught if the axis or driver
-            // is exceeding the actual number in the server. The following are a
-            // way to get the maximum number of driver in a line. This shall be
-            // addressed in the API 2.0.
+            config_line.axes = try allocator.alloc(bool, track_line.axes);
+            for (config_line.axes) |*axis| axis.* = false;
+            config_line.drivers = try allocator.alloc(bool, track_line.drivers);
+            for (config_line.drivers) |*driver| driver.* = false;
         }
+        return result;
     }
 
-    /// Add a new logging configurations. Overwriting configuration is allowed
-    /// if the region is exactly the same as the one stored in the configuration
-    /// before. Attempting to add a new configuration with overlapping region
-    /// returns an error.
-    pub fn add(new_line: Line, allocator: std.mem.Allocator) !void {
-        // Check if the region is already used
-        //
+    pub fn deinit(config: Config, allocator: std.mem.Allocator) void {
+        for (config.lines) |line| {
+            allocator.free(line.axes);
+            allocator.free(line.drivers);
+        }
+        allocator.free(config.lines);
+    }
+
+    /// Check whether there is at least one axis or one driver is set to be
+    /// logged.
+    pub fn isInitialized(config: Config) bool {
+        for (config.lines) |line| {
+            if (line.isInitialized()) return true;
+        }
+        return false;
     }
 };
 
-var net_reader_buf: [4096]u8 = undefined;
-var net_writer_buf: [4096]u8 = undefined;
+/// Logging data stream for one iteration of logging process. Stream have to be
+/// initialized when the log runner is executed and deinitialized upon exit.
+/// The stream shall be passed to ring buffer and reset on every iteration of
+/// logging process. This method prevents dynamic allocation on every iteration.
+const Stream = struct {
+    /// Store the data of one iteration logging process
+    data: Stream.Data,
+    /// Optimized logging configuration for requesting data
+    config: Stream.Config,
+    socket: zignet.Socket,
+    reader: zignet.Socket.Reader,
+    writer: zignet.Socket.Writer,
+
+    /// Store the line data of the requested information based on the log
+    /// config.
+    const Data = struct {
+        /// Timestamp in second.
+        timestamp: f64 = 0,
+        /// Store logging data of every line.
+        lines: []Stream.Data.Line,
+
+        /// Line data structure of mmc logging.
+        const Line = struct {
+            id: u32,
+            /// Store logging data of every axis on a line.
+            axes: []Axis,
+            /// Store logging data of every driver on a line.
+            drivers: []Driver,
+
+            /// Axis data structure of mmc logging.
+            const Axis = struct {
+                id: u32,
+                hall: struct { back: bool, front: bool },
+                motor_active: bool,
+                waiting_pull: bool,
+                waiting_push: bool,
+                carrier: Carrier,
+                err: Error,
+                pub const Carrier = struct {
+                    id: u10,
+                    position: f32,
+                    state: api.protobuf.mmc.info.Response.Track.Carrier.State.State,
+                    cas: struct { enabled: bool, triggered: bool },
+                };
+                pub const Error = struct {
+                    overcurrent: bool,
+                };
+            };
+
+            /// Driver data structure of mmc logging.
+            pub const Driver = struct {
+                id: u32,
+                connected: bool,
+                busy: bool,
+                motor_disabled: bool,
+                stopped: bool,
+                paused: bool,
+                err: Error,
+                pub const Error = struct {
+                    control_loop_max_time_exceeded: bool,
+                    inverter_overheat: bool,
+                    power: struct { overvoltage: bool, undervoltage: bool },
+                    comm: struct { from_prev: bool, from_next: bool },
+                };
+            };
+        };
+
+        /// Get the data from the server based on the stream config.
+        fn getAndStore(
+            data: *Stream.Data,
+            allocator: std.mem.Allocator,
+            timestamp: f64,
+        ) !void {
+            const stream: *Stream = @alignCast(@fieldParentPtr("data", data));
+            stream.data.timestamp = timestamp;
+            for (stream.config.lines.items) |line| {
+                // Get the data from the server
+                const request: api.protobuf.mmc.Request = .{
+                    .body = .{
+                        .info = .{
+                            .body = .{
+                                .track = .{
+                                    .line = line.id,
+                                    .info_axis_errors = line.axis,
+                                    .info_axis_state = line.axis,
+                                    .info_carrier_state = line.axis,
+                                    .info_driver_errors = line.driver,
+                                    .info_driver_state = line.driver,
+                                    .filter = .{
+                                        .axes = .{
+                                            .start = line.axis_range.start,
+                                            .end = line.axis_range.end,
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                };
+                try client.removeIgnoredMessage(stream.socket);
+                try stream.socket.waitToWrite(&command.checkCommandInterrupt);
+                // Send message
+                try request.encode(&stream.writer.interface, allocator);
+                try stream.writer.interface.flush();
+                // Receive message
+                try stream.socket.waitToRead(&command.checkCommandInterrupt);
+                var decoded: api.protobuf.mmc.Response = try .decode(
+                    &stream.reader.interface,
+                    allocator,
+                );
+                defer decoded.deinit(allocator);
+                const track = switch (decoded.body orelse
+                    return error.InvalidResponse) {
+                    .info => |info_resp| switch (info_resp.body orelse
+                        return error.InvalidResponse) {
+                        .track => |track_resp| track_resp,
+                        .request_error => |req_err| {
+                            return client.error_response
+                                .throwInfoError(req_err);
+                        },
+                        else => return error.InvalidResponse,
+                    },
+                    .request_error => |req_err| {
+                        return client.error_response.throwMmcError(req_err);
+                    },
+                    else => return error.InvalidResponse,
+                };
+                if (track.line != line.id) return error.InvalidResponse;
+                // Store the data to the buffer
+                // TODO: Optimize the storing to store directly to circular
+                // buffer instead of making a copy first before calling
+                // `writeItemOverwrite()`
+                for (
+                    track.axis_state.items,
+                    track.axis_errors.items,
+                ) |axis_info, axis_err| {
+                    data.lines[line.id - 1].axes[axis_info.id - 1] = .{
+                        .id = axis_info.id,
+                        .hall = .{
+                            .front = axis_info.hall_alarm_front,
+                            .back = axis_info.hall_alarm_back,
+                        },
+                        .motor_active = axis_info.motor_active,
+                        .waiting_pull = axis_info.waiting_pull,
+                        .waiting_push = axis_info.waiting_push,
+                        .err = .{
+                            .overcurrent = axis_err.overcurrent,
+                        },
+                        .carrier = std.mem.zeroInit(
+                            Stream.Data.Line.Axis.Carrier,
+                            .{},
+                        ),
+                    };
+                }
+                for (track.carrier_state.items) |carrier| {
+                    data.lines[line.id - 1]
+                        .axes[carrier.axis_main - 1].carrier = .{
+                        .id = @intCast(carrier.id),
+                        .position = carrier.position,
+                        .state = carrier.state,
+                        .cas = .{
+                            .enabled = !carrier.cas_disabled,
+                            .triggered = carrier.cas_triggered,
+                        },
+                    };
+                    if (carrier.axis_auxiliary) |aux|
+                        data.lines[line.id - 1].axes[aux - 1].carrier = .{
+                            .id = @intCast(carrier.id),
+                            .position = carrier.position,
+                            .state = carrier.state,
+                            .cas = .{
+                                .enabled = !carrier.cas_disabled,
+                                .triggered = carrier.cas_triggered,
+                            },
+                        };
+                }
+                for (
+                    track.driver_state.items,
+                    track.driver_errors.items,
+                ) |driver_info, driver_err| {
+                    data.lines[line.id - 1].drivers[driver_info.id - 1] = .{
+                        .id = driver_info.id,
+                        .connected = driver_info.connected,
+                        .busy = driver_info.busy,
+                        .motor_disabled = driver_info.motor_disabled,
+                        .stopped = driver_info.stopped,
+                        .paused = driver_info.paused,
+                        .err = .{
+                            .control_loop_max_time_exceeded = driver_err
+                                .control_loop_time_exceeded,
+                            .inverter_overheat = driver_err.inverter_overheat,
+                            .power = .{
+                                .overvoltage = driver_err.overvoltage,
+                                .undervoltage = driver_err.undervoltage,
+                            },
+                            .comm = .{
+                                .from_prev = driver_err.comm_error_prev,
+                                .from_next = driver_err.comm_error_next,
+                            },
+                        },
+                    };
+                }
+            }
+        }
+
+        /// Reset every field of the data to its default init value.
+        fn reset(data: *Stream.Data) void {
+            for (data.lines) |*line| {
+                for (line.axes) |*axis| axis.* =
+                    std.mem.zeroInit(Stream.Data.Line.Axis, .{});
+                for (line.drivers) |*driver| driver.* =
+                    std.mem.zeroInit(Stream.Data.Line.Driver, .{});
+            }
+            data.timestamp = 0;
+        }
+    };
+
+    /// Request info track configuration. This config optimizes the log config,
+    /// avoiding requesting track info for every lines, and every axes on each
+    /// line.
+    const Config = struct {
+        lines: std.ArrayList(Stream.Config.Line),
+
+        const Line = struct {
+            /// Line ID to be requested.
+            id: u32,
+            /// The axis range of a line to be requested.
+            axis_range: Range,
+            /// Request axis state and error if set. Require at least one log
+            /// config axis to be set.
+            axis: bool,
+            /// Request driver state and error if set. Require at least one log
+            /// config axis to be set.
+            driver: bool,
+        };
+
+        const Range = struct { start: u32, end: u32 };
+    };
+
+    fn init(
+        allocator: std.mem.Allocator,
+        lines: []client.Line,
+        config: log.Config,
+        endpoint: zignet.Endpoint,
+    ) !Stream {
+        var result: Stream = undefined;
+        result.data.lines = try allocator.alloc(Stream.Data.Line, lines.len);
+        errdefer result.deinit(allocator);
+        for (result.data.lines, lines) |*stream_line, track_line| {
+            stream_line.axes = try allocator.alloc(
+                Stream.Data.Line.Axis,
+                track_line.axes,
+            );
+            stream_line.drivers =
+                try allocator.alloc(Stream.Data.Line.Driver, track_line.drivers);
+        }
+        result.socket = try zignet.Socket.connect(endpoint);
+        result.reader = result.socket.reader(&stream_writer_buf);
+        result.writer = result.socket.writer(&stream_reader_buf);
+        for (config.lines) |line| {
+            const enabled = b: {
+                for (line.axes) |axis| {
+                    if (axis) break :b true;
+                }
+                for (line.drivers) |driver| {
+                    if (driver) break :b true;
+                }
+                break :b false;
+            };
+            if (enabled) {
+                // NOTE: Since the client does not know how many axes are there
+                // in one driver. This block will request the driver information
+                // first to define the axis range.
+                var axis_range: Stream.Config.Range = .{ .start = 0, .end = 0 };
+                var log_axis = false;
+                var log_driver = false;
+                // Requesting axis info with driver filter. Filling axis_range.
+                for (line.drivers, 1..) |driver, id| {
+                    if (driver == false) continue;
+                    log_driver = true;
+                    const request: api.protobuf.mmc.Request = .{
+                        .body = .{
+                            .info = .{
+                                .body = .{
+                                    .track = .{
+                                        .line = line.id,
+                                        .info_axis_state = true,
+                                        .filter = .{
+                                            .drivers = .{
+                                                .start = @intCast(id),
+                                                .end = @intCast(id),
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    };
+                    try client.removeIgnoredMessage(result.socket);
+                    try result.socket
+                        .waitToWrite(&command.checkCommandInterrupt);
+                    // Send message
+                    try request.encode(&result.writer.interface, allocator);
+                    try result.writer.interface.flush();
+                    // Receive message
+                    try result.socket.waitToRead(&command.checkCommandInterrupt);
+                    var decoded: api.protobuf.mmc.Response = try .decode(
+                        &result.reader.interface,
+                        allocator,
+                    );
+                    defer decoded.deinit(allocator);
+                    const track = switch (decoded.body orelse
+                        return error.InvalidResponse) {
+                        .info => |info_resp| switch (info_resp.body orelse
+                            return error.InvalidResponse) {
+                            .track => |track_resp| track_resp,
+                            .request_error => |req_err| {
+                                return client.error_response
+                                    .throwInfoError(req_err);
+                            },
+                            else => return error.InvalidResponse,
+                        },
+                        .request_error => |req_err| {
+                            return client.error_response.throwMmcError(req_err);
+                        },
+                        else => return error.InvalidResponse,
+                    };
+                    if (track.line != line.id) return error.InvalidResponse;
+                    for (track.axis_state.items) |axis| {
+                        // Check if axis range is still default
+                        if (axis_range.start == 0 and axis_range.end == 0) {
+                            axis_range = .{ .start = axis.id, .end = axis.id };
+                        }
+                        // Check if the current axis is less than the start of
+                        // axis range
+                        else if (axis.id < axis_range.start) {
+                            axis_range.start = axis.id;
+                        }
+                        // Check if the current axis is greater than the end of
+                        // axis range
+                        else if (axis.id > axis_range.end) {
+                            axis_range.end = axis.id;
+                        }
+                    }
+                }
+                // Filling axis_range.
+                for (line.axes, 1..) |axis, id| {
+                    if (axis == false) continue;
+                    log_axis = true;
+                    // Check if axis range is still default
+                    if (axis_range.start == 0 and axis_range.end == 0) {
+                        axis_range =
+                            .{ .start = @intCast(id), .end = @intCast(id) };
+                    }
+                    // Check if the current axis is less than the start of
+                    // axis range
+                    else if (id < axis_range.start) {
+                        axis_range.start = @intCast(id);
+                    }
+                    // Check if the current axis is greater than the end of
+                    // axis range
+                    else if (id > axis_range.end) {
+                        axis_range.end = @intCast(id);
+                    }
+                }
+                try result.config.lines.append(allocator, .{
+                    .id = line.id,
+                    .axis_range = axis_range,
+                    .axis = log_axis,
+                    .driver = log_driver,
+                });
+            }
+        }
+        return result;
+    }
+
+    fn deinit(stream: *Stream, allocator: std.mem.Allocator) void {
+        for (stream.data.lines) |line| {
+            allocator.free(line.axes);
+            allocator.free(line.drivers);
+        }
+        allocator.free(stream.data.lines);
+        stream.config.lines.deinit(allocator);
+        stream.socket.close();
+    }
+};
+
+/// The mmc-client must check `executing` flag before disconnecting the client
+/// to ensure the log is saved first.
+pub var executing = std.atomic.Value(bool).init(false);
+/// The main thread can notify the logging thread to stop the logging process.
+/// This is useful when the mmc-client is trying to disconnect a client or
+/// main thread faces an error. The logging must be saved once an error is
+/// happening on the main thread.
+pub var stop = std.atomic.Value(bool).init(false);
+
+var stream_writer_buf: [4096]u8 = undefined;
+var stream_reader_buf: [4096]u8 = undefined;
 var file_reader_buf: [4096]u8 = undefined;
 var file_writer_buf: [4096]u8 = undefined;
-// The following variables is initialized when the log runner is executed.
-var net_reader: std.Io.Reader = undefined;
-var net_writer: std.Io.Writer = undefined;
-var file_reader: std.Io.Reader = undefined;
-var file_writer: std.Io.Writer = undefined;
-var socket: zignet.Socket = undefined;
+
+pub fn runner(duration: f64, file_path: []const u8) !void {
+    defer client.allocator.free(file_path);
+    // Validation steps
+    if (client.log_config.isInitialized() == false)
+        return error.LoggingNotConfigured;
+    // Assumption: The register is updated every 3 ms.
+    const update_rate = 3;
+    const logging_size_float =
+        duration * @as(f64, @floatFromInt(std.time.ms_per_s)) / update_rate;
+    if (std.math.isNan(logging_size_float) or
+        std.math.isInf(logging_size_float) or
+        !std.math.isFinite(logging_size_float) or
+        logging_size_float <= 0) return error.InvalidDuration;
+    executing.store(true, .monotonic);
+    defer executing.store(false, .monotonic);
+    // Stream setup.
+    if (client.sock == null) return error.SocketNotConnected;
+    var stream: Stream = try .init(
+        client.allocator,
+        client.lines,
+        client.log_config,
+        client.endpoint orelse return error.MissingEndpoint,
+    );
+    defer stream.deinit(client.allocator);
+    // Logging file setup.
+    std.log.info("The registers will be logged to {s}", .{file_path});
+    const log_file = try std.fs.cwd().createFile(file_path, .{});
+    defer log_file.close();
+    // Temporary log data storage setup.
+    const logging_size = @as(usize, @intFromFloat(logging_size_float));
+    var data: CircularBufferAlloc(Stream.Data) = try .initCapacity(
+        client.allocator,
+        logging_size,
+    );
+    defer {
+        for (data.buffer) |buffer| {
+            for (buffer.lines) |line| {
+                client.allocator.free(line.axes);
+                client.allocator.free(line.drivers);
+            }
+            client.allocator.free(buffer.lines);
+        }
+        data.deinit();
+    }
+    for (data.buffer) |*buffer| {
+        buffer.lines = try client.allocator.alloc(
+            Stream.Data.Line,
+            stream.data.lines.len,
+        );
+        for (buffer.lines, stream.data.lines) |*buf_line, stream_line| {
+            buf_line.axes = try client.allocator.alloc(
+                Stream.Data.Line.Axis,
+                stream_line.axes.len,
+            );
+            buf_line.drivers = try client.allocator.alloc(
+                Stream.Data.Line.Driver,
+                stream_line.drivers.len,
+            );
+            for (buf_line.axes) |*axis| axis.* =
+                std.mem.zeroInit(Stream.Data.Line.Axis, .{});
+            for (buf_line.drivers) |*driver| driver.* =
+                std.mem.zeroInit(Stream.Data.Line.Driver, .{});
+        }
+        buffer.timestamp = 0;
+    }
+    // Setup the logging loop.
+    stop.store(false, .monotonic);
+    const log_time_start = std.time.microTimestamp();
+    var timer = try std.time.Timer.start();
+    var timestamp: f64 = 0;
+    while (stop.load(.monotonic) == false) {
+        timestamp = @as(
+            f64,
+            @floatFromInt(std.time.microTimestamp() - log_time_start),
+        ) / std.time.us_per_s;
+        stream.data.getAndStore(client.allocator, timestamp) catch |e| {
+            std.log.err("{t}", .{e});
+            std.log.debug("{?f}", .{@errorReturnTrace()});
+            break;
+        };
+        data.writeItemOverwrite(stream.data);
+        stream.data.reset();
+        // Wait to match the update rate.
+        while (timer.read() < update_rate * std.time.ns_per_ms) {}
+        timer.reset();
+    }
+    stop.store(false, .monotonic);
+    var log_writer = log_file.writer(&.{});
+    // Write the headers of the data to the logging file.
+    for (client.log_config.lines) |line_config| {
+        var buf: [64]u8 = undefined;
+        for (line_config.drivers, 1..) |log_driver, driver_id| {
+            if (log_driver == false) continue;
+            try writeHeaders(
+                &log_writer.interface,
+                try std.fmt.bufPrint(
+                    &buf,
+                    "{s}_driver{d}",
+                    .{ client.lines[line_config.id - 1].name, driver_id },
+                ),
+                "",
+                Stream.Data.Line.Driver,
+            );
+        }
+        for (line_config.axes, 1..) |log_axis, axis_id| {
+            if (log_axis == false) continue;
+            try writeHeaders(
+                &log_writer.interface,
+                try std.fmt.bufPrint(
+                    &buf,
+                    "{s}_axis{d}",
+                    .{ client.lines[line_config.id - 1].name, axis_id },
+                ),
+                "",
+                Stream.Data.Line.Axis,
+            );
+        }
+    }
+    // Write the data to the logging file.
+    for (client.log_config.lines) |line_config| {
+        const line_data = stream.data.lines[line_config.id - 1];
+        try log_writer.interface.writeByte('\n');
+        for (line_data.drivers) |driver_data| {
+            try writeValues(&log_writer.interface, driver_data, "driver");
+        }
+        for (line_data.axes) |axis_data| {
+            try writeValues(&log_writer.interface, axis_data, "axis");
+        }
+    }
+    try log_writer.interface.flush();
+    std.log.info("Logging data is saved successfully.", .{});
+}
+
+fn writeHeaders(
+    w: *std.Io.Writer,
+    prefix: []const u8,
+    comptime parent: []const u8,
+    comptime Parent: type,
+) !void {
+    const ti = @typeInfo(Parent).@"struct";
+    inline for (ti.fields) |field| {
+        if (@typeInfo(field.type) == .@"struct") {
+            if (parent.len == 0)
+                try writeHeaders(
+                    w,
+                    prefix,
+                    field.name,
+                    field.type,
+                )
+            else
+                try writeHeaders(
+                    w,
+                    prefix,
+                    parent ++ "." ++ field.name,
+                    field.type,
+                );
+        } else {
+            const last_parent = std.mem.lastIndexOfLinear(u8, parent, ".");
+            if (last_parent) |idx| {
+                if (!std.mem.eql(u8, parent[idx..], "carrier") and
+                    std.mem.eql(u8, field.name, "id"))
+                {
+                    // Do nothing on id field unless the parent is carrier.
+                } else if (parent.len == 0)
+                    try w.print(
+                        "{s}_{s},",
+                        .{ prefix, field.name },
+                    )
+                else
+                    try w.print(
+                        "{s}_{s},",
+                        .{ prefix, parent ++ "." ++ field.name },
+                    );
+            } else if (parent.len == 0)
+                try w.print(
+                    "{s}_{s},",
+                    .{ prefix, field.name },
+                )
+            else
+                try w.print(
+                    "{s}_{s},",
+                    .{ prefix, parent ++ "." ++ field.name },
+                );
+        }
+    }
+}
+
+fn writeValues(
+    w: *std.Io.Writer,
+    parent: anytype,
+    parent_str: []const u8,
+) !void {
+    const parent_ti = @typeInfo(@TypeOf(parent)).@"struct";
+    inline for (parent_ti.fields) |field| {
+        if (@typeInfo(field.type) == .@"struct")
+            try writeValues(w, @field(parent, field.name), field.name)
+        else {
+            if (@typeInfo(field.type) == .optional) {
+                if (@field(parent, field.name)) |value|
+                    try w.print("{},", .{value})
+                else
+                    try w.write("None,");
+            } else if (@typeInfo(field.type) == .@"enum") {
+                try w.print(
+                    "{d},",
+                    .{@intFromEnum(@field(parent, field.name))},
+                );
+            } else {
+                if (!std.mem.eql(u8, parent_str, "carrier") and
+                    std.mem.eql(u8, field.name, "id"))
+                {
+                    // Do nothing on id field unless the parent is carrier.
+                } else try w.print(
+                    "{},",
+                    .{@field(parent, field.name)},
+                );
+            }
+        }
+    }
+}

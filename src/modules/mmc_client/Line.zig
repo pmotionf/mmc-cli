@@ -1,7 +1,6 @@
 const Line = @This();
 const std = @import("std");
 const api = @import("mmc-api");
-const Config = api.protobuf.mmc.core.Response.TrackConfig;
 
 index: Line.Index,
 id: Line.Id,
@@ -13,6 +12,7 @@ length: struct {
     axis: f32,
     carrier: f32,
 },
+drivers: std.math.IntFittingRange(1, max),
 
 /// Maximum number of drivers
 pub const max = 64 * 4;
@@ -23,7 +23,7 @@ pub const max_axis = max * 3;
 pub fn init(
     allocator: std.mem.Allocator,
     index: Index,
-    config: Config.Line,
+    config: api.protobuf.mmc.core.Response.TrackConfig.Line,
 ) !Line {
     var result: Line = undefined;
     if (config.axes > std.math.maxInt(u10)) return error.InvalidConfiguration;
@@ -37,6 +37,7 @@ pub fn init(
     };
     result.name = try allocator.dupe(u8, config.name);
     result.axes = @intCast(config.axes);
+    result.drivers = @intCast(config.drivers);
     return result;
 }
 

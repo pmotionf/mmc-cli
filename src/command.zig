@@ -593,6 +593,9 @@ fn parseAndRun(input: []const u8) !void {
         }
     }
     if (token_iterator.peek() != null) return error.UnexpectedParameter;
+    errdefer {
+        if (config.mmc_client) mmc_client.log.stop.store(true, .monotonic);
+    }
     try command.execute(params);
 }
 

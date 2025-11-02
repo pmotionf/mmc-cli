@@ -4,19 +4,18 @@ const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 
 /// Free all memory EXCEPT the endpoint, so that the client can reconnect to the
-/// latest server
+/// latest server.
 pub fn impl(_: [][]const u8) error{ServerNotConnected}!void {
     const tracy_zone = tracy.traceNamed(@src(), "disconnect");
     defer tracy_zone.end();
     if (client.sock) |s| {
-        client.Log.stop.store(true, .monotonic);
-        // Wait until the log finish storing log data and cleanup
-        while (client.Log.executing.load(.monotonic)) {}
+        client.log.stop.store(true, .monotonic);
+        while (client.log.executing.load(.monotonic)) {}
+        client.log_config.deinit(client.allocator);
         client.reader = undefined;
         client.writer = undefined;
         s.close();
         client.sock = null;
-        client.log.deinit();
         for (client.lines) |*line| {
             line.deinit(client.allocator);
         }
