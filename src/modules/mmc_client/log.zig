@@ -312,20 +312,19 @@ const Stream = struct {
         config: log.Config,
         endpoint: zignet.Endpoint,
     ) !Stream {
-        var result: Stream = undefined;
-        result.data.lines = try allocator.alloc(Stream.Data.Line, lines.len);
-        errdefer result.deinit(allocator);
-        for (result.data.lines, lines) |*stream_line, track_line| {
-            stream_line.axes = try allocator.alloc(
-                Stream.Data.Line.Axis,
-                track_line.axes,
-            );
+        var stream: Stream = undefined;
+        stream.data.lines = try allocator.alloc(Stream.Data.Line, lines.len);
+        errdefer stream.deinit(allocator);
+        for (stream.data.lines, lines) |*stream_line, track_line| {
+            stream_line.axes =
+                try allocator.alloc(Stream.Data.Line.Axis, track_line.axes);
             stream_line.drivers =
                 try allocator.alloc(Stream.Data.Line.Driver, track_line.drivers);
         }
-        result.socket = try zignet.Socket.connect(endpoint);
-        result.reader = result.socket.reader(&stream_writer_buf);
-        result.writer = result.socket.writer(&stream_reader_buf);
+        stream.socket = try zignet.Socket.connect(endpoint);
+        stream.reader = stream.socket.reader(&stream_writer_buf);
+        stream.writer = stream.socket.writer(&stream_reader_buf);
+        stream.config.lines = .empty;
         for (config.lines) |line| {
             const enabled = b: {
                 for (line.axes) |axis| {
@@ -365,16 +364,16 @@ const Stream = struct {
                             },
                         },
                     };
-                    try client.removeIgnoredMessage(result.socket);
-                    try result.socket
+                    try client.removeIgnoredMessage(stream.socket);
+                    try stream.socket
                         .waitToWrite(&command.checkCommandInterrupt);
                     // Send message
-                    try request.encode(&result.writer.interface, allocator);
-                    try result.writer.interface.flush();
+                    try request.encode(&stream.writer.interface, allocator);
+                    try stream.writer.interface.flush();
                     // Receive message
-                    try result.socket.waitToRead(&command.checkCommandInterrupt);
+                    try stream.socket.waitToRead(&command.checkCommandInterrupt);
                     var decoded: api.protobuf.mmc.Response = try .decode(
-                        &result.reader.interface,
+                        &stream.reader.interface,
                         allocator,
                     );
                     defer decoded.deinit(allocator);
@@ -432,7 +431,7 @@ const Stream = struct {
                         axis_range.end = @intCast(id);
                     }
                 }
-                try result.config.lines.append(allocator, .{
+                try stream.config.lines.append(allocator, .{
                     .id = line.id,
                     .axis_range = axis_range,
                     .axis = log_axis,
@@ -440,11 +439,11 @@ const Stream = struct {
                 });
             }
         }
-        return result;
+        return stream;
     }
 
     fn deinit(stream: *Stream, allocator: std.mem.Allocator) void {
-        for (stream.data.lines) |line| {
+        for (stream.data.lines) |*line| {
             allocator.free(line.axes);
             allocator.free(line.drivers);
         }
@@ -557,6 +556,7 @@ pub fn runner(duration: f64, file_path: []const u8) !void {
     stop.store(false, .monotonic);
     var log_writer = log_file.writer(&.{});
     // Write the headers of the data to the logging file.
+    try log_writer.interface.print("timestamp,", .{});
     for (client.log_config.lines) |line_config| {
         var buf: [64]u8 = undefined;
         for (line_config.drivers, 1..) |log_driver, driver_id| {
@@ -587,18 +587,20 @@ pub fn runner(duration: f64, file_path: []const u8) !void {
         }
     }
     // Write the data to the logging file.
-    for (client.log_config.lines) |line_config| {
-        const line_data = stream.data.lines[line_config.id - 1];
+    while (data.readItem()) |log_data| {
         try log_writer.interface.writeByte('\n');
-        for (line_data.drivers) |driver_data| {
-            try writeValues(&log_writer.interface, driver_data, "driver");
+        try log_writer.interface.print("{},", .{log_data.timestamp});
+        for (client.log_config.lines) |line_config| {
+            const line_data = log_data.lines[line_config.id - 1];
+            // const line_data = stream.data.lines[line_config.id - 1];
+            for (line_data.drivers) |driver_data| {
+                try writeValues(&log_writer.interface, driver_data, "driver");
+            }
+            for (line_data.axes) |axis_data| {
+                try writeValues(&log_writer.interface, axis_data, "axis");
+            }
         }
-        for (line_data.axes) |axis_data| {
-            try writeValues(&log_writer.interface, axis_data, "axis");
-        }
-    }
-    try log_writer.interface.flush();
-    std.log.info("Logging data is saved successfully.", .{});
+    } else std.log.info("Logging data is saved successfully.", .{});
 }
 
 fn writeHeaders(
@@ -625,32 +627,17 @@ fn writeHeaders(
                     field.type,
                 );
         } else {
-            const last_parent = std.mem.lastIndexOfLinear(u8, parent, ".");
-            if (last_parent) |idx| {
-                if (!std.mem.eql(u8, parent[idx..], "carrier") and
-                    std.mem.eql(u8, field.name, "id"))
-                {
-                    // Do nothing on id field unless the parent is carrier.
-                } else if (parent.len == 0)
-                    try w.print(
-                        "{s}_{s},",
-                        .{ prefix, field.name },
-                    )
-                else
-                    try w.print(
-                        "{s}_{s},",
-                        .{ prefix, parent ++ "." ++ field.name },
-                    );
-            } else if (parent.len == 0)
-                try w.print(
+            if (parent.len == 0) {
+                if (std.mem.eql(u8, "id", field.name)) {
+                    // Do nothing
+                } else try w.print(
                     "{s}_{s},",
                     .{ prefix, field.name },
-                )
-            else
-                try w.print(
-                    "{s}_{s},",
-                    .{ prefix, parent ++ "." ++ field.name },
                 );
+            } else try w.print(
+                "{s}_{s},",
+                .{ prefix, parent ++ "." ++ field.name },
+            );
         }
     }
 }
