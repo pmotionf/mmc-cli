@@ -110,18 +110,27 @@ pub fn status(_: [][]const u8) !void {
             .print("Line {s}: ", .{client.lines[line.id - 1].name});
         var axis_range: Range = .{};
         var driver_range: Range = .{};
+        var first_axis_entry = true;
+        var first_driver_entry = true;
         try stdout.interface.print("axis: [", .{});
         for (line.axes, 1..) |axis, axis_id| {
             if (axis == false) {
                 if (axis_range.start == 0)
                     continue
-                else if (axis_range.start == axis_range.end)
-                    try stdout.interface.print("{d},", .{axis_range.start})
-                else
+                else if (axis_range.start == axis_range.end) {
+                    if (first_axis_entry) first_axis_entry = false else {
+                        try stdout.interface.print(",", .{});
+                    }
+                    try stdout.interface.print("{d}", .{axis_range.start});
+                } else {
+                    if (first_axis_entry) first_axis_entry = false else {
+                        try stdout.interface.print(",", .{});
+                    }
                     try stdout.interface.print(
-                        "{d}-{d},",
+                        "{d}-{d}",
                         .{ axis_range.start, axis_range.end },
                     );
+                }
                 axis_range = .{};
                 continue;
             }
@@ -131,18 +140,41 @@ pub fn status(_: [][]const u8) !void {
             else
                 axis_range.end = @intCast(axis_id);
         }
+        if (axis_range.start == 0) {
+            // Do nothing
+        } else if (axis_range.start == axis_range.end) {
+            if (first_axis_entry) first_axis_entry = false else {
+                try stdout.interface.print(",", .{});
+            }
+            try stdout.interface.print("{d}", .{axis_range.start});
+        } else {
+            if (first_axis_entry) first_axis_entry = false else {
+                try stdout.interface.print(",", .{});
+            }
+            try stdout.interface.print(
+                "{d}-{d}",
+                .{ axis_range.start, axis_range.end },
+            );
+        }
         try stdout.interface.print("], driver: [", .{});
         for (line.drivers, 1..) |driver, driver_id| {
             if (driver == false) {
                 if (driver_range.start == 0)
                     continue
-                else if (driver_range.start == driver_range.end)
-                    try stdout.interface.print("{d},", .{driver_range.start})
-                else
+                else if (driver_range.start == driver_range.end) {
+                    if (first_driver_entry) first_driver_entry = false else {
+                        try stdout.interface.print(",", .{});
+                    }
+                    try stdout.interface.print("{d}", .{driver_range.start});
+                } else {
+                    if (first_driver_entry) first_driver_entry = false else {
+                        try stdout.interface.print(",", .{});
+                    }
                     try stdout.interface.print(
-                        "{d}-{d},",
+                        "{d}-{d}",
                         .{ driver_range.start, driver_range.end },
                     );
+                }
                 driver_range = .{};
                 continue;
             }
@@ -151,8 +183,24 @@ pub fn status(_: [][]const u8) !void {
                     .{ .start = @intCast(driver_id), .end = @intCast(driver_id) }
             else
                 driver_range.end = @intCast(driver_id);
-            try stdout.interface.print("]\n", .{});
         }
+        if (driver_range.start == 0) {
+            // Do nothing
+        } else if (driver_range.start == driver_range.end) {
+            if (first_driver_entry) first_driver_entry = false else {
+                try stdout.interface.print(",", .{});
+            }
+            try stdout.interface.print("{d}", .{driver_range.start});
+        } else {
+            if (first_driver_entry) first_driver_entry = false else {
+                try stdout.interface.print(",", .{});
+            }
+            try stdout.interface.print(
+                "{d}-{d}",
+                .{ driver_range.start, driver_range.end },
+            );
+        }
+        try stdout.interface.print("]\n", .{});
     }
 }
 
@@ -213,7 +261,7 @@ fn modify(
     line: client.Line,
     kind: Kind,
     range: Range,
-    flag: bool,
+    comptime flag: bool,
 ) !void {
     for (range.start..range.end + 1) |axis_id| {
         if (kind == .all or kind == .axis)
