@@ -226,7 +226,7 @@ pub const Data = struct {
             for (carriers.items) |_carrier| {
                 const main_axis = _carrier.axis_main;
                 const aux_axis = _carrier.axis_auxiliary;
-                self.axes[main_axis].carrier = .{
+                self.axes[main_axis - 1].carrier = .{
                     .id = @intCast(_carrier.id),
                     .position = _carrier.position,
                     .state = _carrier.state,
@@ -236,7 +236,7 @@ pub const Data = struct {
                     },
                 };
                 if (aux_axis) |axis| {
-                    self.axes[axis].carrier = .{
+                    self.axes[axis - 1].carrier = .{
                         .id = @intCast(_carrier.id),
                         .position = _carrier.position,
                         .state = _carrier.state,
