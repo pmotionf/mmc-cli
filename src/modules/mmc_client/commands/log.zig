@@ -60,6 +60,8 @@ pub fn start(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "start_log");
     defer tracy_zone.end();
     errdefer client.log.reset();
+    if (client.Log.executing.load(.monotonic) == true)
+        return error.LoggingAlreadyStarted;
     const duration = try std.fmt.parseFloat(f64, params[0]);
     const path = params[1];
     client.log.path = if (path.len > 0) path else p: {
