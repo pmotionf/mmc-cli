@@ -91,7 +91,6 @@ pub fn main() !void {
             std.log.err("{t}", .{e});
             std.log.debug("{?f}", .{@errorReturnTrace()});
             command.queueClear();
-            command.err.store(true, .monotonic);
             continue :command_loop;
         };
     }

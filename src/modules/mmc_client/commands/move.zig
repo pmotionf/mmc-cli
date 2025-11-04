@@ -7,6 +7,7 @@ const api = @import("mmc-api");
 pub fn posAxis(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "move_pos_axis");
     defer tracy_zone.end();
+    errdefer client.Log.stop.store(true, .monotonic);
     const axis_id = try std.fmt.parseInt(u32, params[2], 0);
     try impl(params, .CONTROL_POSITION, .{ .axis = axis_id });
 }
@@ -14,6 +15,7 @@ pub fn posAxis(params: [][]const u8) !void {
 pub fn posLocation(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "move_pos_location");
     defer tracy_zone.end();
+    errdefer client.Log.stop.store(true, .monotonic);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
     try impl(params, .CONTROL_POSITION, .{ .location = location });
 }
@@ -21,6 +23,7 @@ pub fn posLocation(params: [][]const u8) !void {
 pub fn posDistance(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "move_pos_distance");
     defer tracy_zone.end();
+    errdefer client.Log.stop.store(true, .monotonic);
     const distance = try std.fmt.parseFloat(f32, params[2]);
     try impl(params, .CONTROL_POSITION, .{ .distance = distance });
 }
@@ -28,6 +31,7 @@ pub fn posDistance(params: [][]const u8) !void {
 pub fn spdAxis(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "move_spd_axis");
     defer tracy_zone.end();
+    errdefer client.Log.stop.store(true, .monotonic);
     const axis_id = try std.fmt.parseInt(u32, params[2], 0);
     try impl(params, .CONTROL_VELOCITY, .{ .axis = axis_id });
 }
@@ -35,6 +39,7 @@ pub fn spdAxis(params: [][]const u8) !void {
 pub fn spdLocation(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "move_spd_location");
     defer tracy_zone.end();
+    errdefer client.Log.stop.store(true, .monotonic);
     const location: f32 = try std.fmt.parseFloat(f32, params[2]);
     try impl(params, .CONTROL_VELOCITY, .{ .location = location });
 }
@@ -42,6 +47,7 @@ pub fn spdLocation(params: [][]const u8) !void {
 pub fn spdDistance(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "move_spd_distance");
     defer tracy_zone.end();
+    errdefer client.Log.stop.store(true, .monotonic);
     const distance = try std.fmt.parseFloat(f32, params[2]);
     try impl(params, .CONTROL_VELOCITY, .{ .distance = distance });
 }

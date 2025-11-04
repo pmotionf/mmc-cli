@@ -7,6 +7,7 @@ const api = @import("mmc-api");
 pub fn isolate(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_isolate");
     defer tracy_zone.end();
+    errdefer client.Log.stop.store(true, .monotonic);
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, b: {
         const input = params[1];
@@ -37,6 +38,7 @@ pub fn isolate(params: [][]const u8) !void {
 pub fn moveCarrier(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_move_carrier");
     defer tracy_zone.end();
+    errdefer client.Log.stop.store(true, .monotonic);
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, b: {
         const input = params[1];
@@ -68,6 +70,7 @@ pub fn moveCarrier(params: [][]const u8) !void {
 pub fn pull(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_pull");
     defer tracy_zone.end();
+    errdefer client.Log.stop.store(true, .monotonic);
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, b: {
         const input = params[1];
@@ -99,6 +102,7 @@ pub fn pull(params: [][]const u8) !void {
 pub fn axisEmpty(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_axis_empty");
     defer tracy_zone.end();
+    errdefer client.Log.stop.store(true, .monotonic);
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
     const axis_id = try std.fmt.parseInt(u32, params[1], 0);

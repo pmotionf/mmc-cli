@@ -7,12 +7,14 @@ const api = @import("mmc-api");
 pub fn forward(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "push_forward");
     defer tracy_zone.end();
+    errdefer client.Log.stop.store(true, .monotonic);
     try impl(params, .DIRECTION_FORWARD);
 }
 
 pub fn backward(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "push_backward");
     defer tracy_zone.end();
+    errdefer client.Log.stop.store(true, .monotonic);
     try impl(params, .DIRECTION_BACKWARD);
 }
 

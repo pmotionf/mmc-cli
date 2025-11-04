@@ -523,24 +523,14 @@ pub fn handler(duration: f64) !void {
         client.log.allocator,
         logging_size,
     );
-    // TODO: This approach make checkError cannot be used by other thread.
-    //       Find a better approach.
-    // Remove any previous detected error.
-    command.checkError() catch {};
     defer std.log.debug("Logging stopped", .{});
     std.log.debug("Logging started", .{});
     const log_time_start = std.time.microTimestamp();
     var timer = try std.time.Timer.start();
     var timestamp: f64 = undefined;
-    while (true) {
-        if (stop.load(.monotonic)) break;
-        // Check if there is an error after the log started, including the
-        // command cancellation.
-        command.checkError() catch |e| {
-            std.log.debug("{t}", .{e});
-            std.log.debug("{?f}", .{@errorReturnTrace()});
-            break;
-        };
+    // Reset the stop bit before starting to log.
+    stop.store(false, .monotonic);
+    while (stop.load(.monotonic) == false) {
         while (timer.read() < mcl_update * std.time.ns_per_ms) {}
         timestamp = @as(
             f64,
@@ -555,10 +545,6 @@ pub fn handler(duration: f64) !void {
         ) catch |e| {
             std.log.debug("{t}", .{e});
             std.log.debug("{?f}", .{@errorReturnTrace()});
-            // NOTE: Should the main thread be notified to stop any running
-            //       command? Example use case: When execute a file, if the
-            //       logging failed, it is hard to notice that the logging
-            //       is finished while keep executing commands.
             break;
         };
         defer data.reset();
