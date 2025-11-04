@@ -116,3 +116,12 @@ pub fn remove(params: [][]const u8) !void {
     }
     try client.log.status();
 }
+
+pub fn stop(_: [][]const u8) !void {
+    const tracy_zone = tracy.traceNamed(@src(), "stop_log");
+    defer tracy_zone.end();
+    if (client.Log.executing.load(.monotonic))
+        client.Log.stop.store(true, .monotonic)
+    else
+        return error.NoRunningLogging;
+}
