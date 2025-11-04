@@ -981,6 +981,16 @@ pub fn init(c: Config) !void {
     });
     errdefer command.registry.orderedRemove("STATUS_LOG_INFO");
     try command.registry.put(.{
+        .name = "STOP_LOG_INFO",
+        .short_description = "Stop the mmc logging process.",
+        .long_description =
+        \\Stop the mmc logging process if the logging is already started, and
+        \\save the logging data to the log file.
+        ,
+        .execute = &commands.log.stop,
+    });
+    errdefer command.registry.orderedRemove("STOP_LOG_INFO");
+    try command.registry.put(.{
         .name = "PRINT_ERRORS",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line" },
