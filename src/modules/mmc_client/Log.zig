@@ -13,6 +13,8 @@ const main = @import("../../main.zig");
 pub var executing = std.atomic.Value(bool).init(false);
 /// Stop the logging process from other thread.
 pub var stop = std.atomic.Value(bool).init(false);
+/// Stop the logging and do not save the log data to a file.
+pub var cancel = std.atomic.Value(bool).init(false);
 // NOTE: The following buffer differ from the client buffer as they are working
 //       on different thread.
 /// Reader buffer for network stream
@@ -508,7 +510,11 @@ pub fn handler(duration: f64) !void {
     if (!initialized) return error.NoConfiguredLogging;
     std.log.info("The registers will be logged to {s}", .{client.log.path.?});
     const log_file = try std.fs.cwd().createFile(client.log.path.?, .{});
-    defer log_file.close();
+    defer {
+        log_file.close();
+        if (cancel.load(.monotonic))
+            std.fs.cwd().deleteFile(client.log.path.?) catch {};
+    }
     const logging_size = @as(usize, @intFromFloat(logging_size_float));
     var socket = try client.zignet.Socket.connect(client.log.endpoint);
     reader = socket.reader(&reader_buf);
@@ -528,9 +534,14 @@ pub fn handler(duration: f64) !void {
     const log_time_start = std.time.microTimestamp();
     var timer = try std.time.Timer.start();
     var timestamp: f64 = undefined;
-    // Reset the stop bit before starting to log.
+    // Reset the stop and cancel bit before starting to log.
     stop.store(false, .monotonic);
+    cancel.store(false, .monotonic);
     while (stop.load(.monotonic) == false) {
+        if (cancel.load(.monotonic)) {
+            std.log.info("Logging is cancelled.", .{});
+            return;
+        }
         while (timer.read() < mcl_update * std.time.ns_per_ms) {}
         timestamp = @as(
             f64,
