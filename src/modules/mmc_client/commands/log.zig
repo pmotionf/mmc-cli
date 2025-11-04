@@ -125,3 +125,12 @@ pub fn stop(_: [][]const u8) !void {
     else
         return error.NoRunningLogging;
 }
+
+pub fn cancel(_: [][]const u8) !void {
+    const tracy_zone = tracy.traceNamed(@src(), "cancel_log");
+    defer tracy_zone.end();
+    if (client.Log.executing.load(.monotonic))
+        client.Log.cancel.store(true, .monotonic)
+    else
+        return error.NoRunningLogging;
+}
