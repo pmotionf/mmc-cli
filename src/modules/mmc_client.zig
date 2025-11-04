@@ -185,7 +185,6 @@ pub var sock: ?zignet.Socket = null;
 /// is connected to a different server. Stays null before connected to a socket.
 pub var endpoint: ?zignet.Endpoint = null;
 
-var arena: std.heap.ArenaAllocator = undefined;
 pub var allocator: std.mem.Allocator = undefined;
 
 pub var log_allocator: std.mem.Allocator = undefined;
@@ -207,12 +206,10 @@ pub var writer: zignet.Socket.Writer = undefined;
 var debug_allocator = std.heap.DebugAllocator(.{}){};
 
 pub fn init(c: Config) !void {
-    arena = std.heap.ArenaAllocator.init(std.heap.smp_allocator);
-    errdefer arena.deinit();
     allocator = if (builtin.mode == .Debug)
         debug_allocator.allocator()
     else
-        arena.allocator();
+        std.heap.smp_allocator;
     config = .{
         .host = try allocator.dupe(u8, c.host),
         .port = c.port,
@@ -1080,8 +1077,6 @@ pub fn deinit() void {
     allocator.free(config.host);
     if (debug_allocator.detectLeaks()) {
         std.log.debug("Leaks detected", .{});
-    } else {
-        arena.deinit();
     }
     if (builtin.os.tag == .windows) std.os.windows.WSACleanup() catch return;
 }
