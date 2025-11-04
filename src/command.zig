@@ -165,12 +165,6 @@ pub var registry: Registry = undefined;
 /// set, and then reset the flag.
 pub var stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false);
 
-/// Global "error" flag to indicate whether an error occur on any thread.
-/// Any thread should not reset this atomic flag directly, but instead prefer to
-/// use `checkError` to check the flag, throw a `ErrorDetected` error if set,
-/// and then reset the flag.
-pub var err: std.atomic.Value(bool) = std.atomic.Value(bool).init(false);
-
 // Global registry of all variables.
 pub var variables: std.BufMap = undefined;
 
@@ -492,14 +486,6 @@ pub fn checkCommandInterrupt() error{CommandStopped}!void {
         defer stop.store(false, .monotonic);
         queueClear();
         return error.CommandStopped;
-    }
-}
-
-/// Checks if the `err` flag is set, and if so returns an error.
-pub fn checkError() error{ErrorDetected}!void {
-    if (err.load(.monotonic)) {
-        defer err.store(false, .monotonic);
-        return error.ErrorDetected;
     }
 }
 

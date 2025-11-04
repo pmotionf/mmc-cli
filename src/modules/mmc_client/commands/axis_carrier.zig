@@ -7,6 +7,7 @@ const api = @import("mmc-api");
 pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "axis_carrier");
     defer tracy_zone.end();
+    errdefer client.Log.stop.store(true, .monotonic);
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(u32, params[1], 0);
