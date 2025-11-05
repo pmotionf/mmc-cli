@@ -314,10 +314,10 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Print the axis information.",
         .long_description =
-        \\Print the axis information. The information is shown based on the 
-        \\given filter, which shall be provided with the ID followed by suffix. 
-        \\The supported suffixes are "c" or "carrier" for filtering based on 
-        \\carrier, "d" or "driver" for filtering based on "driver", and "a" or 
+        \\Print the axis information. The information is shown based on the
+        \\given filter, which shall be provided with the ID followed by suffix.
+        \\The supported suffixes are "c" or "carrier" for filtering based on
+        \\carrier, "d" or "driver" for filtering based on "driver", and "a" or
         \\"axis" for filtering based on "axis".
         ,
         .execute = &commands.print_axis_info.impl,
@@ -331,9 +331,9 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Print the driver information.",
         .long_description =
-        \\Print the information information. The information is shown based on 
-        \\the given filter, which shall be provided with the ID followed by 
-        \\suffix. The supported suffixes are "c" or "carrier" for filtering 
+        \\Print the information information. The information is shown based on
+        \\the given filter, which shall be provided with the ID followed by
+        \\suffix. The supported suffixes are "c" or "carrier" for filtering
         \\based on carrier, "d" or "driver" for filtering based on "driver", and
         \\"a" or "axis" for filtering based on "axis".
         ,
@@ -348,10 +348,10 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Print the carrier information.",
         .long_description =
-        \\Print the carrier information. The information is shown based on the 
-        \\given filter, which shall be provided with the ID followed by suffix 
-        \\The supported suffixes are "c" or "carrier" for filtering based on 
-        \\carrier, "d" or "driver" for filtering based on "driver", and "a" or 
+        \\Print the carrier information. The information is shown based on the
+        \\given filter, which shall be provided with the ID followed by suffix
+        \\The supported suffixes are "c" or "carrier" for filtering based on
+        \\carrier, "d" or "driver" for filtering based on "driver", and "a" or
         \\"axis" for filtering based on "axis".
         ,
         .execute = &commands.print_carrier_info.impl,
@@ -372,7 +372,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\If a carrier is recognized on the provided axis, print its ID.
         \\If a result variable name was provided, also store the carrier ID in
-        \\the variable. The result variable is case sensitive and shall not 
+        \\the variable. The result variable is case sensitive and shall not
         \\begin with digit.
         ,
         .execute = &commands.axis_carrier.impl,
@@ -393,10 +393,10 @@ pub fn init(c: Config) !void {
         \\Scan the line, starting from the first axis, and print all recognized
         \\carrier IDs on the given line in the order of their first appearance.
         \\This command support to scan multiple lines at once by providing line
-        \\parameter with comma separator, e.g., "front,back,tr". If a result 
-        \\variable prefix is provided, store all carrier IDs in the variable 
-        \\with the variable name: prefix[num], e.g., prefix1 and prefix2 if 
-        \\two carriers exist on the provided line(s). The result variable prefix 
+        \\parameter with comma separator, e.g., "front,back,tr". If a result
+        \\variable prefix is provided, store all carrier IDs in the variable
+        \\with the variable name: prefix[num], e.g., prefix1 and prefix2 if
+        \\two carriers exist on the provided line(s). The result variable prefix
         \\is case sensitive and shall not begin with digit.
         ,
         .execute = &commands.carrier_id.impl,
@@ -434,7 +434,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Print a given carrier's location if it is currently recognized in
         \\the provided line. If a result variable name is provided, then store
-        \\the carrier's location in the variable. The result variable is case 
+        \\the carrier's location in the variable. The result variable is case
         \\sensitive and shall not begin with digit.
         ,
         .execute = &commands.carrier_location.impl,
@@ -462,10 +462,10 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Display hall status state.",
         .long_description =
-        \\Display hall status state. The information is shown based on the 
-        \\given filter, which shall be provided with the ID followed by suffix 
-        \\The supported suffixes are "c" or "carrier" for filtering based on 
-        \\carrier, "d" or "driver" for filtering based on "driver", and "a" or 
+        \\Display hall status state. The information is shown based on the
+        \\given filter, which shall be provided with the ID followed by suffix
+        \\The supported suffixes are "c" or "carrier" for filtering based on
+        \\carrier, "d" or "driver" for filtering based on "driver", and "a" or
         \\"axis" for filtering based on "axis". If no filter is provided, show
         \\all hall status across the line.
         ,
@@ -498,11 +498,11 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Clear errors state.",
         .long_description =
-        \\Clear errors state on axis and driver. The driver in which error to be 
-        \\cleared is selected based on the given filter, which shall be provided 
-        \\with the ID followed by suffix. The supported suffixes are "c" or 
-        \\"carrier" for filtering based on carrier, "d" or "driver" for 
-        \\filtering based on "driver", and "a" or "axis" for filtering based on 
+        \\Clear errors state on axis and driver. The driver in which error to be
+        \\cleared is selected based on the given filter, which shall be provided
+        \\with the ID followed by suffix. The supported suffixes are "c" or
+        \\"carrier" for filtering based on carrier, "d" or "driver" for
+        \\filtering based on "driver", and "a" or "axis" for filtering based on
         \\"axis". If no filter is provided, clear errors on all drivers.
         ,
         .execute = &commands.clear_errors.impl,
@@ -516,11 +516,11 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Clear carrier information.",
         .long_description =
-        \\Clear carrier information. The carrier to be cleared is selected based 
-        \\on the given filter, which shall be provided with the ID followed by 
-        \\suffix. The supported suffixes are "c" or "carrier" for filtering 
-        \\based on carrier, "d" or "driver" for filtering based on "driver", and 
-        \\"a" or "axis" for filtering based on "axis". If no filter is provided, 
+        \\Clear carrier information. The carrier to be cleared is selected based
+        \\on the given filter, which shall be provided with the ID followed by
+        \\suffix. The supported suffixes are "c" or "carrier" for filtering
+        \\based on carrier, "d" or "driver" for filtering based on "driver", and
+        \\"a" or "axis" for filtering based on "axis". If no filter is provided,
         \\clear errors on all drivers.
         ,
         .execute = &commands.clear_carrier_info.impl,
@@ -544,14 +544,14 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Release the carrier for being controlled",
         .long_description =
-        \\Release the motor that control the carrier, allowing for free 
-        \\carrier movement. This command should be run before carriers move 
+        \\Release the motor that control the carrier, allowing for free
+        \\carrier movement. This command should be run before carriers move
         \\within or exit from the track due to external influence. The carrier
-        \\to be released from control is selected based on the given filter, 
-        \\which shall be provided with the ID followed by suffix. The 
-        \\supported suffixes are "c" or "carrier" for filtering based on 
-        \\carrier, "d" or "driver" for filtering based on "driver", and "a" or 
-        \\"axis" for filtering based on "axis". If no filter is provided, clear 
+        \\to be released from control is selected based on the given filter,
+        \\which shall be provided with the ID followed by suffix. The
+        \\supported suffixes are "c" or "carrier" for filtering based on
+        \\carrier, "d" or "driver" for filtering based on "driver", and "a" or
+        \\"axis" for filtering based on "axis". If no filter is provided, clear
         \\errors on all drivers.
         ,
         .execute = &commands.release_carrier.impl,
@@ -593,7 +593,7 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Set line zero position.",
         .long_description =
-        \\Set a line's zero position based on a current carrier's position. 
+        \\Set a line's zero position based on a current carrier's position.
         \\Aforementioned carrier must be located at first axis of line.
         ,
         .execute = &commands.set_line_zero.impl,
@@ -873,10 +873,10 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Stop active carrier pull at axis.",
         .long_description =
-        \\Stop active carrier pull at axis. The axis is selected based on the 
-        \\given filter, which shall be provided with the ID followed by suffix. 
-        \\The supported suffixes are "d" or "driver" for filtering based on 
-        \\"driver" and "a" or "axis" for filtering based on "axis". If no 
+        \\Stop active carrier pull at axis. The axis is selected based on the
+        \\given filter, which shall be provided with the ID followed by suffix.
+        \\The supported suffixes are "d" or "driver" for filtering based on
+        \\"driver" and "a" or "axis" for filtering based on "axis". If no
         \\filter is provided, clear errors on all drivers.
         ,
         .execute = &commands.stop_pull.impl,
@@ -890,10 +890,10 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Stop active carrier push at axis.",
         .long_description =
-        \\Stop active carrier push at axis. The axis is selected based on the 
-        \\given filter, which shall be provided with the ID followed by suffix. 
-        \\The supported suffixes are "d" or "driver" for filtering based on 
-        \\"driver" and "a" or "axis" for filtering based on "axis". If no 
+        \\Stop active carrier push at axis. The axis is selected based on the
+        \\given filter, which shall be provided with the ID followed by suffix.
+        \\The supported suffixes are "d" or "driver" for filtering based on
+        \\"driver" and "a" or "axis" for filtering based on "axis". If no
         \\filter is provided, clear errors on all drivers.
         ,
         .execute = &commands.stop_push.impl,
@@ -1006,10 +1006,10 @@ pub fn init(c: Config) !void {
         .short_description = "Print axis and driver errors.",
         .long_description =
         \\Print axis and driver errors on a line, if any. The errors to be shown
-        \\are filtered based on the given filter, which shall be provided with 
-        \\the ID followed by suffix. The supported suffixes are "d" or 
-        \\"driver" for filtering based on "driver" and "a" or "axis" for 
-        \\filtering based on "axis". If no filter is provided, clear errors on 
+        \\are filtered based on the given filter, which shall be provided with
+        \\the ID followed by suffix. The supported suffixes are "d" or
+        \\"driver" for filtering based on "driver" and "a" or "axis" for
+        \\filtering based on "axis". If no filter is provided, clear errors on
         \\all drivers.
         ,
         .execute = &commands.show_errors.impl,
@@ -1036,7 +1036,7 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Pause any operation on the line(s).",
         .long_description =
-        \\Pause any currently running operation for the specified line. Not 
+        \\Pause any currently running operation for the specified line. Not
         \\providing a line will pause the operation of entire system.
         ,
         .execute = &commands.pause.impl,
@@ -1099,7 +1099,7 @@ pub fn waitCommandReceived() !void {
     const socket = sock orelse return error.ServerNotConnected;
     const command_id = b: {
         // Receive response
-        try socket.waitToRead(&command.checkCommandInterrupt);
+        try socket.waitToRead();
         const decoded: api.protobuf.mmc.Response = try .decode(
             &reader.interface,
             allocator,
@@ -1131,12 +1131,12 @@ pub fn waitCommandReceived() !void {
             },
         };
         try removeIgnoredMessage(socket);
-        try socket.waitToWrite(&command.checkCommandInterrupt);
+        try socket.waitToWrite();
         // Send message
         try request.encode(&writer.interface, allocator);
         try writer.interface.flush();
         // Receive response
-        try socket.waitToRead(&command.checkCommandInterrupt);
+        try socket.waitToRead();
         var decoded: api.protobuf.mmc.Response = try .decode(
             &reader.interface,
             allocator,
@@ -1192,12 +1192,12 @@ fn removeCommand(id: u32) !void {
         },
     };
     try removeIgnoredMessage(socket);
-    try socket.waitToWrite(&command.checkCommandInterrupt);
+    try socket.waitToWrite();
     // Send message
     try request.encode(&writer.interface, allocator);
     try writer.interface.flush();
     // Receive message
-    try socket.waitToRead(&command.checkCommandInterrupt);
+    try socket.waitToRead();
     const decoded: api.protobuf.mmc.Response = try .decode(
         &reader.interface,
         allocator,
