@@ -101,7 +101,7 @@ fn impl(
         },
     };
     try client.removeIgnoredMessage(socket);
-    try socket.waitToWrite(&command.checkCommandInterrupt);
+    try socket.waitToWrite();
     // Send message
     try request.encode(&client.writer.interface, client.allocator);
     try client.writer.interface.flush();

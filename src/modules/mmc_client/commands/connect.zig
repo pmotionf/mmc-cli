@@ -50,6 +50,7 @@ pub fn impl(params: [][]const u8) !void {
         client.allocator,
         endpoint.host,
         endpoint.port,
+        &command.checkCommandInterrupt,
     );
     const sockaddr: *const std.posix.sockaddr = switch (socket.sockaddr) {
         .any => |any| &any,
@@ -83,12 +84,12 @@ pub fn impl(params: [][]const u8) !void {
             },
         };
         try client.removeIgnoredMessage(socket);
-        try socket.waitToWrite(&command.checkCommandInterrupt);
+        try socket.waitToWrite();
         // Send message
         try request.encode(&client.writer.interface, client.allocator);
         try client.writer.interface.flush();
         // Receive response
-        try socket.waitToRead(&command.checkCommandInterrupt);
+        try socket.waitToRead();
         const decoded: api.protobuf.mmc.Response = try .decode(
             &client.reader.interface,
             client.allocator,
@@ -131,12 +132,12 @@ pub fn impl(params: [][]const u8) !void {
             },
         };
         try client.removeIgnoredMessage(socket);
-        try socket.waitToWrite(&command.checkCommandInterrupt);
+        try socket.waitToWrite();
         // Send message
         try request.encode(&client.writer.interface, client.allocator);
         try client.writer.interface.flush();
         // Receive response
-        try socket.waitToRead(&command.checkCommandInterrupt);
+        try socket.waitToRead();
         var decoded: api.protobuf.mmc.Response = try .decode(
             &client.reader.interface,
             client.allocator,

@@ -169,12 +169,12 @@ pub const Data = struct {
                 },
             };
             try client.removeIgnoredMessage(socket.*);
-            try socket.waitToWrite(&command.checkCommandInterrupt);
+            try socket.waitToWrite();
             // Send message
             try request.encode(&writer.interface, allocator);
             try writer.interface.flush();
             // Receive response
-            try socket.waitToRead(&command.checkCommandInterrupt);
+            try socket.waitToRead();
             var decoded: api.protobuf.mmc.Response = try .decode(
                 &reader.interface,
                 allocator,
@@ -516,7 +516,10 @@ pub fn handler(duration: f64) !void {
             std.fs.cwd().deleteFile(client.log.path.?) catch {};
     }
     const logging_size = @as(usize, @intFromFloat(logging_size_float));
-    var socket = try client.zignet.Socket.connect(client.log.endpoint);
+    var socket = try client.zignet.Socket.connect(
+        client.log.endpoint,
+        &command.checkCommandInterrupt,
+    );
     reader = socket.reader(&reader_buf);
     writer = socket.writer(&writer_buf);
     defer {
