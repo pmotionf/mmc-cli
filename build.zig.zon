@@ -9,8 +9,8 @@
             .hash = "network-0.1.0-Pm-AgiMxAQCuaDrGAfSxVHeozUQ2gU3jINGLFxJ1Zpld",
         },
         .zignet = .{
-            .url = "https://github.com/aaumar25/zignet/archive/3036ad9.tar.gz",
-            .hash = "zignet-0.0.1-BAu-r5B0AACmayxQmd1UTHVi6ytOx2GJrDqTT9R-dSk-",
+            .url = "https://github.com/aaumar25/zignet/archive/506625f.tar.gz",
+            .hash = "zignet-0.1.0-BAu-r694AABTED8SoWHCzcu1PjcMahtqbAV3WR-xQe5p",
         },
         .chrono = .{
             .url = "https://github.com/pmotionf/chrono/archive/31e31b0.tar.gz",
