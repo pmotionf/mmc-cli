@@ -11,6 +11,10 @@ pub fn impl(params: [][]const u8) !void {
     if (client.sock) |_| disconnect.impl(&.{}) catch unreachable;
     const endpoint: client.Config =
         if (params[0].len != 0) endpoint: {
+            // Ensure that IPv6 address is provided with the scope ID
+            if (std.mem.count(u8, params[0], ":") > 1 and
+                std.mem.count(u8, params[0], "%") == 0)
+                return error.MissingScopeId;
             const last_delimiter_idx =
                 std.mem.lastIndexOf(u8, params[0], ":") orelse
                 return error.MissingPort;
