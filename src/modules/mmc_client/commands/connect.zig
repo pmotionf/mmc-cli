@@ -62,8 +62,8 @@ pub fn impl(params: [][]const u8) !void {
         socket.close();
     }
     std.log.info(
-        "Connected to {s}:{d}",
-        .{ endpoint.host, endpoint.port },
+        "Connected to {f}",
+        .{try socket.getRemoteEndPoint()},
     );
     std.log.debug("Send API version request..", .{});
     // Asserting that API version matched between client and server
