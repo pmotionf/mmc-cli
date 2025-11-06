@@ -236,7 +236,9 @@ pub fn init(c: Config) !void {
         \\Attempt to connect the client application to the server. The IP address
         \\and the port should be provided in the configuration file. The port
         \\and IP address can be overwritten by providing the new port and IP
-        \\address by specifying the endpoint as "IP_ADDRESS:PORT".
+        \\address by specifying the endpoint as "IP_ADDRESS:PORT". IPv6 address
+        \\shall be provided with scope ID and should be inside square bracket,
+        \\e.g. [::%SCOPE]:PORT. The scope ID shall be provided with number.
         ,
         .execute = &commands.connect.impl,
     });
