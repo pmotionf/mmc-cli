@@ -11,24 +11,19 @@ pub fn impl(params: [][]const u8) !void {
     if (client.sock) |_| disconnect.impl(&.{}) catch unreachable;
     const endpoint: client.Config =
         if (params[0].len != 0) endpoint: {
-            var iterator = std.mem.tokenizeSequence(
-                u8,
-                params[0],
-                ":",
-            );
-            const host = try client.allocator.dupe(
-                u8,
-                iterator.next() orelse return error.InvalidHost,
-            );
-            errdefer client.allocator.free(host);
-            if (host.len > 63) return error.InvalidEndpoint;
+            const last_delimiter_idx =
+                std.mem.lastIndexOf(u8, params[0], ":") orelse
+                return error.MissingPort;
             break :endpoint .{
-                .host = host,
                 .port = std.fmt.parseInt(
                     u16,
-                    iterator.next() orelse return error.MissingParameter,
+                    params[0][last_delimiter_idx + 1 ..],
                     0,
                 ) catch return error.InvalidEndpoint,
+                .host = try client.allocator.dupe(
+                    u8,
+                    params[0][0..last_delimiter_idx],
+                ),
             };
         } else if (client.endpoint == null) .{
             .host = try client.allocator.dupe(u8, client.config.host),
@@ -52,12 +47,7 @@ pub fn impl(params: [][]const u8) !void {
         endpoint.port,
         &command.checkCommandInterrupt,
     );
-    const sockaddr: *const std.posix.sockaddr = switch (socket.sockaddr) {
-        .any => |any| &any,
-        .ipv4 => |in| @ptrCast(&in),
-        .ipv6 => |in6| @ptrCast(&in6),
-    };
-    client.endpoint = try .fromSockAddr(sockaddr);
+    client.endpoint = try socket.getRemoteEndPoint();
     client.sock = socket;
     client.reader = socket.reader(&client.reader_buf);
     client.writer = socket.writer(&client.writer_buf);
