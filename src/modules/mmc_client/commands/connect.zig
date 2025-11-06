@@ -26,7 +26,7 @@ pub fn impl(params: [][]const u8) !void {
                 ) catch return error.InvalidEndpoint,
                 .host = try client.allocator.dupe(
                     u8,
-                    params[0][0..last_delimiter_idx],
+                    params[0][1 .. last_delimiter_idx - 1],
                 ),
             };
         } else if (client.endpoint == null) .{
