@@ -11,24 +11,47 @@ pub fn impl(params: [][]const u8) !void {
     if (client.sock) |_| disconnect.impl(&.{}) catch unreachable;
     const endpoint: client.Config =
         if (params[0].len != 0) endpoint: {
-            var iterator = std.mem.tokenizeSequence(
-                u8,
-                params[0],
-                ":",
-            );
-            const host = try client.allocator.dupe(
-                u8,
-                iterator.next() orelse return error.InvalidHost,
-            );
-            errdefer client.allocator.free(host);
-            if (host.len > 63) return error.InvalidEndpoint;
+            const last_delimiter_idx =
+                std.mem.lastIndexOf(u8, params[0], ":") orelse
+                return error.MissingPort;
+            // IPv6 address shall be provided with square brackets. In addition,
+            // Ipv6 address has at least 2 ":" characters, with the port
+            // separator makes it 3 characters.
+            if (std.mem.count(u8, params[0], ":") > 2 and
+                std.mem.eql(u8, "[", params[0][0..1]) and
+                std.mem.eql(
+                    u8,
+                    "]",
+                    params[0][last_delimiter_idx - 1 .. last_delimiter_idx],
+                ))
+            {
+                // IPv6 address shall be provided with scope id. Required for
+                // local connection.
+                if (std.mem.count(u8, params[0], "%") == 0)
+                    return error.MissingScopeId;
+                break :endpoint .{
+                    .port = std.fmt.parseInt(
+                        u16,
+                        params[0][last_delimiter_idx + 1 ..],
+                        0,
+                    ) catch return error.InvalidEndpoint,
+                    .host = try client.allocator.dupe(
+                        u8,
+                        params[0][1 .. last_delimiter_idx - 1],
+                    ),
+                };
+            }
+            // IPv4 address or hostname logic.
             break :endpoint .{
-                .host = host,
                 .port = std.fmt.parseInt(
                     u16,
-                    iterator.next() orelse return error.MissingParameter,
+                    params[0][last_delimiter_idx + 1 ..],
                     0,
                 ) catch return error.InvalidEndpoint,
+                .host = try client.allocator.dupe(
+                    u8,
+                    params[0][0..last_delimiter_idx],
+                ),
             };
         } else if (client.endpoint == null) .{
             .host = try client.allocator.dupe(u8, client.config.host),
@@ -52,12 +75,7 @@ pub fn impl(params: [][]const u8) !void {
         endpoint.port,
         &command.checkCommandInterrupt,
     );
-    const sockaddr: *const std.posix.sockaddr = switch (socket.sockaddr) {
-        .any => |any| &any,
-        .ipv4 => |in| @ptrCast(&in),
-        .ipv6 => |in6| @ptrCast(&in6),
-    };
-    client.endpoint = try .fromSockAddr(sockaddr);
+    client.endpoint = try socket.getRemoteEndPoint();
     client.sock = socket;
     client.reader = socket.reader(&client.reader_buf);
     client.writer = socket.writer(&client.writer_buf);
@@ -72,8 +90,8 @@ pub fn impl(params: [][]const u8) !void {
         socket.close();
     }
     std.log.info(
-        "Connected to {s}:{d}",
-        .{ endpoint.host, endpoint.port },
+        "Connected to {f}",
+        .{try socket.getRemoteEndPoint()},
     );
     std.log.debug("Send API version request..", .{});
     // Asserting that API version matched between client and server
