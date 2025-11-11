@@ -7,7 +7,7 @@ const CircularBufferAlloc =
     @import("../circular_buffer.zig").CircularBufferAlloc;
 const command = @import("../command.zig");
 pub const Line = @import("mmc_client/Line.zig");
-pub const Log = @import("mmc_client/Log.zig");
+pub const log = @import("mmc_client/log.zig");
 pub const zignet = @import("zignet");
 // pub const api = @import("mmc_client/api.zig");
 pub const api = @import("mmc-api");
@@ -176,9 +176,9 @@ pub const Filter = union(enum) {
 /// `lines` is initialized once the client is connected to a server.
 /// Deinitialized once disconnected from a server.
 pub var lines: []Line = &.{};
-/// `log` is initialized once the client is connected to a server. Deinitialized
-/// once disconnected from a server.
-pub var log: Log = undefined;
+/// The logging configuration is initialized once the client is connected, and
+/// deinitialized if the client is disconnected.
+pub var log_config: log.Config = undefined;
 /// Currently connected socket. Nulled when disconnect.
 pub var sock: ?zignet.Socket = null;
 /// Currently saved endpoint. The endpoint will be overwritten if the client

@@ -204,12 +204,6 @@ pub fn impl(params: [][]const u8) !void {
         }
     }
     // Initialize memory for logging configuration
-    client.log = try client.Log.init(
-        client.allocator,
-        client.lines,
-        client.endpoint.?,
-    );
-    for (client.log.configs, client.lines) |*config, line| {
-        try config.init(client.allocator, line.id, line.name);
-    }
+    client.log_config =
+        try client.log.Config.init(client.allocator, client.lines);
 }

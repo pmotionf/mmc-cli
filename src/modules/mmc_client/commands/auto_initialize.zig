@@ -8,7 +8,7 @@ const api = @import("mmc-api");
 pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "auto_initialize");
     defer tracy_zone.end();
-    errdefer client.Log.stop.store(true, .monotonic);
+    errdefer client.log.stop.store(true, .monotonic);
     const socket = client.sock orelse return error.ServerNotConnected;
     var init_lines: std.ArrayList(
         api.protobuf.mmc.command.Request.AutoInitialize.Line,
