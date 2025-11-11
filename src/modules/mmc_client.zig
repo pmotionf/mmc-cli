@@ -7,7 +7,7 @@ const CircularBufferAlloc =
     @import("../circular_buffer.zig").CircularBufferAlloc;
 const command = @import("../command.zig");
 pub const Line = @import("mmc_client/Line.zig");
-pub const Log = @import("mmc_client/Log.zig");
+pub const log = @import("mmc_client/log.zig");
 pub const zignet = @import("zignet");
 // pub const api = @import("mmc_client/api.zig");
 pub const api = @import("mmc-api");
@@ -176,9 +176,9 @@ pub const Filter = union(enum) {
 /// `lines` is initialized once the client is connected to a server.
 /// Deinitialized once disconnected from a server.
 pub var lines: []Line = &.{};
-/// `log` is initialized once the client is connected to a server. Deinitialized
-/// once disconnected from a server.
-pub var log: Log = undefined;
+/// The logging configuration is initialized once the client is connected, and
+/// deinitialized if the client is disconnected.
+pub var log_config: log.Config = undefined;
 /// Currently connected socket. Nulled when disconnect.
 pub var sock: ?zignet.Socket = null;
 /// Currently saved endpoint. The endpoint will be overwritten if the client
@@ -959,13 +959,18 @@ pub fn init(c: Config) !void {
     try command.registry.put(.{
         .name = "REMOVE_LOG_INFO",
         .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line", .optional = true },
+            .{ .name = "line name" },
+            .{ .name = "kind" },
+            .{ .name = "range", .optional = true },
         },
         .short_description = "Remove the logging configuration.",
         .long_description =
-        \\Remove logging configuration for logging info. Providing a line removes
-        \\the logging configuration for the specified line. Otherwise, removes
-        \\the logging configurations for all lines.
+        \\Remove the logging configuration. The "kind" stands for the kind of
+        \\info to be removed from log config, specified by either "driver",
+        \\"axis", or "all" to remove both driver and axis info. The range is
+        \\the inclusive axis range, and shall be provided with colon separated
+        \\value, e.g. "1:9" to log from axis 1 to 9. Leaving the range will
+        \\remove all log configuration on the line depending on the kind.
         ,
         .execute = &commands.log.remove,
     });

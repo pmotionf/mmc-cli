@@ -7,7 +7,7 @@ const api = @import("mmc-api");
 pub fn impl(_: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "reset_system");
     defer tracy_zone.end();
-    errdefer client.Log.stop.store(true, .monotonic);
+    errdefer client.log.stop.store(true, .monotonic);
     const socket = client.sock orelse return error.ServerNotConnected;
     for (client.lines) |line| {
         // Send deinitialize command

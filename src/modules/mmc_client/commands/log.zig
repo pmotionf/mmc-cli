@@ -3,68 +3,71 @@ const client = @import("../../mmc_client.zig");
 const command = @import("../../../command.zig");
 const chrono = @import("chrono");
 const tracy = @import("tracy");
+const api = @import("mmc-api");
+const zignet = @import("zignet");
+
+const Kind = enum { all, axis, driver };
 
 pub fn add(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "add_log");
     defer tracy_zone.end();
+    const socket = client.sock orelse return error.ServerNotConnected;
+    // Parsing line name
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
-    const kind = params[1];
-    if (kind.len == 0) return error.MissingParameter;
     const line = client.lines[line_idx];
-    const range = params[2];
-    var log_range: client.Log.Config.Range = undefined;
-    if (range.len > 0) {
-        var range_iterator = std.mem.tokenizeSequence(u8, range, ":");
-        log_range = .{
-            .start = try std.fmt.parseInt(
+    // Parsing logging kind
+    const kind: Kind = kind: {
+        if (params[1].len == 0)
+            return error.MissingParameter
+        else if (std.mem.eql(u8, "all", params[1]))
+            break :kind .all
+        else if (std.mem.eql(u8, "axis", params[1]))
+            break :kind .axis
+        else if (std.mem.eql(u8, "driver", params[1]))
+            break :kind .driver
+        else
+            return error.InvalidKind;
+    };
+    // Parsing logging range
+    const range: client.log.Range = range: {
+        if (params[2].len == 0)
+            break :range .{ .start = 1, .end = line.axes }
+        else {
+            var range_iterator = std.mem.tokenizeSequence(u8, params[2], ":");
+            const start_range = try std.fmt.parseInt(
                 u32,
                 range_iterator.next() orelse return error.MissingParameter,
                 0,
-            ),
-            .end = try std.fmt.parseInt(
-                u32,
-                range_iterator.next() orelse return error.MissingParameter,
-                0,
-            ),
-        };
-    } else {
-        log_range = .{ .start = 1, .end = line.axes };
-    }
-    if ((log_range.start < 1 and
-        log_range.start > line.axes) or
-        (log_range.end < 1 and
-            log_range.end > line.axes))
+            );
+            const end_range = if (range_iterator.next()) |end|
+                try std.fmt.parseInt(u32, end, 0)
+            else
+                start_range;
+            break :range .{ .start = start_range, .end = end_range };
+        }
+    };
+    if ((range.start < 1 and
+        range.start > line.axes) or
+        (range.end < 1 and
+            range.end > line.axes))
         return error.InvalidAxis;
-    if (std.ascii.eqlIgnoreCase("all", kind) or
-        std.ascii.eqlIgnoreCase("axis", kind) or
-        std.ascii.eqlIgnoreCase("driver", kind))
-    {} else return error.InvalidKind;
-    client.log.configs[line_idx].axis =
-        if (std.ascii.eqlIgnoreCase("all", kind) or
-        std.ascii.eqlIgnoreCase("axis", kind))
-            true
-        else
-            false;
-    client.log.configs[line_idx].driver =
-        if (std.ascii.eqlIgnoreCase("all", kind) or
-        std.ascii.eqlIgnoreCase("driver", kind))
-            true
-        else
-            false;
-    client.log.configs[line_idx].axis_id_range = log_range;
-    try client.log.status();
+    // NOTE: There is no way to revert what is already toggled on the log. Thus,
+    // the only thing that can be done from this point is to always show the
+    // logging configuration even if there is an error when trying to toggle
+    // the driver flag for logging.
+    defer client.log_config.status() catch {};
+    try modify(socket, line, kind, range, true);
 }
 
 pub fn start(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "start_log");
     defer tracy_zone.end();
-    errdefer client.log.reset();
-    if (client.Log.executing.load(.monotonic) == true)
+    if (client.log.executing.load(.monotonic) == true)
         return error.LoggingAlreadyStarted;
     const duration = try std.fmt.parseFloat(f64, params[0]);
     const path = params[1];
-    client.log.path = if (path.len > 0) path else p: {
+    const file_path = if (path.len > 0) path else p: {
         var timestamp: u64 = @intCast(std.time.timestamp());
         timestamp += std.time.s_per_hour * 9;
         const days_since_epoch: i32 = @intCast(timestamp / std.time.s_per_day);
@@ -88,10 +91,11 @@ pub fn start(params: [][]const u8) !void {
             },
         );
     };
+    defer client.allocator.free(file_path);
     const log_thread = try std.Thread.spawn(
         .{},
-        client.Log.handler,
-        .{duration},
+        client.log.runner,
+        .{ duration, try client.allocator.dupe(u8, file_path) },
     );
     log_thread.detach();
 }
@@ -99,29 +103,66 @@ pub fn start(params: [][]const u8) !void {
 pub fn status(_: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "status_log");
     defer tracy_zone.end();
-    try client.log.status();
+    try client.log_config.status();
 }
 
 pub fn remove(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "remove_log");
     defer tracy_zone.end();
-    if (params[0].len > 0) {
-        const line_name = params[0];
-        const line_idx = try client.matchLine(line_name);
-        client.log.configs[line_idx].deinit(client.log.allocator);
-    } else {
-        for (client.log.configs) |*config| {
-            config.deinit(client.log.allocator);
+    const socket = client.sock orelse return error.ServerNotConnected;
+    // Parsing line name
+    const line_name = params[0];
+    const line_idx = try client.matchLine(line_name);
+    const line = client.lines[line_idx];
+    // Parsing logging kind
+    const kind: Kind = kind: {
+        if (params[1].len == 0)
+            return error.MissingParameter
+        else if (std.mem.eql(u8, "all", params[1]))
+            break :kind .all
+        else if (std.mem.eql(u8, "axis", params[1]))
+            break :kind .axis
+        else if (std.mem.eql(u8, "driver", params[1]))
+            break :kind .driver
+        else
+            return error.InvalidKind;
+    };
+    // Parsing logging range
+    const range: client.log.Range = range: {
+        if (params[2].len == 0)
+            break :range .{ .start = 1, .end = line.axes }
+        else {
+            var range_iterator = std.mem.tokenizeSequence(u8, params[2], ":");
+            const start_range = try std.fmt.parseInt(
+                u32,
+                range_iterator.next() orelse return error.MissingParameter,
+                0,
+            );
+            const end_range = if (range_iterator.next()) |end|
+                try std.fmt.parseInt(u32, end, 0)
+            else
+                start_range;
+            break :range .{ .start = start_range, .end = end_range };
         }
-    }
-    try client.log.status();
+    };
+    if ((range.start < 1 and
+        range.start > line.axes) or
+        (range.end < 1 and
+            range.end > line.axes))
+        return error.InvalidAxis;
+    // NOTE: There is no way to revert what is already toggled on the log. Thus,
+    // the only thing that can be shown from this point is to always show the
+    // logging configuration even if there is an error when trying to toggle
+    // the driver flag for logging.
+    defer client.log_config.status() catch {};
+    try modify(socket, line, kind, range, false);
 }
 
 pub fn stop(_: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "stop_log");
     defer tracy_zone.end();
-    if (client.Log.executing.load(.monotonic))
-        client.Log.stop.store(true, .monotonic)
+    if (client.log.executing.load(.monotonic))
+        client.log.stop.store(true, .monotonic)
     else
         return error.NoRunningLogging;
 }
@@ -129,8 +170,73 @@ pub fn stop(_: [][]const u8) !void {
 pub fn cancel(_: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "cancel_log");
     defer tracy_zone.end();
-    if (client.Log.executing.load(.monotonic))
-        client.Log.cancel.store(true, .monotonic)
+    if (client.log.executing.load(.monotonic))
+        client.log.cancel.store(true, .monotonic)
     else
         return error.NoRunningLogging;
+}
+
+fn modify(
+    socket: zignet.Socket,
+    line: client.Line,
+    kind: Kind,
+    range: client.log.Range,
+    flag: bool,
+) !void {
+    for (range.start..range.end + 1) |axis_id| {
+        if (kind == .all or kind == .axis)
+            client.log_config.lines[line.index].axes[axis_id - 1] = flag;
+        if (kind == .all or kind == .driver) {
+            // Since the client does not know on which driver the axis is
+            // located, the client has to request driver info with axis filter.
+            const request: api.protobuf.mmc.Request = .{
+                .body = .{
+                    .info = .{
+                        .body = .{
+                            .track = .{
+                                .line = line.id,
+                                .info_driver_state = true,
+                                .filter = .{
+                                    .axes = .{
+                                        .start = @intCast(axis_id),
+                                        .end = @intCast(axis_id),
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            };
+            try client.removeIgnoredMessage(socket);
+            try socket.waitToWrite();
+            // Send message
+            try request.encode(&client.writer.interface, client.allocator);
+            try client.writer.interface.flush();
+            // Receive message
+            try socket.waitToRead();
+            var decoded: api.protobuf.mmc.Response = try .decode(
+                &client.reader.interface,
+                client.allocator,
+            );
+            defer decoded.deinit(client.allocator);
+            var track = switch (decoded.body orelse return error.InvalidResponse) {
+                .info => |info_resp| switch (info_resp.body orelse
+                    return error.InvalidResponse) {
+                    .track => |track_resp| track_resp,
+                    .request_error => |req_err| {
+                        return client.error_response.throwInfoError(req_err);
+                    },
+                    else => return error.InvalidResponse,
+                },
+                .request_error => |req_err| {
+                    return client.error_response.throwMmcError(req_err);
+                },
+                else => return error.InvalidResponse,
+            };
+            if (track.line != line.id) return error.InvalidResponse;
+            const driver = track.driver_state.pop() orelse
+                return error.InvalidResponse;
+            client.log_config.lines[line.index].drivers[driver.id - 1] = flag;
+        }
+    }
 }
