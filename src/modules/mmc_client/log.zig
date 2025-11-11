@@ -288,6 +288,8 @@ const Stream = struct {
             }
             data.timestamp = 0;
         }
+        stream.head = 0;
+        stream.count = 0;
         stream.socket = try zignet.Socket.connect(
             endpoint,
             &command.checkCommandInterrupt,
@@ -423,10 +425,14 @@ const Stream = struct {
         timestamp: f64,
     ) !void {
         const tail = (stream.head + stream.count) % stream.data.len;
+        if (stream.count == stream.data.len)
+            stream.head = (stream.head + 1) % stream.data.len
+        else
+            stream.count += 1;
         var data = &stream.data[tail];
         errdefer {
             // If getting data is failing on this occasion, remove the data
-            // so that it will not written to a file.
+            // so that it will not be written to a file.
             stream.count -= 1;
         }
         data.timestamp = timestamp;
@@ -487,6 +493,8 @@ const Stream = struct {
             // TODO: Optimize the storing to store directly to circular
             // buffer instead of making a copy first before calling
             // `writeItemOverwrite()`
+            // std.log.debug("{}", .{stream.data[tail].lines[0]});
+            data.lines[track.line - 1].id = track.line;
             for (
                 track.axis_state.items,
                 track.axis_errors.items,
@@ -558,10 +566,6 @@ const Stream = struct {
                 };
             }
         }
-        if (stream.count == stream.data.len)
-            stream.head = (stream.head + 1) % stream.data.len
-        else
-            stream.count += 1;
     }
 };
 
@@ -675,6 +679,7 @@ pub fn runner(duration: f64, file_path: []const u8) !void {
         const log_data = stream.data[stream.head];
         stream.head = (stream.head + 1) % stream.data.len;
         stream.count -= 1;
+        if (timestamp - log_data.timestamp > duration) continue;
         try log_writer.interface.writeByte('\n');
         try log_writer.interface.print("{},", .{log_data.timestamp});
         for (client.log_config.lines) |line_config| {

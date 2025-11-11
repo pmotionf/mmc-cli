@@ -965,15 +965,12 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Remove the logging configuration.",
         .long_description =
-        \\Remove the logging configuration. The "kind" stands
-        \\for the kind of info to be logged, specified by either "driver", "axis",
-        \\or "all" to log both driver and axis info. The range is the inclusive
-        \\axis range, and shall be provided with colon separated value, e.g. "1:9"
-        \\to log from axis 1 to 9. Leaving the range will log every axis on the
-        \\line.
-        \\Remove logging configuration for logging info. Providing a line removes
-        \\the logging configuration for the specified line. Otherwise, removes
-        \\the logging configurations for all lines.
+        \\Remove the logging configuration. The "kind" stands for the kind of
+        \\info to be removed from log config, specified by either "driver",
+        \\"axis", or "all" to remove both driver and axis info. The range is
+        \\the inclusive axis range, and shall be provided with colon separated
+        \\value, e.g. "1:9" to log from axis 1 to 9. Leaving the range will
+        \\remove all log configuration on the line depending on the kind.
         ,
         .execute = &commands.log.remove,
     });
