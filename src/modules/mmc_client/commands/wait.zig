@@ -229,7 +229,11 @@ fn waitCarrierState(
             else => return error.InvalidResponse,
         };
         if (track.line != line) return error.InvalidResponse;
-        const carrier = track.carrier_state.pop() orelse return error.CarrierNotFound;
+        // If a carrier is not found, it shall not return error.CarrierNotFound.
+        // Every wait command shall be guaranteed by the user to be available
+        // even after some time the carrier not found, e.g. when pulling
+        // a carrier from different line.
+        const carrier = track.carrier_state.pop() orelse continue;
         if (carrier.state == .CARRIER_STATE_OVERCURRENT) return error.Overcurrent;
         if (carrier.state == state) return;
     }
