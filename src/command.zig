@@ -281,7 +281,7 @@ pub fn init() !void {
         .short_description = "Load CLI configuration file.",
         .long_description =
         \\Read given configuration file to dynamically load specified command
-        \\modules. This configuration file must be in valid JSON format, with
+        \\modules. This configuration file must be in valid JSON5 format, with
         \\configuration parameters according to provided documentation.
         ,
         .execute = &loadConfig,
@@ -787,14 +787,14 @@ fn loadConfig(params: [][]const u8) !void {
     const config_file = if (params[0].len > 0)
         try std.fs.cwd().openFile(params[0], .{})
     else
-        std.fs.cwd().openFile("config.json", .{}) catch exe_local: {
+        std.fs.cwd().openFile("config.json5", .{}) catch exe_local: {
             var exe_dir_buf: [std.fs.max_path_bytes]u8 = undefined;
             const exe_dir_path = std.fs.selfExeDirPath(&exe_dir_buf) catch
                 break :exe_local error.FileNotFound;
             var exe_dir = std.fs.cwd().openDir(exe_dir_path, .{}) catch
                 break :exe_local error.FileNotFound;
             defer exe_dir.close();
-            break :exe_local exe_dir.openFile("config.json", .{});
+            break :exe_local exe_dir.openFile("config.json5", .{});
         } catch config_local: {
             var config_dir = switch (comptime builtin.os.tag) {
                 .windows => b: {
@@ -837,7 +837,7 @@ fn loadConfig(params: [][]const u8) !void {
             };
 
             break :config_local try config_dir.openFile(
-                "config.json",
+                "config.json5",
                 .{},
             );
         };

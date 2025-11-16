@@ -4,6 +4,10 @@
     .fingerprint = 0x392c74984291bf14,
     .minimum_zig_version = "0.15.1",
     .dependencies = .{
+        .json5 = .{
+            .url = "https://github.com/mochalins/json5.zig/archive/2ef1032.tar.gz",
+            .hash = "json5-0.0.0-9LJUCHSPAgCs9XvoCTgk0GonRWlu2UQnHBsFJQL3E3Vz",
+        },
         .network = .{
             .url = "https://github.com/mochalins/network/archive/084fed7.tar.gz",
             .hash = "network-0.1.0-Pm-AgiMxAQCuaDrGAfSxVHeozUQ2gU3jINGLFxJ1Zpld",
