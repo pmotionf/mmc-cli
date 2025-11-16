@@ -69,6 +69,10 @@ pub fn build(b: *std.Build) !void {
         },
     );
 
+    const json5 = b.dependency("json5", .{
+        .target = target,
+        .optimize = optimize,
+    });
     const network_dep = b.dependency("network", .{
         .target = target,
         .optimize = optimize,
@@ -95,6 +99,7 @@ pub fn build(b: *std.Build) !void {
 
     const imports: []const std.Build.Module.Import = &.{
         .{ .name = "build.zig.zon", .module = build_zig_zon },
+        .{ .name = "json5", .module = json5.module("json5") },
         .{ .name = "mmc-api", .module = mmc_api.module("mmc-api") },
         .{ .name = "network", .module = network_dep.module("network") },
         .{ .name = "chrono", .module = chrono.module("chrono") },

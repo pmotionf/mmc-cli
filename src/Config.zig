@@ -3,6 +3,7 @@ const Config = @This();
 const builtin = @import("builtin");
 const std = @import("std");
 const config = @import("config");
+const json5 = @import("json5");
 
 const ReturnDemo2Config = if (config.return_demo2)
     @import("modules/return_demo2.zig").Config
@@ -13,7 +14,7 @@ const ClientCliConfig =
 const Mes07Config =
     if (config.mes07) @import("modules/mes07.zig").Config else void;
 
-parsed: std.json.Parsed(Parse),
+parsed: json5.Parsed(Parse),
 
 pub const Module = enum {
     return_demo2,
@@ -38,9 +39,9 @@ pub fn parse(allocator: std.mem.Allocator, f: std.fs.File) !Config {
 
     var f_reader_buf: [4096]u8 = undefined;
     var f_reader = f.reader(&f_reader_buf);
-    var reader: std.json.Reader = .init(a, &f_reader.interface);
+    var reader: json5.Reader = .init(a, &f_reader.interface);
 
-    const _result = try std.json.parseFromTokenSource(
+    const _result = try json5.parseFromTokenSource(
         Parse,
         allocator,
         &reader,
