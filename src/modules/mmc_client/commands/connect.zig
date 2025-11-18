@@ -191,15 +191,53 @@ pub fn impl(params: [][]const u8) !void {
                 config,
             );
         }
-        std.log.info(
-            "Received the line configuration for the following {s}:",
-            .{if (client.lines.len <= 1) "line" else "lines"},
+    }
+    {
+        const request: api.protobuf.mmc.Request = .{
+            .body = .{
+                .core = .{ .kind = .CORE_REQUEST_KIND_SERVER_INFO },
+            },
+        };
+        try client.removeIgnoredMessage(socket);
+        try socket.waitToWrite();
+        // Send message
+        try request.encode(&client.writer.interface, client.allocator);
+        try client.writer.interface.flush();
+        // Receive response
+        try socket.waitToRead();
+        var decoded: api.protobuf.mmc.Response = try .decode(
+            &client.reader.interface,
+            client.allocator,
         );
+        defer decoded.deinit(client.allocator);
+        const server = switch (decoded.body orelse
+            return error.InvalidResponse) {
+            .core => |core_resp| switch (core_resp.body orelse
+                return error.InvalidResponse) {
+                .server => |server| server,
+                .request_error => |req_err| {
+                    return client.error_response.throwCoreError(req_err);
+                },
+                else => return error.InvalidResponse,
+            },
+            .request_error => |req_err| {
+                return client.error_response.throwMmcError(req_err);
+            },
+            else => return error.InvalidResponse,
+        };
+        std.log.info("Track configuration for {s}:", .{server.name});
         var stdout = std.fs.File.stdout().writer(&.{});
         for (client.lines) |line| {
-            try stdout.interface.writeByte('\t');
-            try stdout.interface.writeAll(line.name);
-            try stdout.interface.writeByte('\n');
+            try stdout.interface.print(
+                // "\t {s} ({})\t\t ({} m/s - {} m/s^2)\n",
+                "\t {s} ({}) - {}m/s | {}m/s^2\n",
+                .{
+                    line.name, line.axes,
+                    @as(f32, @floatFromInt(line.velocity.value)) /
+                        @as(f32, if (line.velocity.low) 10_000 else 10.0),
+                    @as(f32, @floatFromInt(line.acceleration)) / 10.0,
+                },
+            );
             try stdout.interface.flush();
         }
     }
