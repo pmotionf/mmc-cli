@@ -752,8 +752,10 @@ fn writeValues(
                     try w.write("None,");
             } else if (@typeInfo(field.type) == .@"enum") {
                 try w.print(
-                    "{d},",
-                    .{@intFromEnum(@field(parent, field.name))},
+                    "{t}({d}),",
+                    .{ @field(parent, field.name), @intFromEnum(
+                        @field(parent, field.name),
+                    ) },
                 );
             } else {
                 if (!std.mem.eql(u8, parent_str, "carrier") and
