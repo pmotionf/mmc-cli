@@ -299,8 +299,8 @@ const Stream = struct {
         stream.config.lines = .empty;
         for (config.lines) |line| {
             // Check if there is any log configured for the line
-            if (std.mem.allEqual(bool, line.axes, false)) continue;
-            if (std.mem.allEqual(bool, line.drivers, false)) continue;
+            if (std.mem.allEqual(bool, line.axes, false) and
+                std.mem.allEqual(bool, line.drivers, false)) continue;
             // NOTE: Since the client does not know how many axes are there
             // in one driver, the log client need to request the driver
             // information first to define the axis range.
