@@ -299,8 +299,8 @@ const Stream = struct {
         stream.config.lines = .empty;
         for (config.lines) |line| {
             // Check if there is any log configured for the line
-            if (std.mem.allEqual(bool, line.axes, false)) continue;
-            if (std.mem.allEqual(bool, line.drivers, false)) continue;
+            if (std.mem.allEqual(bool, line.axes, false) and
+                std.mem.allEqual(bool, line.drivers, false)) continue;
             // NOTE: Since the client does not know how many axes are there
             // in one driver, the log client need to request the driver
             // information first to define the axis range.
@@ -684,11 +684,15 @@ pub fn runner(duration: f64, file_path: []const u8) !void {
         try log_writer.interface.print("{},", .{log_data.timestamp});
         for (client.log_config.lines) |line_config| {
             const line_data = log_data.lines[line_config.id - 1];
-            // const line_data = stream.data.lines[line_config.id - 1];
-            for (line_data.drivers) |driver_data| {
+            for (
+                line_data.drivers,
+                line_config.drivers,
+            ) |driver_data, log_driver| {
+                if (log_driver == false) continue;
                 try writeValues(&log_writer.interface, driver_data, "driver");
             }
-            for (line_data.axes) |axis_data| {
+            for (line_data.axes, line_config.axes) |axis_data, log_axis| {
+                if (log_axis == false) continue;
                 try writeValues(&log_writer.interface, axis_data, "axis");
             }
         }
@@ -752,8 +756,10 @@ fn writeValues(
                     try w.write("None,");
             } else if (@typeInfo(field.type) == .@"enum") {
                 try w.print(
-                    "{d},",
-                    .{@intFromEnum(@field(parent, field.name))},
+                    "{t}({d}),",
+                    .{ @field(parent, field.name), @intFromEnum(
+                        @field(parent, field.name),
+                    ) },
                 );
             } else {
                 if (!std.mem.eql(u8, parent_str, "carrier") and
