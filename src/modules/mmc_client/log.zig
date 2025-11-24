@@ -271,7 +271,6 @@ const Stream = struct {
         var stream: Stream = undefined;
         stream.data = try allocator.alloc(Stream.Data, logging_size);
         errdefer {
-            allocator.free(stream.data);
             for (stream.data) |data| {
                 if (data.lines.len == 0) continue;
                 for (data.lines) |stream_line| {
@@ -282,6 +281,7 @@ const Stream = struct {
                 }
                 allocator.free(data.lines);
             }
+            allocator.free(stream.data);
         }
         for (stream.data) |*data| {
             data.lines = try allocator.alloc(Stream.Data.Line, lines.len);
