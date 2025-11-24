@@ -773,18 +773,18 @@ pub fn init(c: Config) !void {
         .name = "PUSH_CARRIER_FORWARD",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "carrier" },
-            .{ .name = "axis", .optional = true },
+            .{ .name = "axis" },
+            .{ .name = "carrier", .optional = true },
         },
-        .short_description = "Push carrier forward by carrier length.",
+        .short_description = "Push carrier forward on the specified axis.",
         .long_description =
-        \\Push carrier forward with speed feedback-controlled movement. This
-        \\movement targets a distance of the carrier length, and thus if it is
-        \\used to cross a line boundary, the receiving axis at the destination
-        \\line must first be pulling the carrier. Specifying the optional
-        \\`axis` parameter will push the carrier automatically when it arrives
-        \\at the given axis; otherwise, the carrier will be pushed immediately
-        \\from its current position.
+        \\Push a carrier located on the center of the specified axis forward
+        \\with speed feedback-controlled movement. This movement targets a
+        \\distance of the carrier length, and thus if it is used to cross a line
+        \\boundary, the receiving axis at the destination line must first be
+        \\pulling the carrier. Providing the optional "carrier" parameter will
+        \\move the carrier to the center of the specified axis and push it
+        \\forward.
         ,
         .execute = &commands.push.forward,
     });
@@ -793,18 +793,18 @@ pub fn init(c: Config) !void {
         .name = "PUSH_CARRIER_BACKWARD",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
-            .{ .name = "carrier" },
-            .{ .name = "axis", .optional = true },
+            .{ .name = "axis" },
+            .{ .name = "carrier", .optional = true },
         },
-        .short_description = "Push carrier backward by carrier length.",
+        .short_description = "Push carrier forward on the specified axis.",
         .long_description =
-        \\Push carrier backward with speed feedback-controlled movement. This
-        \\movement targets a distance of the carrier length, and thus if it is
-        \\used to cross a line boundary, the receiving axis at the destination
-        \\line must first be pulling the carrier. Specifying the optional
-        \\`axis` parameter will push the carrier automatically when it arrives
-        \\at the given axis; otherwise, the carrier will be pushed immediately
-        \\from its current position.
+        \\Push a carrier located on the center of the specified axis backward
+        \\with speed feedback-controlled movement. This movement targets a
+        \\distance of the carrier length, and thus if it is used to cross a line
+        \\boundary, the receiving axis at the destination line must first be
+        \\pulling the carrier. Providing the optional "carrier" parameter will
+        \\move the carrier to the center of the specified axis and push it
+        \\backward.
         ,
         .execute = &commands.push.backward,
     });

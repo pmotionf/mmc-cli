@@ -27,8 +27,9 @@ fn impl(
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const carrier_id = try std.fmt.parseInt(u10, b: {
-        const input = params[1];
+    const axis_id: u32 = try std.fmt.parseInt(u32, params[1], 0);
+    const carrier_id: ?u32 = if (params[2].len > 0) try std.fmt.parseInt(u10, b: {
+        const input = params[2];
         var suffix: ?usize = null;
         for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
             suffix = i;
@@ -38,94 +39,64 @@ fn impl(
             if (ignore_idx == 0) return error.InvalidCharacter;
             break :b input[0..ignore_idx];
         } else break :b input;
-    }, 0);
+    }, 0) else null;
 
-    const axis_id: ?u32 = if (params[2].len > 0)
-        try std.fmt.parseInt(u32, params[2], 0)
-    else
-        null;
-    if (axis_id) |axis| {
-        // Send move command to the provided axis.
-        {
-            const location =
-                line.length.axis * @as(f32, @floatFromInt(axis - 1)) +
-                switch (dir) {
-                    .DIRECTION_BACKWARD => -line.length.axis / 2.0,
-                    .DIRECTION_FORWARD => line.length.axis / 2.0,
-                    else => unreachable,
-                };
-            const request: api.protobuf.mmc.Request = .{
-                .body = .{
-                    .command = .{
-                        .body = .{
-                            .move = .{
-                                .line = line.id,
-                                .carrier = carrier_id,
-                                .velocity = line.velocity.value,
-                                .velocity_mode = if (line.velocity.low)
-                                    .VELOCITY_MODE_LOW
-                                else
-                                    .VELOCITY_MODE_NORMAL,
-                                .acceleration = line.acceleration,
-                                .target = .{ .location = location },
-                                .disable_cas = true,
-                                .control = .CONTROL_POSITION,
-                            },
-                        },
-                    },
-                },
-            };
-            try client.removeIgnoredMessage(socket);
-            try socket.waitToWrite();
-            // Send message
-            try request.encode(&client.writer.interface, client.allocator);
-            try client.writer.interface.flush();
-            try client.waitCommandReceived();
-        }
-        // Send push command to the provided axis
-        {
-            const request: api.protobuf.mmc.Request = .{
-                .body = .{
-                    .command = .{
-                        .body = .{
-                            .push = .{
-                                .line = line.id,
-                                .carrier = carrier_id,
-                                .velocity = line.velocity.value,
-                                .velocity_mode = if (line.velocity.low)
-                                    .VELOCITY_MODE_LOW
-                                else
-                                    .VELOCITY_MODE_NORMAL,
-                                .acceleration = line.acceleration,
-                                .direction = dir,
-                                .axis = axis,
-                            },
-                        },
-                    },
-                },
-            };
-            try client.removeIgnoredMessage(socket);
-            try socket.waitToWrite();
-            // Send message
-            try request.encode(&client.writer.interface, client.allocator);
-            try client.writer.interface.flush();
-            try client.waitCommandReceived();
-        }
-        return;
-    }
-    // Request carrier information
-    const carrier = carrier: {
-        var ids = [1]u32{carrier_id};
+    // Push command request
+    {
         const request: api.protobuf.mmc.Request = .{
             .body = .{
-                .info = .{
+                .command = .{
                     .body = .{
-                        .track = .{
+                        .push = .{
                             .line = line.id,
-                            .info_carrier_state = true,
-                            .filter = .{
-                                .carriers = .{ .ids = .fromOwnedSlice(&ids) },
-                            },
+                            .velocity = line.velocity.value,
+                            .velocity_mode = if (line.velocity.low)
+                                .VELOCITY_MODE_LOW
+                            else
+                                .VELOCITY_MODE_NORMAL,
+                            .acceleration = line.acceleration,
+                            .direction = dir,
+                            .axis = axis_id,
+                            .carrier = carrier_id,
+                        },
+                    },
+                },
+            },
+        };
+        std.log.debug("request: {}", .{request.body.?.command.body.?.push});
+        try client.removeIgnoredMessage(socket);
+        try socket.waitToWrite();
+        // Send push message
+        try request.encode(&client.writer.interface, client.allocator);
+        try client.writer.interface.flush();
+        try client.waitCommandReceived();
+    }
+    // If carrier is provided, send the specified carrier to the pushing axis
+    // with offset half of carrier length.
+    if (carrier_id) |id| {
+        const location =
+            line.length.axis * @as(f32, @floatFromInt(axis_id - 1)) +
+            switch (dir) {
+                .DIRECTION_BACKWARD => -line.length.carrier / 2.0,
+                .DIRECTION_FORWARD => line.length.carrier / 2.0,
+                else => unreachable,
+            };
+        const request: api.protobuf.mmc.Request = .{
+            .body = .{
+                .command = .{
+                    .body = .{
+                        .move = .{
+                            .line = line.id,
+                            .carrier = id,
+                            .velocity = line.velocity.value,
+                            .velocity_mode = if (line.velocity.low)
+                                .VELOCITY_MODE_LOW
+                            else
+                                .VELOCITY_MODE_NORMAL,
+                            .acceleration = line.acceleration,
+                            .target = .{ .location = location },
+                            .disable_cas = true,
+                            .control = .CONTROL_POSITION,
                         },
                     },
                 },
@@ -136,55 +107,6 @@ fn impl(
         // Send message
         try request.encode(&client.writer.interface, client.allocator);
         try client.writer.interface.flush();
-        // Receive response
-        try socket.waitToRead();
-        var decoded: api.protobuf.mmc.Response = try .decode(
-            &client.reader.interface,
-            client.allocator,
-        );
-        defer decoded.deinit(client.allocator);
-        const track = switch (decoded.body orelse return error.InvalidResponse) {
-            .info => |info_resp| switch (info_resp.body orelse
-                return error.InvalidResponse) {
-                .track => |track_resp| track_resp,
-                .request_error => |req_err| {
-                    return client.error_response.throwInfoError(req_err);
-                },
-                else => return error.InvalidResponse,
-            },
-            .request_error => |req_err| {
-                return client.error_response.throwMmcError(req_err);
-            },
-            else => return error.InvalidResponse,
-        };
-        if (track.line != line.id) return error.InvalidResponse;
-        var carrier_state = track.carrier_state;
-        break :carrier carrier_state.pop() orelse return error.CarrierNotFound;
-    };
-    // Push command request
-    const request: api.protobuf.mmc.Request = .{
-        .body = .{
-            .command = .{
-                .body = .{
-                    .push = .{
-                        .line = line.id,
-                        .velocity = line.velocity.value,
-                        .velocity_mode = if (line.velocity.low)
-                            .VELOCITY_MODE_LOW
-                        else
-                            .VELOCITY_MODE_NORMAL,
-                        .acceleration = line.acceleration,
-                        .direction = dir,
-                        .axis = carrier.axis_main,
-                    },
-                },
-            },
-        },
-    };
-    try client.removeIgnoredMessage(socket);
-    try socket.waitToWrite();
-    // Send message
-    try request.encode(&client.writer.interface, client.allocator);
-    try client.writer.interface.flush();
-    try client.waitCommandReceived();
+        try client.waitCommandReceived();
+    }
 }
