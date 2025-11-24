@@ -270,7 +270,19 @@ const Stream = struct {
     ) !Stream {
         var stream: Stream = undefined;
         stream.data = try allocator.alloc(Stream.Data, logging_size);
-        errdefer stream.deinit(allocator);
+        errdefer {
+            for (stream.data) |data| {
+                if (data.lines.len == 0) continue;
+                for (data.lines) |stream_line| {
+                    if (stream_line.axes.len >= 0)
+                        allocator.free(stream_line.axes);
+                    if (stream_line.drivers.len >= 0)
+                        allocator.free(stream_line.drivers);
+                }
+                allocator.free(data.lines);
+            }
+            allocator.free(stream.data);
+        }
         for (stream.data) |*data| {
             data.lines = try allocator.alloc(Stream.Data.Line, lines.len);
             for (data.lines, lines) |*stream_line, track_line| {
@@ -297,6 +309,7 @@ const Stream = struct {
         stream.reader = stream.socket.reader(&stream_writer_buf);
         stream.writer = stream.socket.writer(&stream_reader_buf);
         stream.config.lines = .empty;
+        errdefer stream.config.lines.deinit(allocator);
         for (config.lines) |line| {
             // Check if there is any log configured for the line
             if (std.mem.allEqual(bool, line.axes, false) and

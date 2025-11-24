@@ -67,7 +67,12 @@ pub fn start(params: [][]const u8) !void {
         return error.LoggingAlreadyStarted;
     const duration = try std.fmt.parseFloat(f64, params[0]);
     const path = params[1];
-    const file_path = if (path.len > 0) path else p: {
+    const file_path = if (path.len > 0) p: {
+        // Check if the specified path is ended in csv.
+        if (std.mem.eql(u8, path[path.len - 4 .. path.len], ".csv"))
+            break :p try client.allocator.dupe(u8, path);
+        break :p try std.fmt.allocPrint(client.allocator, "{s}.csv", .{path});
+    } else p: {
         var timestamp: u64 = @intCast(std.time.timestamp());
         timestamp += std.time.s_per_hour * 9;
         const days_since_epoch: i32 = @intCast(timestamp / std.time.s_per_day);
