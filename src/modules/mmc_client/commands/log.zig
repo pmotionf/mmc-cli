@@ -91,7 +91,9 @@ pub fn start(params: [][]const u8) !void {
             },
         );
     };
-    defer client.allocator.free(file_path);
+    defer {
+        if (path.len == 0) client.allocator.free(file_path);
+    }
     const log_thread = try std.Thread.spawn(
         .{},
         client.log.runner,
