@@ -5,8 +5,8 @@
     .minimum_zig_version = "0.15.1",
     .dependencies = .{
         .json5 = .{
-            .url = "https://github.com/mochalins/json5.zig/archive/eddce8.tar.gz",
-            .hash = "json5-0.0.0-9LJUCKmNAgATuj_MebbFw88OHT8Q0XC-QnTUbCMuVkaA",
+            .url = "https://github.com/mochalins/json5.zig/archive/2ef1032.tar.gz",
+            .hash = "json5-0.0.0-9LJUCHSPAgCs9XvoCTgk0GonRWlu2UQnHBsFJQL3E3Vz",
         },
         .network = .{
             .url = "https://github.com/mochalins/network/archive/084fed7.tar.gz",
