@@ -117,8 +117,8 @@ fn impl(
         const location =
             line.length.axis * @as(f32, @floatFromInt(axis_id - 1)) +
             switch (dir) {
-                .DIRECTION_BACKWARD => -line.length.carrier / 2.0,
-                .DIRECTION_FORWARD => line.length.carrier / 2.0,
+                .DIRECTION_BACKWARD => -line.length.axis / 2.0,
+                .DIRECTION_FORWARD => line.length.axis / 2.0,
                 else => unreachable,
             };
         const request: api.protobuf.mmc.Request = .{
