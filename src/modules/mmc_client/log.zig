@@ -36,6 +36,8 @@ pub const Config = struct {
     pub fn init(allocator: std.mem.Allocator, lines: []client.Line) !Config {
         var result: Config = undefined;
         result.lines = try allocator.alloc(Line, lines.len);
+        for (result.lines) |*line|
+            line.* = .{ .id = 0, .axes = &.{}, .drivers = &.{} };
         errdefer result.deinit(allocator);
         for (result.lines, lines) |*config_line, track_line| {
             config_line.id = track_line.id;
@@ -270,14 +272,14 @@ const Stream = struct {
     ) !Stream {
         var stream: Stream = undefined;
         stream.data = try allocator.alloc(Stream.Data, logging_size);
+        for (stream.data) |*data| {
+            data.* = .{ .timestamp = 0, .lines = &.{} };
+        }
         errdefer {
             for (stream.data) |data| {
-                if (data.lines.len == 0) continue;
                 for (data.lines) |stream_line| {
-                    if (stream_line.axes.len >= 0)
-                        allocator.free(stream_line.axes);
-                    if (stream_line.drivers.len >= 0)
-                        allocator.free(stream_line.drivers);
+                    allocator.free(stream_line.axes);
+                    allocator.free(stream_line.drivers);
                 }
                 allocator.free(data.lines);
             }
@@ -306,6 +308,7 @@ const Stream = struct {
             endpoint,
             &command.checkCommandInterrupt,
         );
+        errdefer stream.socket.close();
         stream.reader = stream.socket.reader(&stream_writer_buf);
         stream.writer = stream.socket.writer(&stream_reader_buf);
         stream.config.lines = .empty;
