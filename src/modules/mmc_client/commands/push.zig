@@ -135,7 +135,7 @@ fn impl(
                                 .VELOCITY_MODE_NORMAL,
                             .acceleration = line.acceleration,
                             .target = .{ .location = location },
-                            .disable_cas = true,
+                            .disable_cas = false,
                             .control = .CONTROL_POSITION,
                         },
                     },
