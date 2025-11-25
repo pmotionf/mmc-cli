@@ -41,39 +41,79 @@ fn impl(
         } else break :b input;
     }, 0) else null;
 
-    // Push command request
-    {
-        const request: api.protobuf.mmc.Request = .{
-            .body = .{
-                .command = .{
-                    .body = .{
-                        .push = .{
-                            .line = line.id,
-                            .velocity = line.velocity.value,
-                            .velocity_mode = if (line.velocity.low)
-                                .VELOCITY_MODE_LOW
-                            else
-                                .VELOCITY_MODE_NORMAL,
-                            .acceleration = line.acceleration,
-                            .direction = dir,
-                            .axis = axis_id,
-                            .carrier = carrier_id,
+    // If carrier is provided, send the specified carrier to the pushing axis
+    // with offset half of carrier length.
+    if (carrier_id) |id| check_move: {
+        // Continuous push need to move the target carrier to the target axis.
+        // Push activation condition is that the hall sensor on the push
+        // direction is on or the carrier waited by the pushing axis has
+        // movement target that makes the hall sensor on the push direction
+        // to be on. Then, the carrier will be pushed to the direction once
+        // it is detected by the target axis.
+        //
+        // Thus, if the target carrier is already on the target axis and the
+        // hall sensor of the push direction is already on, the move command is
+        // not necessary.
+        check_carrier: {
+            // This blocks checks whether the move command is necessary or not.
+            const request: api.protobuf.mmc.Request = .{
+                .body = .{
+                    .info = .{
+                        .body = .{
+                            .track = .{
+                                .line = line.id,
+                                .info_axis_state = true,
+                                .filter = .{
+                                    .axes = .{
+                                        .start = axis_id,
+                                        .end = axis_id,
+                                    },
+                                },
+                            },
                         },
                     },
                 },
-            },
-        };
-        std.log.debug("request: {}", .{request.body.?.command.body.?.push});
-        try client.removeIgnoredMessage(socket);
-        try socket.waitToWrite();
-        // Send push message
-        try request.encode(&client.writer.interface, client.allocator);
-        try client.writer.interface.flush();
-        try client.waitCommandReceived();
-    }
-    // If carrier is provided, send the specified carrier to the pushing axis
-    // with offset half of carrier length.
-    if (carrier_id) |id| {
+            };
+            try client.removeIgnoredMessage(socket);
+            try socket.waitToWrite();
+            // Send message
+            try request.encode(&client.writer.interface, client.allocator);
+            try client.writer.interface.flush();
+            // Receive response
+            try socket.waitToRead();
+            var decoded: api.protobuf.mmc.Response = try .decode(
+                &client.reader.interface,
+                client.allocator,
+            );
+            defer decoded.deinit(client.allocator);
+            var track = switch (decoded.body orelse return error.InvalidResponse) {
+                .info => |info_resp| switch (info_resp.body orelse
+                    return error.InvalidResponse) {
+                    .track => |track_resp| track_resp,
+                    .request_error => |req_err| {
+                        return client.error_response.throwInfoError(req_err);
+                    },
+                    else => return error.InvalidResponse,
+                },
+                .request_error => |req_err| {
+                    return client.error_response.throwMmcError(req_err);
+                },
+                else => return error.InvalidResponse,
+            };
+            if (track.line != line.id) return error.InvalidResponse;
+            const axis_state = track.axis_state.pop() orelse
+                return error.InvalidResponse;
+            // If no carrier is detected, continue to move the specified carrier
+            // to the pushing axis.
+            const carrier = track.carrier_state.pop() orelse
+                break :check_carrier;
+            if (dir == .DIRECTION_FORWARD and axis_state.hall_alarm_front or
+                dir == .DIRECTION_BACKWARD and axis_state.hall_alarm_back)
+            {
+                // Move command is not necessary in the following condition.
+                if (carrier.id == id) break :check_move;
+            }
+        }
         const location =
             line.length.axis * @as(f32, @floatFromInt(axis_id - 1)) +
             switch (dir) {
@@ -97,6 +137,35 @@ fn impl(
                             .target = .{ .location = location },
                             .disable_cas = true,
                             .control = .CONTROL_POSITION,
+                        },
+                    },
+                },
+            },
+        };
+        try client.removeIgnoredMessage(socket);
+        try socket.waitToWrite();
+        // Send message
+        try request.encode(&client.writer.interface, client.allocator);
+        try client.writer.interface.flush();
+        try client.waitCommandReceived();
+    }
+    // Push command request
+    {
+        const request: api.protobuf.mmc.Request = .{
+            .body = .{
+                .command = .{
+                    .body = .{
+                        .push = .{
+                            .line = line.id,
+                            .velocity = line.velocity.value,
+                            .velocity_mode = if (line.velocity.low)
+                                .VELOCITY_MODE_LOW
+                            else
+                                .VELOCITY_MODE_NORMAL,
+                            .acceleration = line.acceleration,
+                            .direction = dir,
+                            .axis = axis_id,
+                            .carrier = carrier_id,
                         },
                     },
                 },
