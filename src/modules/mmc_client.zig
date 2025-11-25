@@ -74,10 +74,11 @@ pub const error_response = struct {
     pub fn throwCommandError(err: api.protobuf.mmc.command.Request.Error) anyerror {
         return switch (err) {
             .COMMAND_REQUEST_ERROR_UNSPECIFIED,
-            .COMMAND_REQUEST_ERROR_INVALID_LOCATION,
-            .COMMAND_REQUEST_ERROR_INVALID_DISTANCE,
+            // cc_link_disconnected is currently not being used in the server.
             .COMMAND_REQUEST_ERROR_CC_LINK_DISCONNECTED,
             => error.InvalidResponse,
+            .COMMAND_REQUEST_ERROR_INVALID_LOCATION => error.InvalidLocation,
+            .COMMAND_REQUEST_ERROR_INVALID_DISTANCE => error.InvalidDistance,
             .COMMAND_REQUEST_ERROR_INVALID_LINE => error.InvalidLine,
             .COMMAND_REQUEST_ERROR_INVALID_AXIS => error.InvalidAxis,
             .COMMAND_REQUEST_ERROR_INVALID_DRIVER => error.InvalidDriver,
