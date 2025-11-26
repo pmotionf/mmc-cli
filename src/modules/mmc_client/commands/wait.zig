@@ -71,40 +71,6 @@ pub fn moveCarrier(params: [][]const u8) !void {
     );
 }
 
-pub fn pull(params: [][]const u8) !void {
-    const tracy_zone = tracy.traceNamed(@src(), "wait_pull");
-    defer tracy_zone.end();
-    errdefer client.log.stop.store(true, .monotonic);
-    const line_name: []const u8 = params[0];
-    const carrier_id = try std.fmt.parseInt(u10, b: {
-        const input = params[1];
-        var suffix: ?usize = null;
-        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
-            // Only valid suffix for carrier id is either 'c' or "carrier".
-            if (c != 'c') return error.InvalidCharacter;
-            suffix = i;
-            break;
-        };
-        if (suffix) |ignore_idx| {
-            if (ignore_idx == 0) return error.InvalidCharacter;
-            break :b input[0..ignore_idx];
-        } else break :b input;
-    }, 0);
-    const timeout = if (params[2].len > 0)
-        try std.fmt.parseInt(u64, params[2], 0)
-    else
-        0;
-
-    const line_idx = try client.matchLine(line_name);
-    const line = client.lines[line_idx];
-    try waitCarrierState(
-        line.id,
-        carrier_id,
-        .CARRIER_STATE_PULL_COMPLETED,
-        timeout,
-    );
-}
-
 pub fn axisEmpty(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_axis_empty");
     defer tracy_zone.end();
