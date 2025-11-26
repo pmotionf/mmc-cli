@@ -8,7 +8,18 @@ pub fn posAxis(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "move_pos_axis");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
-    const axis_id = try std.fmt.parseInt(u32, params[2], 0);
+    const axis_id = try std.fmt.parseInt(u32, buf: {
+        const input = params[2];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :buf input[0..ignore_idx];
+        } else break :buf input;
+    }, 0);
     try impl(params, .CONTROL_POSITION, .{ .axis = axis_id });
 }
 
@@ -32,7 +43,18 @@ pub fn spdAxis(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "move_spd_axis");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
-    const axis_id = try std.fmt.parseInt(u32, params[2], 0);
+    const axis_id = try std.fmt.parseInt(u32, buf: {
+        const input = params[2];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :buf input[0..ignore_idx];
+        } else break :buf input;
+    }, 0);
     try impl(params, .CONTROL_VELOCITY, .{ .axis = axis_id });
 }
 
