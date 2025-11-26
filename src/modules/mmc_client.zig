@@ -851,24 +851,6 @@ pub fn init(c: Config) !void {
     });
     errdefer command.registry.orderedRemove("PULL_CARRIER_BACKWARD");
     try command.registry.put(.{
-        .name = "WAIT_PULL_CARRIER",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "carrier" },
-            .{ .name = "timeout", .optional = true },
-        },
-        .short_description = "Wait for carrier pull to complete.",
-        .long_description =
-        \\Pause the execution of any further commands until active carrier
-        \\pull of the provided carrier is indicated as complete. If a timeout is
-        \\specified, the command will return an error if the waiting action
-        \\takes longer than the specified timeout duration. The timeout must be
-        \\provided in milliseconds.
-        ,
-        .execute = &commands.wait.pull,
-    });
-    errdefer command.registry.orderedRemove("WAIT_PULL_CARRIER");
-    try command.registry.put(.{
         .name = "STOP_PULL_CARRIER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
