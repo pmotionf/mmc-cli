@@ -10,7 +10,18 @@ pub fn impl(params: [][]const u8) !void {
     errdefer client.log.stop.store(true, .monotonic);
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
-    const axis_id = try std.fmt.parseInt(u32, params[1], 0);
+    const axis_id = try std.fmt.parseInt(u32, buf: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :buf input[0..ignore_idx];
+        } else break :buf input;
+    }, 0);
 
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];

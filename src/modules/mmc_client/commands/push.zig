@@ -27,7 +27,18 @@ fn impl(
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const axis_id: u32 = try std.fmt.parseInt(u32, params[1], 0);
+    const axis_id: u32 = try std.fmt.parseInt(u32, buf: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :buf input[0..ignore_idx];
+        } else break :buf input;
+    }, 0);
     const carrier_id: ?u32 = if (params[2].len > 0) try std.fmt.parseInt(u10, b: {
         const input = params[2];
         var suffix: ?usize = null;

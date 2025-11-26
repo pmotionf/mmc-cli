@@ -10,7 +10,18 @@ pub fn impl(params: [][]const u8) !void {
     errdefer client.log.stop.store(true, .monotonic);
     const socket = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
-    const axis_id = try std.fmt.parseInt(u32, params[1], 0);
+    const axis_id = try std.fmt.parseInt(u32, buf: {
+        const input = params[1];
+        var suffix: ?usize = null;
+        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            suffix = i;
+            break;
+        };
+        if (suffix) |ignore_idx| {
+            if (ignore_idx == 0) return error.InvalidCharacter;
+            break :buf input[0..ignore_idx];
+        } else break :buf input;
+    }, 0);
     const side: api.protobuf.mmc.command.Request.Direction =
         if (std.ascii.eqlIgnoreCase("back", params[2]) or
         std.ascii.eqlIgnoreCase("left", params[2]))
