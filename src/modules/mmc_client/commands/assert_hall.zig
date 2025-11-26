@@ -14,6 +14,8 @@ pub fn impl(params: [][]const u8) !void {
         const input = params[1];
         var suffix: ?usize = null;
         for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+            // Only valid suffix for axis_id is either 'a' or "axis".
+            if (c != 'a') return error.InvalidCharacter;
             suffix = i;
             break;
         };
