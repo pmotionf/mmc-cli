@@ -7,7 +7,7 @@ const api = @import("mmc-api");
 pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "set_carrier_id");
     defer tracy_zone.end();
-    const socket = client.sock orelse return error.ServerNotConnected;
+    if (client.sock == null) return error.ServerNotConnected;
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];

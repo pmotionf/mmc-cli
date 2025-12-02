@@ -8,7 +8,7 @@ pub fn impl(_: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "reset_system");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
-    const socket = client.sock orelse return error.ServerNotConnected;
+    if (client.sock == null) return error.ServerNotConnected;
     for (client.lines) |line| {
         // Send deinitialize command
         {

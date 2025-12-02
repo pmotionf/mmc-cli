@@ -75,7 +75,7 @@ pub fn axisEmpty(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_axis_empty");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
-    const socket = client.sock orelse return error.ServerNotConnected;
+    if (client.sock == null) return error.ServerNotConnected;
     const line_name = params[0];
     const axis_id = try std.fmt.parseInt(u32, buf: {
         const input = params[1];
@@ -127,7 +127,19 @@ pub fn axisEmpty(params: [][]const u8) !void {
         try request.encode(&client.writer.interface, client.allocator);
         try client.writer.interface.flush();
         // Receive response
-        try socket.waitToRead();
+        while (true) {
+            const byte = client.reader.interface.peekByte() catch |e| {
+                switch (e) {
+                    std.Io.Reader.Error.EndOfStream => continue,
+                    std.Io.Reader.Error.ReadFailed => {
+                        return switch (client.reader.error_state orelse error.Unexpected) {
+                            else => |err| return err,
+                        };
+                    },
+                }
+            };
+            if (byte > 0) break;
+        }
         var decoded: api.protobuf.mmc.Response = try .decode(
             &client.reader.interface,
             client.allocator,
@@ -166,7 +178,7 @@ fn waitCarrierState(
     state: api.protobuf.mmc.info.Response.Track.Carrier.State.State,
     timeout: u64,
 ) !void {
-    const socket = client.sock orelse return error.ServerNotConnected;
+    if (client.sock == null) return error.ServerNotConnected;
     var ids = [1]u32{id};
     var wait_timer = try std.time.Timer.start();
     while (true) {
@@ -195,7 +207,19 @@ fn waitCarrierState(
         try request.encode(&client.writer.interface, client.allocator);
         try client.writer.interface.flush();
         // Receive response
-        try socket.waitToRead();
+        while (true) {
+            const byte = client.reader.interface.peekByte() catch |e| {
+                switch (e) {
+                    std.Io.Reader.Error.EndOfStream => continue,
+                    std.Io.Reader.Error.ReadFailed => {
+                        return switch (client.reader.error_state orelse error.Unexpected) {
+                            else => |err| return err,
+                        };
+                    },
+                }
+            };
+            if (byte > 0) break;
+        }
         var decoded: api.protobuf.mmc.Response = try .decode(
             &client.reader.interface,
             client.allocator,

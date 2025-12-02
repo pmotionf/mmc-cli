@@ -307,6 +307,7 @@ const Stream = struct {
         stream.socket = try zignet.Socket.connect(
             endpoint,
             &command.checkCommandInterrupt,
+            3000,
         );
         errdefer stream.socket.close();
         stream.reader = stream.socket.reader(&stream_writer_buf);
@@ -352,7 +353,18 @@ const Stream = struct {
                 try request.encode(&stream.writer.interface, allocator);
                 try stream.writer.interface.flush();
                 // Receive message
-                try stream.socket.waitToRead();
+                while (true) {
+                    const byte = stream.reader.interface.peekByte() catch |e| {
+                        switch (e) {
+                            std.Io.Reader.Error.EndOfStream => continue,
+                            std.Io.Reader.Error.ReadFailed => {
+                                return stream.reader.error_state orelse
+                                    error.Unexpected;
+                            },
+                        }
+                    };
+                    if (byte > 0) break;
+                }
                 var decoded: api.protobuf.mmc.Response = try .decode(
                     &stream.reader.interface,
                     allocator,
@@ -484,7 +496,18 @@ const Stream = struct {
             try request.encode(&stream.writer.interface, allocator);
             try stream.writer.interface.flush();
             // Receive message
-            try stream.socket.waitToRead();
+            while (true) {
+                const byte = stream.reader.interface.peekByte() catch |e| {
+                    switch (e) {
+                        std.Io.Reader.Error.EndOfStream => continue,
+                        std.Io.Reader.Error.ReadFailed => {
+                            return stream.reader.error_state orelse
+                                error.Unexpected;
+                        },
+                    }
+                };
+                if (byte > 0) break;
+            }
             var decoded: api.protobuf.mmc.Response = try .decode(
                 &stream.reader.interface,
                 allocator,

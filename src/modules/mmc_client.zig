@@ -1080,10 +1080,20 @@ pub fn matchLine(name: []const u8) !usize {
 /// Track a command until it executed completely followed by removing that
 /// command from the server.
 pub fn waitCommandReceived() !void {
-    const socket = sock orelse return error.ServerNotConnected;
+    if (sock == null) return error.ServerNotConnected;
     const command_id = b: {
         // Receive response
-        try socket.waitToRead();
+        while (true) {
+            const byte = reader.interface.peekByte() catch |e| {
+                switch (e) {
+                    std.Io.Reader.Error.EndOfStream => continue,
+                    std.Io.Reader.Error.ReadFailed => {
+                        return reader.error_state orelse error.Unexpected;
+                    },
+                }
+            };
+            if (byte > 0) break;
+        }
         const decoded: api.protobuf.mmc.Response = try .decode(
             &reader.interface,
             allocator,
@@ -1121,7 +1131,17 @@ pub fn waitCommandReceived() !void {
         try request.encode(&writer.interface, allocator);
         try writer.interface.flush();
         // Receive response
-        try socket.waitToRead();
+        while (true) {
+            const byte = reader.interface.peekByte() catch |e| {
+                switch (e) {
+                    std.Io.Reader.Error.EndOfStream => continue,
+                    std.Io.Reader.Error.ReadFailed => {
+                        return reader.error_state orelse error.Unexpected;
+                    },
+                }
+            };
+            if (byte > 0) break;
+        }
         var decoded: api.protobuf.mmc.Response = try .decode(
             &reader.interface,
             allocator,
@@ -1166,7 +1186,7 @@ pub fn waitCommandReceived() !void {
 }
 
 fn removeCommand(id: u32) !void {
-    const socket = sock orelse return error.ServerNotConnected;
+    if (sock == null) return error.ServerNotConnected;
     const request: api.protobuf.mmc.Request = .{
         .body = .{
             .command = .{
@@ -1183,7 +1203,17 @@ fn removeCommand(id: u32) !void {
     try request.encode(&writer.interface, allocator);
     try writer.interface.flush();
     // Receive message
-    try socket.waitToRead();
+    while (true) {
+        const byte = reader.interface.peekByte() catch |e| {
+            switch (e) {
+                std.Io.Reader.Error.EndOfStream => continue,
+                std.Io.Reader.Error.ReadFailed => {
+                    return reader.error_state orelse error.Unexpected;
+                },
+            }
+        };
+        if (byte > 0) break;
+    }
     const decoded: api.protobuf.mmc.Response = try .decode(
         &reader.interface,
         allocator,

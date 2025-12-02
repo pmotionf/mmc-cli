@@ -9,7 +9,7 @@ pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "auto_initialize");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
-    const socket = client.sock orelse return error.ServerNotConnected;
+    if (client.sock == null) return error.ServerNotConnected;
     var init_lines: std.ArrayList(
         api.protobuf.mmc.command.Request.AutoInitialize.Line,
     ) = .empty;

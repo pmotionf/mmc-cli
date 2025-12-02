@@ -83,7 +83,7 @@ fn impl(
     control: api.protobuf.mmc.Control,
     target: api.protobuf.mmc.command.Request.Move.target_union,
 ) !void {
-    const socket = client.sock orelse return error.ServerNotConnected;
+    if (client.sock == null) return error.ServerNotConnected;
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];

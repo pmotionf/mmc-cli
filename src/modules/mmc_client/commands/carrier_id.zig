@@ -8,7 +8,7 @@ pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "carrier_id");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
-    const socket = client.sock orelse return error.ServerNotConnected;
+    if (client.sock == null) return error.ServerNotConnected;
     var line_name_iterator = std.mem.tokenizeSequence(
         u8,
         params[0],
@@ -66,7 +66,19 @@ pub fn impl(params: [][]const u8) !void {
         try request.encode(&client.writer.interface, client.allocator);
         try client.writer.interface.flush();
         // Receive response
-        try socket.waitToRead();
+        while (true) {
+            const byte = client.reader.interface.peekByte() catch |e| {
+                switch (e) {
+                    std.Io.Reader.Error.EndOfStream => continue,
+                    std.Io.Reader.Error.ReadFailed => {
+                        return switch (client.reader.error_state orelse error.Unexpected) {
+                            else => |err| return err,
+                        };
+                    },
+                }
+            };
+            if (byte > 0) break;
+        }
         var decoded: api.protobuf.mmc.Response = try .decode(
             &client.reader.interface,
             client.allocator,

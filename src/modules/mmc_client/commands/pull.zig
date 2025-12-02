@@ -22,7 +22,7 @@ fn impl(
     params: [][]const u8,
     dir: api.protobuf.mmc.command.Request.Direction,
 ) !void {
-    const socket = client.sock orelse return error.ServerNotConnected;
+    if (client.sock == null) return error.ServerNotConnected;
     const line_name = params[0];
     const axis_id = try std.fmt.parseInt(u32, buf: {
         const input = params[1];

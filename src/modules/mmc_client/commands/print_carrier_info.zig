@@ -7,7 +7,7 @@ const api = @import("mmc-api");
 pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "print_carrier_info");
     defer tracy_zone.end();
-    const socket = client.sock orelse return error.ServerNotConnected;
+    if (client.sock == null) return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     var filter: client.Filter = try .parse(params[1]);
     const line_idx = try client.matchLine(line_name);
@@ -32,7 +32,19 @@ pub fn impl(params: [][]const u8) !void {
     try request.encode(&client.writer.interface, client.allocator);
     try client.writer.interface.flush();
     // Receive response
-    try socket.waitToRead();
+    while (true) {
+        const byte = client.reader.interface.peekByte() catch |e| {
+            switch (e) {
+                std.Io.Reader.Error.EndOfStream => continue,
+                std.Io.Reader.Error.ReadFailed => {
+                    return switch (client.reader.error_state orelse error.Unexpected) {
+                        else => |err| return err,
+                    };
+                },
+            }
+        };
+        if (byte > 0) break;
+    }
     var decoded: api.protobuf.mmc.Response = try .decode(
         &client.reader.interface,
         client.allocator,

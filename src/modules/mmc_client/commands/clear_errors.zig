@@ -8,7 +8,7 @@ pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "clear_errors");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
-    const socket = client.sock orelse return error.ServerNotConnected;
+    if (client.sock == null) return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];

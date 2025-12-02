@@ -23,7 +23,7 @@ fn impl(
     comptime dir: api.protobuf.mmc.command.Request.Direction,
 ) !void {
     if (dir == .DIRECTION_UNSPECIFIED) @compileError("InvalidDirection");
-    const socket = client.sock orelse return error.ServerNotConnected;
+    if (client.sock == null) return error.ServerNotConnected;
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -96,7 +96,19 @@ fn impl(
             try request.encode(&client.writer.interface, client.allocator);
             try client.writer.interface.flush();
             // Receive response
-            try socket.waitToRead();
+            while (true) {
+                const byte = client.reader.interface.peekByte() catch |e| {
+                    switch (e) {
+                        std.Io.Reader.Error.EndOfStream => continue,
+                        std.Io.Reader.Error.ReadFailed => {
+                            return switch (client.reader.error_state orelse error.Unexpected) {
+                                else => |err| return err,
+                            };
+                        },
+                    }
+                };
+                if (byte > 0) break;
+            }
             var decoded: api.protobuf.mmc.Response = try .decode(
                 &client.reader.interface,
                 client.allocator,

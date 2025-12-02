@@ -7,7 +7,7 @@ const api = @import("mmc-api");
 pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "pause");
     defer tracy_zone.end();
-    const socket = client.sock orelse return error.ServerNotConnected;
+    if (client.sock == null) return error.ServerNotConnected;
     var ids: [1]u32 = .{0};
     if (params[0].len > 0) {
         const line_name = params[0];
