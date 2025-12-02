@@ -1071,12 +1071,6 @@ pub fn deinit() void {
     if (builtin.os.tag == .windows) std.os.windows.WSACleanup() catch return;
 }
 
-pub fn removeIgnoredMessage(socket: zignet.Socket) !void {
-    if (try zignet.Socket.readyToRead(socket.fd, 0)) {
-        _ = try reader.interface.peekByte();
-    }
-}
-
 pub fn matchLine(name: []const u8) !usize {
     for (lines) |line| {
         if (std.mem.eql(u8, line.name, name)) return line.index;
@@ -1120,8 +1114,9 @@ pub fn waitCommandReceived() !void {
                 },
             },
         };
-        try removeIgnoredMessage(socket);
-        try socket.waitToWrite();
+        // Clear all buffer in reader and writer for safety.
+        _ = try reader.interface.discardRemaining();
+        _ = writer.interface.consumeAll();
         // Send message
         try request.encode(&writer.interface, allocator);
         try writer.interface.flush();
@@ -1181,8 +1176,9 @@ fn removeCommand(id: u32) !void {
             },
         },
     };
-    try removeIgnoredMessage(socket);
-    try socket.waitToWrite();
+    // Clear all buffer in reader and writer for safety.
+    _ = try reader.interface.discardRemaining();
+    _ = writer.interface.consumeAll();
     // Send message
     try request.encode(&writer.interface, allocator);
     try writer.interface.flush();

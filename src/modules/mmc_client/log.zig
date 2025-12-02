@@ -345,8 +345,9 @@ const Stream = struct {
                         },
                     },
                 };
-                try client.removeIgnoredMessage(stream.socket);
-                try stream.socket.waitToWrite();
+                // Clear all buffer in reader and writer for safety.
+                _ = try stream.reader.interface.discardRemaining();
+                _ = stream.writer.interface.consumeAll();
                 // Send message
                 try request.encode(&stream.writer.interface, allocator);
                 try stream.writer.interface.flush();
@@ -476,8 +477,9 @@ const Stream = struct {
                     },
                 },
             };
-            try client.removeIgnoredMessage(stream.socket);
-            try stream.socket.waitToWrite();
+            // Clear all buffer in reader and writer for safety.
+            _ = try stream.reader.interface.discardRemaining();
+            _ = stream.writer.interface.consumeAll();
             // Send message
             try request.encode(&stream.writer.interface, allocator);
             try stream.writer.interface.flush();

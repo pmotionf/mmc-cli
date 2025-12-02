@@ -21,8 +21,9 @@ pub fn impl(_: [][]const u8) !void {
                     },
                 },
             };
-            try client.removeIgnoredMessage(socket);
-            try socket.waitToWrite();
+            // Clear all buffer in reader and writer for safety.
+            _ = client.reader.interface.discardRemaining() catch {};
+            _ = client.writer.interface.consumeAll();
             // Send message
             try request.encode(&client.writer.interface, client.allocator);
             try client.writer.interface.flush();
@@ -39,8 +40,9 @@ pub fn impl(_: [][]const u8) !void {
                     },
                 },
             };
-            try client.removeIgnoredMessage(socket);
-            try socket.waitToWrite();
+            // Clear all buffer in reader and writer for safety.
+            _ = client.reader.interface.discardRemaining() catch {};
+            _ = client.writer.interface.consumeAll();
             // Send message
             try request.encode(&client.writer.interface, client.allocator);
             try client.writer.interface.flush();
@@ -57,8 +59,9 @@ pub fn impl(_: [][]const u8) !void {
                     },
                 },
             };
-            try client.removeIgnoredMessage(socket);
-            try socket.waitToWrite();
+            // Clear all buffer in reader and writer for safety.
+            _ = client.reader.interface.discardRemaining() catch {};
+            _ = client.writer.interface.consumeAll();
             // Send message
             try request.encode(&client.writer.interface, client.allocator);
             try client.writer.interface.flush();
@@ -75,8 +78,9 @@ pub fn impl(_: [][]const u8) !void {
                     },
                 },
             };
-            try client.removeIgnoredMessage(socket);
-            try socket.waitToWrite();
+            // Clear all buffer in reader and writer for safety.
+            _ = client.reader.interface.discardRemaining() catch {};
+            _ = client.writer.interface.consumeAll();
             // Send message
             try request.encode(&client.writer.interface, client.allocator);
             try client.writer.interface.flush();
