@@ -39,7 +39,7 @@ pub fn impl(params: [][]const u8) !void {
                 std.Io.Reader.Error.EndOfStream => continue,
                 std.Io.Reader.Error.ReadFailed => {
                     return switch (client.reader.error_state orelse error.Unexpected) {
-                        else => |err| return err,
+                        else => |err| err,
                     };
                 },
             }
