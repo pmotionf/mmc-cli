@@ -21,6 +21,7 @@ pub fn impl(_: [][]const u8) !void {
     try client.writer.interface.flush();
     // Receive response
     while (true) {
+        try command.checkCommandInterrupt();
         const byte = client.reader.interface.peekByte() catch |e| {
             switch (e) {
                 std.Io.Reader.Error.EndOfStream => continue,

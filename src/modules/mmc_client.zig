@@ -1084,6 +1084,7 @@ pub fn waitCommandReceived() !void {
     const command_id = b: {
         // Receive response
         while (true) {
+            try command.checkCommandInterrupt();
             const byte = reader.interface.peekByte() catch |e| {
                 switch (e) {
                     std.Io.Reader.Error.EndOfStream => continue,
@@ -1132,6 +1133,7 @@ pub fn waitCommandReceived() !void {
         try writer.interface.flush();
         // Receive response
         while (true) {
+            try command.checkCommandInterrupt();
             const byte = reader.interface.peekByte() catch |e| {
                 switch (e) {
                     std.Io.Reader.Error.EndOfStream => continue,
@@ -1204,6 +1206,7 @@ fn removeCommand(id: u32) !void {
     try writer.interface.flush();
     // Receive message
     while (true) {
+        try command.checkCommandInterrupt();
         const byte = reader.interface.peekByte() catch |e| {
             switch (e) {
                 std.Io.Reader.Error.EndOfStream => continue,
