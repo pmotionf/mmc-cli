@@ -74,6 +74,7 @@ pub fn impl(params: [][]const u8) !void {
         endpoint.host,
         endpoint.port,
         &command.checkCommandInterrupt,
+        3000,
     );
     client.endpoint = try socket.getRemoteEndPoint();
     client.sock = socket;
@@ -101,13 +102,27 @@ pub fn impl(params: [][]const u8) !void {
                 .core = .{ .kind = .CORE_REQUEST_KIND_API_VERSION },
             },
         };
-        try client.removeIgnoredMessage(socket);
-        try socket.waitToWrite();
+        // Clear all buffer in reader and writer for safety.
+        _ = client.reader.interface.discardRemaining() catch {};
+        _ = client.writer.interface.consumeAll();
         // Send message
         try request.encode(&client.writer.interface, client.allocator);
         try client.writer.interface.flush();
         // Receive response
-        try socket.waitToRead();
+        while (true) {
+            try command.checkCommandInterrupt();
+            const byte = client.reader.interface.peekByte() catch |e| {
+                switch (e) {
+                    std.Io.Reader.Error.EndOfStream => continue,
+                    std.Io.Reader.Error.ReadFailed => {
+                        return switch (client.reader.error_state orelse error.Unexpected) {
+                            else => |err| err,
+                        };
+                    },
+                }
+            };
+            if (byte > 0) break;
+        }
         const decoded: api.protobuf.mmc.Response = try .decode(
             &client.reader.interface,
             client.allocator,
@@ -149,13 +164,27 @@ pub fn impl(params: [][]const u8) !void {
                 .core = .{ .kind = .CORE_REQUEST_KIND_TRACK_CONFIG },
             },
         };
-        try client.removeIgnoredMessage(socket);
-        try socket.waitToWrite();
+        // Clear all buffer in reader and writer for safety.
+        _ = client.reader.interface.discardRemaining() catch {};
+        _ = client.writer.interface.consumeAll();
         // Send message
         try request.encode(&client.writer.interface, client.allocator);
         try client.writer.interface.flush();
         // Receive response
-        try socket.waitToRead();
+        while (true) {
+            try command.checkCommandInterrupt();
+            const byte = client.reader.interface.peekByte() catch |e| {
+                switch (e) {
+                    std.Io.Reader.Error.EndOfStream => continue,
+                    std.Io.Reader.Error.ReadFailed => {
+                        return switch (client.reader.error_state orelse error.Unexpected) {
+                            else => |err| err,
+                        };
+                    },
+                }
+            };
+            if (byte > 0) break;
+        }
         var decoded: api.protobuf.mmc.Response = try .decode(
             &client.reader.interface,
             client.allocator,
@@ -198,13 +227,27 @@ pub fn impl(params: [][]const u8) !void {
                 .core = .{ .kind = .CORE_REQUEST_KIND_SERVER_INFO },
             },
         };
-        try client.removeIgnoredMessage(socket);
-        try socket.waitToWrite();
+        // Clear all buffer in reader and writer for safety.
+        _ = client.reader.interface.discardRemaining() catch {};
+        _ = client.writer.interface.consumeAll();
         // Send message
         try request.encode(&client.writer.interface, client.allocator);
         try client.writer.interface.flush();
         // Receive response
-        try socket.waitToRead();
+        while (true) {
+            try command.checkCommandInterrupt();
+            const byte = client.reader.interface.peekByte() catch |e| {
+                switch (e) {
+                    std.Io.Reader.Error.EndOfStream => continue,
+                    std.Io.Reader.Error.ReadFailed => {
+                        return switch (client.reader.error_state orelse error.Unexpected) {
+                            else => |err| err,
+                        };
+                    },
+                }
+            };
+            if (byte > 0) break;
+        }
         var decoded: api.protobuf.mmc.Response = try .decode(
             &client.reader.interface,
             client.allocator,

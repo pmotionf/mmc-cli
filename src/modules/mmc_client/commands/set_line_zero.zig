@@ -8,7 +8,7 @@ pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "set_line_zero");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
-    const socket = client.sock orelse return error.ServerNotConnected;
+    if (client.sock == null) return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -21,8 +21,9 @@ pub fn impl(params: [][]const u8) !void {
             },
         },
     };
-    try client.removeIgnoredMessage(socket);
-    try socket.waitToWrite();
+    // Clear all buffer in reader and writer for safety.
+    _ = client.reader.interface.discardRemaining() catch {};
+    _ = client.writer.interface.consumeAll();
     // Send message
     try request.encode(&client.writer.interface, client.allocator);
     try client.writer.interface.flush();

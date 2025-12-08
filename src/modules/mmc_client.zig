@@ -1071,12 +1071,6 @@ pub fn deinit() void {
     if (builtin.os.tag == .windows) std.os.windows.WSACleanup() catch return;
 }
 
-pub fn removeIgnoredMessage(socket: zignet.Socket) !void {
-    if (try zignet.Socket.readyToRead(socket.fd, 0)) {
-        _ = try reader.interface.peekByte();
-    }
-}
-
 pub fn matchLine(name: []const u8) !usize {
     for (lines) |line| {
         if (std.mem.eql(u8, line.name, name)) return line.index;
@@ -1086,10 +1080,21 @@ pub fn matchLine(name: []const u8) !usize {
 /// Track a command until it executed completely followed by removing that
 /// command from the server.
 pub fn waitCommandReceived() !void {
-    const socket = sock orelse return error.ServerNotConnected;
+    if (sock == null) return error.ServerNotConnected;
     const command_id = b: {
         // Receive response
-        try socket.waitToRead();
+        while (true) {
+            try command.checkCommandInterrupt();
+            const byte = reader.interface.peekByte() catch |e| {
+                switch (e) {
+                    std.Io.Reader.Error.EndOfStream => continue,
+                    std.Io.Reader.Error.ReadFailed => {
+                        return reader.error_state orelse error.Unexpected;
+                    },
+                }
+            };
+            if (byte > 0) break;
+        }
         const decoded: api.protobuf.mmc.Response = try .decode(
             &reader.interface,
             allocator,
@@ -1120,13 +1125,25 @@ pub fn waitCommandReceived() !void {
                 },
             },
         };
-        try removeIgnoredMessage(socket);
-        try socket.waitToWrite();
+        // Clear all buffer in reader and writer for safety.
+        _ = try reader.interface.discardRemaining();
+        _ = writer.interface.consumeAll();
         // Send message
         try request.encode(&writer.interface, allocator);
         try writer.interface.flush();
         // Receive response
-        try socket.waitToRead();
+        while (true) {
+            try command.checkCommandInterrupt();
+            const byte = reader.interface.peekByte() catch |e| {
+                switch (e) {
+                    std.Io.Reader.Error.EndOfStream => continue,
+                    std.Io.Reader.Error.ReadFailed => {
+                        return reader.error_state orelse error.Unexpected;
+                    },
+                }
+            };
+            if (byte > 0) break;
+        }
         var decoded: api.protobuf.mmc.Response = try .decode(
             &reader.interface,
             allocator,
@@ -1171,7 +1188,7 @@ pub fn waitCommandReceived() !void {
 }
 
 fn removeCommand(id: u32) !void {
-    const socket = sock orelse return error.ServerNotConnected;
+    if (sock == null) return error.ServerNotConnected;
     const request: api.protobuf.mmc.Request = .{
         .body = .{
             .command = .{
@@ -1181,13 +1198,25 @@ fn removeCommand(id: u32) !void {
             },
         },
     };
-    try removeIgnoredMessage(socket);
-    try socket.waitToWrite();
+    // Clear all buffer in reader and writer for safety.
+    _ = try reader.interface.discardRemaining();
+    _ = writer.interface.consumeAll();
     // Send message
     try request.encode(&writer.interface, allocator);
     try writer.interface.flush();
     // Receive message
-    try socket.waitToRead();
+    while (true) {
+        try command.checkCommandInterrupt();
+        const byte = reader.interface.peekByte() catch |e| {
+            switch (e) {
+                std.Io.Reader.Error.EndOfStream => continue,
+                std.Io.Reader.Error.ReadFailed => {
+                    return reader.error_state orelse error.Unexpected;
+                },
+            }
+        };
+        if (byte > 0) break;
+    }
     const decoded: api.protobuf.mmc.Response = try .decode(
         &reader.interface,
         allocator,
