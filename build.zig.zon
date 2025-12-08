@@ -13,8 +13,8 @@
             .hash = "network-0.1.0-Pm-AgiMxAQCuaDrGAfSxVHeozUQ2gU3jINGLFxJ1Zpld",
         },
         .zignet = .{
-            .url = "https://github.com/aaumar25/zignet/archive/7350acf.tar.gz",
-            .hash = "zignet-0.1.1-BAu-r5WJAACLSIB3CYLSrby4nZq7YjHX8MBjvHdCMGYH",
+            .url = "https://github.com/aaumar25/zignet/archive/ca7d172.tar.gz",
+            .hash = "zignet-0.2.0-BAu-r4GpAACnu7GCkbPHa4F6lQaq5wypMWqr0z0BM9nO",
         },
         .chrono = .{
             .url = "https://github.com/pmotionf/chrono/archive/31e31b0.tar.gz",
