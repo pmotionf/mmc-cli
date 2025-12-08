@@ -57,11 +57,27 @@ pub fn impl(params: [][]const u8) !void {
             .host = try client.allocator.dupe(u8, client.config.host),
             .port = client.config.port,
         } else .{
-            .host = try std.fmt.allocPrint(
-                client.allocator,
-                "{f}",
-                .{client.endpoint.?.addr},
-            ),
+            .host = switch (client.endpoint.?.addr) {
+                .ipv4 => |ipv4| try std.fmt.allocPrint(
+                    client.allocator,
+                    "{f}",
+                    .{ipv4},
+                ),
+                .ipv6 => |ipv6| ipv6: {
+                    const format = try std.fmt.allocPrint(
+                        client.allocator,
+                        "{f}",
+                        .{ipv6},
+                    );
+                    defer client.allocator.free(format);
+                    // Remove the square bracket from ipv6
+                    break :ipv6 try std.fmt.allocPrint(
+                        client.allocator,
+                        "{s}",
+                        .{format[1 .. format.len - 1]},
+                    );
+                },
+            },
             .port = client.endpoint.?.port,
         };
     defer client.allocator.free(endpoint.host);
