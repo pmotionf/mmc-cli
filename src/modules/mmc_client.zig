@@ -219,10 +219,10 @@ pub fn init(c: Config) !void {
 
     try command.registry.put(.{ .executable = .{
         .name = "SERVER_VERSION",
-        .short_description = "Display the version of the MMC server",
+        .short_description = "Display the connected MMC server version.",
         .long_description =
-        \\Print the currently running version of the MMC server in Semantic
-        \\Version format.
+        \\Print the version of the currently connected MMC server in Semantic
+        \\Version format ({major}.{minor}.{patch}).
         ,
         .execute = &commands.server_version.impl,
     } });
@@ -232,24 +232,27 @@ pub fn init(c: Config) !void {
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "endpoint", .optional = true },
         },
-        .short_description = "Connect to the server.",
+        .short_description = "Connect to MMC server.",
         .long_description =
-        \\Attempt to connect to the server. If no endpoint
-        \\is provided, attempt to connect to the latest connected
-        \\server on the same session or get the endpoint from the configuration
-        \\file if the client never connected to any server. If endpoint is
-        \\provided, attempt to connect to the provided endpoint. The endpoint
-        \\shall be provided either one of the following format: "HOSTNAME:PORT",
-        \\"IPV4_ADDRESS:PORT" or "[IPV6_ADDRESS%SCOPE]:PORT".
+        \\Attempt to connect to MMC server.
+        \\
+        \\An endpoint can be provided in either IPv4 or IPv6 format, as below:
+        \\ - `HOSTNAME:PORT`
+        \\ - `IPv4_ADDRESS:PORT`
+        \\ - `[IPv6_ADDRESS%SCOPE]:PORT`
+        \\
+        \\If no endpoint is provided, connect to the last connected server.
+        \\If no server has been connected since `LOAD_CONFIG`, connect to the
+        \\default endpoint provided in the configuration file.
         ,
         .execute = &commands.connect.impl,
     } });
     errdefer command.registry.orderedRemove("CONNECT");
     try command.registry.put(.{ .executable = .{
         .name = "DISCONNECT",
-        .short_description = "End connection with the mmc server.",
+        .short_description = "End connection with MMC server.",
         .long_description =
-        \\End connection with the mmc server.
+        \\Disconnect from currently connected MMC server.
         ,
         .execute = &commands.disconnect.impl,
     } });
