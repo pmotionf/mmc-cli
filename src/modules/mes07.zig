@@ -33,7 +33,7 @@ var laser_value = std.atomic.Value(i32).init(0);
 var read_laser_value = std.atomic.Value(bool).init(false);
 
 pub fn init(_: Config) !void {
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "MES07_CONNECT",
         .parameters = &.{
             .{ .name = "adapter", .optional = true },
@@ -43,20 +43,20 @@ pub fn init(_: Config) !void {
         \\Connect to MES07 laser device. Must be called before `MES07_READ`.
         ,
         .execute = &connect,
-    });
+    } });
 
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "MES07_READ",
         .parameters = &.{
             .{ .name = "variable", .optional = true, .resolve = false },
         },
         .short_description = "Read laser device measurement value.",
         .long_description =
-        \\Read laser device measurement value, and print to output. Variable 
+        \\Read laser device measurement value, and print to output. Variable
         \\names are case sensitive and shall not begin with digit.
         ,
         .execute = &read,
-    });
+    } });
 }
 
 pub fn deinit() void {

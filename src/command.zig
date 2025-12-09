@@ -22,11 +22,11 @@ const mes07 = if (config.mes07) @import("modules/mes07.zig") else void;
 const Config = @import("Config.zig");
 
 pub const Registry = struct {
-    mapping: std.StringArrayHashMap(Command),
+    mapping: std.StringArrayHashMap(Command.Executable),
 
     pub fn init(alloc: std.mem.Allocator) Registry {
         return .{
-            .mapping = std.StringArrayHashMap(Command).init(alloc),
+            .mapping = std.StringArrayHashMap(Command.Executable).init(alloc),
         };
     }
 
@@ -34,15 +34,26 @@ pub const Registry = struct {
         self.mapping.deinit();
     }
 
-    pub fn values(self: *Registry) []Command {
+    pub fn values(self: *Registry) []Command.Executable {
         return self.mapping.values();
     }
 
-    pub fn put(self: *Registry, command: Command) !void {
-        try self.mapping.put(command.name, command);
+    pub fn keys(self: *Registry) [][]const u8 {
+        return self.mapping.keys();
     }
 
-    pub fn getPtr(self: *Registry, key: []const u8) ?*Command {
+    pub fn put(self: *Registry, command: Command) !void {
+        switch (command) {
+            .alias => |alias| {
+                try self.mapping.put(alias.name, alias.command.*);
+            },
+            .executable => |executable| {
+                try self.mapping.put(executable.name, executable);
+            },
+        }
+    }
+
+    pub fn getPtr(self: *Registry, key: []const u8) ?*Command.Executable {
         return self.mapping.getPtr(key);
     }
 
@@ -185,23 +196,30 @@ const CommandString = struct {
     node: std.DoublyLinkedList.Node,
 };
 
-pub const Command = struct {
-    /// Name of a command, as shown to/parsed from user.
-    name: []const u8,
-    /// List of argument names. Each argument should be wrapped in a "()" for
-    /// required arguments, or "[]" for optional arguments.
-    parameters: []const Parameter = &[_]Command.Parameter{},
-    /// Short description of command.
-    short_description: []const u8,
-    /// Long description of command.
-    long_description: []const u8,
-    execute: *const fn ([][]const u8) anyerror!void,
+pub const Command = union(enum) {
+    executable: Executable,
+    alias: Alias,
 
-    pub const Parameter = struct {
+    pub const Alias = struct { name: []const u8, command: *Executable };
+
+    pub const Executable = struct {
+        /// Name of a command, as shown to/parsed from user.
         name: []const u8,
-        optional: bool = false,
-        quotable: bool = true,
-        resolve: bool = true,
+        /// List of argument names. Each argument should be wrapped in a "()" for
+        /// required arguments, or "[]" for optional arguments.
+        parameters: []const Parameter = &[_]Parameter{},
+        /// Short description of command.
+        short_description: []const u8,
+        /// Long description of command.
+        long_description: []const u8,
+        execute: *const fn ([][]const u8) anyerror!void,
+
+        pub const Parameter = struct {
+            name: []const u8,
+            optional: bool = false,
+            quotable: bool = true,
+            resolve: bool = true,
+        };
     };
 };
 
@@ -251,9 +269,9 @@ pub fn init() !void {
     stop.store(false, .monotonic);
     timer = try std.time.Timer.start();
 
-    try registry.put(.{
+    try registry.put(.{ .executable = .{
         .name = "HELP",
-        .parameters = &[_]Command.Parameter{
+        .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "command", .optional = true, .resolve = false },
         },
         .short_description = "Display detailed information about a command.",
@@ -263,8 +281,8 @@ pub fn init() !void {
         \\If no command is provided, a list of all commands will be shown.
         ,
         .execute = &help,
-    });
-    try registry.put(.{
+    } });
+    try registry.put(.{ .executable = .{
         .name = "VERSION",
         .short_description = "Display the version of the MMC CLI.",
         .long_description =
@@ -272,10 +290,10 @@ pub fn init() !void {
         \\in Semantic Version format.
         ,
         .execute = &version,
-    });
-    try registry.put(.{
+    } });
+    try registry.put(.{ .executable = .{
         .name = "LOAD_CONFIG",
-        .parameters = &[_]Command.Parameter{
+        .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "file path", .optional = true },
         },
         .short_description = "Load CLI configuration file.",
@@ -285,10 +303,10 @@ pub fn init() !void {
         \\configuration parameters according to provided documentation.
         ,
         .execute = &loadConfig,
-    });
-    try registry.put(.{
+    } });
+    try registry.put(.{ .executable = .{
         .name = "WAIT",
-        .parameters = &[_]Command.Parameter{
+        .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "duration", .resolve = true },
         },
         .short_description = "Pause program for given time in milliseconds.",
@@ -297,17 +315,17 @@ pub fn init() !void {
         \\milliseconds.
         ,
         .execute = &wait,
-    });
-    try registry.put(.{
+    } });
+    try registry.put(.{ .executable = .{
         .name = "CLEAR",
         .parameters = &.{},
         .short_description = "Clear visible screen output.",
         .long_description = "Clear visible screen output.",
         .execute = &clear,
-    });
-    try registry.put(.{
+    } });
+    try registry.put(.{ .executable = .{
         .name = "SET",
-        .parameters = &[_]Command.Parameter{
+        .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "variable", .resolve = false },
             .{ .name = "value" },
         },
@@ -318,10 +336,10 @@ pub fn init() !void {
         \\with digit.
         ,
         .execute = &set,
-    });
-    try registry.put(.{
+    } });
+    try registry.put(.{ .executable = .{
         .name = "GET",
-        .parameters = &[_]Command.Parameter{
+        .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "variable", .resolve = false },
         },
         .short_description = "Retrieve the value of a variable.",
@@ -330,16 +348,16 @@ pub fn init() !void {
         \\Variable names are case sensitive.
         ,
         .execute = &get,
-    });
-    try registry.put(.{
+    } });
+    try registry.put(.{ .executable = .{
         .name = "VARIABLES",
         .short_description = "Display all variables with their values.",
         .long_description =
         \\Print all currently set variable names along with their values.
         ,
         .execute = &printVariables,
-    });
-    try registry.put(.{
+    } });
+    try registry.put(.{ .executable = .{
         .name = "TABLE_RESET",
         .short_description = "Fully reset global table to be empty.",
         .long_description =
@@ -348,8 +366,8 @@ pub fn init() !void {
         \\invalid.
         ,
         .execute = &tableReset,
-    });
-    try registry.put(.{
+    } });
+    try registry.put(.{ .executable = .{
         .name = "TABLE_SET_COLUMNS",
         .parameters = &.{
             .{
@@ -366,16 +384,16 @@ pub fn init() !void {
         \\will be saved.
         ,
         .execute = &tableSetColumns,
-    });
-    try registry.put(.{
+    } });
+    try registry.put(.{ .executable = .{
         .name = "TABLE_ADD_ROW",
         .short_description = "Add row of current variable values to table.",
         .long_description =
         \\
         ,
         .execute = &tableAddRow,
-    });
-    try registry.put(.{
+    } });
+    try registry.put(.{ .executable = .{
         .name = "TABLE_SAVE",
         .parameters = &.{
             .{ .name = "file path" },
@@ -385,8 +403,8 @@ pub fn init() !void {
         \\Save table to provided file path in CSV format.
         ,
         .execute = &tableSave,
-    });
-    try registry.put(.{
+    } });
+    try registry.put(.{ .executable = .{
         .name = "TIMER_START",
         .short_description = "Start a monotonic system timer.",
         .long_description =
@@ -395,8 +413,8 @@ pub fn init() !void {
         \\the timer. This command should be run once before `TIMER_READ`.
         ,
         .execute = &timerStart,
-    });
-    try registry.put(.{
+    } });
+    try registry.put(.{ .executable = .{
         .name = "TIMER_READ",
         .short_description = "Read elapsed time from the system timer.",
         .long_description =
@@ -405,10 +423,10 @@ pub fn init() !void {
         \\or timezone.
         ,
         .execute = &timerRead,
-    });
-    try registry.put(.{
+    } });
+    try registry.put(.{ .executable = .{
         .name = "FILE",
-        .parameters = &[_]Command.Parameter{.{ .name = "path" }},
+        .parameters = &[_]Command.Executable.Parameter{.{ .name = "path" }},
         .short_description = "Queue commands listed in the provided file.",
         .long_description =
         \\Add commands listed in the provided file to the front of the command
@@ -420,10 +438,10 @@ pub fn init() !void {
         \\enclosed in double quotes (e.g. "my file path").
         ,
         .execute = &file,
-    });
-    try registry.put(.{
+    } });
+    try registry.put(.{ .executable = .{
         .name = "SAVE_OUTPUT",
-        .parameters = &[_]Command.Parameter{
+        .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "mode" },
             .{ .name = "path", .optional = true },
         },
@@ -441,8 +459,8 @@ pub fn init() !void {
         \\"mmc-log-YYYY.MM.DD-HH.MM.SS.txt".
         ,
         .execute = &setLog,
-    });
-    try registry.put(.{
+    } });
+    try registry.put(.{ .executable = .{
         .name = "EXIT",
         .short_description = "Exit the MMC command line utility.",
         .long_description =
@@ -450,7 +468,7 @@ pub fn init() !void {
         \\resources and closing connections.
         ,
         .execute = &exit,
-    });
+    } });
 }
 
 pub fn deinit() void {
@@ -521,7 +539,7 @@ fn parseAndRun(input: []const u8) !void {
         return;
     }
     var token_iterator = std.mem.tokenizeSequence(u8, trimmed, " ");
-    var command: *Command = undefined;
+    var command: *Command.Executable = undefined;
     var command_buf: [256]u8 = undefined;
     if (token_iterator.next()) |token| {
         if (registry.getPtr(std.ascii.upperString(
@@ -587,7 +605,7 @@ var allocator: std.mem.Allocator = undefined;
 
 fn help(params: [][]const u8) !void {
     if (params[0].len > 0) {
-        var command: *Command = undefined;
+        var command: *Command.Executable = undefined;
         var command_buf: [32]u8 = undefined;
 
         if (params[0].len > 32) return error.InvalidCommand;
@@ -612,15 +630,31 @@ fn help(params: [][]const u8) !void {
                 },
             )).len;
         }
-        std.log.info("\n\n{s}{s}:\n{s}{s}\n{s}\n{s}{s}\n\n", .{
-            command.name,
-            params_buffer[0..params_len],
-            "====================================",
-            "====================================",
-            command.long_description,
-            "====================================",
-            "====================================",
-        });
+        if (std.ascii.eqlIgnoreCase(command.name, params[0]))
+            std.log.info("\n\n{s}{s}:\n{s}{s}\n{s}\n{s}{s}\n\n", .{
+                command.name,
+                params_buffer[0..params_len],
+                "====================================",
+                "====================================",
+                command.long_description,
+                "====================================",
+                "====================================",
+            })
+        else {
+            std.log.warn("{s} is deprecated. Use {s}.\n", .{
+                command_buf[0..params[0].len],
+                command.name,
+            });
+            std.log.info("\n\n{s}{s}:\n{s}{s}\n{s}\n{s}{s}\n\n", .{
+                command.name,
+                params_buffer[0..params_len],
+                "====================================",
+                "====================================",
+                command.long_description,
+                "====================================",
+                "====================================",
+            });
+        }
     } else {
         for (registry.values()) |c| {
             try checkCommandInterrupt();

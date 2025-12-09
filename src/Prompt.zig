@@ -409,8 +409,8 @@ pub fn handler(ctx: *Prompt) void {
                         }
                     }
                     const fragment = ctx.input[start..i];
-                    for (command.registry.values()) |com| {
-                        if (std.ascii.eqlIgnoreCase(com.name, fragment)) {
+                    for (command.registry.keys()) |key| {
+                        if (std.ascii.eqlIgnoreCase(key, fragment)) {
                             io.style.set(&stdout.interface, .{
                                 .fg = .{ .named = .green },
                             }) catch continue :main;
@@ -478,8 +478,8 @@ pub fn handler(ctx: *Prompt) void {
                     }
                 }
                 const fragment = ctx.input[start..];
-                for (command.registry.values()) |com| {
-                    if (std.ascii.eqlIgnoreCase(com.name, fragment)) {
+                for (command.registry.keys()) |key| {
+                    if (std.ascii.eqlIgnoreCase(key, fragment)) {
                         io.style.set(&stdout.interface, .{
                             .fg = .{ .named = .green },
                         }) catch continue :main;
