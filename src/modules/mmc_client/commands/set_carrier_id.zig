@@ -26,7 +26,7 @@ pub fn impl(params: [][]const u8) !void {
         } else break :b input;
     }, 0);
     const new_carrier = try std.fmt.parseUnsigned(u32, b: {
-        const input = params[1];
+        const input = params[2];
         var suffix: ?usize = null;
         for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
             // Only valid suffix for carrier id is either 'c' or "carrier".
