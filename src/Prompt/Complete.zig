@@ -36,12 +36,12 @@ pub fn setPartial(self: *Complete, partial: []const u8) void {
     // Store suggestions, unordered.
     switch (self.kind) {
         .command => {
-            for (command.registry.values()) |c| {
-                if (c.name.len <= partial.len) continue;
-                if (!std.ascii.startsWithIgnoreCase(c.name, partial))
+            for (command.registry.keys()) |key| {
+                if (key.len <= partial.len) continue;
+                if (!std.ascii.startsWithIgnoreCase(key, partial))
                     continue;
 
-                self.suggestions_buffer[self.suggestions.len] = c.name;
+                self.suggestions_buffer[self.suggestions.len] = key;
                 self.suggestions =
                     self.suggestions_buffer[0 .. self.suggestions.len + 1];
             }

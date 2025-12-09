@@ -217,7 +217,7 @@ pub fn init(c: Config) !void {
     };
     errdefer allocator.free(config.host);
 
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "SERVER_VERSION",
         .short_description = "Display the version of the MMC server",
         .long_description =
@@ -225,11 +225,11 @@ pub fn init(c: Config) !void {
         \\Version format.
         ,
         .execute = &commands.server_version.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("SERVER_VERSION");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "CONNECT",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "endpoint", .optional = true },
         },
         .short_description = "Connect program to the server.",
@@ -242,20 +242,20 @@ pub fn init(c: Config) !void {
         \\e.g. [::%SCOPE]:PORT. The scope ID shall be provided with number.
         ,
         .execute = &commands.connect.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("CONNECT");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "DISCONNECT",
         .short_description = "Disconnect MCL from motion system.",
         .long_description =
         \\End connection with the mmc server.
         ,
         .execute = &commands.disconnect.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("DISCONNECT");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "SET_SPEED",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "speed" },
         },
@@ -266,11 +266,11 @@ pub fn init(c: Config) !void {
         \\to 6.0 meters-per-second.
         ,
         .execute = &commands.set_speed.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("SET_SPEED");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "SET_ACCELERATION",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "acceleration" },
         },
@@ -281,11 +281,11 @@ pub fn init(c: Config) !void {
         \\less than or equal to 24.5 meters-per-second-squared.
         ,
         .execute = &commands.set_acceleration.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("SET_ACCELERATION");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "GET_SPEED",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
         },
         .short_description = "Get the speed of carrier movement for a line.",
@@ -294,11 +294,11 @@ pub fn init(c: Config) !void {
         \\by name. Speed is in meters-per-second.
         ,
         .execute = &commands.get_speed.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("GET_SPEED");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "GET_ACCELERATION",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
         },
         .short_description = "Get the acceleration of carrier movement.",
@@ -307,11 +307,11 @@ pub fn init(c: Config) !void {
         \\referenced by name. Acceleration is in meters-per-second-squared.
         ,
         .execute = &commands.get_acceleration.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("GET_ACCELERATION");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "PRINT_AXIS_INFO",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "filter" },
         },
@@ -324,11 +324,11 @@ pub fn init(c: Config) !void {
         \\"axis" for filtering based on "axis".
         ,
         .execute = &commands.print_axis_info.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("PRINT_AXIS_INFO");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "PRINT_DRIVER_INFO",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "filter" },
         },
@@ -341,11 +341,11 @@ pub fn init(c: Config) !void {
         \\"a" or "axis" for filtering based on "axis".
         ,
         .execute = &commands.print_driver_info.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("PRINT_DRIVER_INFO");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "PRINT_CARRIER_INFO",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "filter" },
         },
@@ -358,11 +358,11 @@ pub fn init(c: Config) !void {
         \\"axis" for filtering based on "axis".
         ,
         .execute = &commands.print_carrier_info.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("PRINT_CARRIER_INFO");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "AXIS_CARRIER",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "axis" },
             .{
@@ -379,11 +379,11 @@ pub fn init(c: Config) !void {
         \\begin with digit.
         ,
         .execute = &commands.axis_carrier.impl,
-    });
+    } });
     errdefer _ = command.registry.orderedRemove("AXIS_CARRIER");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "CARRIER_ID",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name(s)" },
             .{
                 .name = "result variable prefix",
@@ -403,11 +403,11 @@ pub fn init(c: Config) !void {
         \\is case sensitive and shall not begin with digit.
         ,
         .execute = &commands.carrier_id.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("CARRIER_ID");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "ASSERT_CARRIER_LOCATION",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{ .name = "location" },
@@ -420,11 +420,11 @@ pub fn init(c: Config) !void {
         \\location and threshold must be provided in millimeters.
         ,
         .execute = &commands.assert_location.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("ASSERT_CARRIER_LOCATION");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "CARRIER_LOCATION",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{
@@ -441,11 +441,11 @@ pub fn init(c: Config) !void {
         \\sensitive and shall not begin with digit.
         ,
         .execute = &commands.carrier_location.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("CARRIER_LOCATION");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "CARRIER_AXIS",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "carrier" },
         },
@@ -455,11 +455,11 @@ pub fn init(c: Config) !void {
         \\provided line.
         ,
         .execute = &commands.carrier_axis.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("CARRIER_AXIS");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "HALL_STATUS",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "filter", .optional = true },
         },
@@ -473,11 +473,11 @@ pub fn init(c: Config) !void {
         \\all hall status across the line.
         ,
         .execute = &commands.hall_status.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("HALL_STATUS");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "ASSERT_HALL",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "axis" },
             .{ .name = "side" },
@@ -491,11 +491,11 @@ pub fn init(c: Config) !void {
         \\"off" or "on"; if not specified, will default to "on".
         ,
         .execute = &commands.assert_hall.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("ASSERT_HALL");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "CLEAR_ERRORS",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "filter", .optional = true },
         },
@@ -509,11 +509,11 @@ pub fn init(c: Config) !void {
         \\"axis". If no filter is provided, clear errors on all drivers.
         ,
         .execute = &commands.clear_errors.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("CLEAR_ERRORS");
-    try command.registry.put(.{
-        .name = "CLEAR_CARRIER_INFO",
-        .parameters = &[_]command.Command.Parameter{
+    try command.registry.put(.{ .executable = .{
+        .name = "DEINITIALIZE",
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "filter", .optional = true },
         },
@@ -527,9 +527,14 @@ pub fn init(c: Config) !void {
         \\clear errors on all drivers.
         ,
         .execute = &commands.clear_carrier_info.impl,
-    });
+    } });
+    errdefer command.registry.orderedRemove("DEINITIALIZE");
+    try command.registry.put(.{ .alias = .{
+        .name = "CLEAR_CARRIER_INFO",
+        .command = command.registry.getPtr("DEINITIALIZE").?,
+    } });
     errdefer command.registry.orderedRemove("CLEAR_CARRIER_INFO");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "RESET_SYSTEM",
         .short_description = "Reset the system state.",
         .long_description =
@@ -537,11 +542,11 @@ pub fn init(c: Config) !void {
         \\reset any push and pull state on every axis.
         ,
         .execute = &commands.reset_system.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("RESET_SYSTEM");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "RELEASE_CARRIER",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "filter", .optional = true },
         },
@@ -558,11 +563,11 @@ pub fn init(c: Config) !void {
         \\errors on all drivers.
         ,
         .execute = &commands.release_carrier.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("RELEASE_CARRIER");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "AUTO_INITIALIZE",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line names", .optional = true },
         },
         .short_description = "Initialize all carriers automatically.",
@@ -573,11 +578,11 @@ pub fn init(c: Config) !void {
         \\be separated by comma, e.g. "AUTO_INITIALIZE front,back"
         ,
         .execute = &commands.auto_initialize.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("AUTO_INITIALIZE");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "CALIBRATE",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
         },
         .short_description = "Calibrate a track line.",
@@ -587,11 +592,11 @@ pub fn init(c: Config) !void {
         \\alarms active.
         ,
         .execute = &commands.calibrate.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("CALIBRATE");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "SET_LINE_ZERO",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
         },
         .short_description = "Set line zero position.",
@@ -600,11 +605,11 @@ pub fn init(c: Config) !void {
         \\Aforementioned carrier must be located at first axis of line.
         ,
         .execute = &commands.set_line_zero.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("SET_LINE_ZERO");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "ISOLATE",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "axis" },
             .{ .name = "direction" },
@@ -621,11 +626,11 @@ pub fn init(c: Config) !void {
         \\values must be one of "prev", "next", "left", or "right".
         ,
         .execute = &commands.isolate.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("ISOLATE");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "WAIT_ISOLATE",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{ .name = "timeout", .optional = true },
@@ -639,11 +644,11 @@ pub fn init(c: Config) !void {
         \\milliseconds.
         ,
         .execute = &commands.wait.isolate,
-    });
+    } });
     errdefer command.registry.orderedRemove("WAIT_ISOLATE");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "WAIT_MOVE_CARRIER",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{ .name = "timeout", .optional = true },
@@ -657,11 +662,11 @@ pub fn init(c: Config) !void {
         \\milliseconds.
         ,
         .execute = &commands.wait.moveCarrier,
-    });
+    } });
     errdefer command.registry.orderedRemove("WAIT_MOVE_CARRIER");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "MOVE_CARRIER_AXIS",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{ .name = "destination axis" },
@@ -674,11 +679,11 @@ pub fn init(c: Config) !void {
         \\CAS (collision avoidance system) for the command.
         ,
         .execute = &commands.move.posAxis,
-    });
+    } });
     errdefer command.registry.orderedRemove("MOVE_CARRIER_AXIS");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "MOVE_CARRIER_LOCATION",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{ .name = "destination location" },
@@ -692,11 +697,11 @@ pub fn init(c: Config) !void {
         \\disable CAS (collision avoidance system) for the command.
         ,
         .execute = &commands.move.posLocation,
-    });
+    } });
     errdefer command.registry.orderedRemove("MOVE_CARRIER_LOCATION");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "MOVE_CARRIER_DISTANCE",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{ .name = "distance" },
@@ -711,11 +716,11 @@ pub fn init(c: Config) !void {
         \\CAS (collision avoidance system) for the command.
         ,
         .execute = &commands.move.posDistance,
-    });
+    } });
     errdefer command.registry.orderedRemove("MOVE_CARRIER_DISTANCE");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "SPD_MOVE_CARRIER_AXIS",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{ .name = "destination axis" },
@@ -729,11 +734,11 @@ pub fn init(c: Config) !void {
         \\(collision avoidance system) for the command.
         ,
         .execute = &commands.move.spdAxis,
-    });
+    } });
     errdefer command.registry.orderedRemove("SPD_MOVE_CARRIER_AXIS");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "SPD_MOVE_CARRIER_LOCATION",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{ .name = "destination location" },
@@ -748,11 +753,11 @@ pub fn init(c: Config) !void {
         \\CAS (collision avoidance system) for the command.
         ,
         .execute = &commands.move.spdLocation,
-    });
+    } });
     errdefer command.registry.orderedRemove("SPD_MOVE_CARRIER_LOCATION");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "SPD_MOVE_CARRIER_DISTANCE",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{ .name = "distance" },
@@ -768,11 +773,11 @@ pub fn init(c: Config) !void {
         \\avoidance system) for the command.
         ,
         .execute = &commands.move.spdDistance,
-    });
+    } });
     errdefer command.registry.orderedRemove("SPD_MOVE_CARRIER_DISTANCE");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "PUSH_CARRIER_FORWARD",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "axis" },
             .{ .name = "carrier", .optional = true },
@@ -788,11 +793,11 @@ pub fn init(c: Config) !void {
         \\forward.
         ,
         .execute = &commands.push.forward,
-    });
+    } });
     errdefer command.registry.orderedRemove("PUSH_CARRIER_FORWARD");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "PUSH_CARRIER_BACKWARD",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "axis" },
             .{ .name = "carrier", .optional = true },
@@ -808,11 +813,11 @@ pub fn init(c: Config) !void {
         \\backward.
         ,
         .execute = &commands.push.backward,
-    });
+    } });
     errdefer command.registry.orderedRemove("PUSH_CARRIER_BACKWARD");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "PULL_CARRIER_FORWARD",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "axis" },
             .{ .name = "carrier" },
@@ -828,11 +833,11 @@ pub fn init(c: Config) !void {
         \\for the command when the final destination is provided.
         ,
         .execute = &commands.pull.forward,
-    });
+    } });
     errdefer command.registry.orderedRemove("PULL_CARRIER_FORWARD");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "PULL_CARRIER_BACKWARD",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "axis" },
             .{ .name = "carrier" },
@@ -848,11 +853,11 @@ pub fn init(c: Config) !void {
         \\for the command when the final destination is provided.
         ,
         .execute = &commands.pull.backward,
-    });
+    } });
     errdefer command.registry.orderedRemove("PULL_CARRIER_BACKWARD");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "STOP_PULL_CARRIER",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "filter", .optional = true },
         },
@@ -865,11 +870,11 @@ pub fn init(c: Config) !void {
         \\filter is provided, clear errors on all drivers.
         ,
         .execute = &commands.stop_pull.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("STOP_PULL_CARRIER");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "STOP_PUSH_CARRIER",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "filter", .optional = true },
         },
@@ -882,11 +887,11 @@ pub fn init(c: Config) !void {
         \\filter is provided, clear errors on all drivers.
         ,
         .execute = &commands.stop_push.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("STOP_PUSH_CARRIER");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "WAIT_AXIS_EMPTY",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "axis" },
             .{ .name = "timeout", .optional = true },
@@ -900,11 +905,11 @@ pub fn init(c: Config) !void {
         \\must be provided in milliseconds.
         ,
         .execute = &commands.wait.axisEmpty,
-    });
+    } });
     errdefer command.registry.orderedRemove("WAIT_AXIS_EMPTY");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "ADD_LOG_INFO",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "kind" },
             .{ .name = "range", .optional = true },
@@ -920,11 +925,11 @@ pub fn init(c: Config) !void {
         \\line.
         ,
         .execute = &commands.log.add,
-    });
+    } });
     errdefer command.registry.orderedRemove("ADD_LOG_INFO");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "START_LOG_INFO",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "duration" },
             .{ .name = "path", .optional = true },
         },
@@ -937,11 +942,11 @@ pub fn init(c: Config) !void {
         \\current working directory as: "mmc-logging-YYYY.MM.DD-HH.MM.SS.csv".
         ,
         .execute = &commands.log.start,
-    });
+    } });
     errdefer command.registry.orderedRemove("START_LOG_INFO");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "REMOVE_LOG_INFO",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "kind" },
             .{ .name = "range", .optional = true },
@@ -956,18 +961,18 @@ pub fn init(c: Config) !void {
         \\remove all log configuration on the line depending on the kind.
         ,
         .execute = &commands.log.remove,
-    });
+    } });
     errdefer command.registry.orderedRemove("REMOVE_LOG_INFO");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "STATUS_LOG_INFO",
         .short_description = "Show the logging configuration(s).",
         .long_description =
         \\Show the logging configuration for each line, if any.
         ,
         .execute = &commands.log.status,
-    });
+    } });
     errdefer command.registry.orderedRemove("STATUS_LOG_INFO");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "STOP_LOG_INFO",
         .short_description = "Stop the mmc logging process.",
         .long_description =
@@ -975,9 +980,9 @@ pub fn init(c: Config) !void {
         \\save the logging data to the log file.
         ,
         .execute = &commands.log.stop,
-    });
+    } });
     errdefer command.registry.orderedRemove("STOP_LOG_INFO");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "CANCEL_LOG_INFO",
         .short_description = "Cancel the mmc logging process.",
         .long_description =
@@ -985,11 +990,11 @@ pub fn init(c: Config) !void {
         \\saving the logging data to a log file.
         ,
         .execute = &commands.log.cancel,
-    });
+    } });
     errdefer command.registry.orderedRemove("CANCEL_LOG_INFO");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "PRINT_ERRORS",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line" },
             .{ .name = "filter", .optional = true },
         },
@@ -1003,11 +1008,11 @@ pub fn init(c: Config) !void {
         \\all drivers.
         ,
         .execute = &commands.show_errors.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("PRINT_ERRORS");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "STOP",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line", .optional = true },
         },
         .short_description = "Stop any operation on the line(s).",
@@ -1017,11 +1022,11 @@ pub fn init(c: Config) !void {
         \\entire system.
         ,
         .execute = &commands.stop.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("STOP");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "PAUSE",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line", .optional = true },
         },
         .short_description = "Pause any operation on the line(s).",
@@ -1030,11 +1035,11 @@ pub fn init(c: Config) !void {
         \\providing a line will pause the operation of entire system.
         ,
         .execute = &commands.pause.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("PAUSE");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "RESUME",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line", .optional = true },
         },
         .short_description = "Resume the line(s) operation.",
@@ -1043,11 +1048,11 @@ pub fn init(c: Config) !void {
         \\providing a line will resume the operation of entire system.
         ,
         .execute = &commands.@"resume".impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("RESUME");
-    try command.registry.put(.{
+    try command.registry.put(.{ .executable = .{
         .name = "SET_CARRIER_ID",
-        .parameters = &[_]command.Command.Parameter{
+        .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line" },
             .{ .name = "carrier" },
             .{ .name = "new carrier id" },
@@ -1058,7 +1063,7 @@ pub fn init(c: Config) !void {
         \\shall not be used by other carriers on the same line.
         ,
         .execute = &commands.set_carrier_id.impl,
-    });
+    } });
     errdefer command.registry.orderedRemove("SET_CARRIER_ID");
 }
 
