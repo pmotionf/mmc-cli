@@ -232,21 +232,22 @@ pub fn init(c: Config) !void {
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "endpoint", .optional = true },
         },
-        .short_description = "Connect program to the server.",
+        .short_description = "Connect to the server.",
         .long_description =
-        \\Attempt to connect the client application to the server. The IP address
-        \\and the port should be provided in the configuration file. The port
-        \\and IP address can be overwritten by providing the new port and IP
-        \\address by specifying the endpoint as "IP_ADDRESS:PORT". IPv6 address
-        \\shall be provided with scope ID and should be inside square bracket,
-        \\e.g. [::%SCOPE]:PORT. The scope ID shall be provided with number.
+        \\Attempt to connect to the server. If no endpoint
+        \\is provided, attempt to connect to the latest connected
+        \\server on the same session or get the endpoint from the configuration
+        \\file if the client never connected to any server. If endpoint is
+        \\provided, attempt to connect to the provided endpoint. The endpoint
+        \\shall be provided either one of the following format: "HOSTNAME:PORT",
+        \\"IPV4_ADDRESS:PORT" or "[IPV6_ADDRESS%SCOPE]:PORT".
         ,
         .execute = &commands.connect.impl,
     } });
     errdefer command.registry.orderedRemove("CONNECT");
     try command.registry.put(.{ .executable = .{
         .name = "DISCONNECT",
-        .short_description = "Disconnect MCL from motion system.",
+        .short_description = "End connection with the mmc server.",
         .long_description =
         \\End connection with the mmc server.
         ,
@@ -595,7 +596,7 @@ pub fn init(c: Config) !void {
     } });
     errdefer command.registry.orderedRemove("CALIBRATE");
     try command.registry.put(.{ .executable = .{
-        .name = "SET_LINE_ZERO",
+        .name = "SET_ZERO",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
         },
@@ -606,9 +607,16 @@ pub fn init(c: Config) !void {
         ,
         .execute = &commands.set_line_zero.impl,
     } });
+    errdefer command.registry.orderedRemove("SET_ZERO");
+    try command.registry.put(.{
+        .alias = .{
+            .name = "SET_LINE_ZERO",
+            .command = command.registry.getPtr("SET_ZERO").?,
+        },
+    });
     errdefer command.registry.orderedRemove("SET_LINE_ZERO");
     try command.registry.put(.{ .executable = .{
-        .name = "ISOLATE",
+        .name = "INITIALIZE",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "axis" },
@@ -616,7 +624,7 @@ pub fn init(c: Config) !void {
             .{ .name = "carrier id" },
             .{ .name = "link axis", .resolve = false, .optional = true },
         },
-        .short_description = "Isolate an uninitialized carrier backwards.",
+        .short_description = "Initialize an unitialized carrier.",
         .long_description =
         \\Slowly move an uninitialized carrier to separate it from other nearby
         \\carriers. A direction of "backward" or "forward" must be provided. A
@@ -627,23 +635,33 @@ pub fn init(c: Config) !void {
         ,
         .execute = &commands.isolate.impl,
     } });
+    errdefer command.registry.orderedRemove("INITIALIZE");
+    try command.registry.put(.{ .alias = .{
+        .name = "ISOLATE",
+        .command = command.registry.getPtr("INITIALIZE").?,
+    } });
     errdefer command.registry.orderedRemove("ISOLATE");
     try command.registry.put(.{ .executable = .{
-        .name = "WAIT_ISOLATE",
+        .name = "WAIT_INITIALIZE",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
             .{ .name = "carrier" },
             .{ .name = "timeout", .optional = true },
         },
-        .short_description = "Wait for carrier isolation to complete.",
+        .short_description = "Wait for carrier initialization to complete.",
         .long_description =
-        \\Pause the execution of any further commands until the isolation of the
-        \\given carrier is indicated as complete. If a timeout is specified, the
-        \\command will return an error if the waiting action takes longer than
-        \\the specified timeout duration. The timeout must be provided in
-        \\milliseconds.
+        \\Pause the execution of any further commands until the initialization
+        \\of the given carrier is indicated as complete. If a timeout is
+        \\specified, the command will return an error if the waiting action
+        \\takes longer than the specified timeout duration. The timeout must be
+        \\provided in milliseconds.
         ,
         .execute = &commands.wait.isolate,
+    } });
+    errdefer command.registry.orderedRemove("WAIT_INITIALIZE");
+    try command.registry.put(.{ .alias = .{
+        .name = "WAIT_ISOLATE",
+        .command = command.registry.getPtr("WAIT_INITIALIZE").?,
     } });
     errdefer command.registry.orderedRemove("WAIT_ISOLATE");
     try command.registry.put(.{ .executable = .{
@@ -1000,12 +1018,11 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Print axis and driver errors.",
         .long_description =
-        \\Print axis and driver errors on a line, if any. The errors to be shown
-        \\are filtered based on the given filter, which shall be provided with
-        \\the ID followed by suffix. The supported suffixes are "d" or
-        \\"driver" for filtering based on "driver" and "a" or "axis" for
-        \\filtering based on "axis". If no filter is provided, clear errors on
-        \\all drivers.
+        \\Print axis and driver errors based on the provided filter. Filter
+        \\shall be provided with the ID followed by suffix. The supported
+        \\suffixes are "d" or "driver" for filtering based on "driver" and "a"
+        \\or "axis" for filtering based on "axis". If no filter is provided,
+        \\print all axis and driver errors on the line.
         ,
         .execute = &commands.show_errors.impl,
     } });
