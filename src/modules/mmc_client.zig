@@ -829,10 +829,15 @@ pub fn init(c: Config) !void {
         .short_description = "Pull incoming carrier forward at axis.",
         .long_description =
         \\Pull incoming carrier forward at axis. The pulled carrier's new ID
-        \\must also be provided. If a destination in millimeters is specified,
-        \\the carrier will automatically move to the destination after pull is
-        \\completed. Provide "true" to disable CAS (collision avoidance system)
-        \\for the command when the final destination is provided.
+        \\must also be provided.
+        \\If a destination in millimeters is specified, the carrier will
+        \\automatically move to the destination after pull is completed. If a
+        \\"nan" destination is provided, the carrier will not be pulled by the
+        \\motor, but any carrier moved by external forces will be correctly
+        \\recognized and initialized in release-servo state.
+        \\If "true" is provided for the disable CAS parameter, automatic
+        \\carrier movement to destination after pulling will have CAS feature
+        \\disabled.
         ,
         .execute = &commands.pull.forward,
     } });
@@ -849,10 +854,15 @@ pub fn init(c: Config) !void {
         .short_description = "Pull incoming carrier backward at axis.",
         .long_description =
         \\Pull incoming carrier backward at axis. The pulled carrier's new ID
-        \\must also be provided. If a destination in millimeters is specified,
-        \\the carrier will automatically move to the destination after pull is
-        \\completed. Provide "true" to disable CAS (collision avoidance system)
-        \\for the command when the final destination is provided.
+        \\must also be provided.
+        \\If a destination in millimeters is specified, the carrier will
+        \\automatically move to the destination after pull is completed. If a
+        \\"nan" destination is provided, the carrier will not be pulled by the
+        \\motor, but any carrier moved by external forces will be correctly
+        \\recognized and initialized in release-servo state.
+        \\If "true" is provided for the disable CAS parameter, automatic
+        \\carrier movement to destination after pulling will have CAS feature
+        \\disabled.
         ,
         .execute = &commands.pull.backward,
     } });
