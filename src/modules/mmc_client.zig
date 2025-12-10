@@ -417,7 +417,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Throw an error if the carrier is not located on the specified location
         \\within the threshold. The default threshold value is 1 mm. Both the
-        \\location and threshold must be provided in millimeters.
+        \\location and threshold must be provided in meters.
         ,
         .execute = &commands.assert_location.impl,
     } });
@@ -693,7 +693,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Move given carrier to target location. The carrier ID must be currently
         \\recognized within the motion system, and the target location must be
-        \\provided in millimeters as a whole or decimal number. Provide "true" to
+        \\provided in meters as a whole or decimal number. Provide "true" to
         \\disable CAS (collision avoidance system) for the command.
         ,
         .execute = &commands.move.posLocation,
@@ -711,7 +711,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Move given carrier by a provided distance. The carrier ID must be
         \\currently recognized within the motion system, and the distance must
-        \\be provided in millimeters as a whole or decimal number. The distance
+        \\be provided in meters as a whole or decimal number. The distance
         \\may be negative for backward movement. Provide "true" to disable
         \\CAS (collision avoidance system) for the command.
         ,
@@ -748,7 +748,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Move given carrier to target location. The carrier ID must be currently
         \\recognized within the motion system, and the target location must be
-        \\provided in millimeters as a whole or decimal number. This command
+        \\provided in meters as a whole or decimal number. This command
         \\moves the carrier with speed profile feedback. Provide "true" to disable
         \\CAS (collision avoidance system) for the command.
         ,
@@ -767,7 +767,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Move given carrier by a provided distance. The carrier ID must be
         \\currently recognized within the motion system, and the distance must
-        \\be provided in millimeters as a whole or decimal number. The distance
+        \\be provided in meters as a whole or decimal number. The distance
         \\may be negative for backward movement. This command moves the carrier
         \\with speed profile feedback. Provide "true" to disable CAS (collision
         \\avoidance system) for the command.
@@ -828,7 +828,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Pull incoming carrier forward at axis. The pulled carrier's new ID
         \\must also be provided.
-        \\If a destination in millimeters is specified, the carrier will
+        \\If a destination in meters is specified, the carrier will
         \\automatically move to the destination after pull is completed. If a
         \\"nan" destination is provided, the carrier will not be pulled by the
         \\motor, but any carrier moved by external forces will be correctly
@@ -853,7 +853,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Pull incoming carrier backward at axis. The pulled carrier's new ID
         \\must also be provided.
-        \\If a destination in millimeters is specified, the carrier will
+        \\If a destination in meters is specified, the carrier will
         \\automatically move to the destination after pull is completed. If a
         \\"nan" destination is provided, the carrier will not be pulled by the
         \\motor, but any carrier moved by external forces will be correctly
