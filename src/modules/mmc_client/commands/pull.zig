@@ -57,6 +57,11 @@ fn impl(
     else
         null;
 
+    const no_servo: bool = if (destination) |loc|
+        std.math.isNan(loc)
+    else
+        false;
+
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     const disable_cas = if (params[4].len == 0)
@@ -73,16 +78,22 @@ fn impl(
                         .line = line.id,
                         .axis = axis_id,
                         .carrier = carrier_id,
-                        .velocity = line.velocity.value,
+                        .velocity = if (no_servo) 0 else line.velocity.value,
                         .velocity_mode = if (line.velocity.low)
                             .VELOCITY_MODE_LOW
                         else
                             .VELOCITY_MODE_NORMAL,
-                        .acceleration = line.acceleration,
+                        .acceleration = if (no_servo)
+                            0
+                        else
+                            line.acceleration,
                         .direction = dir,
                         .transition = blk: {
                             if (destination) |loc| break :blk .{
-                                .control = .CONTROL_POSITION,
+                                .control = if (no_servo)
+                                    .CONTROL_UNSPECIFIED
+                                else
+                                    .CONTROL_POSITION,
                                 .disable_cas = disable_cas,
                                 .target = .{
                                     .location = loc,
