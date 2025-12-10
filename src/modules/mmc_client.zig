@@ -153,6 +153,7 @@ pub const Filter = union(enum) {
         return error.InvalidParameter;
     }
 
+    /// Invalidates original filter's allocated memory ownership.
     pub fn toProtobuf(filter: *Filter) api.protobuf.mmc.info.Request.Track.filter_union {
         return switch (filter.*) {
             .axis => |axis_id| .{
@@ -347,7 +348,7 @@ pub fn init(c: Config) !void {
         .name = "PRINT_CARRIER_INFO",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "line name" },
-            .{ .name = "filter" },
+            .{ .name = "filter", .optional = true },
         },
         .short_description = "Print the carrier information.",
         .long_description =
@@ -355,7 +356,8 @@ pub fn init(c: Config) !void {
         \\given filter, which shall be provided with the ID followed by suffix
         \\The supported suffixes are "c" or "carrier" for filtering based on
         \\carrier, "d" or "driver" for filtering based on "driver", and "a" or
-        \\"axis" for filtering based on "axis".
+        \\"axis" for filtering based on "axis". If no filter is provided, all
+        \\carrier information on the line is printed.
         ,
         .execute = &commands.print_carrier_info.impl,
     } });

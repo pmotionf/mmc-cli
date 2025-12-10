@@ -9,7 +9,11 @@ pub fn impl(params: [][]const u8) !void {
     defer tracy_zone.end();
     if (client.sock == null) return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
-    var filter: client.Filter = try .parse(params[1]);
+    var filter: ?client.Filter = if (params[1].len > 0)
+        try .parse(params[1])
+    else
+        null;
+    const pb_filter = if (filter) |*f| f.toProtobuf() else null;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     const request: api.protobuf.mmc.Request = .{
@@ -19,7 +23,7 @@ pub fn impl(params: [][]const u8) !void {
                     .track = .{
                         .line = line.id,
                         .info_carrier_state = true,
-                        .filter = filter.toProtobuf(),
+                        .filter = pb_filter,
                     },
                 },
             },
