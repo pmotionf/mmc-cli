@@ -20,12 +20,8 @@ pub fn impl(params: [][]const u8) !void {
     };
 
     std.log.info(
-        // "Set speed to {d} m/s = {d} mm/s",
         "Set speed to {d} mm/s",
-        // "Set speed to {d} m/s",
         .{
-            // @as(f32, @floatFromInt(client.lines[line_idx].velocity.value)) /
-            //     @as(f32, if (low) 10_000 else 10.0),
             @as(f32, @floatFromInt(client.lines[line_idx].velocity.value)) /
                 @as(f32, if (low) 10 else 0.01),
         },

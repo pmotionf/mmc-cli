@@ -10,11 +10,9 @@ pub fn impl(params: [][]const u8) !void {
 
     const line_idx = try client.matchLine(line_name);
     std.log.info(
-        // "Line {s} acceleration: {d} m/s^2 = {d} mm/s^2",
         "Line {s} acceleration: {d} mm/s^2",
         .{
             line_name,
-            // @as(f32, @floatFromInt(client.lines[line_idx].acceleration)) / 10.0,
             @as(f32, @floatFromInt(client.lines[line_idx].acceleration)) / 0.01,
         },
     );

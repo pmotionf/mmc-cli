@@ -287,19 +287,7 @@ pub fn impl(params: [][]const u8) !void {
         std.log.info("Track configuration for {s}:", .{server.name});
         var stdout = std.fs.File.stdout().writer(&.{});
         for (client.lines) |line| {
-            // try stdout.interface.print(
-            //     // "\t {s} ({})\t\t ({} m/s - {} m/s^2)\n",
-            //     "\t {s} ({}) - {}m/s | {}m/s^2\n",
-            //     .{
-            //         line.name, line.axes,
-            //         @as(f32, @floatFromInt(line.velocity.value)) /
-            //             @as(f32, if (line.velocity.low) 10_000 else 10.0),
-            //         @as(f32, @floatFromInt(line.acceleration)) / 10.0,
-            //     },
-            // );
             try stdout.interface.print(
-                // "\t {s} ({})\t\t ({} m/s - {} m/s^2)\n",
-                // "\t {s} ({}) - {}m/s | {}m/s^2\n",
                 "\t {s} ({}) - {}mm/s | {}mm/s^2\n",
                 .{
                     line.name, line.axes,
