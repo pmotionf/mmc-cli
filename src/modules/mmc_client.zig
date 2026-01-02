@@ -268,7 +268,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Set the speed of carrier movement for a line. The line is referenced
         \\by its name. The speed must be greater than 0 and less than or equal
-        \\to 6.0 meters-per-second.
+        \\to 6000 millimeters-per-second.
         ,
         .execute = &commands.set_speed.impl,
     } });
@@ -283,7 +283,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Set the acceleration of carrier movement for a line. The line is
         \\referenced by its name. The acceleration must be greater than 0 and
-        \\less than or equal to 24.5 meters-per-second-squared.
+        \\less than or equal to 24500 millimeters-per-second-squared.
         ,
         .execute = &commands.set_acceleration.impl,
     } });
@@ -296,7 +296,7 @@ pub fn init(c: Config) !void {
         .short_description = "Get the speed of carrier movement for a line.",
         .long_description =
         \\Get the speed of carrier movement for a line. The line is referenced
-        \\by name. Speed is in meters-per-second.
+        \\by name. Speed is in millimeters-per-second.
         ,
         .execute = &commands.get_speed.impl,
     } });
@@ -309,7 +309,7 @@ pub fn init(c: Config) !void {
         .short_description = "Get the acceleration of carrier movement.",
         .long_description =
         \\Get the acceleration of carrier movement for a line. The line is
-        \\referenced by name. Acceleration is in meters-per-second-squared.
+        \\referenced by name. Acceleration is in millimeters-per-second-squared.
         ,
         .execute = &commands.get_acceleration.impl,
     } });
@@ -716,7 +716,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Move given carrier to target location. The carrier ID must be currently
         \\recognized within the motion system, and the target location must be
-        \\provided in meters as a whole or decimal number. Provide "true" to
+        \\provided in millimeters as a whole or decimal number. Provide "true" to
         \\disable CAS (collision avoidance system) for the command.
         ,
         .execute = &commands.move.posLocation,
@@ -734,7 +734,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Move given carrier by a provided distance. The carrier ID must be
         \\currently recognized within the motion system, and the distance must
-        \\be provided in meters as a whole or decimal number. The distance
+        \\be provided in millimeters as a whole or decimal number. The distance
         \\may be negative for backward movement. Provide "true" to disable
         \\CAS (collision avoidance system) for the command.
         ,
@@ -771,7 +771,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Move given carrier to target location. The carrier ID must be currently
         \\recognized within the motion system, and the target location must be
-        \\provided in meters as a whole or decimal number. This command
+        \\provided in millimeters as a whole or decimal number. This command
         \\moves the carrier with speed profile feedback. Provide "true" to disable
         \\CAS (collision avoidance system) for the command.
         ,
@@ -790,7 +790,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Move given carrier by a provided distance. The carrier ID must be
         \\currently recognized within the motion system, and the distance must
-        \\be provided in meters as a whole or decimal number. The distance
+        \\be provided in millimeters as a whole or decimal number. The distance
         \\may be negative for backward movement. This command moves the carrier
         \\with speed profile feedback. Provide "true" to disable CAS (collision
         \\avoidance system) for the command.
@@ -851,7 +851,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Pull incoming carrier forward at axis. The pulled carrier's new ID
         \\must also be provided.
-        \\If a destination in meters is specified, the carrier will
+        \\If a destination in millimeters is specified, the carrier will
         \\automatically move to the destination after pull is completed. If a
         \\"nan" destination is provided, the carrier will not be pulled by the
         \\motor, but any carrier moved by external forces will be correctly
@@ -876,7 +876,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Pull incoming carrier backward at axis. The pulled carrier's new ID
         \\must also be provided.
-        \\If a destination in meters is specified, the carrier will
+        \\If a destination in millimeters is specified, the carrier will
         \\automatically move to the destination after pull is completed. If a
         \\"nan" destination is provided, the carrier will not be pulled by the
         \\motor, but any carrier moved by external forces will be correctly
