@@ -14,7 +14,7 @@ pub fn impl(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     client.lines[line_idx].acceleration = @intFromFloat(carrier_acceleration * 10.0);
 
-    std.log.info("Set acceleration to {d} mm/s^2.", .{
+    std.log.info("Set acceleration to {d} mm/s².", .{
         @as(f32, @floatFromInt(client.lines[line_idx].acceleration)) * 100,
     });
 }

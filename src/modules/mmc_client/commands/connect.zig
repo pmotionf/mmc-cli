@@ -288,7 +288,7 @@ pub fn impl(params: [][]const u8) !void {
         var stdout = std.fs.File.stdout().writer(&.{});
         for (client.lines) |line| {
             try stdout.interface.print(
-                "\t {s} ({}) - {}mm/s | {}mm/s^2\n",
+                "\t {s} ({}) - {}mm/s | {}mm/s²\n",
                 .{
                     line.name, line.axes,
                     @as(f32, @floatFromInt(line.velocity.value)) /
