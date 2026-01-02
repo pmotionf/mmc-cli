@@ -423,7 +423,7 @@ pub fn init(c: Config) !void {
         .long_description =
         \\Throw an error if the carrier is not located on the specified location
         \\within the threshold. The default threshold value is 1 mm. Both the
-        \\location and threshold must be provided in meters.
+        \\location and threshold must be provided in millimeter.
         ,
         .execute = &commands.assert_location.impl,
     } });
