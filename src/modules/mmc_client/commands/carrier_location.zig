@@ -90,7 +90,7 @@ pub fn impl(params: [][]const u8) !void {
     for (carriers.items) |carrier| {
         std.log.info(
             "Carrier {d} location: {d} mm",
-            .{ carrier.id, carrier.position },
+            .{ carrier.id, carrier.position * 1000.0 },
         );
         if (save_var.len > 0) {
             var float_buf: [12]u8 = undefined;
