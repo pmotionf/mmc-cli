@@ -53,9 +53,11 @@ fn impl(
         } else break :b input;
     }, 0);
     const destination: ?f32 = if (params[3].len > 0)
-        try std.fmt.parseFloat(f32, params[3])
+        try std.fmt.parseFloat(f32, params[3]) / 1000.0
     else
         null;
+
+    std.debug.print("destination: {?d}\n", .{destination});
 
     const no_servo: bool = if (destination) |loc|
         std.math.isNan(loc)
