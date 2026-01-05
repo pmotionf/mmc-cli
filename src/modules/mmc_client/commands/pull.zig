@@ -57,8 +57,6 @@ fn impl(
     else
         null;
 
-    std.debug.print("destination: {?d}\n", .{destination});
-
     const no_servo: bool = if (destination) |loc|
         std.math.isNan(loc)
     else
