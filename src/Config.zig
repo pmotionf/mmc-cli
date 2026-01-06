@@ -32,6 +32,27 @@ const Parse = struct {
     modules: []ModuleConfig,
 };
 
+// pub const Standard = union {
+//     name: struct {
+//         driver: []const u8 = "",
+//     },
+//     speed: struct {
+//         range: struct {
+//             min: u16 = 0,
+//             max: u16 = 6000,
+//         },
+//         unit: []const u8 = "mm/s",
+//     },
+//     acceleration: struct {
+//         range: struct {
+//             min: f32 = 0,
+//             max: f32 = 24_500,
+//         },
+//         unit: []const u8 = "mm/s²",
+//     },
+//     length: struct { unit: []const u8 = "mm" },
+// };
+
 pub fn parse(allocator: std.mem.Allocator, f: std.fs.File) !Config {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
