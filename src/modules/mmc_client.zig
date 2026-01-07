@@ -482,6 +482,7 @@ pub fn init(c: Config) !void {
             },
             .short_description = "Check Carrier location.",
             .long_description = std.fmt.comptimePrint(
+                \\Check Carrier location.
                 \\Error if Carrier is not at specified location.
                 \\Default location threshold value is 1{s}.
                 \\Location and threshold must be provided in {s}.
