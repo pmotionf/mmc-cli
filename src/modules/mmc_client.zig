@@ -317,7 +317,7 @@ pub fn init(c: Config) !void {
             .long_description = std.fmt.comptimePrint(
                 \\Set Carrier acceleration for the specified Line. The
                 \\acceleration value must be greater than {d} and less than or
-                \\equal to {d}{s}.
+                \\equal to {d} {s}.
             , .{
                 standard.acceleration.range.min,
                 standard.acceleration.range.max,
@@ -478,7 +478,7 @@ pub fn init(c: Config) !void {
             .short_description = "Check Carrier location.",
             .long_description = std.fmt.comptimePrint(
                 \\Check Carrier location. Error if Carrier is not at specified
-                \\location. Default location threshold value is 1{s}. Location and
+                \\location. Default location threshold value is 1 {s}. Location and
                 \\threshold must be provided in {s}.
             , .{
                 standard.length.unit_short,
