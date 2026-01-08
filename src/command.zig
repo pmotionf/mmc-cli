@@ -819,7 +819,8 @@ fn loadConfig(params: [][]const u8) !void {
 
     // Load config file.
     const config_file = if (params[0].len > 0)
-        try std.fs.cwd().openFile(params[0], .{})
+        std.fs.cwd().openFile(params[0], .{}) catch
+            try std.fs.openFileAbsolute(params[0], .{})
     else
         std.fs.cwd().openFile("config.json5", .{}) catch exe_local: {
             var exe_dir_buf: [std.fs.max_path_bytes]u8 = undefined;
