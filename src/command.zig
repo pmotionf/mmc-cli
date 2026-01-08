@@ -286,7 +286,7 @@ pub fn init() !void {
         .name = "VERSION",
         .short_description = "Display the version of the MMC CLI.",
         .long_description =
-        \\Print the currently running version of the MMC command line utility
+        \\Print the currently running version of the MMC command Line utility
         \\in Semantic Version format.
         ,
         .execute = &version,
@@ -462,9 +462,9 @@ pub fn init() !void {
     } });
     try registry.put(.{ .executable = .{
         .name = "EXIT",
-        .short_description = "Exit the MMC command line utility.",
+        .short_description = "Exit the MMC command Line utility.",
         .long_description =
-        \\Gracefully terminate the PMF MMC command line utility, cleaning up
+        \\Gracefully terminate the PMF MMC command Line utility, cleaning up
         \\resources and closing connections.
         ,
         .execute = &exit,

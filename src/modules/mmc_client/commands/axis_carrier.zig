@@ -88,7 +88,7 @@ pub fn impl(params: [][]const u8) !void {
     const carriers = track.carrier_state;
     if (carriers.items.len > 1) return error.InvalidResponse;
     for (carriers.items) |carrier| {
-        std.log.info("Carrier {d} on axis {d}.\n", .{ carrier.id, axis_id });
+        std.log.info("Carrier {d} on Axis {d}.\n", .{ carrier.id, axis_id });
         if (save_var.len > 0) {
             var int_buf: [8]u8 = undefined;
             try command.variables.put(
