@@ -270,9 +270,9 @@ pub fn init(c: Config) !void {
             \\ - `IPv4_ADDRESS:PORT`
             \\ - `[IPv6_ADDRESS%SCOPE]:PORT`
             \\
-            \\If no endpoint provided, last connected server is used.
-            \\If no server has been connected since `LOAD_CONFIG`, connect to
-            \\the default endpoint provided in the configuration file.
+            \\If no endpoint provided, last connected server is used. If no server has
+            \\been connected since `LOAD_CONFIG`, connect to the default endpoint
+            \\provided in the configuration file.
         , .{}),
         .execute = &commands.connect.impl,
     } });
@@ -295,8 +295,8 @@ pub fn init(c: Config) !void {
             },
             .short_description = "Set Carrier speed for Line",
             .long_description = std.fmt.comptimePrint(
-                \\Set Carrier speed for the specified Line. The speed value must
-                \\be greater than {d} and less than or equal to {d} {s}.
+                \\Set Carrier speed for the specified Line. The speed value must be
+                \\greater than {d} and less than or equal to {d} {s}.
             , .{
                 standard.speed.range.min,
                 standard.speed.range.max,
@@ -315,9 +315,8 @@ pub fn init(c: Config) !void {
             },
             .short_description = "Set Carrier acceleration for Line",
             .long_description = std.fmt.comptimePrint(
-                \\Set Carrier acceleration for the specified Line. The
-                \\acceleration value must be greater than {d} and less than or
-                \\equal to {d} {s}.
+                \\Set Carrier acceleration for the specified Line. The acceleration value
+                \\must be greater than {d} and less than or equal to {d} {s}.
             , .{
                 standard.acceleration.range.min,
                 standard.acceleration.range.max,
@@ -333,9 +332,9 @@ pub fn init(c: Config) !void {
             .parameters = &[_]command.Command.Executable.Parameter{
                 .{ .name = "Line" },
             },
-            .short_description = "Get Carrier speed of Line",
+            .short_description = "Print Carrier speed of Line",
             .long_description = std.fmt.comptimePrint(
-                \\Get Carrier speed for the specified Line.
+                \\Print Carrier speed for the specified Line.
             , .{}),
             .execute = &commands.get_speed.impl,
         },
@@ -347,9 +346,9 @@ pub fn init(c: Config) !void {
             .parameters = &[_]command.Command.Executable.Parameter{
                 .{ .name = "Line" },
             },
-            .short_description = "Get Carrier acceleration of Line",
+            .short_description = "Print Carrier acceleration of Line",
             .long_description = std.fmt.comptimePrint(
-                \\Get Carrier acceleration for the specified Line.
+                \\Print Carrier acceleration for the specified Line.
             , .{}),
             .execute = &commands.get_acceleration.impl,
         },
@@ -362,11 +361,11 @@ pub fn init(c: Config) !void {
                 .{ .name = "Line" },
                 .{ .name = "filter" },
             },
-            .short_description = "Get Axis information if exists.",
+            .short_description = "Print Axis information.",
             .long_description = std.fmt.comptimePrint(
-                \\Get Axis information of specified Line. Specify filter.
-                \\To apply filter, provide ID with filter suffix (e.g., 1a).
-                \\Supported suffixes are:
+                \\Print Axis information of specified Line. Specify which Axis or Axes
+                \\to print info via filter. To apply filter, provide ID with filter
+                \\suffix (e.g., 1a). Supported suffixes are:
                 \\ - "a" or "axis" to filter by Axis
                 \\ - "c" or "carrier" to filter by Carrier
                 \\ - "d" or "driver" to filter by Driver
@@ -382,11 +381,11 @@ pub fn init(c: Config) !void {
                 .{ .name = "Line" },
                 .{ .name = "filter" },
             },
-            .short_description = "Print Driver information if exists.",
+            .short_description = "Print Driver information.",
             .long_description = std.fmt.comptimePrint(
-                \\Print Driver information of specified Line if exists. Provide filter.
-                \\To apply filter, provide ID with filter suffix (e.g., 1d).
-                \\Supported suffixes are:
+                \\Print Driver information of specified Line. Specify which Driver or
+                \\axes to print info via filter. To apply filter, provide ID with filter
+                \\suffix (e.g., 1d). Supported suffixes are:
                 \\ - "a" or "axis" to filter by Axis
                 \\ - "c" or "carrier" to filter by Carrier
                 \\ - "d" or "driver" to filter by Driver
@@ -402,12 +401,12 @@ pub fn init(c: Config) !void {
                 .{ .name = "Line" },
                 .{ .name = "filter", .optional = true },
             },
-            .short_description = "Print Carrier information if exists.",
+            .short_description = "Print Carrier information.",
             .long_description = std.fmt.comptimePrint(
-                \\Print Carrier information if exists.
-                \\Optional: Provide filter to specify selection.
-                \\To apply filter, provide ID with filter suffix (e.g., 1c).
-                \\Supported suffixes are:
+                \\Print Carrier information of specified Line.
+                \\Optional: Provide filter to specify selection of Carrier(s). To apply
+                \\filter, provide ID with filter suffix (e.g., 1c). Supported suffixes
+                \\are:
                 \\ - "a" or "axis" to filter by Axis
                 \\ - "c" or "carrier" to filter by Carrier
                 \\ - "d" or "driver" to filter by Driver
@@ -428,13 +427,15 @@ pub fn init(c: Config) !void {
                     .resolve = false,
                 },
             },
-            .short_description = "Print Carrier information on Axis if exist.",
+            .short_description = "Print Carrier information on Axis, if exists.",
             .long_description = std.fmt.comptimePrint(
-                \\Print Carrier information on Axis if exist.
-                \\Optional: Store Carrier ID in provided variable. Variable cannot start
-                \\with a number. Information only provided when:
+                \\Print Carrier information on Axis, if exists. Information only provided
+                \\when:
                 \\ - Carrier is on specified Axis.
                 \\ - Carrier is initialized
+                \\
+                \\Optional: Store Carrier ID in provided variable. Variable cannot start
+                \\with a number and is case sensitive.
             , .{}),
             .execute = &commands.axis_carrier.impl,
         },
@@ -454,13 +455,11 @@ pub fn init(c: Config) !void {
             .short_description = "Display Carrier IDs on Line.",
             .long_description = std.fmt.comptimePrint(
                 \\Display Carrier IDs on Line. Scans specified Line(s), starting from
-                \\first Axis. Carrier IDs are provided in order of occurrence. Multi
-                \\Line input possible (e.g., line1,line2,line3)
-                \\Optional: Stores Carrier IDs in provided variable as
-                \\indexed entries (e.g., var1, var2, ...). Variable cannot start with
-                \\a number. Information only provided when:
-                \\ - Carrier is on specified Line.
-                \\ - Carrier is initialized
+                \\first Axis. Carrier IDs are provided in order of occurrence. Multi Line
+                \\input possible (e.g., line1,line2,line3).
+                \\Optional: Stores Carrier IDs in provided variable as indexed entries
+                \\(e.g., var1, var2, ...). Variable cannot start with a number and is
+                \\case sensitive.
             , .{}),
             .execute = &commands.carrier_id.impl,
         },
@@ -475,11 +474,12 @@ pub fn init(c: Config) !void {
                 .{ .name = "location" },
                 .{ .name = "threshold", .optional = true },
             },
-            .short_description = "Check Carrier location.",
+            .short_description = "Assert Carrier location.",
             .long_description = std.fmt.comptimePrint(
-                \\Check Carrier location. Error if Carrier is not at specified
-                \\location. Default location threshold value is 1 {s}. Location and
-                \\threshold must be provided in {s}.
+                \\Assert Carrier location. Error if Carrier is not at specified location.
+                \\Optional: Provide threshold to change default location threshold value.
+                \\Default location threshold value is 1 {s}. Location and threshold must
+                \\be provided in {s}.
             , .{
                 standard.length.unit_short,
                 standard.length.unit_long,
@@ -500,11 +500,11 @@ pub fn init(c: Config) !void {
                     .optional = true,
                 },
             },
-            .short_description = "Display Carrier location.",
+            .short_description = "Display Carrier location, if exists.",
             .long_description = std.fmt.comptimePrint(
-                \\Display location of Carrier on specified Line.
+                \\Display location of Carrier on specified Line, if exists.
                 \\Optional: Store Carrier location in variable. Variable cannot start
-                \\with a number.
+                \\with a number and is case sensitive.
             , .{}),
             .execute = &commands.carrier_location.impl,
         },
@@ -535,9 +535,9 @@ pub fn init(c: Config) !void {
             .short_description = "Display Hall Sensor state.",
             .long_description = std.fmt.comptimePrint(
                 \\Display Hall Sensor status.
-                \\Optional: Provide filter to specify selection.
-                \\To apply filter, provide ID with filter suffix (e.g., 1a).
-                \\Supported suffixes are:
+                \\Optional: Provide filter to specify selection of Hall Sensor(s). To
+                \\apply filter, provide ID with filter suffix (e.g., 1a).Supported
+                \\suffixes are:
                 \\ - "a" or "axis" to filter by Axis
                 \\ - "c" or "carrier" to filter by Carrier
                 \\ - "d" or "driver" to filter by Driver
@@ -557,8 +557,8 @@ pub fn init(c: Config) !void {
             },
             .short_description = "Assert Hall Sensor state.",
             .long_description = std.fmt.comptimePrint(
-                \\Assert if Hall Sensor is in expected state.
-                \\Hall Sensor location must be provided, as:
+                \\Assert if Hall Sensor is in expected state. Hall Sensor location must
+                \\be provided, as:
                 \\ - front (direction of increasing Axis number)
                 \\ - back  (direction of decreasing Axis number)
                 \\
@@ -580,10 +580,9 @@ pub fn init(c: Config) !void {
             },
             .short_description = "Clear error states.",
             .long_description = std.fmt.comptimePrint(
-                \\Clear error states on specified Line.
-                \\Optional: Provide filter to specify selection.
-                \\To apply filter, provide ID with filter suffix (e.g., 1a).
-                \\Supported suffixes are:
+                \\Clear error states on all Driver(s) of specified Line.
+                \\Optional: Provide filter to specify Driver. To apply filter, provide
+                \\ID with filter suffix (e.g., 1d). Supported suffixes are:
                 \\ - "a" or "axis" to filter by Axis
                 \\ - "c" or "carrier" to filter by Carrier
                 \\ - "d" or "driver" to filter by Driver
@@ -602,9 +601,9 @@ pub fn init(c: Config) !void {
             .short_description = "Deinitialize Carrier.",
             .long_description = std.fmt.comptimePrint(
                 \\Deinitialize Carrier on specified Line.
-                \\Optional: Provide filter to specify selection.
-                \\To apply filter, provide ID with filter suffix (e.g., 1c).
-                \\Supported suffixes are:
+                \\Optional: Provide filter to specify selection of Carrier(s). To apply
+                \\filter, provide ID with filter suffix (e.g., 1c). Supported suffixes
+                \\are:
                 \\ - "a" or "axis" to filter by Axis
                 \\ - "c" or "carrier" to filter by Carrier
                 \\ - "d" or "driver" to filter by Driver
@@ -639,11 +638,11 @@ pub fn init(c: Config) !void {
             },
             .short_description = "Release Carrier",
             .long_description = std.fmt.comptimePrint(
-                \\Release Carrier, allows to move Carrier manually.
-                \\Carrier stays initialized.
-                \\Optional: Provide filter to specify selection.
-                \\To apply filter, provide ID with filter suffix (e.g., 1c).
-                \\Supported suffixes are:
+                \\Release Carrier, allows to move Carrier through external force. Carrier
+                \\stays initialized.
+                \\Optional: Provide filter to specify selection of Carrier(s). To apply
+                \\filter, provide ID with filter suffix (e.g., 1c). Supported suffixes
+                \\are:
                 \\ - "a" or "axis" to filter by Axis
                 \\ - "c" or "carrier" to filter by Carrier
                 \\ - "d" or "driver" to filter by Driver
@@ -660,10 +659,12 @@ pub fn init(c: Config) !void {
             },
             .short_description = "Initialize all Carriers automatically.",
             .long_description = std.fmt.comptimePrint(
-                \\Automatically initializesd all isolated Carrier. Carrier isolated
-                \\if one empty Axis between Carrieres. Multiple Line auto initialization
-                \\supported (e.g., line1,line2,line3). If Line not provided auto
-                \\initializes Carriers on all Lines.
+                \\Automatically initializes all uninitialized Carriers. This process
+                \\operates on carrier clusters, where a cluster is defined as a group of
+                \\unitialized Carriers located on adjacent Axis. Each cluster requires at
+                \\least one free Axis to successfully initialize cluster. Multiple Line
+                \\auto initialization is supported (e.g., line1,line2,line3). If Line is
+                \\not provided, auto initializes Carriers on all Lines.
             , .{}),
             .execute = &commands.auto_initialize.impl,
         },
@@ -677,8 +678,8 @@ pub fn init(c: Config) !void {
             },
             .short_description = "Calibrate Track Line.",
             .long_description = std.fmt.comptimePrint(
-                \\Calibrate Track Line. Uninitialized Carrier must be positioned
-                \\at start of Line and first Axis Hall Sensors both in "on" state.
+                \\Calibrate Track Line. Uninitialized Carrier must be positioned at start
+                \\of Line and first Axis Hall Sensors are both in "on" state.
             , .{}),
             .execute = &commands.calibrate.impl,
         },
@@ -719,13 +720,13 @@ pub fn init(c: Config) !void {
             .short_description = "Initialize Carrier.",
             .long_description = std.fmt.comptimePrint(
                 \\Slowly moves an uninitialized Carrier to the next Hall Sensor in the
-                \\provided direction and assign provided Carrier ID to the Carrier.
+                \\provided direction, and assign provided Carrier ID to the Carrier.
                 \\Direction options:
                 \\ - forward  (direction of increasing Axis number)
                 \\ - backward (direction of decreasing Axis number)
                 \\
-                \\Optional: Provide linked Axis if the uninitialized Carrier is located
-                \\between two Axis. Linked Axis options:
+                \\Optional: Provide link Axis if the uninitialized Carrier is located
+                \\between two Axis. Link Axis options:
                 \\ - next  (direction of increasing Axis number)
                 \\ - prev  (direction of decreasing Axis number)
                 \\ - right (direction of increasing Axis number)
@@ -772,9 +773,8 @@ pub fn init(c: Config) !void {
             .short_description = "Wait until Carrier movement complete.",
             .long_description = std.fmt.comptimePrint(
                 \\Pauses command execution until specified Carrier completes movement.
-                \\Optional: Provide timeout. Returns error if specified timeout
-                \\is exceeded.
-                \\Timeout must be provided in {s}.
+                \\Optional: Provide timeout. Returns error if specified timeout is
+                \\exceeded. Timeout must be provided in {s}.
             , .{standard.time.unit_long}),
             .execute = &commands.wait.moveCarrier,
         },
@@ -786,7 +786,7 @@ pub fn init(c: Config) !void {
             .parameters = &[_]command.Command.Executable.Parameter{
                 .{ .name = "Line" },
                 .{ .name = "Carrier" },
-                .{ .name = "destination Axis" },
+                .{ .name = "Axis" },
                 .{ .name = "disable CAS", .optional = true },
             },
             .short_description = "Move Carrier to specified Axis.",
@@ -804,7 +804,7 @@ pub fn init(c: Config) !void {
             .parameters = &[_]command.Command.Executable.Parameter{
                 .{ .name = "Line" },
                 .{ .name = "Carrier" },
-                .{ .name = "destination location" },
+                .{ .name = "location" },
                 .{ .name = "disable CAS", .optional = true },
             },
             .short_description = "Move Carrier to specified location.",
@@ -844,7 +844,7 @@ pub fn init(c: Config) !void {
             .parameters = &[_]command.Command.Executable.Parameter{
                 .{ .name = "Line" },
                 .{ .name = "Carrier" },
-                .{ .name = "destination Axis" },
+                .{ .name = "Axis" },
                 .{ .name = "disable CAS", .optional = true },
             },
             .short_description = "Move Carrier to specified Axis.",
@@ -866,14 +866,14 @@ pub fn init(c: Config) !void {
             .parameters = &[_]command.Command.Executable.Parameter{
                 .{ .name = "Line" },
                 .{ .name = "Carrier" },
-                .{ .name = "destination location" },
+                .{ .name = "location" },
                 .{ .name = "disable CAS", .optional = true },
             },
             .short_description = "Move Carrier to specified location.",
             .long_description = std.fmt.comptimePrint(
                 \\Move Carrier to specified location. Carrier must be initialized to
-                \\move. Uses speed profile feedback to reach specified location.
-                \\Location must provided in {s}.
+                \\move. Uses speed profile feedback to reach specified location. Location
+                \\must provided in {s}.
                 \\Optional: Provide "true" to disable CAS (Collision Avoidance System).
             , .{
                 standard.length.unit_long,
@@ -919,7 +919,7 @@ pub fn init(c: Config) !void {
                 \\boundary, the receiving Axis at the destination Line must first be
                 \\pulling the Carrier.
                 \\Optional: Provide Carrier to move the specified Carrier to the center
-                \\of the specified Axis, then pushed forward.
+                \\of the specified Axis, then push forward.
             , .{}),
             .execute = &commands.push.forward,
         },
@@ -940,7 +940,7 @@ pub fn init(c: Config) !void {
                 \\boundary, the receiving Axis at the destination Line must first be
                 \\pulling the Carrier.
                 \\Optional: Provide Carrier to move the specified Carrier to the center
-                \\of the specified Axis, then pushed forward.
+                \\of the specified Axis, then push forward.
             , .{}),
             .execute = &commands.push.backward,
         },
@@ -961,13 +961,14 @@ pub fn init(c: Config) !void {
                 \\Initialize and move incoming carrier forward to specified Axis. Assign
                 \\the specified Carrier ID for pulled Carrier. There must be no carrier
                 \\on pulling axis.
-                \\Optional: Provide destination to move carrier after completed
-                \\pulling Carrier. Destination must be provided as:
-                \\- {s} (move Carrier to specified destination after pulled to
-                \\  specified axis) or
+                \\Optional: Provide destination to move carrier after completed pulling
+                \\Carrier. Destination must be provided as:
+                \\- {s} (move Carrier to specified destination after pulled to specified
+                \\  axis) or
                 \\- "nan" (initialize pulled carrier without moving it forward by motor)
                 \\
-                \\Optional: Provide "true" to disable CAS (Collision Avoidance System).
+                \\Optional: Provide "true" to disable CAS (Collision Avoidance System)
+                \\while Carrier is moved to destination.
             , .{
                 standard.length.unit_long,
             }),
@@ -990,13 +991,14 @@ pub fn init(c: Config) !void {
                 \\Initialize and move incoming carrier backward to specified Axis. Assign
                 \\the specified Carrier ID for pulled Carrier. There must be no carrier
                 \\on pulling axis.
-                \\Optional: Provide destination to move carrier after completed
-                \\pulling Carrier. Destination must be provided as:
-                \\- {s} (move Carrier to specified destination after pulled to
-                \\  specified axis) or
+                \\Optional: Provide destination to move carrier after completed pulling
+                \\Carrier. Destination must be provided as:
+                \\- {s} (move Carrier to specified destination after pulled to specified
+                \\  axis) or
                 \\- "nan" (initialize pulled carrier without moving it forward by motor)
                 \\
                 \\Optional: Provide "true" to disable CAS (Collision Avoidance System).
+                \\while Carrier is moved to destination.
             , .{
                 standard.length.unit_long,
             }),
@@ -1013,9 +1015,8 @@ pub fn init(c: Config) !void {
         .short_description = "Stop pulling Carrier at axis.",
         .long_description = std.fmt.comptimePrint(
             \\Stop active Carrier pull for specified Line.
-            \\Optional: Provide filter to specify selection.
-            \\To apply filter, provide ID with filter suffix (e.g., 1c).
-            \\Supported suffixes are:
+            \\Optional: Provide filter to specify selection of pull. To apply filter,
+            \\provide ID with filter suffix (e.g., 1c). Supported suffixes are:
             \\ - "a" or "axis" to filter by Axis
             \\ - "c" or "Carrier" to filter by Carrier
             \\ - "d" or "driver" to filter by Driver
@@ -1033,8 +1034,8 @@ pub fn init(c: Config) !void {
             .short_description = "Stop pushing Carrier at axis.",
             .long_description = std.fmt.comptimePrint(
                 \\Stop active Carrier push for specified Line.
-                \\Optional: Provide filter to specify selection.
-                \\To apply filter, provide ID with filter suffix (e.g., 1c).
+                \\Optional: Provide filter to specify selection of push. To apply
+                \\filter, provide ID with filter suffix (e.g., 1c).
                 \\Supported suffixes are:
                 \\ - "a" or "axis" to filter by Axis
                 \\ - "c" or "Carrier" to filter by Carrier
@@ -1097,14 +1098,12 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Start logging.",
         .long_description = std.fmt.comptimePrint(
-            \\Start logging process. Log file contains only recent data during
-            \\specified time (in seconds).
-            \\Logging runs until:
+            \\Start logging process. Log file contains only recent data during specified
+            \\time (in seconds). Logging runs until:
             \\ - error occurs or
             \\ - cancelled by "STOP_LOGGING" command.
             \\
-            \\If path not specified, log file will be created in
-            \\working directory:
+            \\If path not specified, log file will be created in working directory:
             \\ - "mmc-logging-YYYY.MM.DD-HH.MM.SS.csv".
         , .{}),
         .execute = &commands.log.start,
@@ -1120,14 +1119,14 @@ pub fn init(c: Config) !void {
             },
             .short_description = "Remove logging configuration.",
             .long_description = std.fmt.comptimePrint(
-                \\Remove logging configuration. Parameter "kind" specifies information
-                \\to remove from logging configuration. Valid "kind" options:
+                \\Remove logging configuration. Parameter "kind" specifies information to
+                \\remove from logging configuration. Valid "kind" options:
                 \\ - driver
                 \\ - axis
                 \\ - all
                 \\
-                \\Optional: "range" defines Axis range and must be provided as
-                \\start:end value (e.g., "1:9").
+                \\Optional: "range" defines Axis range and must be provided as start:end
+                \\value (e.g., "1:9").
             , .{}),
             .execute = &commands.log.remove,
         },
@@ -1171,9 +1170,8 @@ pub fn init(c: Config) !void {
         .short_description = "Print Axis and Driver errors.",
         .long_description = std.fmt.comptimePrint(
             \\Print Axis and Driver errors on specified Line.
-            \\Optional: Provide filter to specify selection.
-            \\To apply filter, provide ID with filter suffix (e.g., 1a).
-            \\Supported suffixes are:
+            \\Optional: Provide filter to specify selection of error(s). To apply filter,
+            \\provide ID with filter suffix (e.g., 1a). Supported suffixes are:
             \\ - "a" or "axis" to filter by Axis
             \\ - "c" or "Carrier" to filter by Carrier
             \\ - "d" or "driver" to filter by Driver
@@ -1189,8 +1187,7 @@ pub fn init(c: Config) !void {
         .short_description = "Stop all processes.",
         .long_description = std.fmt.comptimePrint(
             \\Stop all running and queued processes on System.
-            \\Optional: Stop all running and queued processes for
-            \\specified Line.
+            \\Optional: Stop all running and queued processes only for specified Line.
         , .{}),
         .execute = &commands.stop.impl,
     } });
@@ -1204,7 +1201,7 @@ pub fn init(c: Config) !void {
             .short_description = "Pause all processes.",
             .long_description = std.fmt.comptimePrint(
                 \\Pause all processes on System.
-                \\Optional: Pause all processes on specified Line.
+                \\Optional: Pause all processes only on specified Line.
             , .{}),
             .execute = &commands.pause.impl,
         },
@@ -1219,7 +1216,7 @@ pub fn init(c: Config) !void {
             .short_description = "Resume all paused processes.",
             .long_description = std.fmt.comptimePrint(
                 \\Resume all paused processes on System.
-                \\Optional: Resume all paused processes on specified Line.
+                \\Optional: Resume all paused processes only on specified Line.
             , .{}),
             .execute = &commands.@"resume".impl,
         },
@@ -1235,8 +1232,8 @@ pub fn init(c: Config) !void {
             },
             .short_description = "Modify Carrier ID.",
             .long_description = std.fmt.comptimePrint(
-                \\Modify Carrier ID of initialized Carrier. Carrier ID must be
-                \\unique per Line.
+                \\Modify Carrier ID of initialized Carrier. Carrier ID must be unique per
+                \\Line.
             , .{}),
             .execute = &commands.set_carrier_id.impl,
         },

@@ -297,8 +297,8 @@ pub fn impl(params: [][]const u8) !void {
                     line.axes,
                     @as(f32, @floatFromInt(line.velocity.value)) /
                         @as(f32, if (line.velocity.low) 10 else 0.01),
-                    @as(f32, @floatFromInt(line.acceleration)) * 100,
                     standard.speed.unit,
+                    @as(f32, @floatFromInt(line.acceleration)) * 100,
                     standard.acceleration.unit,
                 },
             );
