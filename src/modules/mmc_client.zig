@@ -296,7 +296,7 @@ pub fn init(c: Config) !void {
             .short_description = "Set Carrier speed for Line",
             .long_description = std.fmt.comptimePrint(
                 \\Set Carrier speed for the specified Line. The speed value must
-                \\be greater than {d} and less than or equal to {d}{s}.
+                \\be greater than {d} and less than or equal to {d} {s}.
             , .{
                 standard.speed.range.min,
                 standard.speed.range.max,
