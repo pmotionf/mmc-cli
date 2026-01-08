@@ -405,7 +405,7 @@ pub fn init(c: Config) !void {
             .short_description = "Print Carrier information if exists.",
             .long_description = std.fmt.comptimePrint(
                 \\Print Carrier information if exists.
-                \\Optional: Provide filter.
+                \\Optional: Provide filter to specify selection.
                 \\To apply filter, provide ID with filter suffix (e.g., 1c).
                 \\Supported suffixes are:
                 \\ - "a" or "axis" to filter by Axis
@@ -532,10 +532,10 @@ pub fn init(c: Config) !void {
                 .{ .name = "Line" },
                 .{ .name = "filter", .optional = true },
             },
-            .short_description = "Assert Hall Sensor state.",
+            .short_description = "Display Hall Sensor state.",
             .long_description = std.fmt.comptimePrint(
-                \\Assert Hall Sensor status.
-                \\Optional: Provide filter.
+                \\Display Hall Sensor status.
+                \\Optional: Provide filter to specify selection.
                 \\To apply filter, provide ID with filter suffix (e.g., 1a).
                 \\Supported suffixes are:
                 \\ - "a" or "axis" to filter by Axis
@@ -555,9 +555,9 @@ pub fn init(c: Config) !void {
                 .{ .name = "side" },
                 .{ .name = "on/off", .optional = true },
             },
-            .short_description = "Check Hall Sensor state.",
+            .short_description = "Assert Hall Sensor state.",
             .long_description = std.fmt.comptimePrint(
-                \\Check if Hall Sensor is in expected state.
+                \\Assert if Hall Sensor is in expected state.
                 \\Hall Sensor location must be provided, as:
                 \\ - front (direction of increasing Axis number)
                 \\ - back  (direction of decreasing Axis number)
@@ -581,7 +581,7 @@ pub fn init(c: Config) !void {
             .short_description = "Clear error states.",
             .long_description = std.fmt.comptimePrint(
                 \\Clear error states on specified Line.
-                \\Optional: Provide filter.
+                \\Optional: Provide filter to specify selection.
                 \\To apply filter, provide ID with filter suffix (e.g., 1a).
                 \\Supported suffixes are:
                 \\ - "a" or "axis" to filter by Axis
@@ -602,7 +602,7 @@ pub fn init(c: Config) !void {
             .short_description = "Deinitialize Carrier.",
             .long_description = std.fmt.comptimePrint(
                 \\Deinitialize Carrier on specified Line.
-                \\Optional: Provide filter.
+                \\Optional: Provide filter to specify selection.
                 \\To apply filter, provide ID with filter suffix (e.g., 1c).
                 \\Supported suffixes are:
                 \\ - "a" or "axis" to filter by Axis
@@ -641,7 +641,7 @@ pub fn init(c: Config) !void {
             .long_description = std.fmt.comptimePrint(
                 \\Release Carrier, allows to move Carrier manually.
                 \\Carrier stays initialized.
-                \\Optional: Provide filter.
+                \\Optional: Provide filter to specify selection.
                 \\To apply filter, provide ID with filter suffix (e.g., 1c).
                 \\Supported suffixes are:
                 \\ - "a" or "axis" to filter by Axis
@@ -692,7 +692,7 @@ pub fn init(c: Config) !void {
             },
             .short_description = "Set Line zero position.",
             .long_description = std.fmt.comptimePrint(
-                \\Set zero position for specified Line. Initilized Carrier must be on
+                \\Set zero position for specified Line. Initialized Carrier must be on
                 \\first Axis of specified Line.
             , .{}),
             .execute = &commands.set_line_zero.impl,
@@ -718,13 +718,14 @@ pub fn init(c: Config) !void {
             },
             .short_description = "Initialize Carrier.",
             .long_description = std.fmt.comptimePrint(
-                \\Slowly move an unitialized Carrier to the next Hall Sensor in the
+                \\Slowly moves an uninitialized Carrier to the next Hall Sensor in the
                 \\provided direction and assign provided Carrier ID to the Carrier.
                 \\Direction options:
                 \\ - forward  (direction of increasing Axis number)
                 \\ - backward (direction of decreasing Axis number)
                 \\
-                \\Optional: Provide linked Axis. Linked Axis options:
+                \\Optional: Provide linked Axis if the uninitialized Carrier is located
+                \\between two Axis. Linked Axis options:
                 \\ - next  (direction of increasing Axis number)
                 \\ - prev  (direction of decreasing Axis number)
                 \\ - right (direction of increasing Axis number)
@@ -771,7 +772,7 @@ pub fn init(c: Config) !void {
             .short_description = "Wait until Carrier movement complete.",
             .long_description = std.fmt.comptimePrint(
                 \\Pauses command execution until specified Carrier completes movement.
-                \\Optional: provide timeout. Returns error if specified timeout
+                \\Optional: Provide timeout. Returns error if specified timeout
                 \\is exceeded.
                 \\Timeout must be provided in {s}.
             , .{standard.time.unit_long}),
@@ -791,7 +792,7 @@ pub fn init(c: Config) !void {
             .short_description = "Move Carrier to specified Axis.",
             .long_description = std.fmt.comptimePrint(
                 \\Move Carrier to specified Axis. Carrier must be initialized to move.
-                \\Optional: provide "true" to disable CAS (Collision Avoidance System).
+                \\Optional: Provide "true" to disable CAS (Collision Avoidance System).
             , .{}),
             .execute = &commands.move.posAxis,
         },
@@ -810,7 +811,7 @@ pub fn init(c: Config) !void {
             .long_description = std.fmt.comptimePrint(
                 \\Move Carrier to specified location. Carrier must be initialized to
                 \\move. Location must provided in {s}.
-                \\Optional: provide "true" to disable CAS (Collision Avoidance System).
+                \\Optional: Provide "true" to disable CAS (Collision Avoidance System).
             , .{standard.length.unit_long}),
             .execute = &commands.move.posLocation,
         },
@@ -829,7 +830,7 @@ pub fn init(c: Config) !void {
             .long_description = std.fmt.comptimePrint(
                 \\Move Carrier a specified distance. Carrier must be initialized to move.
                 \\Distance must provided in {s}.
-                \\Optional: provide "true" to disable CAS (Collision Avoidance System).
+                \\Optional: Provide "true" to disable CAS (Collision Avoidance System).
             , .{
                 standard.length.unit_long,
             }),
@@ -851,7 +852,7 @@ pub fn init(c: Config) !void {
                 \\Move Carrier to specified Axis. Carrier must be initialized to move.
                 \\Uses speed profile feedback to reach specified Axis. Location must
                 \\provided in {s}.
-                \\Optional: provide "true" to disable CAS (Collision Avoidance System).
+                \\Optional: Provide "true" to disable CAS (Collision Avoidance System).
             , .{
                 standard.length.unit_long,
             }),
@@ -873,7 +874,7 @@ pub fn init(c: Config) !void {
                 \\Move Carrier to specified location. Carrier must be initialized to
                 \\move. Uses speed profile feedback to reach specified location.
                 \\Location must provided in {s}.
-                \\Optional: provide "true" to disable CAS (Collision Avoidance System).
+                \\Optional: Provide "true" to disable CAS (Collision Avoidance System).
             , .{
                 standard.length.unit_long,
             }),
@@ -895,7 +896,7 @@ pub fn init(c: Config) !void {
                 \\Move Carrier a specified distance. Carrier must be initialized to move.
                 \\Uses speed profile feedback to reach specified distance. Location must
                 \\provided in {s}.
-                \\Optional: provide "true" to disable CAS (Collision Avoidance System).
+                \\Optional: Provide "true" to disable CAS (Collision Avoidance System).
             , .{
                 standard.length.unit_long,
             }),
@@ -1012,7 +1013,7 @@ pub fn init(c: Config) !void {
         .short_description = "Stop pulling Carrier at axis.",
         .long_description = std.fmt.comptimePrint(
             \\Stop active Carrier pull for specified Line.
-            \\Optional: Provide filter.
+            \\Optional: Provide filter to specify selection.
             \\To apply filter, provide ID with filter suffix (e.g., 1c).
             \\Supported suffixes are:
             \\ - "a" or "axis" to filter by Axis
@@ -1032,7 +1033,7 @@ pub fn init(c: Config) !void {
             .short_description = "Stop pushing Carrier at axis.",
             .long_description = std.fmt.comptimePrint(
                 \\Stop active Carrier push for specified Line.
-                \\Optional: provide filter.
+                \\Optional: Provide filter to specify selection.
                 \\To apply filter, provide ID with filter suffix (e.g., 1c).
                 \\Supported suffixes are:
                 \\ - "a" or "axis" to filter by Axis
@@ -1170,7 +1171,7 @@ pub fn init(c: Config) !void {
         .short_description = "Print Axis and Driver errors.",
         .long_description = std.fmt.comptimePrint(
             \\Print Axis and Driver errors on specified Line.
-            \\Optional: provide filter.
+            \\Optional: Provide filter to specify selection.
             \\To apply filter, provide ID with filter suffix (e.g., 1a).
             \\Supported suffixes are:
             \\ - "a" or "axis" to filter by Axis
