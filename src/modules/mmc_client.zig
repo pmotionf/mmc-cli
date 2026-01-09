@@ -946,67 +946,34 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("PUSH_CARRIER_BACKWARD");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "PULL_CARRIER_FORWARD",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
-                .{ .name = "Axis" },
-                .{ .name = "Carrier" },
-                .{ .name = "location", .optional = true },
-                .{ .name = "disable CAS", .optional = true },
-            },
-            .short_description = "Pull incoming Carrier forward.",
-            .long_description = std.fmt.comptimePrint(
-                \\Initialize and move incoming carrier forward to specified Axis. Assign
-                \\the specified Carrier ID for pulled Carrier. There must be no carrier
-                \\on pulling axis.
-                \\Optional: Provide location to move carrier after completed pulling
-                \\Carrier. Location must be provided as:
-                \\- {s} (move Carrier to specified location after pulled to specified
-                \\  axis) or
-                \\- "nan" (Carrier can move through external force after pulled to
-                \\  specified axis )
-                \\Optional: Provide "true" to disable CAS (Collision Avoidance System)
-                \\while Carrier is moved to location.
-            , .{
-                standard.length.unit_long,
-            }),
-            .execute = &commands.pull.forward,
+    try command.registry.put(.{ .executable = .{
+        .name = "PULL_CARRIER",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line" },
+            .{ .name = "Axis" },
+            .{ .name = "Carrier" },
+            .{ .name = "direction" },
+            .{ .name = "location", .optional = true },
+            .{ .name = "disable CAS", .optional = true },
         },
-    });
-    errdefer command.registry.orderedRemove("PULL_CARRIER_FORWARD");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "PULL_CARRIER_BACKWARD",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
-                .{ .name = "Axis" },
-                .{ .name = "Carrier" },
-                .{ .name = "location", .optional = true },
-                .{ .name = "disable CAS", .optional = true },
-            },
-            .short_description = "Pull incoming Carrier backward.",
-            .long_description = std.fmt.comptimePrint(
-                \\Initialize and move incoming carrier backward to specified Axis. Assign
-                \\the specified Carrier ID for pulled Carrier. There must be no carrier
-                \\on pulling axis.
-                \\Optional: Provide location to move carrier after completed pulling
-                \\Carrier. Location must be provided as:
-                \\- {s} (move Carrier to specified location after pulled to specified
-                \\  axis) or
-                \\- "nan" (Carrier can move through external force after pulled to
-                \\  specified axis )
-                \\
-                \\Optional: Provide "true" to disable CAS (Collision Avoidance System).
-                \\while Carrier is moved to location.
-            , .{
-                standard.length.unit_long,
-            }),
-            .execute = &commands.pull.backward,
-        },
-    });
-    errdefer command.registry.orderedRemove("PULL_CARRIER_BACKWARD");
+        .short_description = "Pull incoming Carrier.",
+        .long_description =
+        \\Initialize and move incoming Carrier to specified Axis. Assign the specified 
+        \\Carrier ID for pulled Carrier. There must be no Carrier on pulling Axis. 
+        \\Direction must be provided as:
+        \\- "forward" when pulling Carrier on the first Axis, or
+        \\- "backward" when pulling Carrier on the last Axis.
+        \\Optional: Provide location to move Carrier after completed pulling Carrier. 
+        \\Location must be provided as:
+        \\- {s} (move Carrier to specified location after pulled to specified Axis), or
+        \\- "nan" (Carrier can move through external force after pulled to specified 
+        \\  Axis).
+        \\Optional: Provide "true" to disable CAS (Collision Avoidance System)
+        \\while Carrier is being moved to location.
+        ,
+        .execute = &commands.pull.impl,
+    } });
+    errdefer command.registry.orderedRemove("PULL_CARRIER");
     try command.registry.put(.{ .executable = .{
         .name = "STOP_PULL_CARRIER",
         .parameters = &[_]command.Command.Executable.Parameter{
