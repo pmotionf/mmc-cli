@@ -53,7 +53,7 @@ pub fn handler(ctx: *Prompt) void {
         if (prev_disable) {
             std.Thread.sleep(std.time.ns_per_ms * 10);
             stdout.interface.writeAll(
-                "Please enter a command (HELP for info):\n",
+                "Enter command (HELP for usage):\n",
             ) catch continue :main;
             stdout.interface.flush() catch continue :main;
         }
