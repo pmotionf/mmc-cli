@@ -54,9 +54,9 @@ pub fn impl(params: [][]const u8) !void {
 
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const disable_cas = if (params[4].len == 0)
+    const disable_cas = if (params[5].len == 0)
         false
-    else if (std.ascii.eqlIgnoreCase("true", params[4]))
+    else if (std.ascii.eqlIgnoreCase("true", params[5]))
         true
     else
         return error.InvalidCasConfiguration;
