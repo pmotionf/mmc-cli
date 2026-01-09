@@ -383,9 +383,9 @@ pub fn init(c: Config) !void {
             },
             .short_description = "Print Driver information.",
             .long_description = std.fmt.comptimePrint(
-                \\Print Driver information of specified Line. Specify which Driver or
-                \\axes to print info via filter. To apply filter, provide ID with filter
-                \\suffix (e.g., 1d). Supported suffixes are:
+                \\Print Driver information of specified Line. Specify which Driver to
+                \\print info via filter. To apply filter, provide ID with filter suffix
+                \\(e.g., 1d). Supported suffixes are:
                 \\ - "a" or "axis" to filter by Axis
                 \\ - "c" or "carrier" to filter by Carrier
                 \\ - "d" or "driver" to filter by Driver
@@ -622,7 +622,7 @@ pub fn init(c: Config) !void {
         .short_description = "Reset system state.",
         .long_description = std.fmt.comptimePrint(
             \\Reset system:
-            \\ - Deinitialize all Carrier.
+            \\ - Deinitialize all Carriers.
             \\ - Clear all system errors.
             \\ - Reset all push and pull states.
         , .{}),
@@ -1146,8 +1146,7 @@ pub fn init(c: Config) !void {
         .name = "STOP_LOG_INFO",
         .short_description = "Stop MMC logging.",
         .long_description = std.fmt.comptimePrint(
-            \\Stop MMC logging and
-            \\save logging data to file.
+            \\Stop MMC logging and save logging data to file.
         , .{}),
         .execute = &commands.log.stop,
     } });
@@ -1156,8 +1155,7 @@ pub fn init(c: Config) !void {
         .name = "CANCEL_LOG_INFO",
         .short_description = "Cancel MMC logging process.",
         .long_description = std.fmt.comptimePrint(
-            \\Cancel MMC logging
-            \\without saving the logging data.
+            \\Cancel MMC logging without saving the logging data.
         , .{}),
         .execute = &commands.log.cancel,
     } });
@@ -1188,7 +1186,7 @@ pub fn init(c: Config) !void {
         .short_description = "Stop all processes.",
         .long_description = std.fmt.comptimePrint(
             \\Stop all running and queued processes on System.
-            \\Optional: Stop all running and queued processes only for specified Line.
+            \\Optional: Stop all running and queued processes only on specified Line.
         , .{}),
         .execute = &commands.stop.impl,
     } });
