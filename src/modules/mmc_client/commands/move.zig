@@ -4,85 +4,9 @@ const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn posAxis(params: [][]const u8) !void {
-    const tracy_zone = tracy.traceNamed(@src(), "move_pos_axis");
+pub fn impl(params: [][]const u8) !void {
+    const tracy_zone = tracy.traceNamed(@src(), "move_carrier");
     defer tracy_zone.end();
-    errdefer client.log.stop.store(true, .monotonic);
-    const axis_id = try std.fmt.parseInt(u32, buf: {
-        const input = params[2];
-        var suffix: ?usize = null;
-        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
-            // Only valid suffix for axis_id is either 'a' or "axis".
-            if (c != 'a') return error.InvalidCharacter;
-            suffix = i;
-            break;
-        };
-        if (suffix) |ignore_idx| {
-            if (ignore_idx == 0) return error.InvalidCharacter;
-            break :buf input[0..ignore_idx];
-        } else break :buf input;
-    }, 0);
-    try impl(params, .CONTROL_POSITION, .{ .axis = axis_id });
-}
-
-pub fn posLocation(params: [][]const u8) !void {
-    const tracy_zone = tracy.traceNamed(@src(), "move_pos_location");
-    defer tracy_zone.end();
-    errdefer client.log.stop.store(true, .monotonic);
-    const location: f32 = try std.fmt.parseFloat(f32, params[2]) / 1000;
-    try impl(params, .CONTROL_POSITION, .{ .location = location });
-}
-
-pub fn posDistance(params: [][]const u8) !void {
-    const tracy_zone = tracy.traceNamed(@src(), "move_pos_distance");
-    defer tracy_zone.end();
-    errdefer client.log.stop.store(true, .monotonic);
-    const distance = try std.fmt.parseFloat(f32, params[2]) / 1000;
-    try impl(params, .CONTROL_POSITION, .{ .distance = distance });
-}
-
-pub fn spdAxis(params: [][]const u8) !void {
-    const tracy_zone = tracy.traceNamed(@src(), "move_spd_axis");
-    defer tracy_zone.end();
-    errdefer client.log.stop.store(true, .monotonic);
-    const axis_id = try std.fmt.parseInt(u32, buf: {
-        const input = params[2];
-        var suffix: ?usize = null;
-        for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
-            // Only valid suffix for axis_id is either 'a' or "axis".
-            if (c != 'a') return error.InvalidCharacter;
-            suffix = i;
-            break;
-        };
-        if (suffix) |ignore_idx| {
-            if (ignore_idx == 0) return error.InvalidCharacter;
-            break :buf input[0..ignore_idx];
-        } else break :buf input;
-    }, 0);
-    try impl(params, .CONTROL_VELOCITY, .{ .axis = axis_id });
-}
-
-pub fn spdLocation(params: [][]const u8) !void {
-    const tracy_zone = tracy.traceNamed(@src(), "move_spd_location");
-    defer tracy_zone.end();
-    errdefer client.log.stop.store(true, .monotonic);
-    const location: f32 = try std.fmt.parseFloat(f32, params[2]) / 1000;
-    try impl(params, .CONTROL_VELOCITY, .{ .location = location });
-}
-
-pub fn spdDistance(params: [][]const u8) !void {
-    const tracy_zone = tracy.traceNamed(@src(), "move_spd_distance");
-    defer tracy_zone.end();
-    errdefer client.log.stop.store(true, .monotonic);
-    const distance = try std.fmt.parseFloat(f32, params[2]) / 1000;
-    try impl(params, .CONTROL_VELOCITY, .{ .distance = distance });
-}
-
-fn impl(
-    params: [][]const u8,
-    control: api.protobuf.mmc.Control,
-    target: api.protobuf.mmc.command.Request.Move.target_union,
-) !void {
     if (client.sock == null) return error.ServerNotConnected;
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
@@ -101,12 +25,20 @@ fn impl(
             break :b input[0..ignore_idx];
         } else break :b input;
     }, 0);
+    const target = try parseTarget(params[2]);
     const disable_cas = if (params[3].len == 0)
         false
     else if (std.ascii.eqlIgnoreCase("true", params[3]))
         true
     else
         return error.InvalidCasConfiguration;
+    const control: api.protobuf.mmc.Control =
+        if (params[4].len == 0 or std.mem.eql(u8, "position", params[4]))
+            .CONTROL_POSITION
+        else if (std.mem.eql(u8, "speed", params[4]))
+            .CONTROL_VELOCITY
+        else
+            return error.InvalidControlMode;
     const request: api.protobuf.mmc.Request = .{
         .body = .{
             .command = .{
@@ -135,4 +67,62 @@ fn impl(
     try request.encode(&client.writer.interface, client.allocator);
     try client.writer.interface.flush();
     try client.waitCommandReceived();
+}
+
+fn parseTarget(
+    param: []const u8,
+) !api.protobuf.mmc.command.Request.Move.target_union {
+    var suffix_idx: usize = 0;
+    for (param) |c| {
+        if (std.ascii.isAlphabetic(c)) break else suffix_idx += 1;
+    }
+    // No digit is recognized.
+    if (suffix_idx == 0) return error.InvalidParameter;
+    // Check for single character suffix.
+    if (param.len - suffix_idx == 1) {
+        if (std.ascii.eqlIgnoreCase(param[suffix_idx..], "a")) {
+            return .{
+                .axis = try std.fmt.parseUnsigned(
+                    u32,
+                    param[0..suffix_idx],
+                    0,
+                ),
+            };
+        } else if (std.ascii.eqlIgnoreCase(param[suffix_idx..], "l")) {
+            return .{
+                .location = try std.fmt.parseFloat(f32, param[0..suffix_idx]),
+            };
+        } else if (std.ascii.eqlIgnoreCase(param[suffix_idx..], "d")) {
+            return .{
+                .distance = try std.fmt.parseFloat(f32, param[0..suffix_idx]),
+            };
+        }
+    }
+    // Check for `axis` suffix
+    else if (param.len - suffix_idx == 4 and
+        std.ascii.eqlIgnoreCase(param[suffix_idx..], "axis"))
+    {
+        return .{
+            .axis = try std.fmt.parseUnsigned(
+                u32,
+                param[0..suffix_idx],
+                0,
+            ),
+        };
+    }
+    // Check for `location` suffix
+    else if (param.len - suffix_idx == 8 and
+        std.ascii.eqlIgnoreCase(param[suffix_idx..], "location"))
+    {
+        return .{
+            .location = try std.fmt.parseFloat(f32, param[0..suffix_idx]),
+        };
+    }
+    // Check for `distance` suffix
+    else if (std.ascii.eqlIgnoreCase(param[suffix_idx..], "distance")) {
+        return .{
+            .distance = try std.fmt.parseFloat(f32, param[0..suffix_idx]),
+        };
+    }
+    return error.InvalidTarget;
 }
