@@ -61,6 +61,34 @@ const commands = struct {
     const server_version = @import("mmc_client/commands/server_version.zig");
 };
 
+/// Stores standard units and min/max values for system
+pub const Standard = struct {
+    time: struct {
+        unit_short: []const u8 = "ms",
+        unit_long: []const u8 = "millisecond",
+    } = .{},
+
+    length: struct {
+        unit_short: []const u8 = "mm",
+        unit_long: []const u8 = "millimeter",
+    } = .{},
+    speed: struct {
+        range: struct {
+            min: u16 = 0,
+            max: u16 = 6000,
+        } = .{},
+        unit: []const u8 = "mm/s",
+    } = .{},
+    acceleration: struct {
+        range: struct {
+            min: f32 = 0,
+            max: f32 = 24_500,
+        } = .{},
+        unit: []const u8 = "mm/s²",
+    } = .{},
+};
+const standard: Standard = .{};
+
 pub const error_response = struct {
     /// Throw an error if receive response of core request error
     pub fn throwCoreError(err: api.protobuf.mmc.core.Request.Error) anyerror {
@@ -222,7 +250,7 @@ pub fn init(c: Config) !void {
         .name = "SERVER_VERSION",
         .short_description = "Display the connected MMC server version.",
         .long_description =
-        \\Print the version of the currently connected MMC server in Semantic
+        \\Display the version of the currently connected MMC server in Semantic
         \\Version format ({major}.{minor}.{patch}).
         ,
         .execute = &commands.server_version.impl,
@@ -234,306 +262,355 @@ pub fn init(c: Config) !void {
             .{ .name = "endpoint", .optional = true },
         },
         .short_description = "Connect to MMC server.",
-        .long_description =
-        \\Attempt to connect to MMC server.
-        \\
-        \\An endpoint can be provided in either IPv4 or IPv6 format, as below:
-        \\ - `HOSTNAME:PORT`
-        \\ - `IPv4_ADDRESS:PORT`
-        \\ - `[IPv6_ADDRESS%SCOPE]:PORT`
-        \\
-        \\If no endpoint is provided, connect to the last connected server.
-        \\If no server has been connected since `LOAD_CONFIG`, connect to the
-        \\default endpoint provided in the configuration file.
-        ,
+        .long_description = std.fmt.comptimePrint(
+            \\Attempt to connect to MMC server.
+            \\
+            \\Endpoint may be specified using one of the following formats:
+            \\ - `HOSTNAME:PORT`
+            \\ - `IPv4_ADDRESS:PORT`
+            \\ - `[IPv6_ADDRESS%SCOPE]:PORT`
+            \\
+            \\If no endpoint provided, last connected server is used. If no server has
+            \\been connected since `LOAD_CONFIG`, connect to the default endpoint
+            \\provided in the configuration file.
+        , .{}),
         .execute = &commands.connect.impl,
     } });
     errdefer command.registry.orderedRemove("CONNECT");
     try command.registry.put(.{ .executable = .{
         .name = "DISCONNECT",
         .short_description = "End connection with MMC server.",
-        .long_description =
-        \\Disconnect from currently connected MMC server.
-        ,
+        .long_description = std.fmt.comptimePrint(
+            \\Disconnect from currently connected MMC server.
+        , .{}),
         .execute = &commands.disconnect.impl,
     } });
     errdefer command.registry.orderedRemove("DISCONNECT");
-    try command.registry.put(.{ .executable = .{
-        .name = "SET_SPEED",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "speed" },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "SET_SPEED",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "speed" },
+            },
+            .short_description = "Set Carrier speed for Line",
+            .long_description = std.fmt.comptimePrint(
+                \\Set Carrier speed for the specified Line. The speed value must be
+                \\greater than {d} and less than or equal to {d} {s}.
+            , .{
+                standard.speed.range.min,
+                standard.speed.range.max,
+                standard.speed.unit,
+            }),
+            .execute = &commands.set_speed.impl,
         },
-        .short_description = "Set the speed of carrier movement for a line.",
-        .long_description =
-        \\Set the speed of carrier movement for a line. The line is referenced
-        \\by its name. The speed must be greater than 0 and less than or equal
-        \\to 6.0 meters-per-second.
-        ,
-        .execute = &commands.set_speed.impl,
-    } });
+    });
     errdefer command.registry.orderedRemove("SET_SPEED");
-    try command.registry.put(.{ .executable = .{
-        .name = "SET_ACCELERATION",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "acceleration" },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "SET_ACCELERATION",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "acceleration" },
+            },
+            .short_description = "Set Carrier acceleration for Line",
+            .long_description = std.fmt.comptimePrint(
+                \\Set Carrier acceleration for the specified Line. The acceleration value
+                \\must be greater than {d} and less than or equal to {d} {s}.
+            , .{
+                standard.acceleration.range.min,
+                standard.acceleration.range.max,
+                standard.acceleration.unit,
+            }),
+            .execute = &commands.set_acceleration.impl,
         },
-        .short_description = "Set the acceleration of carrier movement.",
-        .long_description =
-        \\Set the acceleration of carrier movement for a line. The line is
-        \\referenced by its name. The acceleration must be greater than 0 and
-        \\less than or equal to 24.5 meters-per-second-squared.
-        ,
-        .execute = &commands.set_acceleration.impl,
-    } });
+    });
     errdefer command.registry.orderedRemove("SET_ACCELERATION");
-    try command.registry.put(.{ .executable = .{
-        .name = "GET_SPEED",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "GET_SPEED",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+            },
+            .short_description = "Print Carrier speed of Line",
+            .long_description = std.fmt.comptimePrint(
+                \\Print Carrier speed for the specified Line.
+            , .{}),
+            .execute = &commands.get_speed.impl,
         },
-        .short_description = "Get the speed of carrier movement for a line.",
-        .long_description =
-        \\Get the speed of carrier movement for a line. The line is referenced
-        \\by name. Speed is in meters-per-second.
-        ,
-        .execute = &commands.get_speed.impl,
-    } });
+    });
     errdefer command.registry.orderedRemove("GET_SPEED");
-    try command.registry.put(.{ .executable = .{
-        .name = "GET_ACCELERATION",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "GET_ACCELERATION",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+            },
+            .short_description = "Print Carrier acceleration of Line",
+            .long_description = std.fmt.comptimePrint(
+                \\Print Carrier acceleration for the specified Line.
+            , .{}),
+            .execute = &commands.get_acceleration.impl,
         },
-        .short_description = "Get the acceleration of carrier movement.",
-        .long_description =
-        \\Get the acceleration of carrier movement for a line. The line is
-        \\referenced by name. Acceleration is in meters-per-second-squared.
-        ,
-        .execute = &commands.get_acceleration.impl,
-    } });
+    });
     errdefer command.registry.orderedRemove("GET_ACCELERATION");
-    try command.registry.put(.{ .executable = .{
-        .name = "PRINT_AXIS_INFO",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "filter" },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "PRINT_AXIS_INFO",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "filter" },
+            },
+            .short_description = "Print Axis information.",
+            .long_description = std.fmt.comptimePrint(
+                \\Print Axis information of specified Line. Specify which Axis or Axes
+                \\to print info via filter. To apply filter, provide ID with filter
+                \\suffix (e.g., 1a). Supported suffixes are:
+                \\ - "a" or "axis" to filter by Axis
+                \\ - "c" or "carrier" to filter by Carrier
+                \\ - "d" or "driver" to filter by Driver
+            , .{}),
+            .execute = &commands.print_axis_info.impl,
         },
-        .short_description = "Print the axis information.",
-        .long_description =
-        \\Print the axis information. The information is shown based on the
-        \\given filter, which shall be provided with the ID followed by suffix.
-        \\The supported suffixes are "c" or "carrier" for filtering based on
-        \\carrier, "d" or "driver" for filtering based on "driver", and "a" or
-        \\"axis" for filtering based on "axis".
-        ,
-        .execute = &commands.print_axis_info.impl,
-    } });
+    });
     errdefer command.registry.orderedRemove("PRINT_AXIS_INFO");
-    try command.registry.put(.{ .executable = .{
-        .name = "PRINT_DRIVER_INFO",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "filter" },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "PRINT_DRIVER_INFO",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "filter" },
+            },
+            .short_description = "Print Driver information.",
+            .long_description = std.fmt.comptimePrint(
+                \\Print Driver information of specified Line. Specify which Driver or
+                \\axes to print info via filter. To apply filter, provide ID with filter
+                \\suffix (e.g., 1d). Supported suffixes are:
+                \\ - "a" or "axis" to filter by Axis
+                \\ - "c" or "carrier" to filter by Carrier
+                \\ - "d" or "driver" to filter by Driver
+            , .{}),
+            .execute = &commands.print_driver_info.impl,
         },
-        .short_description = "Print the driver information.",
-        .long_description =
-        \\Print the information information. The information is shown based on
-        \\the given filter, which shall be provided with the ID followed by
-        \\suffix. The supported suffixes are "c" or "carrier" for filtering
-        \\based on carrier, "d" or "driver" for filtering based on "driver", and
-        \\"a" or "axis" for filtering based on "axis".
-        ,
-        .execute = &commands.print_driver_info.impl,
-    } });
+    });
     errdefer command.registry.orderedRemove("PRINT_DRIVER_INFO");
-    try command.registry.put(.{ .executable = .{
-        .name = "PRINT_CARRIER_INFO",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "filter", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "PRINT_CARRIER_INFO",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "filter", .optional = true },
+            },
+            .short_description = "Print Carrier information.",
+            .long_description = std.fmt.comptimePrint(
+                \\Print Carrier information of specified Line.
+                \\Optional: Provide filter to specify selection of Carrier(s). To apply
+                \\filter, provide ID with filter suffix (e.g., 1c). Supported suffixes
+                \\are:
+                \\ - "a" or "axis" to filter by Axis
+                \\ - "c" or "carrier" to filter by Carrier
+                \\ - "d" or "driver" to filter by Driver
+            , .{}),
+            .execute = &commands.print_carrier_info.impl,
         },
-        .short_description = "Print the carrier information.",
-        .long_description =
-        \\Print the carrier information. The information is shown based on the
-        \\given filter, which shall be provided with the ID followed by suffix
-        \\The supported suffixes are "c" or "carrier" for filtering based on
-        \\carrier, "d" or "driver" for filtering based on "driver", and "a" or
-        \\"axis" for filtering based on "axis". If no filter is provided, all
-        \\carrier information on the line is printed.
-        ,
-        .execute = &commands.print_carrier_info.impl,
-    } });
+    });
     errdefer command.registry.orderedRemove("PRINT_CARRIER_INFO");
-    try command.registry.put(.{ .executable = .{
-        .name = "AXIS_CARRIER",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-            .{
-                .name = "result variable",
-                .optional = true,
-                .resolve = false,
+    try command.registry.put(.{
+        .executable = .{
+            .name = "AXIS_CARRIER",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "Axis" },
+                .{
+                    .name = "result variable",
+                    .optional = true,
+                    .resolve = false,
+                },
             },
+            .short_description = "Print Carrier information on Axis, if exists.",
+            .long_description = std.fmt.comptimePrint(
+                \\Print Carrier information on Axis, if exists. Information only provided
+                \\when:
+                \\ - Carrier is on specified Axis.
+                \\ - Carrier is initialized
+                \\
+                \\Optional: Store Carrier ID in provided variable. Variable cannot start
+                \\with a number and is case sensitive.
+            , .{}),
+            .execute = &commands.axis_carrier.impl,
         },
-        .short_description = "Display carrier on given axis, if exists.",
-        .long_description =
-        \\If a carrier is recognized on the provided axis, print its ID.
-        \\If a result variable name was provided, also store the carrier ID in
-        \\the variable. The result variable is case sensitive and shall not
-        \\begin with digit.
-        ,
-        .execute = &commands.axis_carrier.impl,
-    } });
+    });
     errdefer _ = command.registry.orderedRemove("AXIS_CARRIER");
-    try command.registry.put(.{ .executable = .{
-        .name = "CARRIER_ID",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name(s)" },
-            .{
-                .name = "result variable prefix",
-                .optional = true,
-                .resolve = false,
+    try command.registry.put(.{
+        .executable = .{
+            .name = "CARRIER_ID",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line(s)" },
+                .{
+                    .name = "result variable prefix",
+                    .optional = true,
+                    .resolve = false,
+                },
             },
+            .short_description = "Display Carrier IDs on Line.",
+            .long_description = std.fmt.comptimePrint(
+                \\Display Carrier IDs on Line. Scans specified Line(s), starting from
+                \\first Axis. Carrier IDs are provided in order of occurrence. Multi Line
+                \\input possible (e.g., line1,line2,line3).
+                \\Optional: Stores Carrier IDs in provided variable as indexed entries
+                \\(e.g., var1, var2, ...). Variable cannot start with a number and is
+                \\case sensitive.
+            , .{}),
+            .execute = &commands.carrier_id.impl,
         },
-        .short_description = "Display all carrier IDs on specified line(s).",
-        .long_description =
-        \\Scan the line, starting from the first axis, and print all recognized
-        \\carrier IDs on the given line in the order of their first appearance.
-        \\This command support to scan multiple lines at once by providing line
-        \\parameter with comma separator, e.g., "front,back,tr". If a result
-        \\variable prefix is provided, store all carrier IDs in the variable
-        \\with the variable name: prefix[num], e.g., prefix1 and prefix2 if
-        \\two carriers exist on the provided line(s). The result variable prefix
-        \\is case sensitive and shall not begin with digit.
-        ,
-        .execute = &commands.carrier_id.impl,
-    } });
+    });
     errdefer command.registry.orderedRemove("CARRIER_ID");
-    try command.registry.put(.{ .executable = .{
-        .name = "ASSERT_CARRIER_LOCATION",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "carrier" },
-            .{ .name = "location" },
-            .{ .name = "threshold", .optional = true },
-        },
-        .short_description = "Check that a carrier is on the expected location.",
-        .long_description =
-        \\Throw an error if the carrier is not located on the specified location
-        \\within the threshold. The default threshold value is 1 mm. Both the
-        \\location and threshold must be provided in meters.
-        ,
-        .execute = &commands.assert_location.impl,
-    } });
-    errdefer command.registry.orderedRemove("ASSERT_CARRIER_LOCATION");
-    try command.registry.put(.{ .executable = .{
-        .name = "CARRIER_LOCATION",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "carrier" },
-            .{
-                .name = "result variable",
-                .resolve = false,
-                .optional = true,
+    try command.registry.put(.{
+        .executable = .{
+            .name = "ASSERT_CARRIER_LOCATION",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "Carrier" },
+                .{ .name = "location" },
+                .{ .name = "threshold", .optional = true },
             },
+            .short_description = "Assert Carrier location.",
+            .long_description = std.fmt.comptimePrint(
+                \\Assert Carrier location. Error if Carrier is not at specified location.
+                \\Optional: Provide threshold to change default location threshold value.
+                \\Default location threshold value is 1 {s}. Location and threshold must
+                \\be provided in {s}.
+            , .{
+                standard.length.unit_short,
+                standard.length.unit_long,
+            }),
+            .execute = &commands.assert_location.impl,
         },
-        .short_description = "Display a carrier's location.",
-        .long_description =
-        \\Print a given carrier's location if it is currently recognized in
-        \\the provided line. If a result variable name is provided, then store
-        \\the carrier's location in the variable. The result variable is case
-        \\sensitive and shall not begin with digit.
-        ,
-        .execute = &commands.carrier_location.impl,
-    } });
+    });
+    errdefer command.registry.orderedRemove("ASSERT_CARRIER_LOCATION");
+    try command.registry.put(.{
+        .executable = .{
+            .name = "CARRIER_LOCATION",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "Carrier" },
+                .{
+                    .name = "result variable",
+                    .resolve = false,
+                    .optional = true,
+                },
+            },
+            .short_description = "Display Carrier location, if exists.",
+            .long_description = std.fmt.comptimePrint(
+                \\Display location of Carrier on specified Line, if exists.
+                \\Optional: Store Carrier location in variable. Variable cannot start
+                \\with a number and is case sensitive.
+            , .{}),
+            .execute = &commands.carrier_location.impl,
+        },
+    });
     errdefer command.registry.orderedRemove("CARRIER_LOCATION");
-    try command.registry.put(.{ .executable = .{
-        .name = "CARRIER_AXIS",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "carrier" },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "CARRIER_AXIS",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "Carrier" },
+            },
+            .short_description = "Display Carrier Axis",
+            .long_description = std.fmt.comptimePrint(
+                \\Display Axis on which Carrier is currently.
+            , .{}),
+            .execute = &commands.carrier_axis.impl,
         },
-        .short_description = "Display a carrier's axis/axes.",
-        .long_description =
-        \\Print a given carrier's axis if it is currently recognized in the
-        \\provided line.
-        ,
-        .execute = &commands.carrier_axis.impl,
-    } });
+    });
     errdefer command.registry.orderedRemove("CARRIER_AXIS");
-    try command.registry.put(.{ .executable = .{
-        .name = "HALL_STATUS",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "filter", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "HALL_STATUS",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "filter", .optional = true },
+            },
+            .short_description = "Display Hall Sensor state.",
+            .long_description = std.fmt.comptimePrint(
+                \\Display Hall Sensor status.
+                \\Optional: Provide filter to specify selection of Hall Sensor(s). To
+                \\apply filter, provide ID with filter suffix (e.g., 1a).Supported
+                \\suffixes are:
+                \\ - "a" or "axis" to filter by Axis
+                \\ - "c" or "carrier" to filter by Carrier
+                \\ - "d" or "driver" to filter by Driver
+            , .{}),
+            .execute = &commands.hall_status.impl,
         },
-        .short_description = "Display hall status state.",
-        .long_description =
-        \\Display hall status state. The information is shown based on the
-        \\given filter, which shall be provided with the ID followed by suffix
-        \\The supported suffixes are "c" or "carrier" for filtering based on
-        \\carrier, "d" or "driver" for filtering based on "driver", and "a" or
-        \\"axis" for filtering based on "axis". If no filter is provided, show
-        \\all hall status across the line.
-        ,
-        .execute = &commands.hall_status.impl,
-    } });
+    });
     errdefer command.registry.orderedRemove("HALL_STATUS");
-    try command.registry.put(.{ .executable = .{
-        .name = "ASSERT_HALL",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-            .{ .name = "side" },
-            .{ .name = "on/off", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "ASSERT_HALL",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "Axis" },
+                .{ .name = "side" },
+                .{ .name = "on/off", .optional = true },
+            },
+            .short_description = "Assert Hall Sensor state.",
+            .long_description = std.fmt.comptimePrint(
+                \\Assert if Hall Sensor is in expected state. Hall Sensor location must
+                \\be provided, as:
+                \\ - front (direction of increasing Axis number)
+                \\ - back  (direction of decreasing Axis number)
+                \\
+                \\Hall Sensor state provided, as:
+                \\ - on  (Hall Sensor indicator "on")
+                \\ - off (Hall Sensor indicator "off")
+                \\ - default state if not provided as "on"
+            , .{}),
+            .execute = &commands.assert_hall.impl,
         },
-        .short_description = "Check that a hall alarm is the expected state.",
-        .long_description =
-        \\Throw an error if a hall alarm is not in the specified state. Must
-        \\identify the hall alarm with line name, axis, and a side ("back" or
-        \\"front"). Can optionally specify the expected hall alarm state as
-        \\"off" or "on"; if not specified, will default to "on".
-        ,
-        .execute = &commands.assert_hall.impl,
-    } });
+    });
     errdefer command.registry.orderedRemove("ASSERT_HALL");
-    try command.registry.put(.{ .executable = .{
-        .name = "CLEAR_ERRORS",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "filter", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "CLEAR_ERRORS",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "filter", .optional = true },
+            },
+            .short_description = "Clear error states.",
+            .long_description = std.fmt.comptimePrint(
+                \\Clear error states on all Driver(s) of specified Line.
+                \\Optional: Provide filter to specify Driver. To apply filter, provide
+                \\ID with filter suffix (e.g., 1d). Supported suffixes are:
+                \\ - "a" or "axis" to filter by Axis
+                \\ - "c" or "carrier" to filter by Carrier
+                \\ - "d" or "driver" to filter by Driver
+            , .{}),
+            .execute = &commands.clear_errors.impl,
         },
-        .short_description = "Clear errors state.",
-        .long_description =
-        \\Clear errors state on axis and driver. The driver in which error to be
-        \\cleared is selected based on the given filter, which shall be provided
-        \\with the ID followed by suffix. The supported suffixes are "c" or
-        \\"carrier" for filtering based on carrier, "d" or "driver" for
-        \\filtering based on "driver", and "a" or "axis" for filtering based on
-        \\"axis". If no filter is provided, clear errors on all drivers.
-        ,
-        .execute = &commands.clear_errors.impl,
-    } });
+    });
     errdefer command.registry.orderedRemove("CLEAR_ERRORS");
-    try command.registry.put(.{ .executable = .{
-        .name = "DEINITIALIZE",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "filter", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "DEINITIALIZE",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "filter", .optional = true },
+            },
+            .short_description = "Deinitialize Carrier.",
+            .long_description = std.fmt.comptimePrint(
+                \\Deinitialize Carrier on specified Line.
+                \\Optional: Provide filter to specify selection of Carrier(s). To apply
+                \\filter, provide ID with filter suffix (e.g., 1c). Supported suffixes
+                \\are:
+                \\ - "a" or "axis" to filter by Axis
+                \\ - "c" or "carrier" to filter by Carrier
+                \\ - "d" or "driver" to filter by Driver
+            , .{}),
+            .execute = &commands.clear_carrier_info.impl,
         },
-        .short_description = "Clear carrier information.",
-        .long_description =
-        \\Clear carrier information. The carrier to be cleared is selected based
-        \\on the given filter, which shall be provided with the ID followed by
-        \\suffix. The supported suffixes are "c" or "carrier" for filtering
-        \\based on carrier, "d" or "driver" for filtering based on "driver", and
-        \\"a" or "axis" for filtering based on "axis". If no filter is provided,
-        \\clear errors on all drivers.
-        ,
-        .execute = &commands.clear_carrier_info.impl,
-    } });
+    });
     errdefer command.registry.orderedRemove("DEINITIALIZE");
     try command.registry.put(.{ .alias = .{
         .name = "CLEAR_CARRIER_INFO",
@@ -542,76 +619,86 @@ pub fn init(c: Config) !void {
     errdefer command.registry.orderedRemove("CLEAR_CARRIER_INFO");
     try command.registry.put(.{ .executable = .{
         .name = "RESET_SYSTEM",
-        .short_description = "Reset the system state.",
-        .long_description =
-        \\Clear any carrier and errors occurred across the system. In addition,
-        \\reset any push and pull state on every axis.
-        ,
+        .short_description = "Reset system state.",
+        .long_description = std.fmt.comptimePrint(
+            \\Reset system:
+            \\ - Deinitialize all Carrier.
+            \\ - Clear all system errors.
+            \\ - Reset all push and pull states.
+        , .{}),
         .execute = &commands.reset_system.impl,
     } });
     errdefer command.registry.orderedRemove("RESET_SYSTEM");
-    try command.registry.put(.{ .executable = .{
-        .name = "RELEASE_CARRIER",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "filter", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "RELEASE_CARRIER",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "filter", .optional = true },
+            },
+            .short_description = "Release Carrier",
+            .long_description = std.fmt.comptimePrint(
+                \\Release Carrier, allows to move Carrier through external force. Carrier
+                \\stays initialized.
+                \\Optional: Provide filter to specify selection of Carrier(s). To apply
+                \\filter, provide ID with filter suffix (e.g., 1c). Supported suffixes
+                \\are:
+                \\ - "a" or "axis" to filter by Axis
+                \\ - "c" or "carrier" to filter by Carrier
+                \\ - "d" or "driver" to filter by Driver
+            , .{}),
+            .execute = &commands.release_carrier.impl,
         },
-        .short_description = "Release the carrier for being controlled",
-        .long_description =
-        \\Release the motor that control the carrier, allowing for free
-        \\carrier movement. This command should be run before carriers move
-        \\within or exit from the track due to external influence. The carrier
-        \\to be released from control is selected based on the given filter,
-        \\which shall be provided with the ID followed by suffix. The
-        \\supported suffixes are "c" or "carrier" for filtering based on
-        \\carrier, "d" or "driver" for filtering based on "driver", and "a" or
-        \\"axis" for filtering based on "axis". If no filter is provided, clear
-        \\errors on all drivers.
-        ,
-        .execute = &commands.release_carrier.impl,
-    } });
+    });
     errdefer command.registry.orderedRemove("RELEASE_CARRIER");
-    try command.registry.put(.{ .executable = .{
-        .name = "AUTO_INITIALIZE",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line names", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "AUTO_INITIALIZE",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line(s)", .optional = true },
+            },
+            .short_description = "Initialize all Carriers automatically.",
+            .long_description = std.fmt.comptimePrint(
+                \\Automatically initializes all uninitialized Carriers. This process
+                \\operates on carrier clusters, where a cluster is defined as a group of
+                \\uninitialized Carriers located on adjacent Axis. Each cluster requires
+                \\at least one free Axis to successfully initialize cluster. Multiple
+                \\Line auto initialization is supported (e.g., line1,line2,line3). If
+                \\Line is not provided, auto initializes Carriers on all Lines.
+            , .{}),
+            .execute = &commands.auto_initialize.impl,
         },
-        .short_description = "Initialize all carriers automatically.",
-        .long_description =
-        \\Isolate all unisolated carriers on the provided lines and move the
-        \\isolated carriers to a free space. If no line is provided, auto
-        \\initialize all unisolated carriers for all lines. Multiple lines should
-        \\be separated by comma, e.g. "AUTO_INITIALIZE front,back"
-        ,
-        .execute = &commands.auto_initialize.impl,
-    } });
+    });
     errdefer command.registry.orderedRemove("AUTO_INITIALIZE");
-    try command.registry.put(.{ .executable = .{
-        .name = "CALIBRATE",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "CALIBRATE",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+            },
+            .short_description = "Calibrate Track Line.",
+            .long_description = std.fmt.comptimePrint(
+                \\Calibrate Track Line. Uninitialized Carrier must be positioned at start
+                \\of Line and first Axis Hall Sensors are both in "on" state.
+            , .{}),
+            .execute = &commands.calibrate.impl,
         },
-        .short_description = "Calibrate a track line.",
-        .long_description =
-        \\Calibrate a track line. An uninitialized carrier must be positioned
-        \\at the start of the line such that the first axis has both hall
-        \\alarms active.
-        ,
-        .execute = &commands.calibrate.impl,
-    } });
+    });
     errdefer command.registry.orderedRemove("CALIBRATE");
-    try command.registry.put(.{ .executable = .{
-        .name = "SET_ZERO",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "SET_ZERO",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+            },
+            .short_description = "Set Line zero position.",
+            .long_description = std.fmt.comptimePrint(
+                \\Set zero position for specified Line. Initialized Carrier must be on
+                \\first Axis of specified Line.
+            , .{}),
+            .execute = &commands.set_line_zero.impl,
         },
-        .short_description = "Set line zero position.",
-        .long_description =
-        \\Set a line's zero position based on a current carrier's position.
-        \\Aforementioned carrier must be located at first axis of line.
-        ,
-        .execute = &commands.set_line_zero.impl,
-    } });
+    });
     errdefer command.registry.orderedRemove("SET_ZERO");
     try command.registry.put(.{
         .alias = .{
@@ -620,26 +707,34 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("SET_LINE_ZERO");
-    try command.registry.put(.{ .executable = .{
-        .name = "INITIALIZE",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-            .{ .name = "direction" },
-            .{ .name = "carrier id" },
-            .{ .name = "link axis", .resolve = false, .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "INITIALIZE",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "Axis" },
+                .{ .name = "direction" },
+                .{ .name = "Carrier" },
+                .{ .name = "link Axis", .resolve = false, .optional = true },
+            },
+            .short_description = "Initialize Carrier.",
+            .long_description = std.fmt.comptimePrint(
+                \\Slowly moves an uninitialized Carrier to the next Hall Sensor in the
+                \\provided direction, and assign provided Carrier ID to the Carrier.
+                \\Direction options:
+                \\ - forward  (direction of increasing Axis number)
+                \\ - backward (direction of decreasing Axis number)
+                \\
+                \\Optional: Provide link Axis if the uninitialized Carrier is located
+                \\between two Axis. Link Axis options:
+                \\ - next  (direction of increasing Axis number)
+                \\ - prev  (direction of decreasing Axis number)
+                \\ - right (direction of increasing Axis number)
+                \\ - left  (direction of decreasing Axis number)
+            , .{}),
+            .execute = &commands.isolate.impl,
         },
-        .short_description = "Initialize an unitialized carrier.",
-        .long_description =
-        \\Slowly move an uninitialized carrier to separate it from other nearby
-        \\carriers. A direction of "backward" or "forward" must be provided. A
-        \\carrier ID can be optionally specified to give the isolated carrier an
-        \\ID other than the default temporary ID 255, and the next or previous
-        \\can also be linked for isolation movement. Linked axis parameter
-        \\values must be one of "prev", "next", "left", or "right".
-        ,
-        .execute = &commands.isolate.impl,
-    } });
+    });
     errdefer command.registry.orderedRemove("INITIALIZE");
     try command.registry.put(.{ .alias = .{
         .name = "ISOLATE",
@@ -649,18 +744,16 @@ pub fn init(c: Config) !void {
     try command.registry.put(.{ .executable = .{
         .name = "WAIT_INITIALIZE",
         .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "carrier" },
+            .{ .name = "Line" },
+            .{ .name = "Carrier" },
             .{ .name = "timeout", .optional = true },
         },
-        .short_description = "Wait for carrier initialization to complete.",
-        .long_description =
-        \\Pause the execution of any further commands until the initialization
-        \\of the given carrier is indicated as complete. If a timeout is
-        \\specified, the command will return an error if the waiting action
-        \\takes longer than the specified timeout duration. The timeout must be
-        \\provided in milliseconds.
-        ,
+        .short_description = "Wait until Carrier initialization complete.",
+        .long_description = std.fmt.comptimePrint(
+            \\Pauses command execution until specified Carrier completes initialization.
+            \\Optional: Provide timeout. Returns error if specified timeout is exceeded.
+            \\Timeout must be provided in {s}.
+        , .{standard.time.unit_long}),
         .execute = &commands.wait.isolate,
     } });
     errdefer command.registry.orderedRemove("WAIT_INITIALIZE");
@@ -669,296 +762,334 @@ pub fn init(c: Config) !void {
         .command = command.registry.getPtr("WAIT_INITIALIZE").?,
     } });
     errdefer command.registry.orderedRemove("WAIT_ISOLATE");
-    try command.registry.put(.{ .executable = .{
-        .name = "WAIT_MOVE_CARRIER",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "carrier" },
-            .{ .name = "timeout", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "WAIT_MOVE_CARRIER",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "Carrier" },
+                .{ .name = "timeout", .optional = true },
+            },
+            .short_description = "Wait until Carrier movement complete.",
+            .long_description = std.fmt.comptimePrint(
+                \\Pauses command execution until specified Carrier completes movement.
+                \\Optional: Provide timeout. Returns error if specified timeout is
+                \\exceeded. Timeout must be provided in {s}.
+            , .{standard.time.unit_long}),
+            .execute = &commands.wait.moveCarrier,
         },
-        .short_description = "Wait for carrier movement to complete.",
-        .long_description =
-        \\Pause the execution of any further commands until movement for the
-        \\given carrier is indicated as complete. If a timeout is specified, the
-        \\command will return an error if the waiting action takes longer than
-        \\the specified timeout duration. The timeout must be provided in
-        \\milliseconds.
-        ,
-        .execute = &commands.wait.moveCarrier,
-    } });
+    });
     errdefer command.registry.orderedRemove("WAIT_MOVE_CARRIER");
-    try command.registry.put(.{ .executable = .{
-        .name = "MOVE_CARRIER_AXIS",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "carrier" },
-            .{ .name = "destination axis" },
-            .{ .name = "disable cas", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "MOVE_CARRIER_AXIS",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "Carrier" },
+                .{ .name = "Axis" },
+                .{ .name = "disable CAS", .optional = true },
+            },
+            .short_description = "Move Carrier to specified Axis.",
+            .long_description = std.fmt.comptimePrint(
+                \\Move Carrier to specified Axis. Carrier must be initialized to move.
+                \\Optional: Provide "true" to disable CAS (Collision Avoidance System).
+            , .{}),
+            .execute = &commands.move.posAxis,
         },
-        .short_description = "Move carrier to target axis center.",
-        .long_description =
-        \\Move given carrier to the center of target axis. The carrier ID must be
-        \\currently recognized within the motion system. Provide "true" to disable
-        \\CAS (collision avoidance system) for the command.
-        ,
-        .execute = &commands.move.posAxis,
-    } });
+    });
     errdefer command.registry.orderedRemove("MOVE_CARRIER_AXIS");
-    try command.registry.put(.{ .executable = .{
-        .name = "MOVE_CARRIER_LOCATION",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "carrier" },
-            .{ .name = "destination location" },
-            .{ .name = "disable cas", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "MOVE_CARRIER_LOCATION",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "Carrier" },
+                .{ .name = "location" },
+                .{ .name = "disable CAS", .optional = true },
+            },
+            .short_description = "Move Carrier to specified location.",
+            .long_description = std.fmt.comptimePrint(
+                \\Move Carrier to specified location. Carrier must be initialized to
+                \\move. Location must provided in {s}.
+                \\Optional: Provide "true" to disable CAS (Collision Avoidance System).
+            , .{standard.length.unit_long}),
+            .execute = &commands.move.posLocation,
         },
-        .short_description = "Move carrier to target location.",
-        .long_description =
-        \\Move given carrier to target location. The carrier ID must be currently
-        \\recognized within the motion system, and the target location must be
-        \\provided in meters as a whole or decimal number. Provide "true" to
-        \\disable CAS (collision avoidance system) for the command.
-        ,
-        .execute = &commands.move.posLocation,
-    } });
+    });
     errdefer command.registry.orderedRemove("MOVE_CARRIER_LOCATION");
-    try command.registry.put(.{ .executable = .{
-        .name = "MOVE_CARRIER_DISTANCE",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "carrier" },
-            .{ .name = "distance" },
-            .{ .name = "disable cas", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "MOVE_CARRIER_DISTANCE",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "Carrier" },
+                .{ .name = "distance" },
+                .{ .name = "disable CAS", .optional = true },
+            },
+            .short_description = "Move Carrier by distance.",
+            .long_description = std.fmt.comptimePrint(
+                \\Move Carrier a specified distance. Carrier must be initialized to move.
+                \\Distance must provided in {s}.
+                \\Optional: Provide "true" to disable CAS (Collision Avoidance System).
+            , .{
+                standard.length.unit_long,
+            }),
+            .execute = &commands.move.posDistance,
         },
-        .short_description = "Move carrier by a distance.",
-        .long_description =
-        \\Move given carrier by a provided distance. The carrier ID must be
-        \\currently recognized within the motion system, and the distance must
-        \\be provided in meters as a whole or decimal number. The distance
-        \\may be negative for backward movement. Provide "true" to disable
-        \\CAS (collision avoidance system) for the command.
-        ,
-        .execute = &commands.move.posDistance,
-    } });
+    });
     errdefer command.registry.orderedRemove("MOVE_CARRIER_DISTANCE");
-    try command.registry.put(.{ .executable = .{
-        .name = "SPD_MOVE_CARRIER_AXIS",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "carrier" },
-            .{ .name = "destination axis" },
-            .{ .name = "disable cas", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "SPD_MOVE_CARRIER_AXIS",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "Carrier" },
+                .{ .name = "Axis" },
+                .{ .name = "disable CAS", .optional = true },
+            },
+            .short_description = "Move Carrier to specified Axis.",
+            .long_description = std.fmt.comptimePrint(
+                \\Move Carrier to specified Axis. Carrier must be initialized to move.
+                \\Uses speed profile feedback to reach specified Axis. Location must
+                \\provided in {s}.
+                \\Optional: Provide "true" to disable CAS (Collision Avoidance System).
+            , .{
+                standard.length.unit_long,
+            }),
+            .execute = &commands.move.spdAxis,
         },
-        .short_description = "Move carrier to target axis center.",
-        .long_description =
-        \\Move given carrier to the center of target axis. The carrier ID must be
-        \\currently recognized within the motion system. This command moves the
-        \\carrier with speed profile feedback. Provide "true" to disable CAS
-        \\(collision avoidance system) for the command.
-        ,
-        .execute = &commands.move.spdAxis,
-    } });
+    });
     errdefer command.registry.orderedRemove("SPD_MOVE_CARRIER_AXIS");
-    try command.registry.put(.{ .executable = .{
-        .name = "SPD_MOVE_CARRIER_LOCATION",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "carrier" },
-            .{ .name = "destination location" },
-            .{ .name = "disable cas", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "SPD_MOVE_CARRIER_LOCATION",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "Carrier" },
+                .{ .name = "location" },
+                .{ .name = "disable CAS", .optional = true },
+            },
+            .short_description = "Move Carrier to specified location.",
+            .long_description = std.fmt.comptimePrint(
+                \\Move Carrier to specified location. Carrier must be initialized to
+                \\move. Uses speed profile feedback to reach specified location. Location
+                \\must provided in {s}.
+                \\Optional: Provide "true" to disable CAS (Collision Avoidance System).
+            , .{
+                standard.length.unit_long,
+            }),
+            .execute = &commands.move.spdLocation,
         },
-        .short_description = "Move carrier to target location.",
-        .long_description =
-        \\Move given carrier to target location. The carrier ID must be currently
-        \\recognized within the motion system, and the target location must be
-        \\provided in meters as a whole or decimal number. This command
-        \\moves the carrier with speed profile feedback. Provide "true" to disable
-        \\CAS (collision avoidance system) for the command.
-        ,
-        .execute = &commands.move.spdLocation,
-    } });
+    });
     errdefer command.registry.orderedRemove("SPD_MOVE_CARRIER_LOCATION");
-    try command.registry.put(.{ .executable = .{
-        .name = "SPD_MOVE_CARRIER_DISTANCE",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "carrier" },
-            .{ .name = "distance" },
-            .{ .name = "disable cas", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "SPD_MOVE_CARRIER_DISTANCE",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "Carrier" },
+                .{ .name = "distance" },
+                .{ .name = "disable CAS", .optional = true },
+            },
+            .short_description = "Move Carrier by a distance.",
+            .long_description = std.fmt.comptimePrint(
+                \\Move Carrier a specified distance. Carrier must be initialized to move.
+                \\Uses speed profile feedback to reach specified distance. Location must
+                \\provided in {s}.
+                \\Optional: Provide "true" to disable CAS (Collision Avoidance System).
+            , .{
+                standard.length.unit_long,
+            }),
+            .execute = &commands.move.spdDistance,
         },
-        .short_description = "Move carrier by a distance.",
-        .long_description =
-        \\Move given carrier by a provided distance. The carrier ID must be
-        \\currently recognized within the motion system, and the distance must
-        \\be provided in meters as a whole or decimal number. The distance
-        \\may be negative for backward movement. This command moves the carrier
-        \\with speed profile feedback. Provide "true" to disable CAS (collision
-        \\avoidance system) for the command.
-        ,
-        .execute = &commands.move.spdDistance,
-    } });
+    });
     errdefer command.registry.orderedRemove("SPD_MOVE_CARRIER_DISTANCE");
-    try command.registry.put(.{ .executable = .{
-        .name = "PUSH_CARRIER_FORWARD",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-            .{ .name = "carrier", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "PUSH_CARRIER_FORWARD",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "Axis" },
+                .{ .name = "Carrier", .optional = true },
+            },
+            .short_description = "Push Carrier forward to specified Axis.",
+            .long_description = std.fmt.comptimePrint(
+                \\Push a Carrier on the specified Axis forward. This movement targets a
+                \\distance of the Carrier length, and thus if it is used to cross a Line
+                \\boundary, the receiving Axis at the destination Line must first be
+                \\pulling the Carrier.
+                \\Optional: Provide Carrier to move the specified Carrier to the center
+                \\of the specified Axis, then push forward.
+            , .{}),
+            .execute = &commands.push.forward,
         },
-        .short_description = "Push carrier forward on the specified axis.",
-        .long_description =
-        \\Push a carrier located on the center of the specified axis forward
-        \\with speed feedback-controlled movement. This movement targets a
-        \\distance of the carrier length, and thus if it is used to cross a line
-        \\boundary, the receiving axis at the destination line must first be
-        \\pulling the carrier. Providing the optional "carrier" parameter will
-        \\move the carrier to the center of the specified axis and push it
-        \\forward.
-        ,
-        .execute = &commands.push.forward,
-    } });
+    });
     errdefer command.registry.orderedRemove("PUSH_CARRIER_FORWARD");
-    try command.registry.put(.{ .executable = .{
-        .name = "PUSH_CARRIER_BACKWARD",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-            .{ .name = "carrier", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "PUSH_CARRIER_BACKWARD",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "Axis" },
+                .{ .name = "Carrier", .optional = true },
+            },
+            .short_description = "Push Carrier backward to specified Axis.",
+            .long_description = std.fmt.comptimePrint(
+                \\Push a Carrier on the specified Axis backward. This movement targets a
+                \\distance of the Carrier length, and thus if it is used to cross a Line
+                \\boundary, the receiving Axis at the destination Line must first be
+                \\pulling the Carrier.
+                \\Optional: Provide Carrier to move the specified Carrier to the center
+                \\of the specified Axis, then push forward.
+            , .{}),
+            .execute = &commands.push.backward,
         },
-        .short_description = "Push carrier forward on the specified axis.",
-        .long_description =
-        \\Push a carrier located on the center of the specified axis backward
-        \\with speed feedback-controlled movement. This movement targets a
-        \\distance of the carrier length, and thus if it is used to cross a line
-        \\boundary, the receiving axis at the destination line must first be
-        \\pulling the carrier. Providing the optional "carrier" parameter will
-        \\move the carrier to the center of the specified axis and push it
-        \\backward.
-        ,
-        .execute = &commands.push.backward,
-    } });
+    });
     errdefer command.registry.orderedRemove("PUSH_CARRIER_BACKWARD");
-    try command.registry.put(.{ .executable = .{
-        .name = "PULL_CARRIER_FORWARD",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-            .{ .name = "carrier" },
-            .{ .name = "destination", .optional = true },
-            .{ .name = "disable cas", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "PULL_CARRIER_FORWARD",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "Axis" },
+                .{ .name = "Carrier" },
+                .{ .name = "location", .optional = true },
+                .{ .name = "disable CAS", .optional = true },
+            },
+            .short_description = "Pull incoming Carrier forward.",
+            .long_description = std.fmt.comptimePrint(
+                \\Initialize and move incoming carrier forward to specified Axis. Assign
+                \\the specified Carrier ID for pulled Carrier. There must be no carrier
+                \\on pulling axis.
+                \\Optional: Provide location to move carrier after completed pulling
+                \\Carrier. Location must be provided as:
+                \\- {s} (move Carrier to specified location after pulled to specified
+                \\  axis) or
+                \\- "nan" (Carrier can move through external force after pulled to
+                \\  specified axis )
+                \\Optional: Provide "true" to disable CAS (Collision Avoidance System)
+                \\while Carrier is moved to location.
+            , .{
+                standard.length.unit_long,
+            }),
+            .execute = &commands.pull.forward,
         },
-        .short_description = "Pull incoming carrier forward at axis.",
-        .long_description =
-        \\Pull incoming carrier forward at axis. The pulled carrier's new ID
-        \\must also be provided.
-        \\If a destination in meters is specified, the carrier will
-        \\automatically move to the destination after pull is completed. If a
-        \\"nan" destination is provided, the carrier will not be pulled by the
-        \\motor, but any carrier moved by external forces will be correctly
-        \\recognized and initialized in release-servo state.
-        \\If "true" is provided for the disable CAS parameter, automatic
-        \\carrier movement to destination after pulling will have CAS feature
-        \\disabled.
-        ,
-        .execute = &commands.pull.forward,
-    } });
+    });
     errdefer command.registry.orderedRemove("PULL_CARRIER_FORWARD");
-    try command.registry.put(.{ .executable = .{
-        .name = "PULL_CARRIER_BACKWARD",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-            .{ .name = "carrier" },
-            .{ .name = "destination", .optional = true },
-            .{ .name = "disable cas", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "PULL_CARRIER_BACKWARD",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "Axis" },
+                .{ .name = "Carrier" },
+                .{ .name = "location", .optional = true },
+                .{ .name = "disable CAS", .optional = true },
+            },
+            .short_description = "Pull incoming Carrier backward.",
+            .long_description = std.fmt.comptimePrint(
+                \\Initialize and move incoming carrier backward to specified Axis. Assign
+                \\the specified Carrier ID for pulled Carrier. There must be no carrier
+                \\on pulling axis.
+                \\Optional: Provide location to move carrier after completed pulling
+                \\Carrier. Location must be provided as:
+                \\- {s} (move Carrier to specified location after pulled to specified
+                \\  axis) or
+                \\- "nan" (Carrier can move through external force after pulled to
+                \\  specified axis )
+                \\
+                \\Optional: Provide "true" to disable CAS (Collision Avoidance System).
+                \\while Carrier is moved to location.
+            , .{
+                standard.length.unit_long,
+            }),
+            .execute = &commands.pull.backward,
         },
-        .short_description = "Pull incoming carrier backward at axis.",
-        .long_description =
-        \\Pull incoming carrier backward at axis. The pulled carrier's new ID
-        \\must also be provided.
-        \\If a destination in meters is specified, the carrier will
-        \\automatically move to the destination after pull is completed. If a
-        \\"nan" destination is provided, the carrier will not be pulled by the
-        \\motor, but any carrier moved by external forces will be correctly
-        \\recognized and initialized in release-servo state.
-        \\If "true" is provided for the disable CAS parameter, automatic
-        \\carrier movement to destination after pulling will have CAS feature
-        \\disabled.
-        ,
-        .execute = &commands.pull.backward,
-    } });
+    });
     errdefer command.registry.orderedRemove("PULL_CARRIER_BACKWARD");
     try command.registry.put(.{ .executable = .{
         .name = "STOP_PULL_CARRIER",
         .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
+            .{ .name = "Line" },
             .{ .name = "filter", .optional = true },
         },
-        .short_description = "Stop active carrier pull at axis.",
-        .long_description =
-        \\Stop active carrier pull at axis. The axis is selected based on the
-        \\given filter, which shall be provided with the ID followed by suffix.
-        \\The supported suffixes are "d" or "driver" for filtering based on
-        \\"driver" and "a" or "axis" for filtering based on "axis". If no
-        \\filter is provided, clear errors on all drivers.
-        ,
+        .short_description = "Stop pulling Carrier at axis.",
+        .long_description = std.fmt.comptimePrint(
+            \\Stop active Carrier pull for specified Line.
+            \\Optional: Provide filter to specify selection of pull. To apply filter,
+            \\provide ID with filter suffix (e.g., 1c). Supported suffixes are:
+            \\ - "a" or "axis" to filter by Axis
+            \\ - "c" or "Carrier" to filter by Carrier
+            \\ - "d" or "driver" to filter by Driver
+        , .{}),
         .execute = &commands.stop_pull.impl,
     } });
     errdefer command.registry.orderedRemove("STOP_PULL_CARRIER");
-    try command.registry.put(.{ .executable = .{
-        .name = "STOP_PUSH_CARRIER",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "filter", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "STOP_PUSH_CARRIER",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "filter", .optional = true },
+            },
+            .short_description = "Stop pushing Carrier at axis.",
+            .long_description = std.fmt.comptimePrint(
+                \\Stop active Carrier push for specified Line.
+                \\Optional: Provide filter to specify selection of push. To apply
+                \\filter, provide ID with filter suffix (e.g., 1c).
+                \\Supported suffixes are:
+                \\ - "a" or "axis" to filter by Axis
+                \\ - "c" or "Carrier" to filter by Carrier
+                \\ - "d" or "driver" to filter by Driver
+            , .{}),
+            .execute = &commands.stop_push.impl,
         },
-        .short_description = "Stop active carrier push at axis.",
-        .long_description =
-        \\Stop active carrier push at axis. The axis is selected based on the
-        \\given filter, which shall be provided with the ID followed by suffix.
-        \\The supported suffixes are "d" or "driver" for filtering based on
-        \\"driver" and "a" or "axis" for filtering based on "axis". If no
-        \\filter is provided, clear errors on all drivers.
-        ,
-        .execute = &commands.stop_push.impl,
-    } });
+    });
     errdefer command.registry.orderedRemove("STOP_PUSH_CARRIER");
     try command.registry.put(.{ .executable = .{
         .name = "WAIT_AXIS_EMPTY",
         .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
+            .{ .name = "Line" },
+            .{ .name = "Axis" },
             .{ .name = "timeout", .optional = true },
         },
-        .short_description = "Wait for axis to be empty.",
-        .long_description =
-        \\Pause the execution of any further commands until specified axis has
-        \\no carriers, no active hall alarms, and no wait for push/pull. If a
-        \\timeout is specified, the command will return an error if the waiting
-        \\action takes longer than the specified timeout duration. The timeout
-        \\must be provided in milliseconds.
-        ,
+        .short_description = "Wait until no Carrier on Axis.",
+        .long_description = std.fmt.comptimePrint(
+            \\Pause execution of commands until specified Axis has:
+            \\ - no carriers,
+            \\ - no active hall alarms,
+            \\ - no wait for push/pull.
+            \\Optional: timeout will return error if timeout duration is exceeded.
+            \\Timeout duration must be provided in {s}.
+        , .{
+            standard.time.unit_long,
+        }),
         .execute = &commands.wait.axisEmpty,
     } });
     errdefer command.registry.orderedRemove("WAIT_AXIS_EMPTY");
-    try command.registry.put(.{ .executable = .{
-        .name = "ADD_LOG_INFO",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "kind" },
-            .{ .name = "range", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "ADD_LOG_INFO",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "kind" },
+                .{ .name = "range", .optional = true },
+            },
+            .short_description = "Add logging configuration.",
+            .long_description = std.fmt.comptimePrint(
+                \\Add logging configuration. Overwrites existing logging configuration
+                \\for specified Line. Parameter "kind" specifies information to add
+                \\to logging configuration. Valid "kind" options:
+                \\ - driver
+                \\ - axis
+                \\ - all
+                \\
+                \\Optional: "range" defines Axis range and must be provided as
+                \\start:end value (e.g., "1:9").
+            , .{}),
+            .execute = &commands.log.add,
         },
-        .short_description = "Add info logging configuration.",
-        .long_description =
-        \\Add an info logging configuration. This command overwrites the existing
-        \\logging configuration for the specified line, if any. The "kind" stands
-        \\for the kind of info to be logged, specified by either "driver", "axis",
-        \\or "all" to log both driver and axis info. The range is the inclusive
-        \\axis range, and shall be provided with colon separated value, e.g. "1:9"
-        \\to log from axis 1 to 9. Leaving the range will log every axis on the
-        \\line.
-        ,
-        .execute = &commands.log.add,
-    } });
+    });
     errdefer command.registry.orderedRemove("ADD_LOG_INFO");
     try command.registry.put(.{ .executable = .{
         .name = "START_LOG_INFO",
@@ -966,136 +1097,148 @@ pub fn init(c: Config) !void {
             .{ .name = "duration" },
             .{ .name = "path", .optional = true },
         },
-        .short_description = "Add info logging configuration.",
-        .long_description =
-        \\Start the info logging process. The log file contains only the most
-        \\recent data covering the specified duration (in seconds). The logging
-        \\runs until error occurs or is cancelled by executing "STOP_LOGGING".
-        \\If no path is provided, a default log file will be created in the
-        \\current working directory as: "mmc-logging-YYYY.MM.DD-HH.MM.SS.csv".
-        ,
+        .short_description = "Start logging.",
+        .long_description = std.fmt.comptimePrint(
+            \\Start logging process. Log file contains only recent data during specified
+            \\time (in seconds). Logging runs until:
+            \\ - error occurs or
+            \\ - cancelled by "STOP_LOGGING" command.
+            \\
+            \\If path not specified, log file will be created in working directory:
+            \\ - "mmc-logging-YYYY.MM.DD-HH.MM.SS.csv".
+        , .{}),
         .execute = &commands.log.start,
     } });
     errdefer command.registry.orderedRemove("START_LOG_INFO");
-    try command.registry.put(.{ .executable = .{
-        .name = "REMOVE_LOG_INFO",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "kind" },
-            .{ .name = "range", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "REMOVE_LOG_INFO",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "kind" },
+                .{ .name = "range", .optional = true },
+            },
+            .short_description = "Remove logging configuration.",
+            .long_description = std.fmt.comptimePrint(
+                \\Remove logging configuration. Parameter "kind" specifies information to
+                \\remove from logging configuration. Valid "kind" options:
+                \\ - driver
+                \\ - axis
+                \\ - all
+                \\
+                \\Optional: "range" defines Axis range and must be provided as start:end
+                \\value (e.g., "1:9").
+            , .{}),
+            .execute = &commands.log.remove,
         },
-        .short_description = "Remove the logging configuration.",
-        .long_description =
-        \\Remove the logging configuration. The "kind" stands for the kind of
-        \\info to be removed from log config, specified by either "driver",
-        \\"axis", or "all" to remove both driver and axis info. The range is
-        \\the inclusive axis range, and shall be provided with colon separated
-        \\value, e.g. "1:9" to log from axis 1 to 9. Leaving the range will
-        \\remove all log configuration on the line depending on the kind.
-        ,
-        .execute = &commands.log.remove,
-    } });
+    });
     errdefer command.registry.orderedRemove("REMOVE_LOG_INFO");
     try command.registry.put(.{ .executable = .{
         .name = "STATUS_LOG_INFO",
-        .short_description = "Show the logging configuration(s).",
-        .long_description =
-        \\Show the logging configuration for each line, if any.
-        ,
+        .short_description = "Show logging configuration.",
+        .long_description = std.fmt.comptimePrint(
+            \\Show logging configuration for Line(s).
+        , .{}),
         .execute = &commands.log.status,
     } });
     errdefer command.registry.orderedRemove("STATUS_LOG_INFO");
     try command.registry.put(.{ .executable = .{
         .name = "STOP_LOG_INFO",
-        .short_description = "Stop the mmc logging process.",
-        .long_description =
-        \\Stop the mmc logging process if the logging is already started, and
-        \\save the logging data to the log file.
-        ,
+        .short_description = "Stop MMC logging.",
+        .long_description = std.fmt.comptimePrint(
+            \\Stop MMC logging and
+            \\save logging data to file.
+        , .{}),
         .execute = &commands.log.stop,
     } });
     errdefer command.registry.orderedRemove("STOP_LOG_INFO");
     try command.registry.put(.{ .executable = .{
         .name = "CANCEL_LOG_INFO",
-        .short_description = "Cancel the mmc logging process.",
-        .long_description =
-        \\Stop the mmc logging process if the logging is already started without
-        \\saving the logging data to a log file.
-        ,
+        .short_description = "Cancel MMC logging process.",
+        .long_description = std.fmt.comptimePrint(
+            \\Cancel MMC logging
+            \\without saving the logging data.
+        , .{}),
         .execute = &commands.log.cancel,
     } });
     errdefer command.registry.orderedRemove("CANCEL_LOG_INFO");
     try command.registry.put(.{ .executable = .{
         .name = "PRINT_ERRORS",
         .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line" },
+            .{ .name = "Line" },
             .{ .name = "filter", .optional = true },
         },
-        .short_description = "Print axis and driver errors.",
-        .long_description =
-        \\Print axis and driver errors based on the provided filter. Filter
-        \\shall be provided with the ID followed by suffix. The supported
-        \\suffixes are "d" or "driver" for filtering based on "driver" and "a"
-        \\or "axis" for filtering based on "axis". If no filter is provided,
-        \\print all axis and driver errors on the line.
-        ,
+        .short_description = "Print Axis and Driver errors.",
+        .long_description = std.fmt.comptimePrint(
+            \\Print Axis and Driver errors on specified Line.
+            \\Optional: Provide filter to specify selection of error(s). To apply filter,
+            \\provide ID with filter suffix (e.g., 1a). Supported suffixes are:
+            \\ - "a" or "axis" to filter by Axis
+            \\ - "c" or "Carrier" to filter by Carrier
+            \\ - "d" or "driver" to filter by Driver
+        , .{}),
         .execute = &commands.show_errors.impl,
     } });
     errdefer command.registry.orderedRemove("PRINT_ERRORS");
     try command.registry.put(.{ .executable = .{
         .name = "STOP",
         .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line", .optional = true },
+            .{ .name = "Line", .optional = true },
         },
-        .short_description = "Stop any operation on the line(s).",
-        .long_description =
-        \\Stop any currently running operation and remove any queued commands for
-        \\the specified line. Not providing a line will stop the operation of
-        \\entire system.
-        ,
+        .short_description = "Stop all processes.",
+        .long_description = std.fmt.comptimePrint(
+            \\Stop all running and queued processes on System.
+            \\Optional: Stop all running and queued processes only for specified Line.
+        , .{}),
         .execute = &commands.stop.impl,
     } });
     errdefer command.registry.orderedRemove("STOP");
-    try command.registry.put(.{ .executable = .{
-        .name = "PAUSE",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "PAUSE",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line", .optional = true },
+            },
+            .short_description = "Pause all processes.",
+            .long_description = std.fmt.comptimePrint(
+                \\Pause all processes on System.
+                \\Optional: Pause all processes only on specified Line.
+            , .{}),
+            .execute = &commands.pause.impl,
         },
-        .short_description = "Pause any operation on the line(s).",
-        .long_description =
-        \\Pause any currently running operation for the specified line. Not
-        \\providing a line will pause the operation of entire system.
-        ,
-        .execute = &commands.pause.impl,
-    } });
+    });
     errdefer command.registry.orderedRemove("PAUSE");
-    try command.registry.put(.{ .executable = .{
-        .name = "RESUME",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "RESUME",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line", .optional = true },
+            },
+            .short_description = "Resume all paused processes.",
+            .long_description = std.fmt.comptimePrint(
+                \\Resume all paused processes on System.
+                \\Optional: Resume all paused processes only on specified Line.
+            , .{}),
+            .execute = &commands.@"resume".impl,
         },
-        .short_description = "Resume the line(s) operation.",
-        .long_description =
-        \\Resume the specified line operation after being paused or stopped. Not
-        \\providing a line will resume the operation of entire system.
-        ,
-        .execute = &commands.@"resume".impl,
-    } });
+    });
     errdefer command.registry.orderedRemove("RESUME");
-    try command.registry.put(.{ .executable = .{
-        .name = "SET_CARRIER_ID",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line" },
-            .{ .name = "carrier" },
-            .{ .name = "new carrier id" },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "SET_CARRIER_ID",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "Carrier" },
+                .{ .name = "new Carrier id" },
+            },
+            .short_description = "Modify Carrier ID.",
+            .long_description = std.fmt.comptimePrint(
+                \\Modify Carrier ID of initialized Carrier. Carrier ID must be unique per
+                \\Line.
+            , .{}),
+            .execute = &commands.set_carrier_id.impl,
         },
-        .short_description = "Update carrier ID to a new one.",
-        .long_description =
-        \\Update an initialized carrier ID into a new one. The new carrier ID
-        \\shall not be used by other carriers on the same line.
-        ,
-        .execute = &commands.set_carrier_id.impl,
-    } });
+    });
     errdefer command.registry.orderedRemove("SET_CARRIER_ID");
 }
 
