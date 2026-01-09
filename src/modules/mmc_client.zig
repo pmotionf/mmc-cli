@@ -661,10 +661,10 @@ pub fn init(c: Config) !void {
             .long_description = std.fmt.comptimePrint(
                 \\Automatically initializes all uninitialized Carriers. This process
                 \\operates on carrier clusters, where a cluster is defined as a group of
-                \\unitialized Carriers located on adjacent Axis. Each cluster requires at
-                \\least one free Axis to successfully initialize cluster. Multiple Line
-                \\auto initialization is supported (e.g., line1,line2,line3). If Line is
-                \\not provided, auto initializes Carriers on all Lines.
+                \\uninitialized Carriers located on adjacent Axis. Each cluster requires
+                \\at least one free Axis to successfully initialize cluster. Multiple
+                \\Line auto initialization is supported (e.g., line1,line2,line3). If
+                \\Line is not provided, auto initializes Carriers on all Lines.
             , .{}),
             .execute = &commands.auto_initialize.impl,
         },
@@ -953,7 +953,7 @@ pub fn init(c: Config) !void {
                 .{ .name = "Line" },
                 .{ .name = "Axis" },
                 .{ .name = "Carrier" },
-                .{ .name = "destination", .optional = true },
+                .{ .name = "location", .optional = true },
                 .{ .name = "disable CAS", .optional = true },
             },
             .short_description = "Pull incoming Carrier forward.",
@@ -961,14 +961,14 @@ pub fn init(c: Config) !void {
                 \\Initialize and move incoming carrier forward to specified Axis. Assign
                 \\the specified Carrier ID for pulled Carrier. There must be no carrier
                 \\on pulling axis.
-                \\Optional: Provide destination to move carrier after completed pulling
-                \\Carrier. Destination must be provided as:
-                \\- {s} (move Carrier to specified destination after pulled to specified
+                \\Optional: Provide location to move carrier after completed pulling
+                \\Carrier. Location must be provided as:
+                \\- {s} (move Carrier to specified location after pulled to specified
                 \\  axis) or
-                \\- "nan" (initialize pulled carrier without moving it forward by motor)
-                \\
+                \\- "nan" (Carrier can move through external force after pulled to
+                \\  specified axis )
                 \\Optional: Provide "true" to disable CAS (Collision Avoidance System)
-                \\while Carrier is moved to destination.
+                \\while Carrier is moved to location.
             , .{
                 standard.length.unit_long,
             }),
@@ -983,7 +983,7 @@ pub fn init(c: Config) !void {
                 .{ .name = "Line" },
                 .{ .name = "Axis" },
                 .{ .name = "Carrier" },
-                .{ .name = "destination", .optional = true },
+                .{ .name = "location", .optional = true },
                 .{ .name = "disable CAS", .optional = true },
             },
             .short_description = "Pull incoming Carrier backward.",
@@ -991,14 +991,15 @@ pub fn init(c: Config) !void {
                 \\Initialize and move incoming carrier backward to specified Axis. Assign
                 \\the specified Carrier ID for pulled Carrier. There must be no carrier
                 \\on pulling axis.
-                \\Optional: Provide destination to move carrier after completed pulling
-                \\Carrier. Destination must be provided as:
-                \\- {s} (move Carrier to specified destination after pulled to specified
+                \\Optional: Provide location to move carrier after completed pulling
+                \\Carrier. Location must be provided as:
+                \\- {s} (move Carrier to specified location after pulled to specified
                 \\  axis) or
-                \\- "nan" (initialize pulled carrier without moving it forward by motor)
+                \\- "nan" (Carrier can move through external force after pulled to
+                \\  specified axis )
                 \\
                 \\Optional: Provide "true" to disable CAS (Collision Avoidance System).
-                \\while Carrier is moved to destination.
+                \\while Carrier is moved to location.
             , .{
                 standard.length.unit_long,
             }),
