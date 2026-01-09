@@ -239,7 +239,7 @@ fn read(params: [][]const u8) !void {
 
     if (read_laser_value.load(.monotonic) or !processing.load(.monotonic)) {
         std.log.err(
-            "MES07 Communication Processing Failed. Try reconnect.",
+            "MES07 Communication Processing Failed. Please reconnect.",
             .{},
         );
         return error.Mes07ProcessNotUpdated;
