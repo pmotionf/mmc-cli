@@ -293,9 +293,9 @@ pub fn init(c: Config) !void {
                 .{ .name = "Line" },
                 .{ .name = "speed" },
             },
-            .short_description = "Set Carrier speed for Line",
+            .short_description = "Set Carrier speed of specified Line",
             .long_description = std.fmt.comptimePrint(
-                \\Set Carrier speed for the specified Line. The speed value must be
+                \\Set Carrier speed of specified Line. The speed value must be
                 \\greater than {d} and less than or equal to {d} {s}.
             , .{
                 standard.speed.range.min,
@@ -313,9 +313,9 @@ pub fn init(c: Config) !void {
                 .{ .name = "Line" },
                 .{ .name = "acceleration" },
             },
-            .short_description = "Set Carrier acceleration for Line",
+            .short_description = "Set Carrier acceleration of specified Line",
             .long_description = std.fmt.comptimePrint(
-                \\Set Carrier acceleration for the specified Line. The acceleration value
+                \\Set Carrier acceleration of specified Line. The acceleration value
                 \\must be greater than {d} and less than or equal to {d} {s}.
             , .{
                 standard.acceleration.range.min,
@@ -332,9 +332,9 @@ pub fn init(c: Config) !void {
             .parameters = &[_]command.Command.Executable.Parameter{
                 .{ .name = "Line" },
             },
-            .short_description = "Print Carrier speed of Line",
+            .short_description = "Print Carrier speed of the specified Line",
             .long_description = std.fmt.comptimePrint(
-                \\Print Carrier speed for the specified Line.
+                \\Print Carrier speed of specified Line.
             , .{}),
             .execute = &commands.get_speed.impl,
         },
@@ -346,9 +346,9 @@ pub fn init(c: Config) !void {
             .parameters = &[_]command.Command.Executable.Parameter{
                 .{ .name = "Line" },
             },
-            .short_description = "Print Carrier acceleration of Line",
+            .short_description = "Print Carrier acceleration of the specified Line",
             .long_description = std.fmt.comptimePrint(
-                \\Print Carrier acceleration for the specified Line.
+                \\Print Carrier acceleration of the specified Line.
             , .{}),
             .execute = &commands.get_acceleration.impl,
         },
@@ -1015,7 +1015,7 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Stop pulling Carrier at axis.",
         .long_description = std.fmt.comptimePrint(
-            \\Stop active Carrier pull for specified Line.
+            \\Stop active Carrier pull of specified Line.
             \\Optional: Provide filter to specify selection of pull. To apply filter,
             \\provide ID with filter suffix (e.g., 1c). Supported suffixes are:
             \\ - "a" or "axis" to filter by Axis
@@ -1034,7 +1034,7 @@ pub fn init(c: Config) !void {
             },
             .short_description = "Stop pushing Carrier at axis.",
             .long_description = std.fmt.comptimePrint(
-                \\Stop active Carrier push for specified Line.
+                \\Stop active Carrier push on specified Line.
                 \\Optional: Provide filter to specify selection of push. To apply
                 \\filter, provide ID with filter suffix (e.g., 1c).
                 \\Supported suffixes are:
@@ -1078,8 +1078,8 @@ pub fn init(c: Config) !void {
             .short_description = "Add logging configuration.",
             .long_description = std.fmt.comptimePrint(
                 \\Add logging configuration. Overwrites existing logging configuration
-                \\for specified Line. Parameter "kind" specifies information to add
-                \\to logging configuration. Valid "kind" options:
+                \\of specified Line. Parameter "kind" specifies information to add to
+                \\logging configuration. Valid "kind" options:
                 \\ - driver
                 \\ - axis
                 \\ - all
@@ -1137,7 +1137,7 @@ pub fn init(c: Config) !void {
         .name = "STATUS_LOG_INFO",
         .short_description = "Show logging configuration.",
         .long_description = std.fmt.comptimePrint(
-            \\Show logging configuration for Line(s).
+            \\Show logging configuration for specified Line(s).
         , .{}),
         .execute = &commands.log.status,
     } });
