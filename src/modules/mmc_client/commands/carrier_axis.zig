@@ -85,10 +85,10 @@ pub fn impl(params: [][]const u8) !void {
     if (carriers.items.len > 1) return error.InvalidResponse;
     for (carriers.items) |carrier| {
         std.log.info(
-            "Carrier {d} Axis: {}",
+            "Carrier {d} axis: {}",
             .{ carrier.id, carrier.axis_main },
         );
         if (carrier.axis_auxiliary) |aux|
-            std.log.info("Carrier {d} Axis: {}", .{ carrier.id, aux });
+            std.log.info("Carrier {d} axis: {}", .{ carrier.id, aux });
     }
 }

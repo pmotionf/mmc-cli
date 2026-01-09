@@ -88,9 +88,9 @@ pub fn init(_: Config) !void {
     });
     try command.registry.put(.{
         .name = "RAISE_START_AXIS",
-        .short_description = "Raise start Axis to upper motion system.",
+        .short_description = "Raise start axis to upper motion system.",
         .long_description =
-        \\Raise the start Axis to the motion system. This command should not be
+        \\Raise the start axis to the motion system. This command should not be
         \\run if the return system's belt is currently moving with an attached
         \\slider.
         ,
@@ -98,19 +98,19 @@ pub fn init(_: Config) !void {
     });
     try command.registry.put(.{
         .name = "LOWER_START_AXIS",
-        .short_description = "Lower start Axis to return system.",
+        .short_description = "Lower start axis to return system.",
         .long_description =
-        \\Lower the start Axis to the return system. This command should not be
-        \\run if a slider is positioned between the start Axis and the next
-        \\Axis.
+        \\Lower the start axis to the return system. This command should not be
+        \\run if a slider is positioned between the start axis and the next
+        \\axis.
         ,
         .execute = &lowerStartAxis,
     });
     try command.registry.put(.{
         .name = "RAISE_END_AXIS",
-        .short_description = "Raise end Axis to upper motion system.",
+        .short_description = "Raise end axis to upper motion system.",
         .long_description =
-        \\Raise the end Axis to the motion system. This command should not be
+        \\Raise the end axis to the motion system. This command should not be
         \\run if the return system's belt is currently moving with an attached
         \\slider.
         ,
@@ -118,30 +118,30 @@ pub fn init(_: Config) !void {
     });
     try command.registry.put(.{
         .name = "LOWER_END_AXIS",
-        .short_description = "Lower end Axis to return system.",
+        .short_description = "Lower end axis to return system.",
         .long_description =
-        \\Lower the end Axis to the return system. This command should not be
-        \\run if a slider is positioned between the end Axis and the previous
-        \\Axis.
+        \\Lower the end axis to the return system. This command should not be
+        \\run if a slider is positioned between the end axis and the previous
+        \\axis.
         ,
         .execute = &lowerEndAxis,
     });
     try command.registry.put(.{
         .name = "BELT_MOVE_START",
-        .short_description = "Move the return system belt to the start Axis.",
+        .short_description = "Move the return system belt to the start axis.",
         .long_description =
-        \\Move the return system belt to the start Axis. This command should
-        \\not be used if the belt has an attached slider while the start Axis
+        \\Move the return system belt to the start axis. This command should
+        \\not be used if the belt has an attached slider while the start axis
         \\is not lowered.
         ,
         .execute = &beltMoveStart,
     });
     try command.registry.put(.{
         .name = "BELT_MOVE_END",
-        .short_description = "Move the return system belt to the end Axis.",
+        .short_description = "Move the return system belt to the end axis.",
         .long_description =
-        \\Move the return system belt to the end Axis. This command should
-        \\not be used if the belt has an attached slider while the end Axis
+        \\Move the return system belt to the end axis. This command should
+        \\not be used if the belt has an attached slider while the end axis
         \\is not lowered.
         ,
         .execute = &beltMoveEnd,

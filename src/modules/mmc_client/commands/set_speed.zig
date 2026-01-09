@@ -3,14 +3,11 @@ const client = @import("../../mmc_client.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 
-const Standard = client.Standard;
-const standard: Standard = .{};
-
 pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "set_speed");
     defer tracy_zone.end();
     const line_name: []const u8 = params[0];
-    const carrier_speed: f32 = try std.fmt.parseFloat(f32, params[1]) / 1000;
+    const carrier_speed = try std.fmt.parseFloat(f32, params[1]);
     if (carrier_speed < 0 or carrier_speed > 6) return error.InvalidSpeed;
     // from 0.0001 to 0.1 => low, 0.1 to 6.0 => normal mode.
     const low = carrier_speed < 0.1;
@@ -23,11 +20,10 @@ pub fn impl(params: [][]const u8) !void {
     };
 
     std.log.info(
-        "Set speed to {d} {s}",
+        "Set speed to {d} m/s.",
         .{
             @as(f32, @floatFromInt(client.lines[line_idx].velocity.value)) /
-                @as(f32, if (low) 10 else 0.01),
-            standard.speed.unit,
+                @as(f32, if (low) 10_000 else 10.0),
         },
     );
 }

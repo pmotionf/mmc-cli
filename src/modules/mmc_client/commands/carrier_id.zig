@@ -106,7 +106,7 @@ pub fn impl(params: [][]const u8) !void {
         for (axis_state.items) |axis| {
             if (axis.carrier == 0 or last_carrier == axis.carrier) continue;
             std.log.info(
-                "Carrier {d} on Line {s} Axis {d}",
+                "Carrier {d} on line {s} axis {d}",
                 .{ axis.carrier, line.name, axis.id },
             );
             if (save_var.len > 0) {

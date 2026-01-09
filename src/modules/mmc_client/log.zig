@@ -79,7 +79,7 @@ pub const Config = struct {
             var driver_range: Range = .{};
             var first_axis_entry = true;
             var first_driver_entry = true;
-            try stdout.interface.print("Axis: [", .{});
+            try stdout.interface.print("axis: [", .{});
             for (line.axes, 1..) |axis, axis_id| {
                 if (axis == false) {
                     if (axis_range.start == 0)

@@ -85,7 +85,7 @@ pub fn impl(params: [][]const u8) !void {
                 .bool => {
                     if (@field(err, field.name))
                         try writer.print(
-                            "{s} on Axis {d}\n",
+                            "{s} on axis {d}\n",
                             .{ field.name, err.id },
                         );
                 },
@@ -101,7 +101,7 @@ pub fn impl(params: [][]const u8) !void {
                 .bool => {
                     if (@field(err, field.name))
                         try writer.print(
-                            "{s} on Driver {d}\n",
+                            "{s} on driver {d}\n",
                             .{ field.name, err.id },
                         );
                 },
