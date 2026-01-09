@@ -126,3 +126,35 @@ fn parseTarget(
     }
     return error.InvalidTarget;
 }
+
+test parseTarget {
+    try std.testing.expectEqual(
+        api.protobuf.mmc.command.Request.Move.target_union{ .axis = 1 },
+        try parseTarget("1a"),
+    );
+    try std.testing.expectEqual(
+        api.protobuf.mmc.command.Request.Move.target_union{ .axis = 1 },
+        try parseTarget("1axis"),
+    );
+    try std.testing.expectEqual(
+        api.protobuf.mmc.command.Request.Move.target_union{ .location = 0.1 },
+        try parseTarget("0.1l"),
+    );
+    try std.testing.expectEqual(
+        api.protobuf.mmc.command.Request.Move.target_union{ .location = 0.1 },
+        try parseTarget("0.1location"),
+    );
+    try std.testing.expectEqual(
+        api.protobuf.mmc.command.Request.Move.target_union{ .distance = 0.1 },
+        try parseTarget("0.1d"),
+    );
+    try std.testing.expectEqual(
+        api.protobuf.mmc.command.Request.Move.target_union{ .distance = 0.1 },
+        try parseTarget("0.1distance"),
+    );
+    try std.testing.expectError(
+        std.fmt.ParseIntError.InvalidCharacter,
+        parseTarget("1.0a"),
+    );
+    try std.testing.expectError(error.InvalidTarget, parseTarget("1.0axi"));
+}
