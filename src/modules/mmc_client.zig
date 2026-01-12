@@ -820,7 +820,10 @@ pub fn init(c: Config) !void {
             \\Push a Carrier on the specified Axis. This movement targets a
             \\distance of Carrier length, and thus if it is used to cross a Line
             \\boundary, the receiving Axis at the destination Line must be in 
-            \\pulling state.
+            \\pulling state. Direction must be provided as:
+            \\- forward  (direction of increasing Axis number)
+            \\- backward (direction of decreasing Axis number)
+            \\
             \\Optional: Provide Carrier to move the specified Carrier to the center
             \\of the specified Axis, then push it according to direction.
         , .{}),
