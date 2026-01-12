@@ -790,20 +790,20 @@ pub fn init(c: Config) !void {
             .{ .name = "control mode", .optional = true },
         },
         .short_description = "Move carrier to specified target.",
-        .long_description =
-        \\Move initialized carrier to specified target. Provide target value 
-        \\followed by suffix to specify target movement (e.g., 1a). Supported 
-        \\suffixes are:
-        \\- "a" or "axis" to target Axis.
-        \\- "l" or "location" to target absolute location in Line, provided in 
-        \\  {s}.
-        \\- "d" or "distance" to target relative distance to current carrier 
-        \\  position, provided in {s}.
-        \\Optional: Provide "true" to disable CAS (Collision Avoidance System).
-        \\Optional: Provide followings to specify movement control mode:
-        \\- "speed" to move carrier with speed profile feedback.
-        \\- "position" to move carrier with position profile feedback.
-        ,
+        .long_description = std.fmt.comptimePrint(
+            \\Move initialized carrier to specified target. Provide target value
+            \\followed by suffix to specify target movement (e.g., 1a). Supported
+            \\suffixes are:
+            \\- "a" or "axis" to target Axis.
+            \\- "l" or "location" to target absolute location in Line, provided in
+            \\  {s}.
+            \\- "d" or "distance" to target relative distance to current carrier
+            \\  position, provided in {s}.
+            \\Optional: Provide "true" to disable CAS (Collision Avoidance System).
+            \\Optional: Provide followings to specify movement control mode:
+            \\- "speed" to move carrier with speed profile feedback.
+            \\- "position" to move carrier with position profile feedback.
+        , .{ standard.length.unit_short, standard.length.unit_short }),
         .execute = &commands.move.impl,
     } });
     errdefer command.registry.orderedRemove("MOVE_CARRIER");
