@@ -807,26 +807,26 @@ pub fn init(c: Config) !void {
         .execute = &commands.move.impl,
     } });
     errdefer command.registry.orderedRemove("MOVE_CARRIER");
-    try command.registry.put(.{ .executable = .{
-        .name = "PUSH_CARRIER_FORWARD",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-            .{ .name = "carrier", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "PUSH_CARRIER_FORWARD",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "Axis" },
+                .{ .name = "Carrier", .optional = true },
+            },
+            .short_description = "Push Carrier forward to specified Axis.",
+            .long_description = std.fmt.comptimePrint(
+                \\Push a Carrier on the specified Axis forward. This movement targets a
+                \\distance of the Carrier length, and thus if it is used to cross a Line
+                \\boundary, the receiving Axis at the destination Line must first be
+                \\pulling the Carrier.
+                \\Optional: Provide Carrier to move the specified Carrier to the center
+                \\of the specified Axis, then push forward.
+            , .{}),
+            .execute = &commands.push.forward,
         },
-        .short_description = "Push carrier forward on the specified axis.",
-        .long_description =
-        \\Push a carrier located on the center of the specified axis forward
-        \\with speed feedback-controlled movement. This movement targets a
-        \\distance of the carrier length, and thus if it is used to cross a line
-        \\boundary, the receiving axis at the destination line must first be
-        \\pulling the carrier. Providing the optional "carrier" parameter will
-        \\move the carrier to the center of the specified axis and push it
-        \\forward.
-        ,
-        .execute = &commands.push.forward,
-    } });
-    errdefer command.registry.orderedRemove("PUSH_CARRIER_FORWARD");
+    });
     try command.registry.put(.{
         .executable = .{
             .name = "PUSH_CARRIER_BACKWARD",
