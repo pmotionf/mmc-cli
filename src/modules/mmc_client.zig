@@ -815,7 +815,7 @@ pub fn init(c: Config) !void {
             .{ .name = "direction" },
             .{ .name = "Carrier", .optional = true },
         },
-        .short_description = "Push carrier on the specified axis.",
+        .short_description = "Push carrier on the specified Axis.",
         .long_description = std.fmt.comptimePrint(
             \\Push a Carrier on the specified Axis. This movement targets a
             \\distance of Carrier length, and thus if it is used to cross a Line
