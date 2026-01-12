@@ -957,21 +957,23 @@ pub fn init(c: Config) !void {
             .{ .name = "disable CAS", .optional = true },
         },
         .short_description = "Pull incoming Carrier.",
-        .long_description =
-        \\Initialize and move incoming Carrier to specified Axis. Assign the 
-        \\specified Carrier ID for pulled Carrier. There must be no Carrier on 
-        \\pulling Axis. Direction must be provided as:
-        \\- "forward" when pulling Carrier on the first Axis, or
-        \\- "backward" when pulling Carrier on the last Axis.
-        \\Optional: Provide location to move Carrier after completed pulling 
-        \\Carrier. Location must be provided as:
-        \\- {s} (move Carrier to specified location after pulled to specified 
-        \\  Axis), or
-        \\- "nan" (Carrier can move through external force after pulled to 
-        \\  specified Axis).
-        \\Optional: Provide "true" to disable CAS (Collision Avoidance System)
-        \\while Carrier is being moved to location.
-        ,
+        .long_description = std.fmt.comptimePrint(
+            \\Initialize and move incoming Carrier to specified Axis. Assign the 
+            \\specified Carrier ID for pulled Carrier. There must be no Carrier on 
+            \\pulling Axis. Direction must be provided as:
+            \\- "forward" when pulling Carrier on the first Axis, or
+            \\- "backward" when pulling Carrier on the last Axis.
+            \\
+            \\Optional: Provide location to move Carrier after completed pulling 
+            \\Carrier. Location must be provided as:
+            \\- {s} (move Carrier to specified location after pulled to specified 
+            \\  Axis), or
+            \\- "nan" (Carrier can move through external force after pulled to 
+            \\  specified Axis).
+            \\
+            \\Optional: Provide "true" to disable CAS (Collision Avoidance System)
+            \\while Carrier is being moved to location.
+        , .{standard.length.unit_short}),
         .execute = &commands.pull.impl,
     } });
     errdefer command.registry.orderedRemove("PULL_CARRIER");
