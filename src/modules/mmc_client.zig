@@ -786,7 +786,7 @@ pub fn init(c: Config) !void {
             .{ .name = "Line" },
             .{ .name = "Carrier" },
             .{ .name = "target" },
-            .{ .name = "disable cas", .optional = true },
+            .{ .name = "disable CAS", .optional = true },
             .{ .name = "control mode", .optional = true },
         },
         .short_description = "Move Carrier to specified target.",
