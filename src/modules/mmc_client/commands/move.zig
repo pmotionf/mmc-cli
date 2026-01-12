@@ -90,11 +90,17 @@ fn parseTarget(
             };
         } else if (std.ascii.eqlIgnoreCase(param[suffix_idx..], "l")) {
             return .{
-                .location = try std.fmt.parseFloat(f32, param[0..suffix_idx]),
+                .location = try std.fmt.parseFloat(
+                    f32,
+                    param[0..suffix_idx],
+                ) / 1000.0,
             };
         } else if (std.ascii.eqlIgnoreCase(param[suffix_idx..], "d")) {
             return .{
-                .distance = try std.fmt.parseFloat(f32, param[0..suffix_idx]),
+                .distance = try std.fmt.parseFloat(
+                    f32,
+                    param[0..suffix_idx],
+                ) / 1000.0,
             };
         }
     }
@@ -115,13 +121,19 @@ fn parseTarget(
         std.ascii.eqlIgnoreCase(param[suffix_idx..], "location"))
     {
         return .{
-            .location = try std.fmt.parseFloat(f32, param[0..suffix_idx]),
+            .location = try std.fmt.parseFloat(
+                f32,
+                param[0..suffix_idx],
+            ) / 1000.0,
         };
     }
     // Check for `distance` suffix
     else if (std.ascii.eqlIgnoreCase(param[suffix_idx..], "distance")) {
         return .{
-            .distance = try std.fmt.parseFloat(f32, param[0..suffix_idx]),
+            .distance = try std.fmt.parseFloat(
+                f32,
+                param[0..suffix_idx],
+            ) / 1000.0,
         };
     }
     return error.InvalidTarget;
@@ -138,19 +150,19 @@ test parseTarget {
     );
     try std.testing.expectEqual(
         api.protobuf.mmc.command.Request.Move.target_union{ .location = 0.1 },
-        try parseTarget("0.1l"),
+        try parseTarget("100l"),
     );
     try std.testing.expectEqual(
         api.protobuf.mmc.command.Request.Move.target_union{ .location = 0.1 },
-        try parseTarget("0.1location"),
+        try parseTarget("100location"),
     );
     try std.testing.expectEqual(
         api.protobuf.mmc.command.Request.Move.target_union{ .distance = 0.1 },
-        try parseTarget("0.1d"),
+        try parseTarget("100d"),
     );
     try std.testing.expectEqual(
         api.protobuf.mmc.command.Request.Move.target_union{ .distance = 0.1 },
-        try parseTarget("0.1distance"),
+        try parseTarget("100distance"),
     );
     try std.testing.expectError(
         std.fmt.ParseIntError.InvalidCharacter,
