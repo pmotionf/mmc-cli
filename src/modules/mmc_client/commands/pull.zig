@@ -4,24 +4,7 @@ const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn forward(params: [][]const u8) !void {
-    const tracy_zone = tracy.traceNamed(@src(), "pull_forward");
-    defer tracy_zone.end();
-    errdefer client.log.stop.store(true, .monotonic);
-    try impl(params, .DIRECTION_FORWARD);
-}
-
-pub fn backward(params: [][]const u8) !void {
-    const tracy_zone = tracy.traceNamed(@src(), "pull_backward");
-    defer tracy_zone.end();
-    errdefer client.log.stop.store(true, .monotonic);
-    try impl(params, .DIRECTION_BACKWARD);
-}
-
-fn impl(
-    params: [][]const u8,
-    dir: api.protobuf.mmc.command.Request.Direction,
-) !void {
+pub fn impl(params: [][]const u8) !void {
     if (client.sock == null) return error.ServerNotConnected;
     const line_name = params[0];
     const axis_id = try std.fmt.parseInt(u32, buf: {
@@ -52,8 +35,15 @@ fn impl(
             break :b input[0..ignore_idx];
         } else break :b input;
     }, 0);
-    const destination: ?f32 = if (params[3].len > 0)
-        try std.fmt.parseFloat(f32, params[3]) / 1000.0
+    const dir: api.protobuf.mmc.command.Request.Direction =
+        if (std.mem.eql(u8, "forward", params[3]))
+            .DIRECTION_FORWARD
+        else if (std.mem.eql(u8, "backward", params[3]))
+            .DIRECTION_BACKWARD
+        else
+            return error.InvalidDirection;
+    const destination: ?f32 = if (params[4].len > 0)
+        try std.fmt.parseFloat(f32, params[4]) / 1000.0
     else
         null;
 
@@ -64,9 +54,9 @@ fn impl(
 
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const disable_cas = if (params[4].len == 0)
+    const disable_cas = if (params[5].len == 0)
         false
-    else if (std.ascii.eqlIgnoreCase("true", params[4]))
+    else if (std.ascii.eqlIgnoreCase("true", params[5]))
         true
     else
         return error.InvalidCasConfiguration;
