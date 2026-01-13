@@ -4,25 +4,7 @@ const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn forward(params: [][]const u8) !void {
-    const tracy_zone = tracy.traceNamed(@src(), "push_forward");
-    defer tracy_zone.end();
-    errdefer client.log.stop.store(true, .monotonic);
-    try impl(params, .DIRECTION_FORWARD);
-}
-
-pub fn backward(params: [][]const u8) !void {
-    const tracy_zone = tracy.traceNamed(@src(), "push_backward");
-    defer tracy_zone.end();
-    errdefer client.log.stop.store(true, .monotonic);
-    try impl(params, .DIRECTION_BACKWARD);
-}
-
-fn impl(
-    params: [][]const u8,
-    comptime dir: api.protobuf.mmc.command.Request.Direction,
-) !void {
-    if (dir == .DIRECTION_UNSPECIFIED) @compileError("InvalidDirection");
+pub fn impl(params: [][]const u8) !void {
     if (client.sock == null) return error.ServerNotConnected;
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
@@ -41,8 +23,15 @@ fn impl(
             break :buf input[0..ignore_idx];
         } else break :buf input;
     }, 0);
-    const carrier_id: ?u32 = if (params[2].len > 0) try std.fmt.parseInt(u10, b: {
-        const input = params[2];
+    const dir: api.protobuf.mmc.command.Request.Direction =
+        if (std.mem.eql(u8, "forward", params[2]))
+            .DIRECTION_FORWARD
+        else if (std.mem.eql(u8, "backward", params[2]))
+            .DIRECTION_BACKWARD
+        else
+            return error.InvalidDirection;
+    const carrier_id: ?u32 = if (params[3].len > 0) try std.fmt.parseInt(u10, b: {
+        const input = params[3];
         var suffix: ?usize = null;
         for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
             // Only valid suffix for carrier id is either 'c' or "carrier".

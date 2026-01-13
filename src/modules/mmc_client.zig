@@ -807,47 +807,29 @@ pub fn init(c: Config) !void {
         .execute = &commands.move.impl,
     } });
     errdefer command.registry.orderedRemove("MOVE_CARRIER");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "PUSH_CARRIER_FORWARD",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
-                .{ .name = "Axis" },
-                .{ .name = "Carrier", .optional = true },
-            },
-            .short_description = "Push Carrier forward to specified Axis.",
-            .long_description = std.fmt.comptimePrint(
-                \\Push a Carrier on the specified Axis forward. This movement targets a
-                \\distance of the Carrier length, and thus if it is used to cross a Line
-                \\boundary, the receiving Axis at the destination Line must first be
-                \\pulling the Carrier.
-                \\Optional: Provide Carrier to move the specified Carrier to the center
-                \\of the specified Axis, then push forward.
-            , .{}),
-            .execute = &commands.push.forward,
+    try command.registry.put(.{ .executable = .{
+        .name = "PUSH_CARRIER",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line" },
+            .{ .name = "Axis" },
+            .{ .name = "direction" },
+            .{ .name = "Carrier", .optional = true },
         },
-    });
-    try command.registry.put(.{
-        .executable = .{
-            .name = "PUSH_CARRIER_BACKWARD",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
-                .{ .name = "Axis" },
-                .{ .name = "Carrier", .optional = true },
-            },
-            .short_description = "Push Carrier backward to specified Axis.",
-            .long_description = std.fmt.comptimePrint(
-                \\Push a Carrier on the specified Axis backward. This movement targets a
-                \\distance of the Carrier length, and thus if it is used to cross a Line
-                \\boundary, the receiving Axis at the destination Line must first be
-                \\pulling the Carrier.
-                \\Optional: Provide Carrier to move the specified Carrier to the center
-                \\of the specified Axis, then push forward.
-            , .{}),
-            .execute = &commands.push.backward,
-        },
-    });
-    errdefer command.registry.orderedRemove("PUSH_CARRIER_BACKWARD");
+        .short_description = "Push Carrier on the specified Axis.",
+        .long_description = std.fmt.comptimePrint(
+            \\Push a Carrier on the specified Axis. This movement targets a
+            \\distance of Carrier length, and thus if it is used to cross a Line
+            \\boundary, the receiving Axis at the destination Line must be in 
+            \\pulling state. Direction must be provided as:
+            \\- forward  (direction of increasing Axis number)
+            \\- backward (direction of decreasing Axis number)
+            \\
+            \\Optional: Provide Carrier to move the specified Carrier to the center
+            \\of the specified Axis, then push it according to direction.
+        , .{}),
+        .execute = &commands.push.impl,
+    } });
+    errdefer command.registry.orderedRemove("PUSH_CARRIER");
     try command.registry.put(.{ .executable = .{
         .name = "PULL_CARRIER",
         .parameters = &[_]command.Command.Executable.Parameter{
