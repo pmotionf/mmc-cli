@@ -958,9 +958,10 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Pull incoming Carrier.",
         .long_description = std.fmt.comptimePrint(
-            \\Initialize and move incoming Carrier to specified Axis. Assign the 
-            \\specified Carrier ID for pulled Carrier. There must be no Carrier on 
-            \\pulling Axis. Direction must be provided as:
+            \\Sets the specified Axis to a pulling state, enabling Axis to initialize 
+            \\and move incoming carrier to specified Axis. The pulled Carrier is 
+            \\assigned with the specified Carrier ID. There must be no Carrier on 
+            \\pulling Axis upon invocation. Direction must be provided as:
             \\ - forward  (direction of increasing Axis number)
             \\ - backward (direction of decreasing Axis number)
             \\
