@@ -257,6 +257,8 @@ pub fn logFn(
 }
 
 pub fn init() !void {
+    // Remove upon completion. Required to trigger test
+    _ = mmc_client.Parameter;
     arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     allocator = arena.allocator();
 

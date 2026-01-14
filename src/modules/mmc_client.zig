@@ -9,7 +9,6 @@ const command = @import("../command.zig");
 pub const Line = @import("mmc_client/Line.zig");
 pub const log = @import("mmc_client/log.zig");
 pub const zignet = @import("zignet");
-// pub const api = @import("mmc_client/api.zig");
 pub const api = @import("mmc-api");
 
 const commands = struct {
@@ -143,6 +142,325 @@ pub const error_response = struct {
         };
     }
 };
+// TODO: Support auto completion
+/// Parameter parsing rules. Use `isInvalid()` function to check if value of
+/// parameter kind is valid.
+pub const Parameter = struct {
+    /// Store every parameter's possible value. Not intended to be accessed directly. Use Parameter's function as the interface for parameter value.
+    value: struct {
+        line: LineName,
+        axis: struct {
+            fn isValid(_: *@This(), input: []const u8) bool {
+                const axis = std.fmt.parseUnsigned(u32, input, 0) catch
+                    return false;
+                return (axis > 0 and axis <= Line.max_axis);
+            }
+        },
+        carrier: struct {
+            fn isValid(_: *@This(), input: []const u8) bool {
+                const axis = std.fmt.parseUnsigned(u32, input, 0) catch
+                    return false;
+                if (axis > 0 and axis <= Line.max_axis) return true;
+                return false;
+            }
+        },
+        direction: Direction,
+        cas: Cas,
+        link_axis: LinkAxis,
+        variable: struct {
+            fn isValid(_: *@This(), input: []const u8) bool {
+                return std.ascii.isAlphabetic(input[0]);
+            }
+        },
+        hall_state: hall.State,
+        hall_side: hall.Side,
+        filter: struct {
+            fn isValid(_: *@This(), input: []const u8) bool {
+                var suffix_idx: usize = 0;
+                for (input) |c| {
+                    if (std.ascii.isDigit(c)) suffix_idx += 1 else break;
+                }
+                // No digit is recognized.
+                if (suffix_idx == 0) return false;
+
+                const id = std.fmt.parseUnsigned(
+                    u32,
+                    input[0..suffix_idx],
+                    0,
+                ) catch return false; // Invalid ID
+                // Check for single character suffix.
+                if (input.len - suffix_idx == 1) {
+                    if (std.ascii.eqlIgnoreCase(input[suffix_idx..], "a") or
+                        std.ascii.eqlIgnoreCase(input[suffix_idx..], "c"))
+                        return (id > 0 and id <= Line.max_axis)
+                    else if (std.ascii.eqlIgnoreCase(input[suffix_idx..], "d"))
+                        return (id > 0 and id <= Line.max_driver)
+                    else
+                        return false;
+                }
+                // Check for `axis` suffix
+                else if (input.len - suffix_idx == 4 and
+                    std.ascii.eqlIgnoreCase(input[suffix_idx..], "axis"))
+                    return (id > 0 and id <= Line.max_axis)
+                    // Check for `carrier` suffix
+                else if (std.ascii.eqlIgnoreCase(
+                    input[suffix_idx..],
+                    "carrier",
+                ))
+                    return (id > 0 and id <= Line.max_axis)
+                    // Check for `driver` suffix
+                else if (input.len - suffix_idx == 6 and
+                    std.ascii.eqlIgnoreCase(input[suffix_idx..], "driver"))
+                    return (id > 0 and id <= Line.max_driver)
+                else
+                    return false;
+            }
+        },
+        control_mode: Control,
+        target: struct {
+            fn isValid(_: *@This(), input: []const u8) bool {
+                var suffix_idx: usize = 0;
+                for (input) |c| {
+                    if (std.ascii.isAlphabetic(c)) break else suffix_idx += 1;
+                }
+                // No digit is recognized.
+                if (suffix_idx == 0) return false;
+                // Check for single character suffix.
+                if (input.len - suffix_idx == 1) {
+                    if (std.ascii.eqlIgnoreCase(input[suffix_idx..], "a")) {
+                        const axis = std.fmt.parseUnsigned(
+                            u32,
+                            input[0..suffix_idx],
+                            0,
+                        ) catch return false;
+                        return (axis > 0 and axis <= Line.max_axis);
+                    } else if (std.ascii.eqlIgnoreCase(input[suffix_idx..], "l")) {
+                        _ = std.fmt.parseFloat(f32, input[0..suffix_idx]) catch
+                            return false;
+                        return true;
+                    } else if (std.ascii.eqlIgnoreCase(input[suffix_idx..], "d")) {
+                        _ = std.fmt.parseFloat(f32, input[0..suffix_idx]) catch
+                            return false;
+                        return true;
+                    }
+                    return false;
+                }
+                // Check for `axis` suffix
+                else if (input.len - suffix_idx == 4 and
+                    std.ascii.eqlIgnoreCase(input[suffix_idx..], "axis"))
+                {
+                    const axis = std.fmt.parseUnsigned(
+                        u32,
+                        input[0..suffix_idx],
+                        0,
+                    ) catch return false;
+                    return (axis > 0 and axis <= Line.max_axis);
+                }
+                // Check for `location` suffix
+                else if (input.len - suffix_idx == 8 and
+                    std.ascii.eqlIgnoreCase(input[suffix_idx..], "location"))
+                {
+                    _ = std.fmt.parseFloat(f32, input[0..suffix_idx]) catch
+                        return false;
+                    return true;
+                }
+                // Check for `distance` suffix
+                else if (std.ascii.eqlIgnoreCase(input[suffix_idx..], "distance")) {
+                    _ = std.fmt.parseFloat(f32, input[0..suffix_idx]) catch
+                        return false;
+                    return true;
+                } else return false;
+            }
+        },
+        log_kind: LogKind,
+
+        const LineName = struct {
+            items: std.BufSet,
+
+            /// Create a bufset for storing recognized line names of connected
+            /// server.
+            fn init(a: std.mem.Allocator) @This() {
+                return .{ .items = std.BufSet.init(a) };
+            }
+
+            /// Free stored line names and invalidate the field.
+            fn deinit(self: *@This()) void {
+                self.items.deinit();
+                self.* = undefined;
+            }
+
+            // Remove all stored lines without invalidating the field.
+            fn reset(self: *@This()) void {
+                var it = self.items.hash_map.iterator();
+                while (it.next()) |items| {
+                    self.items.remove(items.key_ptr.*);
+                }
+                std.debug.assert(self.items.count() == 0);
+            }
+
+            /// Assert the parameter is a valid line name
+            fn isValid(self: *@This(), input: []const u8) bool {
+                // Invalidate if not connected to server.
+                if (builtin.is_test == false and sock == null) return false;
+                return self.items.contains(input);
+            }
+        };
+
+        const Direction = enum {
+            forward,
+            backward,
+
+            fn isValid(_: *@This(), input: []const u8) bool {
+                const ti = @typeInfo(@This()).@"enum";
+                inline for (ti.fields) |field| {
+                    if (std.mem.eql(u8, field.name, input)) return true;
+                }
+                return false;
+            }
+        };
+
+        const Cas = enum {
+            enable,
+            disable,
+
+            fn isValid(_: *@This(), input: []const u8) bool {
+                const ti = @typeInfo(@This()).@"enum";
+                inline for (ti.fields) |field| {
+                    if (std.mem.eql(u8, field.name, input)) return true;
+                }
+                return false;
+            }
+        };
+
+        const LinkAxis = enum {
+            next,
+            prev,
+            right,
+            left,
+
+            fn isValid(_: *@This(), input: []const u8) bool {
+                const ti = @typeInfo(@This()).@"enum";
+                inline for (ti.fields) |field| {
+                    if (std.mem.eql(u8, field.name, input)) return true;
+                }
+                return false;
+            }
+        };
+
+        const hall = struct {
+            const State = enum {
+                on,
+                off,
+
+                fn isValid(_: *@This(), input: []const u8) bool {
+                    const ti = @typeInfo(@This()).@"enum";
+                    inline for (ti.fields) |field| {
+                        if (std.mem.eql(u8, field.name, input)) return true;
+                    }
+                    return false;
+                }
+            };
+
+            const Side = enum {
+                front,
+                back,
+
+                fn isValid(_: *@This(), input: []const u8) bool {
+                    const ti = @typeInfo(@This()).@"enum";
+                    inline for (ti.fields) |field| {
+                        if (std.mem.eql(u8, field.name, input)) return true;
+                    }
+                    return false;
+                }
+            };
+        };
+
+        const Control = enum {
+            speed,
+            position,
+
+            fn isValid(_: *@This(), input: []const u8) bool {
+                const ti = @typeInfo(@This()).@"enum";
+                inline for (ti.fields) |field| {
+                    if (std.mem.eql(u8, field.name, input)) return true;
+                }
+                return false;
+            }
+        };
+
+        const LogKind = enum {
+            axis,
+            driver,
+            all,
+
+            fn isValid(_: *@This(), input: []const u8) bool {
+                const ti = @typeInfo(@This()).@"enum";
+                inline for (ti.fields) |field| {
+                    if (std.mem.eql(u8, field.name, input)) return true;
+                }
+                return false;
+            }
+        };
+    },
+
+    const Kind = enum {
+        line,
+        axis,
+        carrier,
+        direction,
+        cas,
+        link_axis,
+        variable,
+        hall_state,
+        hall_side,
+        filter,
+        control_mode,
+        target,
+        log_kind,
+    };
+    /// Initialize required memory for storing runtime-known variables. Zero
+    /// value initialization for comptime-known variables.
+    pub fn init(a: std.mem.Allocator) @This() {
+        var res: @This() = .{
+            .value = std.mem.zeroInit(
+                @FieldType(Parameter, "value"),
+                .{ .line = .{undefined} },
+            ),
+        };
+        // If a field has init function, invoke init function.
+        inline for (@typeInfo(@TypeOf(res.value)).@"struct".fields) |field| {
+            if (@hasDecl(field.type, "init")) {
+                @field(res.value, field.name) = field.type.init(a);
+            }
+        }
+        return res;
+    }
+
+    /// Free all stored runtime-known parameters and invalidate parameter.
+    pub fn deinit(self: *@This()) void {
+        inline for (@typeInfo(@TypeOf(self.value)).@"struct".fields) |field| {
+            if (@hasDecl(field.type, "deinit")) {
+                @field(self.value, field.name).deinit();
+            }
+        }
+        self.* = undefined;
+    }
+
+    /// Check if the input is valid for the given kind.
+    pub fn isValid(self: *@This(), kind: Kind, input: []const u8) bool {
+        return switch (kind) {
+            inline else => |tag| @field(self.value, @tagName(tag)).isValid(input),
+        };
+    }
+
+    /// Free all stored runtime-known parameters without invalidating the field.
+    pub fn reset(self: *@This()) void {
+        inline for (@typeInfo(@TypeOf(self.value)).@"struct".fields) |field| {
+            if (@hasDecl(field.type, "reset")) {
+                @field(self.value, field.name) = @field(field.type, "reset");
+            }
+        }
+    }
 
 pub const Filter = union(enum) {
     carrier: [1]u32,
