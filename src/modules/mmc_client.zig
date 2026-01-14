@@ -937,8 +937,8 @@ pub fn init(c: Config) !void {
                 \\  {s}.
                 \\- "d" or "distance" to target relative distance to current Carrier
                 \\  position, provided in {s}.
-                \\Optional: Provide "enable" or "disable" to specify CAS (Collision 
-                \\Avoidance System) activation (enabled by default).
+                \\Optional: Provide "on" or "off" to specify CAS (Collision Avoidance 
+                \\System) activation (enabled by default).
                 \\Optional: Provide following to specify movement control mode:
                 \\- "speed" to move Carrier with speed profile feedback.
                 \\- "position" to move Carrier with position profile feedback.
@@ -948,11 +948,11 @@ pub fn init(c: Config) !void {
                 \\
                 \\Example: Move Carrier "2" to location 150 {s} on Line "line1" and disable
                 \\CAS.
-                \\MOVE_CARRIER line1 2 150l disable
+                \\MOVE_CARRIER line1 2 150l off
                 \\
                 \\Example: Move Carrier "2" to location 150 {s} on Line "line1" and move
                 \\Carrier with speed profile feedback.
-                \\MOVE_CARRIER line1 2 150l enable speed
+                \\MOVE_CARRIER line1 2 150l on speed
             , .{
                 standard.length.unit_short,
                 standard.length.unit_short,
@@ -1021,7 +1021,7 @@ pub fn init(c: Config) !void {
             \\- "nan" (Carrier can move through external force after pulled to
             \\  specified Axis).
             \\
-            \\Optional: Provide "enable" or "disable" to specify CAS (Collision 
+            \\Optional: Provide "on" or "off" to specify CAS (Collision 
             \\Avoidance System) activation (enabled by default) while Carrier is 
             \\being moved to specified location.
             \\
@@ -1035,9 +1035,9 @@ pub fn init(c: Config) !void {
             \\PULL_CARRIER line2 1 123 forward 1500
             \\
             \\Example: Pull Carrier to Line "line2" from Line "line1", assign Carrier ID
-            \\to "123", and move Carrier "123" to location 1500 {s} with CAS disabled
+            \\to "123", and move Carrier "123" to location 1500 {s} with CAS deactivated
             \\upon recognized on Line "line2".
-            \\PULL_CARRIER line2 1 123 forward 1500 disable
+            \\PULL_CARRIER line2 1 123 forward 1500 off
         , .{
             standard.length.unit_long,
             standard.length.unit_short,
