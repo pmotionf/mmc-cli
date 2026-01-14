@@ -1023,18 +1023,18 @@ pub fn init(c: Config) !void {
             \\Optional: Provide "true" to disable CAS (Collision Avoidance System)
             \\while Carrier is being moved to location.
             \\
-            \\Example: Pull Carrier to Axis "1" on Line "line2" from Line "line1" and
+            \\Example: Pull Carrier onto Axis "1" on Line "line2" from Line "line1" and
             \\assign Carrier ID to "123".
             \\PULL_CARRIER line2 1 123 forward
             \\
-            \\Example: Pull Carrier to Axis "1" on Line "line2" from Line "line1",
-            \\assign Carrier ID to "123" and move Carrier "123" to location 1500 {s} upon
-            \\recognized on Line "line2".
+            \\Example: Pull Carrier to Line "line2" from Line "line1", assign Carrier ID
+            \\to "123" and move Carrier "123" to location 1500 {s} upon recognized on
+            \\Line "line2".
             \\PULL_CARRIER line2 1 123 forward 1500
             \\
-            \\Example: Pull Carrier to Axis "1" on Line "line2" from Line "line1",
-            \\assign Carrier ID to "123". After pull move Carrier "123" to location 1500
-            \\{s} and disable CAS.
+            \\Example: Pull Carrier to Line "line2" from Line "line1", assign Carrier ID
+            \\to "123", and move Carrier "123" to location 1500 {s} with CAS disabled
+            \\upon recognized on Line "line2".
             \\PULL_CARRIER line2 1 123 forward 1500 true
         , .{
             standard.length.unit_long,
