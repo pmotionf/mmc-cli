@@ -462,6 +462,86 @@ pub const Parameter = struct {
         }
     }
 
+    test "Parameter `Kind` and `value` matching" {
+        const ValueType = @FieldType(Parameter, "value");
+        // Check if every value fields has representation in Kind.
+        inline for (@typeInfo(Parameter.Kind).@"enum".fields) |field| {
+            try std.testing.expect(@hasField(ValueType, field.name));
+        }
+        // Check if every value`s fields have representation in Kind.
+        inline for (@typeInfo(ValueType).@"struct".fields) |field| {
+            try std.testing.expect(@hasField(Parameter.Kind, field.name));
+        }
+    }
+
+    test isValid {
+        var res: Parameter = .init(std.testing.allocator);
+        defer res.deinit();
+        // Validate line names
+        try res.value.line.items.insert("left");
+        try res.value.line.items.insert("right");
+        try std.testing.expect(res.isValid(.line, "left"));
+        try std.testing.expect(res.isValid(.line, "right"));
+        try std.testing.expect(res.isValid(.line, "leftt") == false);
+        // Validate axis
+        try std.testing.expect(res.isValid(.axis, "768"));
+        try std.testing.expect(res.isValid(.axis, "0") == false);
+        try std.testing.expect(res.isValid(.axis, "769") == false);
+        // Validate carrier
+        try std.testing.expect(res.isValid(.carrier, "768"));
+        try std.testing.expect(res.isValid(.carrier, "0") == false);
+        try std.testing.expect(res.isValid(.carrier, "769") == false);
+        // Validate direction
+        try std.testing.expect(res.isValid(.direction, "forward"));
+        try std.testing.expect(res.isValid(.direction, "backward"));
+        try std.testing.expect(res.isValid(.direction, "769") == false);
+        // Validate CAS
+        try std.testing.expect(res.isValid(.cas, "enable"));
+        try std.testing.expect(res.isValid(.cas, "disable"));
+        try std.testing.expect(res.isValid(.cas, "forward") == false);
+        // Validate link axis
+        try std.testing.expect(res.isValid(.link_axis, "next"));
+        try std.testing.expect(res.isValid(.link_axis, "prev"));
+        try std.testing.expect(res.isValid(.link_axis, "left"));
+        try std.testing.expect(res.isValid(.link_axis, "right"));
+        try std.testing.expect(res.isValid(.link_axis, "forward") == false);
+        // Validate variable
+        try std.testing.expect(res.isValid(.variable, "next"));
+        try std.testing.expect(res.isValid(.variable, "var"));
+        try std.testing.expect(res.isValid(.variable, "c"));
+        try std.testing.expect(res.isValid(.variable, "carrier"));
+        try std.testing.expect(res.isValid(.variable, "1c") == false);
+        // Validate hall state
+        try std.testing.expect(res.isValid(.hall_state, "on"));
+        try std.testing.expect(res.isValid(.hall_state, "off"));
+        try std.testing.expect(res.isValid(.hall_state, "forward") == false);
+        // Validate hall side
+        try std.testing.expect(res.isValid(.hall_side, "back"));
+        try std.testing.expect(res.isValid(.hall_side, "front"));
+        try std.testing.expect(res.isValid(.hall_side, "forward") == false);
+        // Validate filter
+        try std.testing.expect(res.isValid(.filter, "1c"));
+        try std.testing.expect(res.isValid(.filter, "2a"));
+        try std.testing.expect(res.isValid(.filter, "d") == false);
+        try std.testing.expect(res.isValid(.filter, "0.1d") == false);
+        // Validate control mode
+        try std.testing.expect(res.isValid(.control_mode, "speed"));
+        try std.testing.expect(res.isValid(.control_mode, "position"));
+        try std.testing.expect(res.isValid(.control_mode, "velocity") == false);
+        // Validate target
+        try std.testing.expect(res.isValid(.target, "1a"));
+        try std.testing.expect(res.isValid(.target, "2l"));
+        try std.testing.expect(res.isValid(.target, "3.5d"));
+        try std.testing.expect(res.isValid(.target, "d") == false);
+        try std.testing.expect(res.isValid(.target, "0.1a") == false);
+        // Validate log kind
+        try std.testing.expect(res.isValid(.log_kind, "axis"));
+        try std.testing.expect(res.isValid(.log_kind, "driver"));
+        try std.testing.expect(res.isValid(.log_kind, "all"));
+        try std.testing.expect(res.isValid(.log_kind, "d") == false);
+    }
+};
+
 pub const Filter = union(enum) {
     carrier: [1]u32,
     driver: u32,
