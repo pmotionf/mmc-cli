@@ -28,9 +28,9 @@ pub fn impl(params: [][]const u8) !void {
     const target = try parseTarget(params[2]);
     const disable_cas = if (params[3].len == 0)
         false
-    else if (std.ascii.eqlIgnoreCase("false", params[3]))
+    else if (std.ascii.eqlIgnoreCase("on", params[3]))
         false
-    else if (std.ascii.eqlIgnoreCase("true", params[3]))
+    else if (std.ascii.eqlIgnoreCase("off", params[3]))
         true
     else
         return error.InvalidCasConfiguration;
