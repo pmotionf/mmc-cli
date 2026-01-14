@@ -297,9 +297,13 @@ pub fn init(c: Config) !void {
             .long_description = std.fmt.comptimePrint(
                 \\Set Carrier speed of specified Line. The speed value must be
                 \\greater than {d} and less than or equal to {d} {s}.
+                \\
+                \\Example: Set speed of Line "line1" to 300 {s}.
+                \\SET_SPEED line1 300
             , .{
                 standard.speed.range.min,
                 standard.speed.range.max,
+                standard.speed.unit,
                 standard.speed.unit,
             }),
             .execute = &commands.set_speed.impl,
@@ -317,9 +321,13 @@ pub fn init(c: Config) !void {
             .long_description = std.fmt.comptimePrint(
                 \\Set Carrier acceleration of specified Line. The acceleration value
                 \\must be greater than {d} and less than or equal to {d} {s}.
+                \\
+                \\Example: Set acceleration of Line "line1" to 200 {s}.
+                \\SET_ACCELERATION line1 200
             , .{
                 standard.acceleration.range.min,
                 standard.acceleration.range.max,
+                standard.acceleration.unit,
                 standard.acceleration.unit,
             }),
             .execute = &commands.set_acceleration.impl,
@@ -335,6 +343,9 @@ pub fn init(c: Config) !void {
             .short_description = "Print Carrier speed of the specified Line",
             .long_description = std.fmt.comptimePrint(
                 \\Print Carrier speed of specified Line.
+                \\
+                \\Example: Print speed of Line "line1".
+                \\GET_SPEED line1
             , .{}),
             .execute = &commands.get_speed.impl,
         },
@@ -349,6 +360,9 @@ pub fn init(c: Config) !void {
             .short_description = "Print Carrier acceleration of the specified Line",
             .long_description = std.fmt.comptimePrint(
                 \\Print Carrier acceleration of the specified Line.
+                \\
+                \\Example: Print acceleration of Line "line1".
+                \\GET_ACCELERATION line1
             , .{}),
             .execute = &commands.get_acceleration.impl,
         },
@@ -369,6 +383,9 @@ pub fn init(c: Config) !void {
                 \\ - "a" or "axis" to filter by Axis
                 \\ - "c" or "carrier" to filter by Carrier
                 \\ - "d" or "driver" to filter by Driver
+                \\
+                \\Example: Print Axis information of Axis "1" on Line "line1".
+                \\PRINT_AXIS_INFO line1 1a
             , .{}),
             .execute = &commands.print_axis_info.impl,
         },
@@ -389,6 +406,9 @@ pub fn init(c: Config) !void {
                 \\ - "a" or "axis" to filter by Axis
                 \\ - "c" or "carrier" to filter by Carrier
                 \\ - "d" or "driver" to filter by Driver
+                \\
+                \\Example: Get Driver information of Driver "2" on Line "line1".
+                \\PRINT_DRIVER_INFO line1 2d
             , .{}),
             .execute = &commands.print_driver_info.impl,
         },
@@ -410,6 +430,12 @@ pub fn init(c: Config) !void {
                 \\ - "a" or "axis" to filter by Axis
                 \\ - "c" or "carrier" to filter by Carrier
                 \\ - "d" or "driver" to filter by Driver
+                \\
+                \\Example: Get Carrier information of Line "line1".
+                \\PRINT_CARRIER_INFO line1
+                \\
+                \\Example: Get Carrier information on Axis "2" on Line "line1".
+                \\PRINT_CARRIER_INFO line1 2a
             , .{}),
             .execute = &commands.print_carrier_info.impl,
         },
@@ -427,15 +453,22 @@ pub fn init(c: Config) !void {
                     .resolve = false,
                 },
             },
-            .short_description = "Print Carrier information on Axis, if exists.",
+            .short_description = "Print Carrier ID on Axis, if exists.",
             .long_description = std.fmt.comptimePrint(
-                \\Print Carrier information on Axis, if exists. Information only provided
+                \\Print Carrier ID on Axis, if exists. Information only provided
                 \\when:
                 \\ - Carrier is on specified Axis.
                 \\ - Carrier is initialized
                 \\
                 \\Optional: Store Carrier ID in provided variable. Variable cannot start
                 \\with a number and is case sensitive.
+                \\
+                \\Example: Get Carrier ID on Axis "3" on Line "line1".
+                \\AXIS_CARRIER line1 3
+                \\
+                \\Example: Get Carrier ID on Axis "3" on Line "line1" and store
+                \\Carrier ID in variable "var".
+                \\AXIS_CARRIER line1 3 var
             , .{}),
             .execute = &commands.axis_carrier.impl,
         },
@@ -460,6 +493,12 @@ pub fn init(c: Config) !void {
                 \\Optional: Stores Carrier IDs in provided variable as indexed entries
                 \\(e.g., var1, var2, ...). Variable cannot start with a number and is
                 \\case sensitive.
+                \\
+                \\Example: Get Carrier IDs on Line "line1".
+                \\CARRIER_ID line1
+                \\
+                \\Example: Get Carrier IDs on Line "line1" and "line2".
+                \\CARRIER_ID line1,line2
             , .{}),
             .execute = &commands.carrier_id.impl,
         },
@@ -480,9 +519,20 @@ pub fn init(c: Config) !void {
                 \\Optional: Provide threshold to change default location threshold value.
                 \\Default location threshold value is 1 {s}. Location and threshold must
                 \\be provided in {s}.
+                \\
+                \\Example: Check Carrier location of Carrier "1" on Line "line1" at
+                \\location 500 {s}.
+                \\ASSERT_CARRIER_LOCATION line1 1 500
+                \\
+                \\Example: Check Carrier location of Carrier "1" on Line "line1" at
+                \\location 500 {s} with threshold 20 {s}.
+                \\ASSERT_CARRIER_LOCATION line1 1 500 20
             , .{
                 standard.length.unit_short,
                 standard.length.unit_long,
+                standard.length.unit_short,
+                standard.length.unit_short,
+                standard.time.unit_long,
             }),
             .execute = &commands.assert_location.impl,
         },
@@ -505,6 +555,9 @@ pub fn init(c: Config) !void {
                 \\Display location of Carrier on specified Line, if exists.
                 \\Optional: Store Carrier location in variable. Variable cannot start
                 \\with a number and is case sensitive.
+                \\
+                \\Example: Display Carrier location of Carrier "2" on Line "line1".
+                \\CARRIER_LOCATION line1 2
             , .{}),
             .execute = &commands.carrier_location.impl,
         },
@@ -520,6 +573,9 @@ pub fn init(c: Config) !void {
             .short_description = "Display Carrier Axis",
             .long_description = std.fmt.comptimePrint(
                 \\Display Axis on which Carrier is currently.
+                \\
+                \\Example: Display Carrier Axis of Carrier "2" on Line "line1".
+                \\CARRIER_AXIS line1 2
             , .{}),
             .execute = &commands.carrier_axis.impl,
         },
@@ -541,6 +597,12 @@ pub fn init(c: Config) !void {
                 \\ - "a" or "axis" to filter by Axis
                 \\ - "c" or "carrier" to filter by Carrier
                 \\ - "d" or "driver" to filter by Driver
+                \\
+                \\Example: Display all Hall Sensor states on Line "line1".
+                \\HALL_STATUS line1
+                \\
+                \\Example: Display Hall Sensors states on Axis "2" on Line "line1".
+                \\HALL_STATUS line1 2a
             , .{}),
             .execute = &commands.hall_status.impl,
         },
@@ -566,6 +628,14 @@ pub fn init(c: Config) !void {
                 \\ - on  (Hall Sensor indicator "on")
                 \\ - off (Hall Sensor indicator "off")
                 \\ - default state if not provided as "on"
+                \\
+                \\Example: Assert Hall Sensor "on" state of Axis "3" at side "front" on
+                \\Line "line1".
+                \\ASSERT_HALL line1 3 front
+                \\
+                \\Example: Assert Hall Sensor "off" state of Axis "3" at side "front" on
+                \\Line "line1".
+                \\ASSERT_HALL line1 3 front off
             , .{}),
             .execute = &commands.assert_hall.impl,
         },
@@ -586,6 +656,12 @@ pub fn init(c: Config) !void {
                 \\ - "a" or "axis" to filter by Axis
                 \\ - "c" or "carrier" to filter by Carrier
                 \\ - "d" or "driver" to filter by Driver
+                \\
+                \\Example: Clear error states on all Driver(s) of Line "line1".
+                \\CLEAR_ERRORS line1
+                \\
+                \\Example: Clear error states on Driver "2" of Line "line1".
+                \\CLEAR_ERRORS line1 2d
             , .{}),
             .execute = &commands.clear_errors.impl,
         },
@@ -607,6 +683,15 @@ pub fn init(c: Config) !void {
                 \\ - "a" or "axis" to filter by Axis
                 \\ - "c" or "carrier" to filter by Carrier
                 \\ - "d" or "driver" to filter by Driver
+                \\
+                \\Example: Deinitialize Carrier(s) on Line "line1".
+                \\DEINITIALIZE line1
+                \\
+                \\Example: Deinitialize Carrier(s) on Driver "2" on Line "line1".
+                \\DEINITIALIZE line1 2d
+                \\
+                \\Example: Deinitialize Carrier "3" on Line "line1".
+                \\DEINITIALIZE line1 3c
             , .{}),
             .execute = &commands.clear_carrier_info.impl,
         },
@@ -646,6 +731,15 @@ pub fn init(c: Config) !void {
                 \\ - "a" or "axis" to filter by Axis
                 \\ - "c" or "carrier" to filter by Carrier
                 \\ - "d" or "driver" to filter by Driver
+                \\
+                \\Example: Release Carrier(s) on Line "line1".
+                \\RELEASE_CARRIER line1
+                \\
+                \\Example: Release Carrier(s) on Driver "2" on Line "line1".
+                \\RELEASE_CARRIER line1 2d
+                \\
+                \\Example: Release Carrier "3" on Line "line1".
+                \\RELEASE_CARRIER line1 3c
             , .{}),
             .execute = &commands.release_carrier.impl,
         },
@@ -665,6 +759,15 @@ pub fn init(c: Config) !void {
                 \\at least one free Axis to successfully initialize cluster. Multiple
                 \\Line auto initialization is supported (e.g., line1,line2,line3). If
                 \\Line is not provided, auto initializes Carriers on all Lines.
+                \\
+                \\Example: Auto initialize Carrier(s) on all Lines.
+                \\AUTO_INITIALIZE
+                \\
+                \\Example: Auto initialize Carrier(s) on Line "line1".
+                \\AUTO_INITIALIZE line1
+                \\
+                \\Example: Auto initialize Carrier(s) on Line "line1" and "line2".
+                \\AUTO_INITIALIZE line1,line2
             , .{}),
             .execute = &commands.auto_initialize.impl,
         },
@@ -680,6 +783,9 @@ pub fn init(c: Config) !void {
             .long_description = std.fmt.comptimePrint(
                 \\Calibrate Track Line. Uninitialized Carrier must be positioned at start
                 \\of Line and first Axis Hall Sensors are both in "on" state.
+                \\
+                \\Example: Calibrate Line "line1".
+                \\CALIBRATE line1
             , .{}),
             .execute = &commands.calibrate.impl,
         },
@@ -695,6 +801,9 @@ pub fn init(c: Config) !void {
             .long_description = std.fmt.comptimePrint(
                 \\Set zero position for specified Line. Initialized Carrier must be on
                 \\first Axis of specified Line.
+                \\
+                \\Example: Set zero position for Line "line1".
+                \\SET_ZERO line1
             , .{}),
             .execute = &commands.set_line_zero.impl,
         },
@@ -731,6 +840,14 @@ pub fn init(c: Config) !void {
                 \\ - prev  (direction of decreasing Axis number)
                 \\ - right (direction of increasing Axis number)
                 \\ - left  (direction of decreasing Axis number)
+                \\
+                \\Example: Initialize Carrier on Axis "3" on Line "line1". Assign Carrier
+                \\ID "123". Initializing movement direction toward Axis "4".
+                \\INITIALIZE line1 3 forward 123
+                \\
+                \\Example: Initialize Carrier on Axis "3" and "4" on Line "line1". Assign
+                \\Carrier ID "123". Initializing movement direction toward Axis "3".
+                \\INITIALIZE line1 3 backward 123 next
             , .{}),
             .execute = &commands.isolate.impl,
         },
@@ -753,7 +870,17 @@ pub fn init(c: Config) !void {
             \\Pauses command execution until specified Carrier completes initialization.
             \\Optional: Provide timeout. Returns error if specified timeout is exceeded.
             \\Timeout must be provided in {s}.
-        , .{standard.time.unit_long}),
+            \\
+            \\Example: Wait for initialization of Carrier "3" on Line "line1".
+            \\WAIT_INITIALIZE line1 3
+            \\
+            \\Example: Wait max 5000 {s} for initialization of Carrier "3" on
+            \\Line "line1".
+            \\WAIT_INITIALIZE line1 3 5000
+        , .{
+            standard.time.unit_long,
+            standard.time.unit_short,
+        }),
         .execute = &commands.wait.isolate,
     } });
     errdefer command.registry.orderedRemove("WAIT_INITIALIZE");
@@ -775,37 +902,65 @@ pub fn init(c: Config) !void {
                 \\Pauses command execution until specified Carrier completes movement.
                 \\Optional: Provide timeout. Returns error if specified timeout is
                 \\exceeded. Timeout must be provided in {s}.
-            , .{standard.time.unit_long}),
+                \\
+                \\Example: Wait for movement completion of Carrier "3" on Line "line1".
+                \\WAIT_MOVE_CARRIER line1 3
+                \\
+                \\Example: Wait max 5000 {s} movement completion of Carrier "3" on Line
+                \\"line1".
+                \\WAIT_MOVE_CARRIER line1 3 5000
+            , .{
+                standard.time.unit_long,
+                standard.time.unit_short,
+            }),
             .execute = &commands.wait.moveCarrier,
         },
     });
     errdefer command.registry.orderedRemove("WAIT_MOVE_CARRIER");
-    try command.registry.put(.{ .executable = .{
-        .name = "MOVE_CARRIER",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "Line" },
-            .{ .name = "Carrier" },
-            .{ .name = "target" },
-            .{ .name = "disable CAS", .optional = true },
-            .{ .name = "control mode", .optional = true },
+    try command.registry.put(.{
+        .executable = .{
+            .name = "MOVE_CARRIER",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line" },
+                .{ .name = "Carrier" },
+                .{ .name = "target" },
+                .{ .name = "disable CAS", .optional = true },
+                .{ .name = "control mode", .optional = true },
+            },
+            .short_description = "Move Carrier to specified target.",
+            .long_description = std.fmt.comptimePrint(
+                \\Move initialized Carrier to specified target. Provide target value
+                \\followed by suffix to specify target movement (e.g., 1a). Supported
+                \\suffixes are:
+                \\- "a" or "axis" to target Axis.
+                \\- "l" or "location" to target absolute location in Line, provided in
+                \\  {s}.
+                \\- "d" or "distance" to target relative distance to current Carrier
+                \\  position, provided in {s}.
+                \\Optional: Provide "true" to disable CAS (Collision Avoidance System).
+                \\Optional: Provide following to specify movement control mode:
+                \\- "speed" to move Carrier with speed profile feedback.
+                \\- "position" to move Carrier with position profile feedback.
+                \\
+                \\Example: Move Carrier "2" to Axis "3" on Line "line1".
+                \\MOVE_CARRIER line1 2 3a
+                \\
+                \\Example: Move Carrier "2" to location 150 {s} on Line "line1" and disable
+                \\CAS.
+                \\MOVE_CARRIER line1 2 150l true
+                \\
+                \\Example: Move Carrier "2" to location 150 {s} on Line "line1" and move
+                \\Carrier with speed profile feedback.
+                \\MOVE_CARRIER line1 2 150l false speed
+            , .{
+                standard.length.unit_short,
+                standard.length.unit_short,
+                standard.length.unit_short,
+                standard.length.unit_short,
+            }),
+            .execute = &commands.move.impl,
         },
-        .short_description = "Move Carrier to specified target.",
-        .long_description = std.fmt.comptimePrint(
-            \\Move initialized Carrier to specified target. Provide target value
-            \\followed by suffix to specify target movement (e.g., 1a). Supported
-            \\suffixes are:
-            \\- "a" or "axis" to target Axis.
-            \\- "l" or "location" to target absolute location in Line, provided in
-            \\  {s}.
-            \\- "d" or "distance" to target relative distance to current Carrier
-            \\  position, provided in {s}.
-            \\Optional: Provide "true" to disable CAS (Collision Avoidance System).
-            \\Optional: Provide followings to specify movement control mode:
-            \\- "speed" to move Carrier with speed profile feedback.
-            \\- "position" to move Carrier with position profile feedback.
-        , .{ standard.length.unit_short, standard.length.unit_short }),
-        .execute = &commands.move.impl,
-    } });
+    });
     errdefer command.registry.orderedRemove("MOVE_CARRIER");
     try command.registry.put(.{ .executable = .{
         .name = "PUSH_CARRIER",
@@ -819,13 +974,22 @@ pub fn init(c: Config) !void {
         .long_description = std.fmt.comptimePrint(
             \\Push a Carrier on the specified Axis. This movement targets a
             \\distance of Carrier length, and thus if it is used to cross a Line
-            \\boundary, the receiving Axis at the destination Line must be in 
+            \\boundary, the receiving Axis at the destination Line must be in
             \\pulling state. Direction must be provided as:
             \\- forward  (direction of increasing Axis number)
             \\- backward (direction of decreasing Axis number)
             \\
             \\Optional: Provide Carrier to move the specified Carrier to the center
             \\of the specified Axis, then push it according to direction.
+            \\
+            \\Example: Push Carrier on Axis "3" to Axis "4". If Line "line1" only has
+            \\3 Axes, push Carrier out from Line "line1" to Line "line2".
+            \\PUSH_CARRIER line1 3 forward
+            \\
+            \\Example: Move Carrier "2" to Axis "3" and transition to push movement to
+            \\Axis "4". If Line "line1" only has 3 Axes, then transition to push movement
+            \\out from Line "line1" to Line "line2".
+            \\PUSH_CARRIER line1 3 forward 2
         , .{}),
         .execute = &commands.push.impl,
     } });
@@ -842,23 +1006,41 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Pull incoming Carrier.",
         .long_description = std.fmt.comptimePrint(
-            \\Sets the specified Axis to a pulling state, enabling Axis to initialize 
-            \\and move incoming carrier to specified Axis. The pulled Carrier is 
-            \\assigned with the specified Carrier ID. There must be no Carrier on 
+            \\Sets the specified Axis to a pulling state, enabling Axis to initialize
+            \\and move incoming carrier to specified Axis. The pulled Carrier is
+            \\assigned with the specified Carrier ID. There must be no Carrier on
             \\pulling Axis upon invocation. Direction must be provided as:
             \\ - forward  (direction of increasing Axis number)
             \\ - backward (direction of decreasing Axis number)
             \\
-            \\Optional: Provide location to move Carrier after completed pulling 
+            \\Optional: Provide location to move Carrier after completed pulling
             \\Carrier. Location must be provided as:
-            \\- {s} (move Carrier to specified location after pulled to 
+            \\- {s} (move Carrier to specified location after pulled to
             \\  specified  Axis), or
-            \\- "nan" (Carrier can move through external force after pulled to 
+            \\- "nan" (Carrier can move through external force after pulled to
             \\  specified Axis).
             \\
             \\Optional: Provide "true" to disable CAS (Collision Avoidance System)
             \\while Carrier is being moved to location.
-        , .{standard.length.unit_long}),
+            \\
+            \\Example: Pull Carrier onto Axis "1" on Line "line2" from Line "line1" and
+            \\assign Carrier ID to "123".
+            \\PULL_CARRIER line2 1 123 forward
+            \\
+            \\Example: Pull Carrier to Line "line2" from Line "line1", assign Carrier ID
+            \\to "123" and move Carrier "123" to location 1500 {s} upon recognized on
+            \\Line "line2".
+            \\PULL_CARRIER line2 1 123 forward 1500
+            \\
+            \\Example: Pull Carrier to Line "line2" from Line "line1", assign Carrier ID
+            \\to "123", and move Carrier "123" to location 1500 {s} with CAS disabled
+            \\upon recognized on Line "line2".
+            \\PULL_CARRIER line2 1 123 forward 1500 true
+        , .{
+            standard.length.unit_long,
+            standard.length.unit_short,
+            standard.length.unit_short,
+        }),
         .execute = &commands.pull.impl,
     } });
     errdefer command.registry.orderedRemove("PULL_CARRIER");
@@ -876,6 +1058,12 @@ pub fn init(c: Config) !void {
             \\ - "a" or "axis" to filter by Axis
             \\ - "c" or "Carrier" to filter by Carrier
             \\ - "d" or "driver" to filter by Driver
+            \\
+            \\Example: Stop pull Carrier(s) on Line "line1".
+            \\STOP_PULL_CARRIER line1
+            \\
+            \\Example: Stop pull for Axis "1" on Line "line1".
+            \\STOP_PULL_CARRIER line1 1a
         , .{}),
         .execute = &commands.stop_pull.impl,
     } });
@@ -896,6 +1084,12 @@ pub fn init(c: Config) !void {
                 \\ - "a" or "axis" to filter by Axis
                 \\ - "c" or "Carrier" to filter by Carrier
                 \\ - "d" or "driver" to filter by Driver
+                \\
+                \\Example: Stop push Carrier(s) on Line "line1".
+                \\STOP_PUSH_CARRIER line1
+                \\
+                \\Example: Stop push for Axis "3" on Line "line1".
+                \\STOP_PUSH_CARRIER line1 3a
             , .{}),
             .execute = &commands.stop_push.impl,
         },
@@ -916,8 +1110,15 @@ pub fn init(c: Config) !void {
             \\ - no wait for push/pull.
             \\Optional: timeout will return error if timeout duration is exceeded.
             \\Timeout duration must be provided in {s}.
+            \\
+            \\Example: Wait until no Carrier on Axis "2" on Line "line1".
+            \\WAIT_AXIS_EMPTY line1 2
+            \\
+            \\Example: Wait max 5000 {s} until no Carrier on Axis "2" on Line "line1".
+            \\WAIT_AXIS_EMPTY line1 2 5000
         , .{
             standard.time.unit_long,
+            standard.time.unit_short,
         }),
         .execute = &commands.wait.axisEmpty,
     } });
@@ -941,6 +1142,12 @@ pub fn init(c: Config) !void {
                 \\
                 \\Optional: "range" defines Axis range and must be provided as
                 \\start:end value (e.g., "1:9").
+                \\
+                \\Example: Add Driver(s) on Line "line1" to logging configuration.
+                \\ADD_LOG_INFO line1 driver
+                \\
+                \\Example: Add Axis "2" to "3" on Line "line1" to logging configuration.
+                \\ADD_LOG_INFO line1 axis 2:3
             , .{}),
             .execute = &commands.log.add,
         },
@@ -961,6 +1168,14 @@ pub fn init(c: Config) !void {
             \\
             \\If path not specified, log file will be created in working directory:
             \\ - "mmc-logging-YYYY.MM.DD-HH.MM.SS.csv".
+            \\
+            \\Example: Start logging process and provide logging data for a duration of
+            \\10 s before logging is stopped.
+            \\START_LOG_INFO 10
+            \\
+            \\Example: Start logging process and save logging file at
+            \\"folder/log_info.csv".
+            \\START_LOG_INFO 10 folder/log_info.csv
         , .{}),
         .execute = &commands.log.start,
     } });
@@ -983,6 +1198,15 @@ pub fn init(c: Config) !void {
                 \\
                 \\Optional: "range" defines Axis range and must be provided as start:end
                 \\value (e.g., "1:9").
+                \\
+                \\Example: Clear logging configuration for Line "line1".
+                \\REMOVE_LOG_INFO line1 all
+                \\
+                \\Example: Remove Driver(s) on Line "line1" from logging configuration.
+                \\REMOVE_LOG_INFO line1 driver
+                \\
+                \\Example: Remove Axis "1" to "3" on Line "line1" from logging configuration.
+                \\REMOVE_LOG_INFO line1 axis 1:3
             , .{}),
             .execute = &commands.log.remove,
         },
@@ -1029,6 +1253,12 @@ pub fn init(c: Config) !void {
             \\ - "a" or "axis" to filter by Axis
             \\ - "c" or "Carrier" to filter by Carrier
             \\ - "d" or "driver" to filter by Driver
+            \\
+            \\Example: Print Axis and Driver errors on Line "line1".
+            \\PRINT_ERRORS line1
+            \\
+            \\Example: Print errors on Axis "3" on Line "line1".
+            \\PRINT_ERRORS line1 3a
         , .{}),
         .execute = &commands.show_errors.impl,
     } });
@@ -1088,6 +1318,9 @@ pub fn init(c: Config) !void {
             .long_description = std.fmt.comptimePrint(
                 \\Modify Carrier ID of initialized Carrier. Carrier ID must be unique per
                 \\Line.
+                \\
+                \\Example: Modify Carrier ID of Carrier "3" to "4" on Line "line1".
+                \\SET_CARRIER_ID line1 3 4
             , .{}),
             .execute = &commands.set_carrier_id.impl,
         },
