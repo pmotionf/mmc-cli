@@ -453,9 +453,9 @@ pub fn init(c: Config) !void {
                     .resolve = false,
                 },
             },
-            .short_description = "Print Carrier information on Axis, if exists.",
+            .short_description = "Print Carrier ID on Axis, if exists.",
             .long_description = std.fmt.comptimePrint(
-                \\Print Carrier information on Axis, if exists. Information only provided
+                \\Print Carrier ID on Axis, if exists. Information only provided
                 \\when:
                 \\ - Carrier is on specified Axis.
                 \\ - Carrier is initialized
@@ -463,10 +463,10 @@ pub fn init(c: Config) !void {
                 \\Optional: Store Carrier ID in provided variable. Variable cannot start
                 \\with a number and is case sensitive.
                 \\
-                \\Example: Get Carrier information on Axis "3" on Line "line1".
+                \\Example: Get Carrier ID on Axis "3" on Line "line1".
                 \\AXIS_CARRIER line1 3
                 \\
-                \\Example: Get Carrier information on Axis "3" on Line "line1" and store
+                \\Example: Get Carrier ID on Axis "3" on Line "line1" and store
                 \\Carrier ID in variable "var".
                 \\AXIS_CARRIER line1 3 var
             , .{}),
@@ -938,7 +938,7 @@ pub fn init(c: Config) !void {
                 \\- "d" or "distance" to target relative distance to current Carrier
                 \\  position, provided in {s}.
                 \\Optional: Provide "true" to disable CAS (Collision Avoidance System).
-                \\Optional: Provide followings to specify movement control mode:
+                \\Optional: Provide following to specify movement control mode:
                 \\- "speed" to move Carrier with speed profile feedback.
                 \\- "position" to move Carrier with position profile feedback.
                 \\
@@ -982,11 +982,13 @@ pub fn init(c: Config) !void {
             \\Optional: Provide Carrier to move the specified Carrier to the center
             \\of the specified Axis, then push it according to direction.
             \\
-            \\Example: Push Carrier on Axis "3" out of Line "line1" to Line "line2".
+            \\Example: Push Carrier on Axis "3" to Axis "4". If Line "line1" only has
+            \\3 Axes, push Carrier out from Line "line1" to Line "line2".
             \\PUSH_CARRIER line1 3 forward
             \\
-            \\Example: Move Carrier "2" to Axis "3" and push out of Line "line1" to Line
-            \\"line2".
+            \\Example: Move Carrier "2" to Axis "3" and transition to push movement to
+            \\Axis "4". If Line "line1" only has 3 Axes, then transition to push movement
+            \\out from Line "line1" to Line "line2".
             \\PUSH_CARRIER line1 3 forward 2
         , .{}),
         .execute = &commands.push.impl,
@@ -1023,16 +1025,16 @@ pub fn init(c: Config) !void {
             \\
             \\Example: Pull Carrier onto Axis "1" on Line "line2" from Line "line1" and
             \\assign Carrier ID to "123".
-            \\PULL_CARRIER line1 1 123 forward
+            \\PULL_CARRIER line2 1 123 forward
             \\
             \\Example: Pull Carrier onto Axis "1" on Line "line2" from Line "line1",
             \\assign Carrier ID to "123" and move Carrier "123" to location 1500 {s}.
-            \\PULL_CARRIER line1 1 123 forward 1500
+            \\PULL_CARRIER line2 1 123 forward 1500
             \\
             \\Example: Pull Carrier onto Axis "1" on Line "line2" from Line "line1",
             \\assign Carrier ID to "123". After pull move Carrier "123" to location 1500
             \\{s} and disable CAS.
-            \\PULL_CARRIER line1 1 123 forward 1500 true
+            \\PULL_CARRIER line2 1 123 forward 1500 true
         , .{
             standard.length.unit_long,
             standard.length.unit_short,
