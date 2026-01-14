@@ -56,9 +56,9 @@ pub fn impl(params: [][]const u8) !void {
     const line = client.lines[line_idx];
     const disable_cas = if (params[5].len == 0)
         false
-    else if (std.ascii.eqlIgnoreCase("false", params[5]))
+    else if (std.ascii.eqlIgnoreCase("enable", params[5]))
         false
-    else if (std.ascii.eqlIgnoreCase("true", params[5]))
+    else if (std.ascii.eqlIgnoreCase("disable", params[5]))
         true
     else
         return error.InvalidCasConfiguration;
