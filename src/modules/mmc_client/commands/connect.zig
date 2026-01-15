@@ -238,6 +238,7 @@ pub fn impl(params: [][]const u8) !void {
                 @intCast(idx),
                 config,
             );
+            try client.parameter.value.line.items.insert(config.name);
         }
     }
     {
