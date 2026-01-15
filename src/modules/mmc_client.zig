@@ -305,7 +305,11 @@ pub const Parameter = struct {
             fn isValid(self: *@This(), input: []const u8) bool {
                 // Invalidate if not connected to server.
                 if (builtin.is_test == false and sock == null) return false;
-                return self.items.contains(input);
+                var it = std.mem.tokenizeSequence(u8, input, ",");
+                while (it.next()) |item| {
+                    if (self.items.contains(item) == false) return false;
+                }
+                return true;
             }
         };
 
@@ -485,6 +489,8 @@ pub const Parameter = struct {
         try res.value.line.items.insert("right");
         try std.testing.expect(res.isValid(.line, "left"));
         try std.testing.expect(res.isValid(.line, "right"));
+        try std.testing.expect(res.isValid(.line, "left,right"));
+        try std.testing.expect(res.isValid(.line, "right,left"));
         try std.testing.expect(res.isValid(.line, "leftt") == false);
         // Validate axis
         try std.testing.expect(res.isValid(.axis, "768"));
@@ -886,7 +892,7 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "CARRIER_ID",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line(s)" },
+                .{ .name = "Line(s)", .kind = .mmc_client_line },
                 .{
                     .name = "result variable prefix",
                     .optional = true,
@@ -1179,7 +1185,11 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "AUTO_INITIALIZE",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line(s)", .optional = true },
+                .{
+                    .name = "Line(s)",
+                    .optional = true,
+                    .kind = .mmc_client_line,
+                },
             },
             .short_description = "Initialize all Carriers automatically.",
             .long_description = std.fmt.comptimePrint(
