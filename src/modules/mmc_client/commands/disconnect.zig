@@ -12,6 +12,7 @@ pub fn impl(_: [][]const u8) error{ServerNotConnected}!void {
         client.log.stop.store(true, .monotonic);
         // Wait until the log finish storing log data and cleanup
         while (client.log.executing.load(.monotonic)) {}
+        client.parameter.reset();
         client.log_config.deinit(client.allocator);
         client.reader = undefined;
         client.writer = undefined;

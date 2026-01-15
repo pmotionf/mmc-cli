@@ -9,7 +9,6 @@ const command = @import("../command.zig");
 pub const Line = @import("mmc_client/Line.zig");
 pub const log = @import("mmc_client/log.zig");
 pub const zignet = @import("zignet");
-// pub const api = @import("mmc_client/api.zig");
 pub const api = @import("mmc-api");
 
 const commands = struct {
@@ -143,6 +142,414 @@ pub const error_response = struct {
         };
     }
 };
+pub var parameter: Parameter = undefined;
+
+// TODO: Support auto completion
+/// Parameter parsing rules. Use `isValid()` function to check if value of
+/// parameter kind is valid.
+pub const Parameter = struct {
+    /// Store every parameter's possible value. Not intended to be accessed directly. Use Parameter's function as the interface for parameter value.
+    value: struct {
+        line: LineName,
+        axis: struct {
+            fn isValid(_: *@This(), input: []const u8) bool {
+                const axis = std.fmt.parseUnsigned(u32, input, 0) catch
+                    return false;
+                return (axis > 0 and axis <= Line.max_axis);
+            }
+        },
+        carrier: struct {
+            fn isValid(_: *@This(), input: []const u8) bool {
+                const carrier = std.fmt.parseUnsigned(u32, input, 0) catch
+                    return false;
+                std.log.debug("valid: {}", .{carrier > 0 and carrier <= Line.max_axis});
+                if (carrier > 0 and carrier <= Line.max_axis) return true;
+                return false;
+            }
+        },
+        direction: Direction,
+        cas: Cas,
+        link_axis: LinkAxis,
+        variable: struct {
+            fn isValid(_: *@This(), input: []const u8) bool {
+                return std.ascii.isAlphabetic(input[0]);
+            }
+        },
+        hall_state: hall.State,
+        hall_side: hall.Side,
+        filter: struct {
+            fn isValid(_: *@This(), input: []const u8) bool {
+                var suffix_idx: usize = 0;
+                for (input) |c| {
+                    if (std.ascii.isDigit(c)) suffix_idx += 1 else break;
+                }
+                // No digit is recognized.
+                if (suffix_idx == 0) return false;
+
+                const id = std.fmt.parseUnsigned(
+                    u32,
+                    input[0..suffix_idx],
+                    0,
+                ) catch return false; // Invalid ID
+                // Check for single character suffix.
+                if (input.len - suffix_idx == 1) {
+                    if (std.ascii.eqlIgnoreCase(input[suffix_idx..], "a") or
+                        std.ascii.eqlIgnoreCase(input[suffix_idx..], "c"))
+                        return (id > 0 and id <= Line.max_axis)
+                    else if (std.ascii.eqlIgnoreCase(input[suffix_idx..], "d"))
+                        return (id > 0 and id <= Line.max_driver)
+                    else
+                        return false;
+                }
+                // Check for `axis` suffix
+                else if (input.len - suffix_idx == 4 and
+                    std.ascii.eqlIgnoreCase(input[suffix_idx..], "axis"))
+                    return (id > 0 and id <= Line.max_axis)
+                    // Check for `carrier` suffix
+                else if (std.ascii.eqlIgnoreCase(
+                    input[suffix_idx..],
+                    "carrier",
+                ))
+                    return (id > 0 and id <= Line.max_axis)
+                    // Check for `driver` suffix
+                else if (input.len - suffix_idx == 6 and
+                    std.ascii.eqlIgnoreCase(input[suffix_idx..], "driver"))
+                    return (id > 0 and id <= Line.max_driver)
+                else
+                    return false;
+            }
+        },
+        control_mode: Control,
+        target: struct {
+            fn isValid(_: *@This(), input: []const u8) bool {
+                var suffix_idx: usize = 0;
+                for (input) |c| {
+                    if (std.ascii.isAlphabetic(c)) break else suffix_idx += 1;
+                }
+                // No digit is recognized.
+                if (suffix_idx == 0) return false;
+                // Check for single character suffix.
+                if (input.len - suffix_idx == 1) {
+                    if (std.ascii.eqlIgnoreCase(input[suffix_idx..], "a")) {
+                        const axis = std.fmt.parseUnsigned(
+                            u32,
+                            input[0..suffix_idx],
+                            0,
+                        ) catch return false;
+                        return (axis > 0 and axis <= Line.max_axis);
+                    } else if (std.ascii.eqlIgnoreCase(input[suffix_idx..], "l")) {
+                        _ = std.fmt.parseFloat(f32, input[0..suffix_idx]) catch
+                            return false;
+                        return true;
+                    } else if (std.ascii.eqlIgnoreCase(input[suffix_idx..], "d")) {
+                        _ = std.fmt.parseFloat(f32, input[0..suffix_idx]) catch
+                            return false;
+                        return true;
+                    }
+                    return false;
+                }
+                // Check for `axis` suffix
+                else if (input.len - suffix_idx == 4 and
+                    std.ascii.eqlIgnoreCase(input[suffix_idx..], "axis"))
+                {
+                    const axis = std.fmt.parseUnsigned(
+                        u32,
+                        input[0..suffix_idx],
+                        0,
+                    ) catch return false;
+                    return (axis > 0 and axis <= Line.max_axis);
+                }
+                // Check for `location` suffix
+                else if (input.len - suffix_idx == 8 and
+                    std.ascii.eqlIgnoreCase(input[suffix_idx..], "location"))
+                {
+                    _ = std.fmt.parseFloat(f32, input[0..suffix_idx]) catch
+                        return false;
+                    return true;
+                }
+                // Check for `distance` suffix
+                else if (std.ascii.eqlIgnoreCase(input[suffix_idx..], "distance")) {
+                    _ = std.fmt.parseFloat(f32, input[0..suffix_idx]) catch
+                        return false;
+                    return true;
+                } else return false;
+            }
+        },
+        log_kind: LogKind,
+
+        const LineName = struct {
+            items: std.BufSet,
+
+            /// Create a bufset for storing recognized line names of connected
+            /// server.
+            fn init(a: std.mem.Allocator) @This() {
+                return .{ .items = std.BufSet.init(a) };
+            }
+
+            /// Free stored line names and invalidate the field.
+            fn deinit(self: *@This()) void {
+                self.items.deinit();
+                self.* = undefined;
+            }
+
+            // Remove all stored lines without invalidating the field.
+            fn reset(self: *@This()) void {
+                var it = self.items.hash_map.iterator();
+                while (it.next()) |items| {
+                    self.items.remove(items.key_ptr.*);
+                }
+                std.debug.assert(self.items.count() == 0);
+            }
+
+            /// Assert the parameter is a valid line name
+            fn isValid(self: *@This(), input: []const u8) bool {
+                // Invalidate if not connected to server.
+                if (builtin.is_test == false and sock == null) return false;
+                var it = std.mem.tokenizeSequence(u8, input, ",");
+                while (it.next()) |item| {
+                    if (self.items.contains(item) == false) return false;
+                }
+                return true;
+            }
+        };
+
+        const Direction = enum {
+            forward,
+            backward,
+
+            fn isValid(_: *@This(), input: []const u8) bool {
+                const ti = @typeInfo(@This()).@"enum";
+                inline for (ti.fields) |field| {
+                    if (std.mem.eql(u8, field.name, input)) return true;
+                }
+                return false;
+            }
+        };
+
+        const Cas = enum {
+            on,
+            off,
+
+            fn isValid(_: *@This(), input: []const u8) bool {
+                const ti = @typeInfo(@This()).@"enum";
+                inline for (ti.fields) |field| {
+                    if (std.mem.eql(u8, field.name, input)) return true;
+                }
+                return false;
+            }
+        };
+
+        const LinkAxis = enum {
+            next,
+            prev,
+            right,
+            left,
+
+            fn isValid(_: *@This(), input: []const u8) bool {
+                const ti = @typeInfo(@This()).@"enum";
+                inline for (ti.fields) |field| {
+                    if (std.mem.eql(u8, field.name, input)) return true;
+                }
+                return false;
+            }
+        };
+
+        const hall = struct {
+            const State = enum {
+                on,
+                off,
+
+                fn isValid(_: *@This(), input: []const u8) bool {
+                    const ti = @typeInfo(@This()).@"enum";
+                    inline for (ti.fields) |field| {
+                        if (std.mem.eql(u8, field.name, input)) return true;
+                    }
+                    return false;
+                }
+            };
+
+            const Side = enum {
+                front,
+                back,
+
+                fn isValid(_: *@This(), input: []const u8) bool {
+                    const ti = @typeInfo(@This()).@"enum";
+                    inline for (ti.fields) |field| {
+                        if (std.mem.eql(u8, field.name, input)) return true;
+                    }
+                    return false;
+                }
+            };
+        };
+
+        const Control = enum {
+            speed,
+            position,
+
+            fn isValid(_: *@This(), input: []const u8) bool {
+                const ti = @typeInfo(@This()).@"enum";
+                inline for (ti.fields) |field| {
+                    if (std.mem.eql(u8, field.name, input)) return true;
+                }
+                return false;
+            }
+        };
+
+        const LogKind = enum {
+            axis,
+            driver,
+            all,
+
+            fn isValid(_: *@This(), input: []const u8) bool {
+                const ti = @typeInfo(@This()).@"enum";
+                inline for (ti.fields) |field| {
+                    if (std.mem.eql(u8, field.name, input)) return true;
+                }
+                return false;
+            }
+        };
+    },
+
+    pub const Kind = enum {
+        line,
+        axis,
+        carrier,
+        direction,
+        cas,
+        link_axis,
+        variable,
+        hall_state,
+        hall_side,
+        filter,
+        control_mode,
+        target,
+        log_kind,
+    };
+    /// Initialize required memory for storing runtime-known variables. Zero
+    /// value initialization for comptime-known variables.
+    pub fn init(a: std.mem.Allocator) @This() {
+        var res: @This() = .{
+            .value = std.mem.zeroInit(
+                @FieldType(Parameter, "value"),
+                .{ .line = .{undefined} },
+            ),
+        };
+        // If a field has init function, invoke init function.
+        inline for (@typeInfo(@TypeOf(res.value)).@"struct".fields) |field| {
+            if (@hasDecl(field.type, "init")) {
+                @field(res.value, field.name) = field.type.init(a);
+            }
+        }
+        return res;
+    }
+
+    /// Free all stored runtime-known parameters and invalidate parameter.
+    pub fn deinit(self: *@This()) void {
+        inline for (@typeInfo(@TypeOf(self.value)).@"struct".fields) |field| {
+            if (@hasDecl(field.type, "deinit")) {
+                @field(self.value, field.name).deinit();
+            }
+        }
+        self.* = undefined;
+    }
+
+    /// Check if the input is valid for the given kind.
+    pub fn isValid(self: *@This(), kind: Kind, input: []const u8) bool {
+        return switch (kind) {
+            inline else => |tag| @field(self.value, @tagName(tag)).isValid(input),
+        };
+    }
+
+    /// Free all stored runtime-known parameters without invalidating the field.
+    pub fn reset(self: *@This()) void {
+        inline for (@typeInfo(@TypeOf(self.value)).@"struct".fields) |field| {
+            if (@hasDecl(field.type, "reset")) {
+                @field(self.value, field.name).reset();
+            }
+        }
+    }
+
+    test "Parameter `Kind` and `value` matching" {
+        const ValueType = @FieldType(Parameter, "value");
+        // Check if every value fields has representation in Kind.
+        inline for (@typeInfo(Parameter.Kind).@"enum".fields) |field| {
+            try std.testing.expect(@hasField(ValueType, field.name));
+        }
+        // Check if every value`s fields have representation in Kind.
+        inline for (@typeInfo(ValueType).@"struct".fields) |field| {
+            try std.testing.expect(@hasField(Parameter.Kind, field.name));
+        }
+    }
+
+    test isValid {
+        var res: Parameter = .init(std.testing.allocator);
+        defer res.deinit();
+        // Validate line names
+        try res.value.line.items.insert("left");
+        try res.value.line.items.insert("right");
+        try std.testing.expect(res.isValid(.line, "left"));
+        try std.testing.expect(res.isValid(.line, "right"));
+        try std.testing.expect(res.isValid(.line, "left,right"));
+        try std.testing.expect(res.isValid(.line, "right,left"));
+        try std.testing.expect(res.isValid(.line, "leftt") == false);
+        // Validate axis
+        try std.testing.expect(res.isValid(.axis, "768"));
+        try std.testing.expect(res.isValid(.axis, "0") == false);
+        try std.testing.expect(res.isValid(.axis, "769") == false);
+        // Validate carrier
+        try std.testing.expect(res.isValid(.carrier, "768"));
+        try std.testing.expect(res.isValid(.carrier, "0") == false);
+        try std.testing.expect(res.isValid(.carrier, "769") == false);
+        // Validate direction
+        try std.testing.expect(res.isValid(.direction, "forward"));
+        try std.testing.expect(res.isValid(.direction, "backward"));
+        try std.testing.expect(res.isValid(.direction, "769") == false);
+        // Validate CAS
+        try std.testing.expect(res.isValid(.cas, "on"));
+        try std.testing.expect(res.isValid(.cas, "off"));
+        try std.testing.expect(res.isValid(.cas, "forward") == false);
+        // Validate link axis
+        try std.testing.expect(res.isValid(.link_axis, "next"));
+        try std.testing.expect(res.isValid(.link_axis, "prev"));
+        try std.testing.expect(res.isValid(.link_axis, "left"));
+        try std.testing.expect(res.isValid(.link_axis, "right"));
+        try std.testing.expect(res.isValid(.link_axis, "forward") == false);
+        // Validate variable
+        try std.testing.expect(res.isValid(.variable, "next"));
+        try std.testing.expect(res.isValid(.variable, "var"));
+        try std.testing.expect(res.isValid(.variable, "c"));
+        try std.testing.expect(res.isValid(.variable, "carrier"));
+        try std.testing.expect(res.isValid(.variable, "1c") == false);
+        // Validate hall state
+        try std.testing.expect(res.isValid(.hall_state, "on"));
+        try std.testing.expect(res.isValid(.hall_state, "off"));
+        try std.testing.expect(res.isValid(.hall_state, "forward") == false);
+        // Validate hall side
+        try std.testing.expect(res.isValid(.hall_side, "back"));
+        try std.testing.expect(res.isValid(.hall_side, "front"));
+        try std.testing.expect(res.isValid(.hall_side, "forward") == false);
+        // Validate filter
+        try std.testing.expect(res.isValid(.filter, "1c"));
+        try std.testing.expect(res.isValid(.filter, "2a"));
+        try std.testing.expect(res.isValid(.filter, "d") == false);
+        try std.testing.expect(res.isValid(.filter, "0.1d") == false);
+        // Validate control mode
+        try std.testing.expect(res.isValid(.control_mode, "speed"));
+        try std.testing.expect(res.isValid(.control_mode, "position"));
+        try std.testing.expect(res.isValid(.control_mode, "velocity") == false);
+        // Validate target
+        try std.testing.expect(res.isValid(.target, "1a"));
+        try std.testing.expect(res.isValid(.target, "2l"));
+        try std.testing.expect(res.isValid(.target, "3.5d"));
+        try std.testing.expect(res.isValid(.target, "d") == false);
+        try std.testing.expect(res.isValid(.target, "0.1a") == false);
+        // Validate log kind
+        try std.testing.expect(res.isValid(.log_kind, "axis"));
+        try std.testing.expect(res.isValid(.log_kind, "driver"));
+        try std.testing.expect(res.isValid(.log_kind, "all"));
+        try std.testing.expect(res.isValid(.log_kind, "d") == false);
+    }
+};
 
 pub const Filter = union(enum) {
     carrier: [1]u32,
@@ -245,6 +652,8 @@ pub fn init(c: Config) !void {
         .port = c.port,
     };
     errdefer allocator.free(config.host);
+    parameter = .init(allocator);
+    errdefer parameter.deinit();
 
     try command.registry.put(.{ .executable = .{
         .name = "SERVER_VERSION",
@@ -290,7 +699,7 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "SET_SPEED",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
+                .{ .name = "Line", .kind = .mmc_client_line },
                 .{ .name = "speed" },
             },
             .short_description = "Set Carrier speed of specified Line",
@@ -314,7 +723,7 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "SET_ACCELERATION",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
+                .{ .name = "Line", .kind = .mmc_client_line },
                 .{ .name = "acceleration" },
             },
             .short_description = "Set Carrier acceleration of specified Line",
@@ -338,7 +747,7 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "GET_SPEED",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
+                .{ .name = "Line", .kind = .mmc_client_line },
             },
             .short_description = "Print Carrier speed of the specified Line",
             .long_description = std.fmt.comptimePrint(
@@ -355,7 +764,7 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "GET_ACCELERATION",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
+                .{ .name = "Line", .kind = .mmc_client_line },
             },
             .short_description = "Print Carrier acceleration of the specified Line",
             .long_description = std.fmt.comptimePrint(
@@ -372,8 +781,8 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "PRINT_AXIS_INFO",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
-                .{ .name = "filter" },
+                .{ .name = "Line", .kind = .mmc_client_line },
+                .{ .name = "filter", .kind = .mmc_client_filter },
             },
             .short_description = "Print Axis information.",
             .long_description = std.fmt.comptimePrint(
@@ -395,8 +804,8 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "PRINT_DRIVER_INFO",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
-                .{ .name = "filter" },
+                .{ .name = "Line", .kind = .mmc_client_line },
+                .{ .name = "filter", .kind = .mmc_client_filter },
             },
             .short_description = "Print Driver information.",
             .long_description = std.fmt.comptimePrint(
@@ -418,8 +827,12 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "PRINT_CARRIER_INFO",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
-                .{ .name = "filter", .optional = true },
+                .{ .name = "Line", .kind = .mmc_client_line },
+                .{
+                    .name = "filter",
+                    .optional = true,
+                    .kind = .mmc_client_filter,
+                },
             },
             .short_description = "Print Carrier information.",
             .long_description = std.fmt.comptimePrint(
@@ -445,12 +858,13 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "AXIS_CARRIER",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
-                .{ .name = "Axis" },
+                .{ .name = "Line", .kind = .mmc_client_line },
+                .{ .name = "Axis", .kind = .mmc_client_axis },
                 .{
                     .name = "result variable",
                     .optional = true,
                     .resolve = false,
+                    .kind = .mmc_client_variable,
                 },
             },
             .short_description = "Print Carrier ID on Axis, if exists.",
@@ -478,11 +892,12 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "CARRIER_ID",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line(s)" },
+                .{ .name = "Line(s)", .kind = .mmc_client_line },
                 .{
                     .name = "result variable prefix",
                     .optional = true,
                     .resolve = false,
+                    .kind = .mmc_client_variable,
                 },
             },
             .short_description = "Display Carrier IDs on Line.",
@@ -508,8 +923,8 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "ASSERT_CARRIER_LOCATION",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
-                .{ .name = "Carrier" },
+                .{ .name = "Line", .kind = .mmc_client_line },
+                .{ .name = "Carrier", .kind = .mmc_client_carrier },
                 .{ .name = "location" },
                 .{ .name = "threshold", .optional = true },
             },
@@ -542,12 +957,13 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "CARRIER_LOCATION",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
-                .{ .name = "Carrier" },
+                .{ .name = "Line", .kind = .mmc_client_line },
+                .{ .name = "Carrier", .kind = .mmc_client_carrier },
                 .{
                     .name = "result variable",
                     .resolve = false,
                     .optional = true,
+                    .kind = .mmc_client_variable,
                 },
             },
             .short_description = "Display Carrier location, if exists.",
@@ -567,8 +983,8 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "CARRIER_AXIS",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
-                .{ .name = "Carrier" },
+                .{ .name = "Line", .kind = .mmc_client_line },
+                .{ .name = "Carrier", .kind = .mmc_client_carrier },
             },
             .short_description = "Display Carrier Axis",
             .long_description = std.fmt.comptimePrint(
@@ -585,8 +1001,12 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "HALL_STATUS",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
-                .{ .name = "filter", .optional = true },
+                .{ .name = "Line", .kind = .mmc_client_line },
+                .{
+                    .name = "filter",
+                    .optional = true,
+                    .kind = .mmc_client_filter,
+                },
             },
             .short_description = "Display Hall Sensor state.",
             .long_description = std.fmt.comptimePrint(
@@ -612,10 +1032,14 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "ASSERT_HALL",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
-                .{ .name = "Axis" },
-                .{ .name = "side" },
-                .{ .name = "on/off", .optional = true },
+                .{ .name = "Line", .kind = .mmc_client_line },
+                .{ .name = "Axis", .kind = .mmc_client_axis },
+                .{ .name = "side", .kind = .mmc_client_hall_side },
+                .{
+                    .name = "on/off",
+                    .optional = true,
+                    .kind = .mmc_client_hall_state,
+                },
             },
             .short_description = "Assert Hall Sensor state.",
             .long_description = std.fmt.comptimePrint(
@@ -645,8 +1069,12 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "CLEAR_ERRORS",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
-                .{ .name = "filter", .optional = true },
+                .{ .name = "Line", .kind = .mmc_client_line },
+                .{
+                    .name = "filter",
+                    .optional = true,
+                    .kind = .mmc_client_filter,
+                },
             },
             .short_description = "Clear error states.",
             .long_description = std.fmt.comptimePrint(
@@ -671,8 +1099,12 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "DEINITIALIZE",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
-                .{ .name = "filter", .optional = true },
+                .{ .name = "Line", .kind = .mmc_client_line },
+                .{
+                    .name = "filter",
+                    .optional = true,
+                    .kind = .mmc_client_filter,
+                },
             },
             .short_description = "Deinitialize Carrier.",
             .long_description = std.fmt.comptimePrint(
@@ -718,8 +1150,12 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "RELEASE_CARRIER",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
-                .{ .name = "filter", .optional = true },
+                .{ .name = "Line", .kind = .mmc_client_line },
+                .{
+                    .name = "filter",
+                    .optional = true,
+                    .kind = .mmc_client_filter,
+                },
             },
             .short_description = "Release Carrier",
             .long_description = std.fmt.comptimePrint(
@@ -749,7 +1185,11 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "AUTO_INITIALIZE",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line(s)", .optional = true },
+                .{
+                    .name = "Line(s)",
+                    .optional = true,
+                    .kind = .mmc_client_line,
+                },
             },
             .short_description = "Initialize all Carriers automatically.",
             .long_description = std.fmt.comptimePrint(
@@ -777,7 +1217,7 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "CALIBRATE",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
+                .{ .name = "Line", .kind = .mmc_client_line },
             },
             .short_description = "Calibrate Track Line.",
             .long_description = std.fmt.comptimePrint(
@@ -795,7 +1235,7 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "SET_ZERO",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
+                .{ .name = "Line", .kind = .mmc_client_line },
             },
             .short_description = "Set Line zero position.",
             .long_description = std.fmt.comptimePrint(
@@ -820,11 +1260,16 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "INITIALIZE",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
-                .{ .name = "Axis" },
-                .{ .name = "direction" },
-                .{ .name = "Carrier" },
-                .{ .name = "link Axis", .resolve = false, .optional = true },
+                .{ .name = "Line", .kind = .mmc_client_line },
+                .{ .name = "Axis", .kind = .mmc_client_axis },
+                .{ .name = "direction", .kind = .mmc_client_direction },
+                .{ .name = "Carrier", .kind = .mmc_client_carrier },
+                .{
+                    .name = "link Axis",
+                    .resolve = false,
+                    .optional = true,
+                    .kind = .mmc_client_link_axis,
+                },
             },
             .short_description = "Initialize Carrier.",
             .long_description = std.fmt.comptimePrint(
@@ -861,8 +1306,8 @@ pub fn init(c: Config) !void {
     try command.registry.put(.{ .executable = .{
         .name = "WAIT_INITIALIZE",
         .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "Line" },
-            .{ .name = "Carrier" },
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "Carrier", .kind = .mmc_client_carrier },
             .{ .name = "timeout", .optional = true },
         },
         .short_description = "Wait until Carrier initialization complete.",
@@ -893,8 +1338,8 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "WAIT_MOVE_CARRIER",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
-                .{ .name = "Carrier" },
+                .{ .name = "Line", .kind = .mmc_client_line },
+                .{ .name = "Carrier", .kind = .mmc_client_carrier },
                 .{ .name = "timeout", .optional = true },
             },
             .short_description = "Wait until Carrier movement complete.",
@@ -921,11 +1366,15 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "MOVE_CARRIER",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
-                .{ .name = "Carrier" },
-                .{ .name = "target" },
-                .{ .name = "CAS", .optional = true },
-                .{ .name = "control mode", .optional = true },
+                .{ .name = "Line", .kind = .mmc_client_line },
+                .{ .name = "Carrier", .kind = .mmc_client_carrier },
+                .{ .name = "target", .kind = .mmc_client_target },
+                .{ .name = "CAS", .optional = true, .kind = .mmc_client_cas },
+                .{
+                    .name = "control mode",
+                    .optional = true,
+                    .kind = .mmc_client_control_mode,
+                },
             },
             .short_description = "Move Carrier to specified target.",
             .long_description = std.fmt.comptimePrint(
@@ -937,7 +1386,7 @@ pub fn init(c: Config) !void {
                 \\  {s}.
                 \\- "d" or "distance" to target relative distance to current Carrier
                 \\  position, provided in {s}.
-                \\Optional: Provide "on" or "off" to specify CAS (Collision Avoidance 
+                \\Optional: Provide "on" or "off" to specify CAS (Collision Avoidance
                 \\System) activation (enabled by default).
                 \\Optional: Provide following to specify movement control mode:
                 \\- "speed" to move Carrier with speed profile feedback.
@@ -966,10 +1415,14 @@ pub fn init(c: Config) !void {
     try command.registry.put(.{ .executable = .{
         .name = "PUSH_CARRIER",
         .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "Line" },
-            .{ .name = "Axis" },
-            .{ .name = "direction" },
-            .{ .name = "Carrier", .optional = true },
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "Axis", .kind = .mmc_client_axis },
+            .{ .name = "direction", .kind = .mmc_client_direction },
+            .{
+                .name = "Carrier",
+                .optional = true,
+                .kind = .mmc_client_carrier,
+            },
         },
         .short_description = "Push Carrier on the specified Axis.",
         .long_description = std.fmt.comptimePrint(
@@ -998,12 +1451,12 @@ pub fn init(c: Config) !void {
     try command.registry.put(.{ .executable = .{
         .name = "PULL_CARRIER",
         .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "Line" },
-            .{ .name = "Axis" },
-            .{ .name = "Carrier" },
-            .{ .name = "direction" },
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "Axis", .kind = .mmc_client_axis },
+            .{ .name = "Carrier", .kind = .mmc_client_carrier },
+            .{ .name = "direction", .kind = .mmc_client_direction },
             .{ .name = "location", .optional = true },
-            .{ .name = "CAS", .optional = true },
+            .{ .name = "CAS", .optional = true, .kind = .mmc_client_cas },
         },
         .short_description = "Pull incoming Carrier.",
         .long_description = std.fmt.comptimePrint(
@@ -1021,8 +1474,8 @@ pub fn init(c: Config) !void {
             \\- "nan" (Carrier can move through external force after pulled to
             \\  specified Axis).
             \\
-            \\Optional: Provide "on" or "off" to specify CAS (Collision 
-            \\Avoidance System) activation (enabled by default) while Carrier is 
+            \\Optional: Provide "on" or "off" to specify CAS (Collision
+            \\Avoidance System) activation (enabled by default) while Carrier is
             \\being moved to specified location.
             \\
             \\Example: Pull Carrier onto Axis "1" on Line "line2" from Line "line1" and
@@ -1049,8 +1502,8 @@ pub fn init(c: Config) !void {
     try command.registry.put(.{ .executable = .{
         .name = "STOP_PULL_CARRIER",
         .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "Line" },
-            .{ .name = "filter", .optional = true },
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "filter", .optional = true, .kind = .mmc_client_filter },
         },
         .short_description = "Stop pulling Carrier at axis.",
         .long_description = std.fmt.comptimePrint(
@@ -1070,38 +1523,36 @@ pub fn init(c: Config) !void {
         .execute = &commands.stop_pull.impl,
     } });
     errdefer command.registry.orderedRemove("STOP_PULL_CARRIER");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "STOP_PUSH_CARRIER",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
-                .{ .name = "filter", .optional = true },
-            },
-            .short_description = "Stop pushing Carrier at axis.",
-            .long_description = std.fmt.comptimePrint(
-                \\Stop active Carrier push on specified Line.
-                \\Optional: Provide filter to specify selection of push. To apply
-                \\filter, provide ID with filter suffix (e.g., 1c).
-                \\Supported suffixes are:
-                \\ - "a" or "axis" to filter by Axis
-                \\ - "c" or "Carrier" to filter by Carrier
-                \\ - "d" or "driver" to filter by Driver
-                \\
-                \\Example: Stop push Carrier(s) on Line "line1".
-                \\STOP_PUSH_CARRIER line1
-                \\
-                \\Example: Stop push for Axis "3" on Line "line1".
-                \\STOP_PUSH_CARRIER line1 3a
-            , .{}),
-            .execute = &commands.stop_push.impl,
+    try command.registry.put(.{ .executable = .{
+        .name = "STOP_PUSH_CARRIER",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "filter", .optional = true, .kind = .mmc_client_filter },
         },
-    });
+        .short_description = "Stop pushing Carrier at axis.",
+        .long_description = std.fmt.comptimePrint(
+            \\Stop active Carrier push on specified Line.
+            \\Optional: Provide filter to specify selection of push. To apply
+            \\filter, provide ID with filter suffix (e.g., 1c).
+            \\Supported suffixes are:
+            \\ - "a" or "axis" to filter by Axis
+            \\ - "c" or "Carrier" to filter by Carrier
+            \\ - "d" or "driver" to filter by Driver
+            \\
+            \\Example: Stop push Carrier(s) on Line "line1".
+            \\STOP_PUSH_CARRIER line1
+            \\
+            \\Example: Stop push for Axis "3" on Line "line1".
+            \\STOP_PUSH_CARRIER line1 3a
+        , .{}),
+        .execute = &commands.stop_push.impl,
+    } });
     errdefer command.registry.orderedRemove("STOP_PUSH_CARRIER");
     try command.registry.put(.{ .executable = .{
         .name = "WAIT_AXIS_EMPTY",
         .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "Line" },
-            .{ .name = "Axis" },
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "Axis", .kind = .mmc_client_axis },
             .{ .name = "timeout", .optional = true },
         },
         .short_description = "Wait until no Carrier on Axis.",
@@ -1129,8 +1580,8 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "ADD_LOG_INFO",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
-                .{ .name = "kind" },
+                .{ .name = "Line", .kind = .mmc_client_line },
+                .{ .name = "kind", .kind = .mmc_client_log_kind },
                 .{ .name = "range", .optional = true },
             },
             .short_description = "Add logging configuration.",
@@ -1186,8 +1637,8 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "REMOVE_LOG_INFO",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
-                .{ .name = "kind" },
+                .{ .name = "Line", .kind = .mmc_client_line },
+                .{ .name = "kind", .kind = .mmc_client_log_kind },
                 .{ .name = "range", .optional = true },
             },
             .short_description = "Remove logging configuration.",
@@ -1244,8 +1695,8 @@ pub fn init(c: Config) !void {
     try command.registry.put(.{ .executable = .{
         .name = "PRINT_ERRORS",
         .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "Line" },
-            .{ .name = "filter", .optional = true },
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "filter", .optional = true, .kind = .mmc_client_filter },
         },
         .short_description = "Print Axis and Driver errors.",
         .long_description = std.fmt.comptimePrint(
@@ -1268,7 +1719,7 @@ pub fn init(c: Config) !void {
     try command.registry.put(.{ .executable = .{
         .name = "STOP",
         .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "Line", .optional = true },
+            .{ .name = "Line", .kind = .mmc_client_line },
         },
         .short_description = "Stop all processes.",
         .long_description = std.fmt.comptimePrint(
@@ -1282,7 +1733,7 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "PAUSE",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .optional = true },
+                .{ .name = "Line", .kind = .mmc_client_line },
             },
             .short_description = "Pause all processes.",
             .long_description = std.fmt.comptimePrint(
@@ -1297,7 +1748,7 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "RESUME",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .optional = true },
+                .{ .name = "Line", .kind = .mmc_client_line },
             },
             .short_description = "Resume all paused processes.",
             .long_description = std.fmt.comptimePrint(
@@ -1312,9 +1763,9 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "SET_CARRIER_ID",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line" },
-                .{ .name = "Carrier" },
-                .{ .name = "new Carrier id" },
+                .{ .name = "Line", .kind = .mmc_client_line },
+                .{ .name = "Carrier", .kind = .mmc_client_carrier },
+                .{ .name = "new Carrier id", .kind = .mmc_client_carrier },
             },
             .short_description = "Modify Carrier ID.",
             .long_description = std.fmt.comptimePrint(
@@ -1332,6 +1783,7 @@ pub fn init(c: Config) !void {
 
 pub fn deinit() void {
     commands.disconnect.impl(&.{}) catch {};
+    parameter.deinit();
     allocator.free(config.host);
     if (debug_allocator.detectLeaks()) {
         std.log.debug("Leaks detected", .{});
