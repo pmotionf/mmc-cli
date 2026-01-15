@@ -499,8 +499,8 @@ pub const Parameter = struct {
         try std.testing.expect(res.isValid(.direction, "backward"));
         try std.testing.expect(res.isValid(.direction, "769") == false);
         // Validate CAS
-        try std.testing.expect(res.isValid(.cas, "enable"));
-        try std.testing.expect(res.isValid(.cas, "disable"));
+        try std.testing.expect(res.isValid(.cas, "on"));
+        try std.testing.expect(res.isValid(.cas, "off"));
         try std.testing.expect(res.isValid(.cas, "forward") == false);
         // Validate link axis
         try std.testing.expect(res.isValid(.link_axis, "next"));
