@@ -31,6 +31,8 @@ input: []u8 = &.{},
 
 cursor: Cursor = .{},
 
+selected_command: []const u8 = &.{},
+
 /// Prompt handler thread callback. Input must be set to non-canonical mode
 /// prior to spawning this thread. Only one prompt handler thread may be
 /// running at a time.
@@ -394,6 +396,7 @@ pub fn handler(ctx: *Prompt) void {
         // Clear input line to prepare for writing
         stdout.interface.writeAll("\x1B[2K\r") catch continue :main;
 
+        ctx.selected_command = &.{};
         // Parse and print syntax highlighted input
         var last_frag_start: ?usize = null; // Last start byte != ' '.
         for (ctx.input, 0..) |c, i| {
@@ -445,9 +448,65 @@ pub fn handler(ctx: *Prompt) void {
                                     continue :main;
                                 break;
                             }
-                        } else {
-                            stdout.interface.writeAll(fragment) catch
-                                continue :main;
+                        } else validation: {
+                            if (ctx.selected_command.len == 0) {
+                                io.style.set(&stdout.interface, .{
+                                    .fg = .{ .named = .red },
+                                }) catch continue :main;
+                                defer io.style.reset(
+                                    &stdout.interface,
+                                ) catch {};
+                                stdout.interface.writeAll(fragment) catch
+                                    continue :main;
+                                break :validation;
+                            }
+                            const selected_command =
+                                command.registry.getPtr(ctx.selected_command) orelse {
+                                    io.style.set(&stdout.interface, .{
+                                        .fg = .{ .named = .red },
+                                    }) catch continue :main;
+                                    defer io.style.reset(
+                                        &stdout.interface,
+                                    ) catch {};
+                                    stdout.interface.writeAll(fragment) catch
+                                        continue :main;
+                                    break :validation;
+                                };
+                            // Index of current fragment
+                            const fragment_id =
+                                std.mem.count(
+                                    u8,
+                                    std.mem.trimStart(u8, ctx.input[0..i], &std.ascii.whitespace),
+                                    " ",
+                                );
+                            // Parameter start at index 1 on command input
+                            const param_idx = fragment_id - 1;
+                            if (param_idx >= selected_command.parameters.len) {
+                                io.style.set(&stdout.interface, .{
+                                    .fg = .{ .named = .red },
+                                }) catch continue :main;
+                                defer io.style.reset(
+                                    &stdout.interface,
+                                ) catch {};
+                                stdout.interface.writeAll(fragment) catch
+                                    continue :main;
+                                break :validation;
+                            }
+                            const param =
+                                selected_command.parameters[param_idx];
+                            if (param.isValid(fragment)) {
+                                stdout.interface.writeAll(fragment) catch
+                                    continue :main;
+                            } else {
+                                io.style.set(&stdout.interface, .{
+                                    .fg = .{ .named = .red },
+                                }) catch continue :main;
+                                defer io.style.reset(
+                                    &stdout.interface,
+                                ) catch {};
+                                stdout.interface.writeAll(fragment) catch
+                                    continue :main;
+                            }
                         }
                     }
                 }

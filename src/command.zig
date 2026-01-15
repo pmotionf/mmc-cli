@@ -1,7 +1,7 @@
 //! This module defines the necessary types and functions to declare, queue,
 //! and execute commands. Furthermore, it includes the implementations of a few
 //! general purpose commands that facilitate easier use of the MMC CLI utility.
-
+const This = @This();
 const builtin = @import("builtin");
 const std = @import("std");
 const chrono = @import("chrono");
@@ -205,8 +205,8 @@ pub const Command = union(enum) {
     pub const Executable = struct {
         /// Name of a command, as shown to/parsed from user.
         name: []const u8,
-        /// List of argument names. Each argument should be wrapped in a "()" for
-        /// required arguments, or "[]" for optional arguments.
+        /// List of argument names. Each argument should be wrapped in a "()"
+        /// for required arguments, or "[]" for optional arguments.
         parameters: []const Parameter = &[_]Parameter{},
         /// Short description of command.
         short_description: []const u8,
@@ -216,9 +216,89 @@ pub const Command = union(enum) {
 
         pub const Parameter = struct {
             name: []const u8,
+            kind: resolveKind() = .none,
             optional: bool = false,
             quotable: bool = true,
             resolve: bool = true,
+
+            fn resolveKind() type {
+                // Calculate how many parameters are there that has parsing rule.
+                var parameters = 0;
+                if (@hasDecl(This, "Parameter")) {
+                    const Kind = @field(This.Parameter, "Kind");
+                    parameters += @typeInfo(Kind).@"enum".fields.len;
+                }
+                inline for (@typeInfo(Config.Module).@"enum".fields) |field| {
+                    const module: type = comptime @field(This, field.name);
+                    if (@typeInfo(module) == .@"struct" and @hasDecl(module, "Parameter")) {
+                        const Kind = @field(module.Parameter, "Kind");
+                        parameters += @typeInfo(Kind).@"enum".fields.len;
+                    }
+                }
+                var result: std.builtin.Type.Enum = .{
+                    .fields = &.{},
+                    .decls = &.{},
+                    .is_exhaustive = true,
+                    .tag_type = std.math.IntFittingRange(0, parameters),
+                };
+                var tag_value = 0;
+                result.fields = result.fields ++ .{
+                    std.builtin.Type.EnumField{
+                        .value = tag_value,
+                        .name = "none",
+                    },
+                };
+                tag_value += 1;
+                if (@hasDecl(This, "Parameter")) {
+                    const ti = @typeInfo(This.Parameter.Kind).@"enum";
+                    inline for (ti.fields) |field| {
+                        result.fields = result.fields ++ .{std.builtin.Type.EnumField{
+                            .value = tag_value,
+                            .name = field.name,
+                        }};
+                        tag_value += 1;
+                    }
+                }
+                inline for (@typeInfo(Config.Module).@"enum".fields) |field| {
+                    const module: type = comptime @field(This, field.name);
+                    if (@typeInfo(module) == .@"struct" and @hasDecl(module, "Parameter")) {
+                        const ti = @typeInfo(module.Parameter.Kind).@"enum";
+                        inline for (ti.fields) |kind_field| {
+                            result.fields = result.fields ++ .{std.builtin.Type.EnumField{
+                                .value = tag_value,
+                                .name = field.name ++ "_" ++ kind_field.name,
+                            }};
+                            tag_value += 1;
+                        }
+                    }
+                }
+                return @Type(.{ .@"enum" = result });
+            }
+
+            pub fn isValid(self: @This(), input: []const u8) bool {
+                if (self.kind == .none) return true;
+                const ti = @typeInfo(@TypeOf(self.kind)).@"enum";
+                inline for (ti.fields) |field| {
+                    if (std.mem.eql(u8, field.name, @tagName(self.kind))) {
+                        comptime var module_name: []const u8 = "";
+                        comptime var field_name_idx = 0;
+                        inline while (field_name_idx < field.name.len) {
+                            if (@hasDecl(This, module_name)) {
+                                const module = @field(This, module_name);
+                                const kind_name =
+                                    field.name[field_name_idx + 1 ..];
+                                return module.parameter.isValid(
+                                    @field(module.Parameter.Kind, kind_name),
+                                    input,
+                                );
+                            }
+                            field_name_idx += 1;
+                            module_name = field.name[0..field_name_idx];
+                        }
+                    }
+                }
+                return true;
+            }
         };
     };
 };
