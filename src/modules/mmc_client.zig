@@ -1129,11 +1129,6 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("DEINITIALIZE");
-    try command.registry.put(.{ .alias = .{
-        .name = "CLEAR_CARRIER_INFO",
-        .command = command.registry.getPtr("DEINITIALIZE").?,
-    } });
-    errdefer command.registry.orderedRemove("CLEAR_CARRIER_INFO");
     try command.registry.put(.{ .executable = .{
         .name = "RESET_SYSTEM",
         .short_description = "Reset system state.",
@@ -1250,13 +1245,6 @@ pub fn init(c: Config) !void {
     });
     errdefer command.registry.orderedRemove("SET_ZERO");
     try command.registry.put(.{
-        .alias = .{
-            .name = "SET_LINE_ZERO",
-            .command = command.registry.getPtr("SET_ZERO").?,
-        },
-    });
-    errdefer command.registry.orderedRemove("SET_LINE_ZERO");
-    try command.registry.put(.{
         .executable = .{
             .name = "INITIALIZE",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -1298,11 +1286,6 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("INITIALIZE");
-    try command.registry.put(.{ .alias = .{
-        .name = "ISOLATE",
-        .command = command.registry.getPtr("INITIALIZE").?,
-    } });
-    errdefer command.registry.orderedRemove("ISOLATE");
     try command.registry.put(.{ .executable = .{
         .name = "WAIT_INITIALIZE",
         .parameters = &[_]command.Command.Executable.Parameter{
@@ -1329,11 +1312,6 @@ pub fn init(c: Config) !void {
         .execute = &commands.wait.isolate,
     } });
     errdefer command.registry.orderedRemove("WAIT_INITIALIZE");
-    try command.registry.put(.{ .alias = .{
-        .name = "WAIT_ISOLATE",
-        .command = command.registry.getPtr("WAIT_INITIALIZE").?,
-    } });
-    errdefer command.registry.orderedRemove("WAIT_ISOLATE");
     try command.registry.put(.{
         .executable = .{
             .name = "WAIT_MOVE_CARRIER",
