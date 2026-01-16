@@ -95,14 +95,14 @@ fn parseTarget(
                 .location = try std.fmt.parseFloat(
                     f32,
                     param[0..suffix_idx],
-                ) / 1000.0,
+                ),
             };
         } else if (std.ascii.eqlIgnoreCase(param[suffix_idx..], "d")) {
             return .{
                 .distance = try std.fmt.parseFloat(
                     f32,
                     param[0..suffix_idx],
-                ) / 1000.0,
+                ),
             };
         }
     }
@@ -126,7 +126,7 @@ fn parseTarget(
             .location = try std.fmt.parseFloat(
                 f32,
                 param[0..suffix_idx],
-            ) / 1000.0,
+            ),
         };
     }
     // Check for `distance` suffix
@@ -135,7 +135,7 @@ fn parseTarget(
             .distance = try std.fmt.parseFloat(
                 f32,
                 param[0..suffix_idx],
-            ) / 1000.0,
+            ),
         };
     }
     return error.InvalidTarget;

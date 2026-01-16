@@ -43,7 +43,7 @@ pub fn impl(params: [][]const u8) !void {
         else
             return error.InvalidDirection;
     const destination: ?f32 = if (params[4].len > 0)
-        try std.fmt.parseFloat(f32, params[4]) / 1000.0
+        try std.fmt.parseFloat(f32, params[4])
     else
         null;
 

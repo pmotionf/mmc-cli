@@ -10,7 +10,7 @@ pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "set_acceleration");
     defer tracy_zone.end();
     const line_name: []const u8 = params[0];
-    const carrier_acceleration = try std.fmt.parseFloat(f32, params[1]) / 1000;
+    const carrier_acceleration = try std.fmt.parseFloat(f32, params[1]);
     if (carrier_acceleration <= 0.0 or carrier_acceleration > 24.5)
         return error.InvalidAcceleration;
 
