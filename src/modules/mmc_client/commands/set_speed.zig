@@ -12,7 +12,7 @@ pub fn impl(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_speed: f32 = try std.fmt.parseFloat(f32, params[1]);
     if (carrier_speed < 0 or carrier_speed > 6) return error.InvalidSpeed;
-    // from 0.0001 to 0.1 => low, 0.1 to 6.0 => normal mode.
+    // from 0.1 to 100 mm/s => low, 100 to 6000.0 mm/s=> normal mode.
     const low = carrier_speed < 0.1;
 
     const line_idx = try client.matchLine(line_name);
