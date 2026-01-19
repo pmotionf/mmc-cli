@@ -49,10 +49,6 @@ pub fn impl(params: [][]const u8) !void {
                         .line = line.id,
                         .carrier = carrier_id,
                         .velocity = line.velocity.value,
-                        .velocity_mode = if (line.velocity.low)
-                            .VELOCITY_MODE_LOW
-                        else
-                            .VELOCITY_MODE_NORMAL,
                         .acceleration = line.acceleration,
                         .target = target,
                         .disable_cas = disable_cas,

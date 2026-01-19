@@ -71,10 +71,6 @@ pub fn impl(params: [][]const u8) !void {
                         .axis = axis_id,
                         .carrier = carrier_id,
                         .velocity = if (no_servo) 0 else line.velocity.value,
-                        .velocity_mode = if (line.velocity.low)
-                            .VELOCITY_MODE_LOW
-                        else
-                            .VELOCITY_MODE_NORMAL,
                         .acceleration = if (no_servo)
                             0
                         else
