@@ -11,14 +11,14 @@ pub fn impl(params: [][]const u8) !void {
     defer tracy_zone.end();
     const line_name: []const u8 = params[0];
     const carrier_acceleration = try std.fmt.parseFloat(f32, params[1]);
-    if (carrier_acceleration <= 0.0 or carrier_acceleration > 24.5)
+    if (carrier_acceleration <= 0.0 or carrier_acceleration > 24500)
         return error.InvalidAcceleration;
 
     const line_idx = try client.matchLine(line_name);
-    client.lines[line_idx].acceleration = carrier_acceleration * 10.0;
+    client.lines[line_idx].acceleration = carrier_acceleration;
 
     std.log.info("Set acceleration to {d} {s}.", .{
-        @as(f32, client.lines[line_idx].acceleration) * 100,
+        @as(f32, client.lines[line_idx].acceleration),
         standard.acceleration.unit,
     });
 }
