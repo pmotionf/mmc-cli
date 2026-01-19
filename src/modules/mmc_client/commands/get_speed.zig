@@ -16,7 +16,7 @@ pub fn impl(params: [][]const u8) !void {
         "Line {s} speed: {d} {s}",
         .{
             line_name,
-            @as(f32, @floatFromInt(velocity.value)) /
+            @as(f32, velocity.value) /
                 @as(f32, if (velocity.low) 10 else 0.01),
             standard.speed.unit,
         },

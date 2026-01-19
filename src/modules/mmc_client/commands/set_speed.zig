@@ -17,15 +17,15 @@ pub fn impl(params: [][]const u8) !void {
 
     const line_idx = try client.matchLine(line_name);
     client.lines[line_idx].velocity = .{
-        .value = @intFromFloat(carrier_speed *
-            @as(f32, if (low) 10_000.0 else 10.0)),
+        .value = carrier_speed *
+            @as(f32, if (low) 10.0 else 0.01),
         .low = low,
     };
 
     std.log.info(
         "Set speed to {d} {s}",
         .{
-            @as(f32, @floatFromInt(client.lines[line_idx].velocity.value)) /
+            @as(f32, client.lines[line_idx].velocity.value) /
                 @as(f32, if (low) 10 else 0.01),
             standard.speed.unit,
         },

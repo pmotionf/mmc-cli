@@ -161,13 +161,13 @@ pub fn impl(params: [][]const u8) !void {
             },
             else => return error.InvalidResponse,
         };
-        if (api.version.major != server_api_version.major or
-            api.version.minor > server_api_version.minor)
+        if (api.protobuf.version.major != server_api_version.major or
+            api.protobuf.version.minor > server_api_version.minor)
         {
             std.log.info(
                 "Client API version: {f}, Server API version: {}.{}.{}",
                 .{
-                    api.version,
+                    api.protobuf.version,
                     server_api_version.major,
                     server_api_version.minor,
                     server_api_version.patch,
@@ -296,10 +296,10 @@ pub fn impl(params: [][]const u8) !void {
                 .{
                     line.name,
                     line.axes,
-                    @as(f32, @floatFromInt(line.velocity.value)) /
+                    @as(f32, line.velocity.value) /
                         @as(f32, if (line.velocity.low) 10 else 0.01),
                     standard.speed.unit,
-                    @as(f32, @floatFromInt(line.acceleration)) * 100,
+                    @as(f32, line.acceleration) * 100,
                     standard.acceleration.unit,
                 },
             );

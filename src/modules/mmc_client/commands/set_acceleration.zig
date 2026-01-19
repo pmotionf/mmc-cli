@@ -15,10 +15,10 @@ pub fn impl(params: [][]const u8) !void {
         return error.InvalidAcceleration;
 
     const line_idx = try client.matchLine(line_name);
-    client.lines[line_idx].acceleration = @intFromFloat(carrier_acceleration * 10.0);
+    client.lines[line_idx].acceleration = carrier_acceleration * 10.0;
 
     std.log.info("Set acceleration to {d} {s}.", .{
-        @as(f32, @floatFromInt(client.lines[line_idx].acceleration)) * 100,
+        @as(f32, client.lines[line_idx].acceleration) * 100,
         standard.acceleration.unit,
     });
 }
