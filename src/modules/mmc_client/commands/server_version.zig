@@ -4,7 +4,7 @@ const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn impl(_: [][]const u8) !void {
+pub fn impl(_: std.Io, _: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "server_version");
     defer tracy_zone.end();
     if (client.sock == null) return error.ServerNotConnected;

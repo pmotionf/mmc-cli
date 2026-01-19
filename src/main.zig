@@ -2,9 +2,13 @@ const builtin = @import("builtin");
 const std = @import("std");
 const network = @import("network");
 
-const io = @import("io.zig");
+const mmc_io = @import("io.zig");
 const command = @import("command.zig");
 const Prompt = @import("Prompt.zig");
+
+// Environment variables to be used through the program, mainly locating
+// configuration files.
+pub var environ_map: *std.process.Environ.Map = undefined;
 
 pub const std_options: std.Options = .{
     .logFn = command.logFn,
@@ -19,20 +23,25 @@ fn stopCommandWindows(
 ) callconv(.winapi) std.os.windows.BOOL {
     if (dwCtrlType == std.os.windows.CTRL_C_EVENT) {
         command.stop.store(true, .monotonic);
-        std.fs.File.stdin().sync() catch {};
+        std.Io.File.stdin().sync() catch {};
     }
     return 1;
 }
 
-fn stopCommandLinux(_: c_int) callconv(.c) void {
+fn stopCommandLinux(_: std.os.linux.SIG) callconv(.c) void {
     command.stop.store(true, .monotonic);
 }
 
-pub fn main() !void {
-    try io.init();
-    defer io.deinit();
+pub fn main(init: std.process.Init) !void {
+    environ_map = init.environ_map;
+    try mmc_io.init();
+    defer mmc_io.deinit();
 
-    var prompter = try std.Thread.spawn(.{}, Prompt.handler, .{&prompt});
+    var prompter = try std.Thread.spawn(
+        .{},
+        Prompt.handler,
+        .{ &prompt, init.io },
+    );
     prompter.detach();
     defer prompt.close.store(true, .monotonic);
 
@@ -87,9 +96,11 @@ pub fn main() !void {
             prompt.disable.store(true, .monotonic);
         }
 
-        command.execute() catch |e| {
+        command.execute(init.io) catch |e| {
             std.log.err("{t}", .{e});
-            std.log.debug("{?f}", .{@errorReturnTrace()});
+            if (@errorReturnTrace()) |stack_trace| {
+                std.debug.dumpStackTrace(stack_trace);
+            }
             command.queueClear();
             continue :command_loop;
         };

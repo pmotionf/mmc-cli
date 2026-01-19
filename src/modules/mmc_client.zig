@@ -1760,10 +1760,12 @@ pub fn init(c: Config) !void {
 }
 
 pub fn deinit() void {
-    commands.disconnect.impl(&.{}) catch {};
+    // TODO: Find a better way for passing io to disconnect
+    var single_threaded: std.Io.Threaded = .init_single_threaded;
+    commands.disconnect.impl(single_threaded.io(), &.{}) catch {};
     parameter.deinit();
     allocator.free(config.host);
-    if (debug_allocator.detectLeaks()) {
+    if (debug_allocator.detectLeaks() != 0) {
         std.log.debug("Leaks detected", .{});
     }
     if (builtin.os.tag == .windows) std.os.windows.WSACleanup() catch return;

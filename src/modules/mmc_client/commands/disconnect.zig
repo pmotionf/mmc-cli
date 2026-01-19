@@ -5,7 +5,7 @@ const tracy = @import("tracy");
 
 /// Free all memory EXCEPT the endpoint, so that the client can reconnect to the
 /// latest server
-pub fn impl(_: [][]const u8) error{ServerNotConnected}!void {
+pub fn impl(_: std.Io, _: [][]const u8) error{ServerNotConnected}!void {
     const tracy_zone = tracy.traceNamed(@src(), "disconnect");
     defer tracy_zone.end();
     if (client.sock) |s| {

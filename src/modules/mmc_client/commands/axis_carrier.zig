@@ -4,7 +4,7 @@ const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn impl(params: [][]const u8) !void {
+pub fn impl(_: std.Io, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "axis_carrier");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);

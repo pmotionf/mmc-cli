@@ -7,7 +7,7 @@ const api = @import("mmc-api");
 const Standard = client.Standard;
 const standard: Standard = .{};
 
-pub fn impl(params: [][]const u8) !void {
+pub fn impl(_: std.Io, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "carrier_location");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);

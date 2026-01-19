@@ -8,10 +8,10 @@ const api = @import("mmc-api");
 const Standard = client.Standard;
 const standard: Standard = .{};
 
-pub fn impl(params: [][]const u8) !void {
+pub fn impl(io: std.Io, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "connect");
     defer tracy_zone.end();
-    if (client.sock) |_| disconnect.impl(&.{}) catch unreachable;
+    if (client.sock) |_| disconnect.impl(io, &.{}) catch unreachable;
     const endpoint: client.Config =
         if (params[0].len != 0) endpoint: {
             const last_delimiter_idx =
@@ -97,7 +97,7 @@ pub fn impl(params: [][]const u8) !void {
     );
     client.endpoint = try socket.getRemoteEndPoint();
     client.sock = socket;
-    client.reader = socket.reader(&client.reader_buf);
+    client.reader = socket.reader(io, &client.reader_buf);
     client.writer = socket.writer(&client.writer_buf);
     errdefer {
         client.reader = undefined;
@@ -289,7 +289,7 @@ pub fn impl(params: [][]const u8) !void {
             else => return error.InvalidResponse,
         };
         std.log.info("Track configuration for {s}:", .{server.name});
-        var stdout = std.fs.File.stdout().writer(&.{});
+        var stdout = std.Io.File.stdout().writer(io, &.{});
         for (client.lines) |line| {
             try stdout.interface.print(
                 "\t {s} ({}) - {} {s} | {} {s}\n",

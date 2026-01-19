@@ -66,10 +66,10 @@ pub const Config = struct {
         return false;
     }
 
-    pub fn status(self: Config) !void {
+    pub fn status(self: Config, io: std.Io) !void {
         std.log.info("Logging configuration:", .{});
         var stdout_buf: [4096]u8 = undefined;
-        var stdout = std.fs.File.stdout().writer(&stdout_buf);
+        var stdout = std.Io.File.stdout().writer(io, &stdout_buf);
         defer stdout.interface.flush() catch {};
         for (self.lines) |line| {
             if (line.isInitialized() == false) continue;
@@ -265,6 +265,7 @@ const Stream = struct {
 
     fn init(
         allocator: std.mem.Allocator,
+        io: std.Io,
         logging_size: usize,
         config: log.Config,
         lines: []client.Line,
@@ -310,7 +311,7 @@ const Stream = struct {
             3000,
         );
         errdefer stream.socket.close();
-        stream.reader = stream.socket.reader(&stream_writer_buf);
+        stream.reader = stream.socket.reader(io, &stream_writer_buf);
         stream.writer = stream.socket.writer(&stream_reader_buf);
         stream.config.lines = .empty;
         errdefer stream.config.lines.deinit(allocator);
@@ -626,7 +627,7 @@ var stream_reader_buf: [4096]u8 = undefined;
 var file_reader_buf: [4096]u8 = undefined;
 var file_writer_buf: [4096]u8 = undefined;
 
-pub fn runner(duration: f64, file_path: []const u8) !void {
+pub fn runner(io: std.Io, duration: f64, file_path: []const u8) !void {
     defer client.allocator.free(file_path);
     // Validation steps
     if (client.log_config.isInitialized() == false)
@@ -652,11 +653,11 @@ pub fn runner(duration: f64, file_path: []const u8) !void {
     );
     defer stream.deinit(client.allocator);
     // Logging file setup.
-    const log_file = try std.fs.cwd().createFile(file_path, .{});
+    const log_file = try std.Io.Dir.cwd().createFile(io, file_path, .{});
     defer {
         log_file.close();
         if (cancel.load(.monotonic))
-            std.fs.cwd().deleteFile(file_path) catch {};
+            std.Io.Dir.cwd().deleteFile(io, file_path) catch {};
     }
     std.log.info("The registers will be logged to {s}.", .{file_path});
     const log_time_start = std.time.microTimestamp();

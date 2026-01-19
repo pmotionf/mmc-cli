@@ -73,7 +73,7 @@ pub fn deinit() void {
     }
 }
 
-fn connect(params: [][]const u8) !void {
+fn connect(io: std.Io, params: [][]const u8) !void {
     var adapter_buf: [128]u8 = .{0} ** 128;
     var adapter: []u8 = &.{};
     if (params[0].len > 127) {
@@ -181,11 +181,11 @@ fn connect(params: [][]const u8) !void {
         stop_processing.store(false, .monotonic);
     }
     read_laser_value.store(false, .monotonic);
-    const process_thread = try std.Thread.spawn(.{}, process, .{});
+    const process_thread = try std.Thread.spawn(.{}, process, .{io});
     process_thread.detach();
 }
 
-fn disconnect(_: [][]const u8) !void {
+fn disconnect(_: std.Io, _: [][]const u8) !void {
     if (connection.len > 0) {
         while (processing.load(.monotonic)) {
             stop_processing.store(true, .monotonic);
@@ -199,7 +199,7 @@ fn disconnect(_: [][]const u8) !void {
     }
 }
 
-fn process() void {
+fn process(io: std.Io) void {
     defer {
         processing.store(false, .monotonic);
     }
@@ -209,7 +209,9 @@ fn process() void {
         _ = c.ec_send_processdata();
         wkc = c.ec_receive_processdata(c.EC_TIMEOUTRET);
         while (wkc < expected_WKC) {
-            std.Thread.sleep(std.time.ns_per_us * 10);
+            // TODO: What to do with catch using io.sleep
+            io.sleep(.fromNanoseconds(std.time.ns_per_us * 10), .real) catch
+                unreachable;
             _ = c.ec_send_processdata();
             wkc = c.ec_receive_processdata(c.EC_TIMEOUTRET);
         }
@@ -228,11 +230,13 @@ fn process() void {
         const reading_fixed: i32 = result_fixed_ptr.*;
         laser_value.store(reading_fixed, .monotonic);
         read_laser_value.store(false, .monotonic);
-        std.Thread.sleep(std.time.ns_per_us * 10);
+        // TODO: What to do with catch using io.sleep
+        io.sleep(.fromNanoseconds(std.time.ns_per_us * 10), .real) catch
+            unreachable;
     }
 }
 
-fn read(params: [][]const u8) !void {
+fn read(_: std.Io, params: [][]const u8) !void {
     const save_var = params[0];
     if (save_var.len > 0 and std.ascii.isDigit(save_var[0]))
         return error.InvalidParameter;

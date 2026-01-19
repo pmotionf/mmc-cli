@@ -4,7 +4,7 @@ const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn impl(params: [][]const u8) !void {
+pub fn impl(_: std.Io, params: [][]const u8) !void {
     if (client.sock == null) return error.ServerNotConnected;
     const line_name = params[0];
     const axis_id = try std.fmt.parseInt(u32, buf: {
