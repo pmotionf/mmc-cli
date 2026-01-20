@@ -12,21 +12,15 @@ pub fn impl(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const carrier_speed: f32 = try std.fmt.parseFloat(f32, params[1]);
     if (carrier_speed < 0 or carrier_speed > 6000) return error.InvalidSpeed;
-    // from 0.1 to 100 mm/s => low, 100 to 6000.0 mm/s=> normal mode.
-    const low = carrier_speed < 0.1;
+    // from 0.1 to 6000.0 mm/s
 
     const line_idx = try client.matchLine(line_name);
-    client.lines[line_idx].velocity = .{
-        .value = carrier_speed *
-            @as(f32, if (low) 10.0 else 0.01),
-        .low = low,
-    };
+    client.lines[line_idx].velocity = carrier_speed;
 
     std.log.info(
         "Set speed to {d} {s}",
         .{
-            @as(f32, client.lines[line_idx].velocity.value) /
-                @as(f32, if (low) 10 else 0.01),
+            @as(f32, client.lines[line_idx].velocity),
             standard.speed.unit,
         },
     );

@@ -48,7 +48,7 @@ pub fn impl(params: [][]const u8) !void {
                     .move = .{
                         .line = line.id,
                         .carrier = carrier_id,
-                        .velocity = line.velocity.value,
+                        .velocity = line.velocity,
                         .acceleration = line.acceleration,
                         .target = target,
                         .disable_cas = disable_cas,
