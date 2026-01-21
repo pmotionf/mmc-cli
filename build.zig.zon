@@ -12,10 +12,6 @@
             .url = "https://github.com/mochalins/network/archive/084fed7.tar.gz",
             .hash = "network-0.1.0-Pm-AgiMxAQCuaDrGAfSxVHeozUQ2gU3jINGLFxJ1Zpld",
         },
-        .zignet = .{
-            .url = "https://github.com/aaumar25/zignet/archive/ca7d172.tar.gz",
-            .hash = "zignet-0.2.0-BAu-r4GpAACnu7GCkbPHa4F6lQaq5wypMWqr0z0BM9nO",
-        },
         .chrono = .{
             .url = "https://github.com/aaumar25/chrono/archive/11b2a9b.tar.gz",
             .hash = "chrono-0.1.0-uVd76ObCAwBL5hB9wCVWZLus9iLTKvINA_GYw_Lmkfid",

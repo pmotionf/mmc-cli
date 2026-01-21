@@ -4,7 +4,7 @@ const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn isolate(_: std.Io, params: [][]const u8) !void {
+pub fn isolate(io: std.Io, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_isolate");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
@@ -30,6 +30,7 @@ pub fn isolate(_: std.Io, params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     try waitCarrierState(
+        io,
         line.id,
         carrier_id,
         .CARRIER_STATE_INITIALIZE_COMPLETED,
@@ -37,7 +38,7 @@ pub fn isolate(_: std.Io, params: [][]const u8) !void {
     );
 }
 
-pub fn moveCarrier(_: std.Io, params: [][]const u8) !void {
+pub fn moveCarrier(io: std.Io, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_move_carrier");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
@@ -64,6 +65,7 @@ pub fn moveCarrier(_: std.Io, params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     try waitCarrierState(
+        io,
         line.id,
         carrier_id,
         .CARRIER_STATE_MOVE_COMPLETED,
@@ -71,11 +73,15 @@ pub fn moveCarrier(_: std.Io, params: [][]const u8) !void {
     );
 }
 
-pub fn axisEmpty(_: std.Io, params: [][]const u8) !void {
+pub fn axisEmpty(io: std.Io, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_axis_empty");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
-    if (client.sock == null) return error.ServerNotConnected;
+    const net = client.stream orelse return error.ServerNotConnected;
+    var reader_buf: [4096]u8 = undefined;
+    var writer_buf: [4096]u8 = undefined;
+    var net_reader = net.reader(io, &reader_buf);
+    var net_writer = net.writer(io, &writer_buf);
     const line_name = params[0];
     const axis_id = try std.fmt.parseInt(u32, buf: {
         const input = params[1];
@@ -121,19 +127,19 @@ pub fn axisEmpty(_: std.Io, params: [][]const u8) !void {
             },
         };
         // Clear all buffer in reader and writer for safety.
-        _ = client.reader.interface.discardRemaining() catch {};
-        _ = client.writer.interface.consumeAll();
+        _ = net_reader.interface.discardRemaining() catch {};
+        _ = net_writer.interface.consumeAll();
         // Send message
-        try request.encode(&client.writer.interface, client.allocator);
-        try client.writer.interface.flush();
+        try request.encode(&net_writer.interface, client.allocator);
+        try net_writer.interface.flush();
         // Receive response
         while (true) {
             try command.checkCommandInterrupt();
-            const byte = client.reader.interface.peekByte() catch |e| {
+            const byte = net_reader.interface.peekByte() catch |e| {
                 switch (e) {
                     std.Io.Reader.Error.EndOfStream => continue,
                     std.Io.Reader.Error.ReadFailed => {
-                        return switch (client.reader.error_state orelse error.Unexpected) {
+                        return switch (net_reader.err orelse error.Unexpected) {
                             else => |err| err,
                         };
                     },
@@ -142,7 +148,7 @@ pub fn axisEmpty(_: std.Io, params: [][]const u8) !void {
             if (byte > 0) break;
         }
         var decoded: api.protobuf.mmc.Response = try .decode(
-            &client.reader.interface,
+            &net_reader.interface,
             client.allocator,
         );
         defer decoded.deinit(client.allocator);
@@ -174,12 +180,17 @@ pub fn axisEmpty(_: std.Io, params: [][]const u8) !void {
 }
 
 fn waitCarrierState(
+    io: std.Io,
     line: u32,
     id: std.math.IntFittingRange(1, 1023),
     state: api.protobuf.mmc.info.Response.Track.Carrier.State.State,
     timeout: u64,
 ) !void {
-    if (client.sock == null) return error.ServerNotConnected;
+    const net = client.stream orelse return error.ServerNotConnected;
+    var reader_buf: [4096]u8 = undefined;
+    var writer_buf: [4096]u8 = undefined;
+    var net_reader = net.reader(io, &reader_buf);
+    var net_writer = net.writer(io, &writer_buf);
     var ids = [1]u32{id};
     var wait_timer = try std.time.Timer.start();
     while (true) {
@@ -202,19 +213,19 @@ fn waitCarrierState(
             },
         };
         // Clear all buffer in reader and writer for safety.
-        _ = client.reader.interface.discardRemaining() catch {};
-        _ = client.writer.interface.consumeAll();
+        _ = net_reader.interface.discardRemaining() catch {};
+        _ = net_writer.interface.consumeAll();
         // Send message
-        try request.encode(&client.writer.interface, client.allocator);
-        try client.writer.interface.flush();
+        try request.encode(&net_writer.interface, client.allocator);
+        try net_writer.interface.flush();
         // Receive response
         while (true) {
             try command.checkCommandInterrupt();
-            const byte = client.reader.interface.peekByte() catch |e| {
+            const byte = net_reader.interface.peekByte() catch |e| {
                 switch (e) {
                     std.Io.Reader.Error.EndOfStream => continue,
                     std.Io.Reader.Error.ReadFailed => {
-                        return switch (client.reader.error_state orelse error.Unexpected) {
+                        return switch (net_reader.err orelse error.Unexpected) {
                             else => |err| err,
                         };
                     },
@@ -223,7 +234,7 @@ fn waitCarrierState(
             if (byte > 0) break;
         }
         var decoded: api.protobuf.mmc.Response = try .decode(
-            &client.reader.interface,
+            &net_reader.interface,
             client.allocator,
         );
         defer decoded.deinit(client.allocator);

@@ -2,7 +2,6 @@ const log = @This();
 
 const std = @import("std");
 const api = @import("mmc-api");
-const zignet = @import("zignet");
 
 const client = @import("../mmc_client.zig");
 const command = @import("../../command.zig");
@@ -185,9 +184,7 @@ const Stream = struct {
     count: usize,
     /// Optimized logging configuration for requesting data.
     config: Stream.Config,
-    socket: zignet.Socket,
-    reader: zignet.Socket.Reader,
-    writer: zignet.Socket.Writer,
+    socket: std.Io.net.Stream,
 
     /// Store one iteration of data.
     const Data = struct {
@@ -269,7 +266,7 @@ const Stream = struct {
         logging_size: usize,
         config: log.Config,
         lines: []client.Line,
-        endpoint: zignet.Endpoint,
+        endpoint: std.Io.net.IpAddress,
     ) !Stream {
         var stream: Stream = undefined;
         stream.data = try allocator.alloc(Stream.Data, logging_size);
@@ -305,14 +302,10 @@ const Stream = struct {
         }
         stream.head = 0;
         stream.count = 0;
-        stream.socket = try zignet.Socket.connect(
-            endpoint,
-            &command.checkCommandInterrupt,
-            3000,
-        );
-        errdefer stream.socket.close();
-        stream.reader = stream.socket.reader(io, &stream_writer_buf);
-        stream.writer = stream.socket.writer(&stream_reader_buf);
+        stream.socket = try endpoint.connect(io, .{ .mode = .stream });
+        errdefer stream.socket.close(io);
+        var reader = stream.socket.reader(io, &stream_writer_buf);
+        var writer = stream.socket.writer(io, &stream_reader_buf);
         stream.config.lines = .empty;
         errdefer stream.config.lines.deinit(allocator);
         for (config.lines) |line| {
@@ -348,19 +341,19 @@ const Stream = struct {
                     },
                 };
                 // Clear all buffer in reader and writer for safety.
-                _ = try stream.reader.interface.discardRemaining();
-                _ = stream.writer.interface.consumeAll();
+                _ = try reader.interface.discardRemaining();
+                _ = writer.interface.consumeAll();
                 // Send message
-                try request.encode(&stream.writer.interface, allocator);
-                try stream.writer.interface.flush();
+                try request.encode(&writer.interface, allocator);
+                try writer.interface.flush();
                 // Receive message
                 while (true) {
                     try command.checkCommandInterrupt();
-                    const byte = stream.reader.interface.peekByte() catch |e| {
+                    const byte = reader.interface.peekByte() catch |e| {
                         switch (e) {
                             std.Io.Reader.Error.EndOfStream => continue,
                             std.Io.Reader.Error.ReadFailed => {
-                                return stream.reader.error_state orelse
+                                return reader.err orelse
                                     error.Unexpected;
                             },
                         }
@@ -368,7 +361,7 @@ const Stream = struct {
                     if (byte > 0) break;
                 }
                 var decoded: api.protobuf.mmc.Response = try .decode(
-                    &stream.reader.interface,
+                    &reader.interface,
                     allocator,
                 );
                 defer decoded.deinit(allocator);
@@ -436,7 +429,7 @@ const Stream = struct {
         return stream;
     }
 
-    fn deinit(stream: *Stream, allocator: std.mem.Allocator) void {
+    fn deinit(stream: *Stream, allocator: std.mem.Allocator, io: std.Io) void {
         for (stream.data) |*data| {
             for (data.lines) |*line| {
                 allocator.free(line.axes);
@@ -446,15 +439,18 @@ const Stream = struct {
         }
         allocator.free(stream.data);
         stream.config.lines.deinit(allocator);
-        stream.socket.close();
+        stream.socket.close(io);
     }
 
     /// Get the data from the server based on the stream config.
     fn get(
         stream: *Stream,
         allocator: std.mem.Allocator,
+        io: std.Io,
         timestamp: f64,
     ) !void {
+        var reader = stream.socket.reader(io, &stream_writer_buf);
+        var writer = stream.socket.writer(io, &stream_reader_buf);
         const tail = (stream.head + stream.count) % stream.data.len;
         if (stream.count == stream.data.len)
             stream.head = (stream.head + 1) % stream.data.len
@@ -492,19 +488,19 @@ const Stream = struct {
                 },
             };
             // Clear all buffer in reader and writer for safety.
-            _ = try stream.reader.interface.discardRemaining();
-            _ = stream.writer.interface.consumeAll();
+            _ = try reader.interface.discardRemaining();
+            _ = writer.interface.consumeAll();
             // Send message
-            try request.encode(&stream.writer.interface, allocator);
-            try stream.writer.interface.flush();
+            try request.encode(&writer.interface, allocator);
+            try writer.interface.flush();
             // Receive message
             while (true) {
                 try command.checkCommandInterrupt();
-                const byte = stream.reader.interface.peekByte() catch |e| {
+                const byte = reader.interface.peekByte() catch |e| {
                     switch (e) {
                         std.Io.Reader.Error.EndOfStream => continue,
                         std.Io.Reader.Error.ReadFailed => {
-                            return stream.reader.error_state orelse
+                            return reader.err orelse
                                 error.Unexpected;
                         },
                     }
@@ -512,7 +508,7 @@ const Stream = struct {
                 if (byte > 0) break;
             }
             var decoded: api.protobuf.mmc.Response = try .decode(
-                &stream.reader.interface,
+                &reader.interface,
                 allocator,
             );
             defer decoded.deinit(allocator);
@@ -643,26 +639,28 @@ pub fn runner(io: std.Io, duration: f64, file_path: []const u8) !void {
     executing.store(true, .monotonic);
     defer executing.store(false, .monotonic);
     // Stream setup.
-    if (client.sock == null) return error.SocketNotConnected;
+    const net = client.stream orelse return error.ServerNotConnected;
     var stream: Stream = try .init(
         client.allocator,
+        io,
         @as(usize, @intFromFloat(logging_size_float)),
         client.log_config,
         client.lines,
-        client.endpoint orelse return error.MissingEndpoint,
+        net.socket.address,
     );
-    defer stream.deinit(client.allocator);
+    defer stream.deinit(client.allocator, io);
     // Logging file setup.
     const log_file = try std.Io.Dir.cwd().createFile(io, file_path, .{});
     defer {
-        log_file.close();
+        log_file.close(io);
         if (cancel.load(.monotonic))
             std.Io.Dir.cwd().deleteFile(io, file_path) catch {};
     }
     std.log.info("The registers will be logged to {s}.", .{file_path});
-    const log_time_start = std.time.microTimestamp();
-    var timer = try std.time.Timer.start();
-    var timestamp: f64 = 0;
+    // Used for logging timestamp/
+    var log_time: std.time.Timer = try .start();
+    // Act as delay to wait until the update rate.
+    var log_rate: std.time.Timer = try .start();
     // Reset the stop and cancel bit before starting to log.
     stop.store(false, .monotonic);
     cancel.store(false, .monotonic);
@@ -671,22 +669,22 @@ pub fn runner(io: std.Io, duration: f64, file_path: []const u8) !void {
             std.log.info("Logging is cancelled.", .{});
             return;
         }
-        timestamp = @as(
-            f64,
-            @floatFromInt(std.time.microTimestamp() - log_time_start),
-        ) / std.time.us_per_s;
-        stream.get(client.allocator, timestamp) catch |e| {
+        const timestamp: f64 =
+            @as(f64, @floatFromInt(log_time.read())) / std.time.ns_per_s;
+        stream.get(client.allocator, io, timestamp) catch |e| {
             std.log.err("{t}", .{e});
-            std.log.debug("{?f}", .{@errorReturnTrace()});
+            if (@errorReturnTrace()) |stack_trace| {
+                std.debug.dumpStackTrace(stack_trace);
+            }
             break;
         };
         // Wait to match the update rate.
-        while (timer.read() < update_rate * std.time.ns_per_ms) {}
-        timer.reset();
+        while (log_rate.read() < update_rate * std.time.ns_per_ms) {}
+        log_rate.reset();
     }
     std.log.info("Logging is stopped.", .{});
     stop.store(false, .monotonic);
-    var log_writer = log_file.writer(&.{});
+    var log_writer = log_file.writer(io, &.{});
     // Write the headers of the data to the logging file.
     try log_writer.interface.print("timestamp,", .{});
     for (client.log_config.lines) |line_config| {
@@ -719,11 +717,13 @@ pub fn runner(io: std.Io, duration: f64, file_path: []const u8) !void {
         }
     }
     // Write the data to the logging file.
+    const final_timestamp = stream.data[stream.data.len - 1].timestamp;
     while (stream.count != 0) {
         const log_data = stream.data[stream.head];
         stream.head = (stream.head + 1) % stream.data.len;
         stream.count -= 1;
-        if (timestamp - log_data.timestamp > duration) continue;
+        // Only write data for the last specified duration.
+        if (final_timestamp - log_data.timestamp > duration) continue;
         try log_writer.interface.writeByte('\n');
         try log_writer.interface.print("{},", .{log_data.timestamp});
         for (client.log_config.lines) |line_config| {

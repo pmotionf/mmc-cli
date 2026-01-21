@@ -917,7 +917,7 @@ fn loadConfig(io: std.Io, params: [][]const u8) !void {
                     );
                     defer home_dir.close(io);
                     var config_root = try home_dir.openDir(io, ".config", .{});
-                    defer config_root.close();
+                    defer config_root.close(io);
                     break :b try config_root.openDir("mmc-cli", .{});
                 },
                 .linux => b: {

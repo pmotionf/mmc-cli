@@ -4,8 +4,12 @@ const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn impl(_: std.Io, params: [][]const u8) !void {
-    if (client.sock == null) return error.ServerNotConnected;
+pub fn impl(io: std.Io, params: [][]const u8) !void {
+    const net = client.stream orelse return error.ServerNotConnected;
+    var reader_buf: [4096]u8 = undefined;
+    var writer_buf: [4096]u8 = undefined;
+    var net_reader = net.reader(io, &reader_buf);
+    var net_writer = net.writer(io, &writer_buf);
     const line_name = params[0];
     const axis_id = try std.fmt.parseInt(u32, buf: {
         const input = params[1];
@@ -98,10 +102,10 @@ pub fn impl(_: std.Io, params: [][]const u8) !void {
         },
     };
     // Clear all buffer in reader and writer for safety.
-    _ = client.reader.interface.discardRemaining() catch {};
-    _ = client.writer.interface.consumeAll();
+    _ = net_reader.interface.discardRemaining() catch {};
+    _ = net_writer.interface.consumeAll();
     // Send message
-    try request.encode(&client.writer.interface, client.allocator);
-    try client.writer.interface.flush();
-    try client.waitCommandReceived();
+    try request.encode(&net_writer.interface, client.allocator);
+    try net_writer.interface.flush();
+    try client.waitCommandReceived(io);
 }
