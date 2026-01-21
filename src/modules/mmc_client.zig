@@ -1364,22 +1364,23 @@ pub fn init(c: Config) !void {
                 \\  {s}.
                 \\- "d" or "distance" to target relative distance to current Carrier
                 \\  position, provided in {s}.
-                \\Optional: Provide "on" or "off" to specify CAS (Collision Avoidance
-                \\System) activation (enabled by default).
+                \\
                 \\Optional: Provide following to specify movement control mode:
                 \\- "speed" to move Carrier with speed profile feedback.
                 \\- "position" to move Carrier with position profile feedback.
+                \\Optional: Provide "on" or "off" to specify CAS (Collision Avoidance
+                \\System) activation (enabled by default).
                 \\
                 \\Example: Move Carrier "2" to Axis "3" on Line "line1".
                 \\MOVE_CARRIER line1 2 3a
                 \\
-                \\Example: Move Carrier "2" to location 150 {s} on Line "line1" and disable
-                \\CAS.
-                \\MOVE_CARRIER line1 2 150l off
-                \\
                 \\Example: Move Carrier "2" to location 150 {s} on Line "line1" and move
                 \\Carrier with speed profile feedback.
-                \\MOVE_CARRIER line1 2 150l on speed
+                \\MOVE_CARRIER line1 2 150l speed
+                \\
+                \\Example: Move Carrier "2" to location 150 {s} on Line "line1" and disable
+                \\CAS.
+                \\MOVE_CARRIER line1 2 150l position off
             , .{
                 standard.length.unit_short,
                 standard.length.unit_short,
