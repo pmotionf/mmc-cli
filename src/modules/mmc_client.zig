@@ -1346,8 +1346,8 @@ pub fn init(c: Config) !void {
             .parameters = &[_]command.Command.Executable.Parameter{
                 .{ .name = "Line", .kind = .mmc_client_line },
                 .{ .name = "Carrier", .kind = .mmc_client_carrier },
-                .{ .name = "target", .kind = .mmc_client_target },
                 .{ .name = "CAS", .optional = true, .kind = .mmc_client_cas },
+                .{ .name = "target", .kind = .mmc_client_target },
                 .{
                     .name = "control mode",
                     .optional = true,
