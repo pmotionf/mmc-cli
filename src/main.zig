@@ -6,9 +6,8 @@ const mmc_io = @import("io.zig");
 const command = @import("command.zig");
 const Prompt = @import("Prompt.zig");
 
-// Environment variables to be used through the program, mainly locating
-// configuration files.
-pub var environ_map: *std.process.Environ.Map = undefined;
+// Environment variables to be used through the program.
+pub var environ: std.process.Environ = undefined;
 
 pub const std_options: std.Options = .{
     .logFn = command.logFn,
@@ -32,15 +31,30 @@ fn stopCommandLinux(_: std.os.linux.SIG) callconv(.c) void {
     command.stop.store(true, .monotonic);
 }
 
-pub fn main(init: std.process.Init) !void {
-    environ_map = init.environ_map;
+pub fn main(init: std.process.Init.Minimal) !void {
+    var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
+    defer switch (debug_allocator.deinit()) {
+        .leak => std.log.err("leak is detected", .{}),
+        .ok => {},
+    };
+    // This allocator is used in all threads. Both debug allocator and
+    // smp_allocator is safe to use in multi-thread.
+    const gpa = if (builtin.mode == .Debug)
+        debug_allocator.allocator()
+    else
+        std.heap.smp_allocator;
+    var threaded: std.Io.Threaded = .init(gpa, .{ .environ = init.environ });
+    defer threaded.deinit();
+    const io = threaded.io();
+    environ = init.environ;
+
     try mmc_io.init();
     defer mmc_io.deinit();
 
     var prompter = try std.Thread.spawn(
         .{},
         Prompt.handler,
-        .{ &prompt, init.io },
+        .{ &prompt, io },
     );
     prompter.detach();
     defer prompt.close.store(true, .monotonic);
@@ -96,7 +110,7 @@ pub fn main(init: std.process.Init) !void {
             prompt.disable.store(true, .monotonic);
         }
 
-        command.execute(init.io) catch |e| {
+        command.execute(io) catch |e| {
             std.log.err("{t}", .{e});
             if (@errorReturnTrace()) |stack_trace| {
                 std.debug.dumpStackTrace(stack_trace);

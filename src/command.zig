@@ -890,7 +890,8 @@ fn deinitModules() void {
 fn loadConfig(io: std.Io, params: [][]const u8) !void {
     // De-initialize any previously initialized modules.
     deinitModules();
-    const environ_map = main.environ_map;
+    var environ_map = try main.environ.createMap(allocator);
+    defer environ_map.deinit();
     // Load config file.
     const config_file = if (params[0].len > 0)
         std.Io.Dir.cwd().openFile(io, params[0], .{}) catch
