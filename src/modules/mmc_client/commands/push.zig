@@ -148,7 +148,7 @@ pub fn impl(params: [][]const u8) !void {
                             .carrier = id,
                             .velocity = line.velocity,
                             .acceleration = line.acceleration,
-                            .target = .{ .location = location * 1000 },
+                            .target = .{ .location = location },
                             .disable_cas = false,
                             .control = .CONTROL_POSITION,
                         },
