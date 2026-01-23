@@ -43,7 +43,7 @@ pub fn impl(params: [][]const u8) !void {
         else
             return error.InvalidDirection;
     const destination: ?f32 = if (params[4].len > 0)
-        try std.fmt.parseFloat(f32, params[4]) / 1000.0
+        try std.fmt.parseFloat(f32, params[4])
     else
         null;
 
@@ -70,11 +70,7 @@ pub fn impl(params: [][]const u8) !void {
                         .line = line.id,
                         .axis = axis_id,
                         .carrier = carrier_id,
-                        .velocity = if (no_servo) 0 else line.velocity.value,
-                        .velocity_mode = if (line.velocity.low)
-                            .VELOCITY_MODE_LOW
-                        else
-                            .VELOCITY_MODE_NORMAL,
+                        .velocity = if (no_servo) 0 else line.velocity,
                         .acceleration = if (no_servo)
                             0
                         else

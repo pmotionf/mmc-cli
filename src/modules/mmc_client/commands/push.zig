@@ -146,11 +146,7 @@ pub fn impl(params: [][]const u8) !void {
                         .move = .{
                             .line = line.id,
                             .carrier = id,
-                            .velocity = line.velocity.value,
-                            .velocity_mode = if (line.velocity.low)
-                                .VELOCITY_MODE_LOW
-                            else
-                                .VELOCITY_MODE_NORMAL,
+                            .velocity = line.velocity,
                             .acceleration = line.acceleration,
                             .target = .{ .location = location },
                             .disable_cas = false,
@@ -176,11 +172,7 @@ pub fn impl(params: [][]const u8) !void {
                     .body = .{
                         .push = .{
                             .line = line.id,
-                            .velocity = line.velocity.value,
-                            .velocity_mode = if (line.velocity.low)
-                                .VELOCITY_MODE_LOW
-                            else
-                                .VELOCITY_MODE_NORMAL,
+                            .velocity = line.velocity,
                             .acceleration = line.acceleration,
                             .direction = dir,
                             .axis = axis_id,

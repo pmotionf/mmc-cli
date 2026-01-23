@@ -48,11 +48,7 @@ pub fn impl(params: [][]const u8) !void {
                     .move = .{
                         .line = line.id,
                         .carrier = carrier_id,
-                        .velocity = line.velocity.value,
-                        .velocity_mode = if (line.velocity.low)
-                            .VELOCITY_MODE_LOW
-                        else
-                            .VELOCITY_MODE_NORMAL,
+                        .velocity = line.velocity,
                         .acceleration = line.acceleration,
                         .target = target,
                         .disable_cas = disable_cas,
@@ -95,14 +91,14 @@ fn parseTarget(
                 .location = try std.fmt.parseFloat(
                     f32,
                     param[0..suffix_idx],
-                ) / 1000.0,
+                ),
             };
         } else if (std.ascii.eqlIgnoreCase(param[suffix_idx..], "d")) {
             return .{
                 .distance = try std.fmt.parseFloat(
                     f32,
                     param[0..suffix_idx],
-                ) / 1000.0,
+                ),
             };
         }
     }
@@ -126,7 +122,7 @@ fn parseTarget(
             .location = try std.fmt.parseFloat(
                 f32,
                 param[0..suffix_idx],
-            ) / 1000.0,
+            ),
         };
     }
     // Check for `distance` suffix
@@ -135,7 +131,7 @@ fn parseTarget(
             .distance = try std.fmt.parseFloat(
                 f32,
                 param[0..suffix_idx],
-            ) / 1000.0,
+            ),
         };
     }
     return error.InvalidTarget;
