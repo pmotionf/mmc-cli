@@ -222,7 +222,39 @@ pub fn impl(io: std.Io, params: [][]const u8) !void {
     // Initialize memory for logging configuration
     client.log_config =
         try client.log.Config.init(client.allocator, client.lines);
+    const remote_endpoint = try getRemoteEndPoint(net);
     // Store the newly connected server as the new client endpoint.
-    std.log.info("Connected to {f}", .{net.socket.address});
-    client.endpoint = net.socket.address;
+    std.log.info("Connected to {f}", .{remote_endpoint});
+    client.endpoint = remote_endpoint;
+}
+
+// Get the connected endpoint
+pub fn getRemoteEndPoint(
+    stream: std.Io.net.Stream,
+) (std.posix.GetSockNameError)!std.Io.net.IpAddress {
+    var sockaddr: std.posix.sockaddr.storage = undefined;
+    var sockaddr_len: std.posix.socklen_t =
+        @sizeOf(std.posix.sockaddr.storage);
+    const sockaddr_ptr: *std.posix.sockaddr = @ptrCast(&sockaddr);
+    try std.posix.getpeername(stream.socket.handle, sockaddr_ptr, &sockaddr_len);
+    if (sockaddr_ptr.family == std.posix.AF.INET) {
+        const value: *align(4) const std.posix.sockaddr.in =
+            @ptrCast(@alignCast(sockaddr_ptr));
+        return .{
+            .ip4 = .{
+                .port = std.mem.bigToNative(u16, value.port),
+                .bytes = @bitCast(value.addr),
+            },
+        };
+    } else if (sockaddr_ptr.family == std.posix.AF.INET6) {
+        const value: *align(4) const std.posix.sockaddr.in6 =
+            @ptrCast(@alignCast(sockaddr_ptr));
+        return .{
+            .ip6 = .{
+                .port = std.mem.bigToNative(u16, value.port),
+                .bytes = @bitCast(value.addr),
+                .interface = .{ .index = value.scope_id },
+            },
+        };
+    } else return error.Unexpected;
 }
