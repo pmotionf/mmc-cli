@@ -1790,8 +1790,10 @@ pub fn waitCommandReceived(io: std.Io) !void {
             };
             if (byte > 0) break;
         }
-        const decoded: api.protobuf.mmc.Response = try .decode(
-            &net_reader.interface,
+        var proto_reader: std.Io.Reader =
+            .fixed(net_reader.interface.buffered());
+        var decoded: api.protobuf.mmc.Response = try .decode(
+            &proto_reader,
             allocator,
         );
         break :b switch (decoded.body orelse return error.InvalidResponse) {
@@ -1820,9 +1822,6 @@ pub fn waitCommandReceived(io: std.Io) !void {
                 },
             },
         };
-        // Clear all buffer in net_reader and net_writer for safety.
-        _ = try net_reader.interface.discardRemaining();
-        _ = net_writer.interface.consumeAll();
         // Send message
         try request.encode(&net_writer.interface, allocator);
         try net_writer.interface.flush();
@@ -1839,8 +1838,10 @@ pub fn waitCommandReceived(io: std.Io) !void {
             };
             if (byte > 0) break;
         }
+        var proto_reader: std.Io.Reader =
+            .fixed(net_reader.interface.buffered());
         var decoded: api.protobuf.mmc.Response = try .decode(
-            &net_reader.interface,
+            &proto_reader,
             allocator,
         );
         defer decoded.deinit(allocator);
@@ -1897,9 +1898,6 @@ fn removeCommand(io: std.Io, id: u32) !void {
             },
         },
     };
-    // Clear all buffer in net_reader and net_writer for safety.
-    _ = try net_reader.interface.discardRemaining();
-    _ = net_writer.interface.consumeAll();
     // Send message
     try request.encode(&net_writer.interface, allocator);
     try net_writer.interface.flush();
@@ -1916,8 +1914,9 @@ fn removeCommand(io: std.Io, id: u32) !void {
         };
         if (byte > 0) break;
     }
-    const decoded: api.protobuf.mmc.Response = try .decode(
-        &net_reader.interface,
+    var proto_reader: std.Io.Reader = .fixed(net_reader.interface.buffered());
+    var decoded: api.protobuf.mmc.Response = try .decode(
+        &proto_reader,
         allocator,
     );
     const removed_id = switch (decoded.body orelse

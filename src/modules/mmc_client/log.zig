@@ -340,9 +340,6 @@ const Stream = struct {
                         },
                     },
                 };
-                // Clear all buffer in reader and writer for safety.
-                _ = try reader.interface.discardRemaining();
-                _ = writer.interface.consumeAll();
                 // Send message
                 try request.encode(&writer.interface, allocator);
                 try writer.interface.flush();
@@ -360,8 +357,10 @@ const Stream = struct {
                     };
                     if (byte > 0) break;
                 }
+                var proto_reader: std.Io.Reader =
+                    .fixed(reader.interface.buffered());
                 var decoded: api.protobuf.mmc.Response = try .decode(
-                    &reader.interface,
+                    &proto_reader,
                     allocator,
                 );
                 defer decoded.deinit(allocator);
@@ -487,9 +486,6 @@ const Stream = struct {
                     },
                 },
             };
-            // Clear all buffer in reader and writer for safety.
-            _ = try reader.interface.discardRemaining();
-            _ = writer.interface.consumeAll();
             // Send message
             try request.encode(&writer.interface, allocator);
             try writer.interface.flush();
@@ -507,8 +503,9 @@ const Stream = struct {
                 };
                 if (byte > 0) break;
             }
+            var proto_reader: std.Io.Reader = .fixed(reader.interface.buffered());
             var decoded: api.protobuf.mmc.Response = try .decode(
-                &reader.interface,
+                &proto_reader,
                 allocator,
             );
             defer decoded.deinit(allocator);

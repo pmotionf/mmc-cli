@@ -10,9 +10,7 @@ pub fn impl(io: std.Io, params: [][]const u8) !void {
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
     const net = client.stream orelse return error.ServerNotConnected;
-    var reader_buf: [4096]u8 = undefined;
     var writer_buf: [4096]u8 = undefined;
-    var net_reader = net.reader(io, &reader_buf);
     var net_writer = net.writer(io, &writer_buf);
     var init_lines: std.ArrayList(
         api.protobuf.mmc.command.Request.AutoInitialize.Line,
@@ -44,9 +42,6 @@ pub fn impl(io: std.Io, params: [][]const u8) !void {
             },
         },
     };
-    // Clear all buffer in reader and writer for safety.
-    _ = net_reader.interface.discardRemaining() catch {};
-    _ = net_writer.interface.consumeAll();
     // Send message
     try request.encode(&net_writer.interface, client.allocator);
     try net_writer.interface.flush();

@@ -82,9 +82,6 @@ pub fn impl(io: std.Io, params: [][]const u8) !void {
                     },
                 },
             };
-            // Clear all buffer in reader and writer for safety.
-            _ = net_reader.interface.discardRemaining() catch {};
-            _ = net_writer.interface.consumeAll();
             // Send message
             try request.encode(&net_writer.interface, client.allocator);
             try net_writer.interface.flush();
@@ -103,8 +100,10 @@ pub fn impl(io: std.Io, params: [][]const u8) !void {
                 };
                 if (byte > 0) break;
             }
+            var proto_reader: std.Io.Reader =
+                .fixed(net_reader.interface.buffered());
             var decoded: api.protobuf.mmc.Response = try .decode(
-                &net_reader.interface,
+                &proto_reader,
                 client.allocator,
             );
             defer decoded.deinit(client.allocator);
@@ -164,9 +163,6 @@ pub fn impl(io: std.Io, params: [][]const u8) !void {
                 },
             },
         };
-        // Clear all buffer in reader and writer for safety.
-        _ = net_reader.interface.discardRemaining() catch {};
-        _ = net_writer.interface.consumeAll();
         // Send message
         try request.encode(&net_writer.interface, client.allocator);
         try net_writer.interface.flush();
@@ -194,9 +190,6 @@ pub fn impl(io: std.Io, params: [][]const u8) !void {
                 },
             },
         };
-        // Clear all buffer in reader and writer for safety.
-        _ = net_reader.interface.discardRemaining() catch {};
-        _ = net_writer.interface.consumeAll();
         // Send message
         try request.encode(&net_writer.interface, client.allocator);
         try net_writer.interface.flush();
