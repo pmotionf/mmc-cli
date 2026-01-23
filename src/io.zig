@@ -386,7 +386,6 @@ pub const event = struct {
                         std.os.windows.GetLastError(),
                     ),
                     error.WaitAbandoned, error.WaitTimeOut => return false,
-                    else => return e,
                 };
                 return true;
             },

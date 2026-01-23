@@ -1759,7 +1759,6 @@ pub fn deinit() void {
     if (debug_allocator.detectLeaks() != 0) {
         std.log.debug("Leaks detected", .{});
     }
-    if (builtin.os.tag == .windows) std.os.windows.WSACleanup() catch return;
 }
 
 pub fn matchLine(name: []const u8) !usize {
