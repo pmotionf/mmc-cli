@@ -25,12 +25,12 @@ pub fn impl(params: [][]const u8) !void {
         } else break :b input;
     }, 0)};
     const expected_location: f32 =
-        try std.fmt.parseFloat(f32, params[2]) / 1000.0;
+        try std.fmt.parseFloat(f32, params[2]);
     // Default location threshold value is 1 mm
     const location_thr = if (params[3].len > 0)
-        try std.fmt.parseFloat(f32, params[3]) / 1000.0
+        try std.fmt.parseFloat(f32, params[3])
     else
-        0.001;
+        1;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     const request: api.protobuf.mmc.Request = .{
