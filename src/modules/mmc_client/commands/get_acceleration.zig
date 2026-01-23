@@ -16,7 +16,7 @@ pub fn impl(params: [][]const u8) !void {
         "Line {s} acceleration: {d} {s}",
         .{
             line_name,
-            @as(f32, client.lines[line_idx].acceleration),
+            client.lines[line_idx].acceleration,
             standard.acceleration.unit,
         },
     );

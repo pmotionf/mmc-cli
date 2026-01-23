@@ -18,7 +18,7 @@ pub fn impl(params: [][]const u8) !void {
     client.lines[line_idx].acceleration = carrier_acceleration;
 
     std.log.info("Set acceleration to {d} {s}.", .{
-        @as(f32, client.lines[line_idx].acceleration),
+        client.lines[line_idx].acceleration,
         standard.acceleration.unit,
     });
 }

@@ -20,7 +20,7 @@ pub fn impl(params: [][]const u8) !void {
     std.log.info(
         "Set speed to {d} {s}",
         .{
-            @as(f32, client.lines[line_idx].velocity),
+            client.lines[line_idx].velocity,
             standard.speed.unit,
         },
     );
