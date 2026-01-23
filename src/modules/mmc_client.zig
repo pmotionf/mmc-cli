@@ -1365,8 +1365,6 @@ pub fn init(c: Config) !void {
                 \\- "d" or "distance" to target relative distance to current Carrier
                 \\  position, provided in {s}.
                 \\
-                \\Optional: Provide "on" or "off" to specify CAS (Collision Avoidance
-                \\System) activation (enabled by default).
                 \\Optional: Provide following to specify movement control mode:
                 \\- "speed" to move Carrier with speed profile feedback.
                 \\- "position" to move Carrier with position profile feedback.
