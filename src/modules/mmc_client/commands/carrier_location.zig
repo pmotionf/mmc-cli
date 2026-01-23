@@ -69,7 +69,7 @@ pub fn impl(params: [][]const u8) !void {
             "Carrier {d} location: {d} {s}",
             .{
                 carrier.id,
-                carrier.position * 1000.0,
+                carrier.position,
                 client.standard.length.unit_short,
             },
         );
