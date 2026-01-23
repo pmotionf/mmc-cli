@@ -161,7 +161,6 @@ pub const Parameter = struct {
             fn isValid(_: *@This(), input: []const u8) bool {
                 const carrier = std.fmt.parseUnsigned(u32, input, 0) catch
                     return false;
-                std.log.debug("valid: {}", .{carrier > 0 and carrier <= Line.max_axis});
                 if (carrier > 0 and carrier <= Line.max_axis) return true;
                 return false;
             }
@@ -1843,10 +1842,6 @@ pub fn waitCommandCompleted(io: std.Io) !void {
 
 fn removeCommand(io: std.Io, id: u32) !void {
     const net = stream orelse return error.ServerNotConnected;
-    var reader_buf: [4096]u8 = undefined;
-    var writer_buf: [4096]u8 = undefined;
-    var net_reader = net.reader(io, &reader_buf);
-    var net_writer = net.writer(io, &writer_buf);
     const request: api.protobuf.mmc.Request = .{
         .body = .{
             .command = .{
@@ -1856,28 +1851,10 @@ fn removeCommand(io: std.Io, id: u32) !void {
             },
         },
     };
-    // Send message
-    try request.encode(&net_writer.interface, allocator);
-    try net_writer.interface.flush();
-    // Receive message
-    while (true) {
-        try command.checkCommandInterrupt();
-        const byte = net_reader.interface.peekByte() catch |e| {
-            switch (e) {
-                std.Io.Reader.Error.EndOfStream => continue,
-                std.Io.Reader.Error.ReadFailed => {
-                    return net_reader.err orelse error.Unexpected;
-                },
-            }
-        };
-        if (byte > 0) break;
-    }
-    var proto_reader: std.Io.Reader = .fixed(net_reader.interface.buffered());
-    var response: api.protobuf.mmc.Response = try .decode(
-        &proto_reader,
-        allocator,
-    );
-    const removed_id = switch (response.body orelse
+    try sendRequest(io, allocator, net, request);
+    var response = try readResponse(io, allocator, net);
+    defer response.deinit(allocator);
+    _ = switch (response.body orelse
         return error.InvalidResponse) {
         .command => |command_resp| switch (command_resp.body orelse
             return error.InvalidResponse) {
@@ -1892,7 +1869,6 @@ fn removeCommand(io: std.Io, id: u32) !void {
         },
         else => return error.InvalidResponse,
     };
-    std.log.debug("removed_id {}, id {}", .{ removed_id, id });
 }
 
 pub fn sendRequest(
@@ -1924,10 +1900,7 @@ pub fn readResponse(
                 break;
         } else |e| {
             switch (e) {
-                std.Io.Reader.Error.EndOfStream => {
-                    std.log.err("{t}", .{e});
-                    continue;
-                },
+                std.Io.Reader.Error.EndOfStream => continue,
                 std.Io.Reader.Error.ReadFailed => {
                     return switch (net_reader.err orelse error.Unexpected) {
                         else => |err| err,

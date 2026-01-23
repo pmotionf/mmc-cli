@@ -94,7 +94,6 @@ pub fn impl(io: std.Io, params: [][]const u8) !void {
         client.stream = null;
         net.socket.close(io);
     }
-    std.log.debug("Send API version request..", .{});
     // Asserting that API version matched between client and server
     {
         const request: api.protobuf.mmc.Request = .{

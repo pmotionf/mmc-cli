@@ -498,7 +498,6 @@ const Stream = struct {
             // TODO: Optimize the storing to store directly to circular
             // buffer instead of making a copy first before calling
             // `writeItemOverwrite()`
-            // std.log.debug("{}", .{stream.data[tail].lines[0]});
             data.lines[track.line - 1].id = track.line;
             for (
                 track.axis_state.items,
