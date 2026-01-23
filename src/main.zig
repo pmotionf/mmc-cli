@@ -9,6 +9,8 @@ const Prompt = @import("Prompt.zig");
 // Environment variables to be used through the program.
 pub var environ: std.process.Environ = undefined;
 
+var io: std.Io = undefined;
+
 pub const std_options: std.Options = .{
     .logFn = command.logFn,
 };
@@ -22,7 +24,7 @@ fn stopCommandWindows(
 ) callconv(.winapi) std.os.windows.BOOL {
     if (dwCtrlType == std.os.windows.CTRL_C_EVENT) {
         command.stop.store(true, .monotonic);
-        std.Io.File.stdin().sync() catch {};
+        std.Io.File.stdin().sync(io) catch {};
     }
     return 1;
 }
@@ -45,7 +47,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
         std.heap.smp_allocator;
     var threaded: std.Io.Threaded = .init(gpa, .{ .environ = init.environ });
     defer threaded.deinit();
-    const io = threaded.io();
+    io = threaded.io();
     environ = init.environ;
 
     try mmc_io.init();
