@@ -9,8 +9,6 @@ pub fn impl(io: std.Io, _: [][]const u8) !void {
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
     const net = client.stream orelse return error.ServerNotConnected;
-    var writer_buf: [4096]u8 = undefined;
-    var net_writer = net.writer(io, &writer_buf);
     for (client.lines) |line| {
         // Send deinitialize command
         {
@@ -23,10 +21,8 @@ pub fn impl(io: std.Io, _: [][]const u8) !void {
                     },
                 },
             };
-            // Send message
-            try request.encode(&net_writer.interface, client.allocator);
-            try net_writer.interface.flush();
-            try client.waitCommandReceived(io);
+            try client.sendRequest(io, client.allocator, net, request);
+            try client.waitCommandCompleted(io);
         }
         // Send clear errors command
         {
@@ -39,10 +35,8 @@ pub fn impl(io: std.Io, _: [][]const u8) !void {
                     },
                 },
             };
-            // Send message
-            try request.encode(&net_writer.interface, client.allocator);
-            try net_writer.interface.flush();
-            try client.waitCommandReceived(io);
+            try client.sendRequest(io, client.allocator, net, request);
+            try client.waitCommandCompleted(io);
         }
         // Send stop push command
         {
@@ -55,10 +49,8 @@ pub fn impl(io: std.Io, _: [][]const u8) !void {
                     },
                 },
             };
-            // Send message
-            try request.encode(&net_writer.interface, client.allocator);
-            try net_writer.interface.flush();
-            try client.waitCommandReceived(io);
+            try client.sendRequest(io, client.allocator, net, request);
+            try client.waitCommandCompleted(io);
         }
         // Send stop pull command
         {
@@ -71,10 +63,8 @@ pub fn impl(io: std.Io, _: [][]const u8) !void {
                     },
                 },
             };
-            // Send message
-            try request.encode(&net_writer.interface, client.allocator);
-            try net_writer.interface.flush();
-            try client.waitCommandReceived(io);
+            try client.sendRequest(io, client.allocator, net, request);
+            try client.waitCommandCompleted(io);
         }
     }
 }

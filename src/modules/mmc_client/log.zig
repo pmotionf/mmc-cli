@@ -304,8 +304,6 @@ const Stream = struct {
         stream.count = 0;
         stream.socket = try endpoint.connect(io, .{ .mode = .stream });
         errdefer stream.socket.close(io);
-        var reader = stream.socket.reader(io, &stream_writer_buf);
-        var writer = stream.socket.writer(io, &stream_reader_buf);
         stream.config.lines = .empty;
         errdefer stream.config.lines.deinit(allocator);
         for (config.lines) |line| {
@@ -340,31 +338,19 @@ const Stream = struct {
                         },
                     },
                 };
-                // Send message
-                try request.encode(&writer.interface, allocator);
-                try writer.interface.flush();
-                // Receive message
-                while (true) {
-                    try command.checkCommandInterrupt();
-                    const byte = reader.interface.peekByte() catch |e| {
-                        switch (e) {
-                            std.Io.Reader.Error.EndOfStream => continue,
-                            std.Io.Reader.Error.ReadFailed => {
-                                return reader.err orelse
-                                    error.Unexpected;
-                            },
-                        }
-                    };
-                    if (byte > 0) break;
-                }
-                var proto_reader: std.Io.Reader =
-                    .fixed(reader.interface.buffered());
-                var decoded: api.protobuf.mmc.Response = try .decode(
-                    &proto_reader,
+                try client.sendRequest(
+                    io,
                     allocator,
+                    stream.socket,
+                    request,
                 );
-                defer decoded.deinit(allocator);
-                const track = switch (decoded.body orelse
+                var response = try client.readResponse(
+                    io,
+                    allocator,
+                    stream.socket,
+                );
+                defer response.deinit(allocator);
+                const track = switch (response.body orelse
                     return error.InvalidResponse) {
                     .info => |info_resp| switch (info_resp.body orelse
                         return error.InvalidResponse) {
@@ -448,8 +434,6 @@ const Stream = struct {
         io: std.Io,
         timestamp: f64,
     ) !void {
-        var reader = stream.socket.reader(io, &stream_writer_buf);
-        var writer = stream.socket.writer(io, &stream_reader_buf);
         const tail = (stream.head + stream.count) % stream.data.len;
         if (stream.count == stream.data.len)
             stream.head = (stream.head + 1) % stream.data.len
@@ -486,30 +470,14 @@ const Stream = struct {
                     },
                 },
             };
-            // Send message
-            try request.encode(&writer.interface, allocator);
-            try writer.interface.flush();
-            // Receive message
-            while (true) {
-                try command.checkCommandInterrupt();
-                const byte = reader.interface.peekByte() catch |e| {
-                    switch (e) {
-                        std.Io.Reader.Error.EndOfStream => continue,
-                        std.Io.Reader.Error.ReadFailed => {
-                            return reader.err orelse
-                                error.Unexpected;
-                        },
-                    }
-                };
-                if (byte > 0) break;
-            }
-            var proto_reader: std.Io.Reader = .fixed(reader.interface.buffered());
-            var decoded: api.protobuf.mmc.Response = try .decode(
-                &proto_reader,
+            try client.sendRequest(io, allocator, stream.socket, request);
+            var response = try client.readResponse(
+                io,
                 allocator,
+                stream.socket,
             );
-            defer decoded.deinit(allocator);
-            const track = switch (decoded.body orelse
+            defer response.deinit(allocator);
+            const track = switch (response.body orelse
                 return error.InvalidResponse) {
                 .info => |info_resp| switch (info_resp.body orelse
                     return error.InvalidResponse) {
@@ -615,8 +583,6 @@ pub var stop = std.atomic.Value(bool).init(false);
 /// Stop the logging and do not save the log data to a file.
 pub var cancel = std.atomic.Value(bool).init(false);
 
-var stream_writer_buf: [4096]u8 = undefined;
-var stream_reader_buf: [4096]u8 = undefined;
 var file_reader_buf: [4096]u8 = undefined;
 var file_writer_buf: [4096]u8 = undefined;
 

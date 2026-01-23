@@ -26,5 +26,5 @@ pub fn impl(io: std.Io, params: [][]const u8) !void {
     // Send message
     try request.encode(&net_writer.interface, client.allocator);
     try net_writer.interface.flush();
-    try client.waitCommandReceived(io);
+    try client.waitCommandCompleted(io);
 }

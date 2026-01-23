@@ -78,10 +78,6 @@ pub fn axisEmpty(io: std.Io, params: [][]const u8) !void {
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
     const net = client.stream orelse return error.ServerNotConnected;
-    var reader_buf: [4096]u8 = undefined;
-    var writer_buf: [4096]u8 = undefined;
-    var net_reader = net.reader(io, &reader_buf);
-    var net_writer = net.writer(io, &writer_buf);
     const line_name = params[0];
     const axis_id = try std.fmt.parseInt(u32, buf: {
         const input = params[1];
@@ -126,31 +122,10 @@ pub fn axisEmpty(io: std.Io, params: [][]const u8) !void {
                 },
             },
         };
-        // Send message
-        try request.encode(&net_writer.interface, client.allocator);
-        try net_writer.interface.flush();
-        // Receive response
-        while (true) {
-            try command.checkCommandInterrupt();
-            const byte = net_reader.interface.peekByte() catch |e| {
-                switch (e) {
-                    std.Io.Reader.Error.EndOfStream => continue,
-                    std.Io.Reader.Error.ReadFailed => {
-                        return switch (net_reader.err orelse error.Unexpected) {
-                            else => |err| err,
-                        };
-                    },
-                }
-            };
-            if (byte > 0) break;
-        }
-        var proto_reader: std.Io.Reader = .fixed(net_reader.interface.buffered());
-        var decoded: api.protobuf.mmc.Response = try .decode(
-            &proto_reader,
-            client.allocator,
-        );
-        defer decoded.deinit(client.allocator);
-        var track = switch (decoded.body orelse return error.InvalidResponse) {
+        try client.sendRequest(io, client.allocator, net, request);
+        var response = try client.readResponse(io, client.allocator, net);
+        defer response.deinit(client.allocator);
+        var track = switch (response.body orelse return error.InvalidResponse) {
             .info => |info_resp| switch (info_resp.body orelse
                 return error.InvalidResponse) {
                 .track => |track_resp| track_resp,
@@ -185,10 +160,6 @@ fn waitCarrierState(
     timeout: u64,
 ) !void {
     const net = client.stream orelse return error.ServerNotConnected;
-    var reader_buf: [4096]u8 = undefined;
-    var writer_buf: [4096]u8 = undefined;
-    var net_reader = net.reader(io, &reader_buf);
-    var net_writer = net.writer(io, &writer_buf);
     var ids = [1]u32{id};
     var wait_timer = try std.time.Timer.start();
     while (true) {
@@ -210,31 +181,10 @@ fn waitCarrierState(
                 },
             },
         };
-        // Send message
-        try request.encode(&net_writer.interface, client.allocator);
-        try net_writer.interface.flush();
-        // Receive response
-        while (true) {
-            try command.checkCommandInterrupt();
-            const byte = net_reader.interface.peekByte() catch |e| {
-                switch (e) {
-                    std.Io.Reader.Error.EndOfStream => continue,
-                    std.Io.Reader.Error.ReadFailed => {
-                        return switch (net_reader.err orelse error.Unexpected) {
-                            else => |err| err,
-                        };
-                    },
-                }
-            };
-            if (byte > 0) break;
-        }
-        var proto_reader: std.Io.Reader = .fixed(net_reader.interface.buffered());
-        var decoded: api.protobuf.mmc.Response = try .decode(
-            &proto_reader,
-            client.allocator,
-        );
-        defer decoded.deinit(client.allocator);
-        var track = switch (decoded.body orelse return error.InvalidResponse) {
+        try client.sendRequest(io, client.allocator, net, request);
+        var response = try client.readResponse(io, client.allocator, net);
+        defer response.deinit(client.allocator);
+        var track = switch (response.body orelse return error.InvalidResponse) {
             .info => |info_resp| switch (info_resp.body orelse
                 return error.InvalidResponse) {
                 .track => |track_resp| track_resp,

@@ -1770,33 +1770,12 @@ pub fn matchLine(name: []const u8) !usize {
 
 /// Track a command until it executed completely followed by removing that
 /// command from the server.
-pub fn waitCommandReceived(io: std.Io) !void {
+pub fn waitCommandCompleted(io: std.Io) !void {
     const net = stream orelse return error.ServerNotConnected;
-    var reader_buf: [4096]u8 = undefined;
-    var writer_buf: [4096]u8 = undefined;
-    var net_reader = net.reader(io, &reader_buf);
-    var net_writer = net.writer(io, &writer_buf);
     const command_id = b: {
-        // Receive response
-        while (true) {
-            try command.checkCommandInterrupt();
-            const byte = net_reader.interface.peekByte() catch |e| {
-                switch (e) {
-                    std.Io.Reader.Error.EndOfStream => continue,
-                    std.Io.Reader.Error.ReadFailed => {
-                        return net_reader.err orelse error.Unexpected;
-                    },
-                }
-            };
-            if (byte > 0) break;
-        }
-        var proto_reader: std.Io.Reader =
-            .fixed(net_reader.interface.buffered());
-        var decoded: api.protobuf.mmc.Response = try .decode(
-            &proto_reader,
-            allocator,
-        );
-        break :b switch (decoded.body orelse return error.InvalidResponse) {
+        var response = try readResponse(io, allocator, net);
+        defer response.deinit(allocator);
+        break :b switch (response.body orelse return error.InvalidResponse) {
             .request_error => |req_err| {
                 return error_response.throwMmcError(req_err);
             },
@@ -1822,30 +1801,10 @@ pub fn waitCommandReceived(io: std.Io) !void {
                 },
             },
         };
-        // Send message
-        try request.encode(&net_writer.interface, allocator);
-        try net_writer.interface.flush();
-        // Receive response
-        while (true) {
-            try command.checkCommandInterrupt();
-            const byte = net_reader.interface.peekByte() catch |e| {
-                switch (e) {
-                    std.Io.Reader.Error.EndOfStream => continue,
-                    std.Io.Reader.Error.ReadFailed => {
-                        return net_reader.err orelse error.Unexpected;
-                    },
-                }
-            };
-            if (byte > 0) break;
-        }
-        var proto_reader: std.Io.Reader =
-            .fixed(net_reader.interface.buffered());
-        var decoded: api.protobuf.mmc.Response = try .decode(
-            &proto_reader,
-            allocator,
-        );
-        defer decoded.deinit(allocator);
-        var commands_resp = switch (decoded.body orelse
+        try sendRequest(io, allocator, net, request);
+        var response = try readResponse(io, allocator, net);
+        defer response.deinit(allocator);
+        var commands_resp = switch (response.body orelse
             return error.InvalidResponse) {
             .request_error => |req_err| {
                 return error_response.throwMmcError(req_err);
@@ -1915,11 +1874,11 @@ fn removeCommand(io: std.Io, id: u32) !void {
         if (byte > 0) break;
     }
     var proto_reader: std.Io.Reader = .fixed(net_reader.interface.buffered());
-    var decoded: api.protobuf.mmc.Response = try .decode(
+    var response: api.protobuf.mmc.Response = try .decode(
         &proto_reader,
         allocator,
     );
-    const removed_id = switch (decoded.body orelse
+    const removed_id = switch (response.body orelse
         return error.InvalidResponse) {
         .command => |command_resp| switch (command_resp.body orelse
             return error.InvalidResponse) {
@@ -1935,6 +1894,54 @@ fn removeCommand(io: std.Io, id: u32) !void {
         else => return error.InvalidResponse,
     };
     std.log.debug("removed_id {}, id {}", .{ removed_id, id });
+}
+
+pub fn sendRequest(
+    io: std.Io,
+    gpa: std.mem.Allocator,
+    net: std.Io.net.Stream,
+    request: api.protobuf.mmc.Request,
+) !void {
+    var writer_buf: [4096]u8 = undefined;
+    var net_writer = net.writer(io, &writer_buf);
+    try request.encode(&net_writer.interface, gpa);
+    try net_writer.interface.flush();
+}
+
+pub fn readResponse(
+    io: std.Io,
+    gpa: std.mem.Allocator,
+    net: std.Io.net.Stream,
+) !api.protobuf.mmc.Response {
+    var reader_buf: [4096]u8 = undefined;
+    var net_reader = net.reader(io, &reader_buf);
+    while (true) {
+        // Read until the length is equal for consecutive peek.
+        try command.checkCommandInterrupt();
+        const prev_buffered_len = net_reader.interface.bufferedLen();
+        if (net_reader.interface.peekByte()) |_| {
+            if (prev_buffered_len == 0) continue;
+            if (net_reader.interface.bufferedLen() == prev_buffered_len)
+                break;
+        } else |e| {
+            switch (e) {
+                std.Io.Reader.Error.EndOfStream => {
+                    std.log.err("{t}", .{e});
+                    continue;
+                },
+                std.Io.Reader.Error.ReadFailed => {
+                    return switch (net_reader.err orelse error.Unexpected) {
+                        else => |err| err,
+                    };
+                },
+            }
+        }
+    }
+    var proto_reader: std.Io.Reader =
+        .fixed(try net_reader.interface.take(
+            net_reader.interface.bufferedLen(),
+        ));
+    return try .decode(&proto_reader, gpa);
 }
 
 pub fn nestedWrite(

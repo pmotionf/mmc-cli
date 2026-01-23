@@ -8,8 +8,6 @@ pub fn impl(io: std.Io, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "move_carrier");
     defer tracy_zone.end();
     const net = client.stream orelse return error.ServerNotConnected;
-    var writer_buf: [4096]u8 = undefined;
-    var net_writer = net.writer(io, &writer_buf);
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -64,10 +62,8 @@ pub fn impl(io: std.Io, params: [][]const u8) !void {
             },
         },
     };
-    // Send message
-    try request.encode(&net_writer.interface, client.allocator);
-    try net_writer.interface.flush();
-    try client.waitCommandReceived(io);
+    try client.sendRequest(io, client.allocator, net, request);
+    try client.waitCommandCompleted(io);
 }
 
 fn parseTarget(
