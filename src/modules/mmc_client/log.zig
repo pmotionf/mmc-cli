@@ -601,14 +601,14 @@ pub fn runner(io: std.Io, duration: f64, file_path: []const u8) !void {
     executing.store(true, .monotonic);
     defer executing.store(false, .monotonic);
     // Stream setup.
-    const net = client.stream orelse return error.ServerNotConnected;
+    if (client.stream == null) return error.ServerNotConnected;
     var stream: Stream = try .init(
         client.allocator,
         io,
         @as(usize, @intFromFloat(logging_size_float)),
         client.log_config,
         client.lines,
-        net.socket.address,
+        client.endpoint.?, // Guaranteed to not null
     );
     defer stream.deinit(client.allocator, io);
     // Logging file setup.
