@@ -29,12 +29,7 @@ pub fn impl(params: [][]const u8) !void {
             return e;
         }
     }
-    // Avoid dynamic allocation on each append.
-    // var line_idxs: std.ArrayList(u32) = try .initCapacity(
-    //     client.allocator,
-    //     line_name_iterator.buffer.len,
-    // );
-    var line_idxs: std.ArrayList(u32) = .empty;
+    var line_idxs: std.ArrayList(u32) = .{};
     try line_idxs.ensureTotalCapacity(client.allocator, line_counter);
     defer line_idxs.deinit(client.allocator);
     line_name_iterator.reset();
@@ -46,12 +41,6 @@ pub fn impl(params: [][]const u8) !void {
     }
 
     var count: usize = 1;
-    // for (line_idxs.items) |line_idx| {
-    //     const line = client.lines[line_idx];
-    //     var lines: std.ArrayList(u32) = .{};
-    //     defer lines.deinit(client.allocator);
-    //     try lines.append(client.allocator, @as(u32, @intCast(line.id)));
-    //     const request: api.protobuf.mmc.Request = .{
     var lines: std.ArrayList(u32) = .{};
     defer lines.deinit(client.allocator);
     try lines.ensureTotalCapacity(client.allocator, line_idxs.items.len);
