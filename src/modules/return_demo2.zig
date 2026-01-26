@@ -161,7 +161,7 @@ pub fn deinit() void {
     arena.deinit();
 }
 
-fn home(_: [][]const u8) !void {
+fn home(_: std.Io, _: [][]const u8) !void {
     clients_lock.lockShared();
     defer clients_lock.unlockShared();
     if (clients.items.len > 0) {
@@ -211,7 +211,7 @@ fn home(_: [][]const u8) !void {
     } else return error.ReturnSystemDisconnected;
 }
 
-fn raiseStartAxis(_: [][]const u8) !void {
+fn raiseStartAxis(_: std.Io, _: [][]const u8) !void {
     clients_lock.lockShared();
     defer clients_lock.unlockShared();
     if (clients.items.len > 0) {
@@ -236,7 +236,7 @@ fn raiseStartAxis(_: [][]const u8) !void {
     } else return error.ReturnSystemDisconnected;
 }
 
-fn lowerStartAxis(_: [][]const u8) !void {
+fn lowerStartAxis(_: std.Io, _: [][]const u8) !void {
     clients_lock.lockShared();
     defer clients_lock.unlockShared();
     if (clients.items.len > 0) {
@@ -261,7 +261,7 @@ fn lowerStartAxis(_: [][]const u8) !void {
     } else return error.ReturnSystemDisconnected;
 }
 
-fn raiseEndAxis(_: [][]const u8) !void {
+fn raiseEndAxis(_: std.Io, _: [][]const u8) !void {
     clients_lock.lockShared();
     defer clients_lock.unlockShared();
     if (clients.items.len > 0) {
@@ -286,7 +286,7 @@ fn raiseEndAxis(_: [][]const u8) !void {
     } else return error.ReturnSystemDisconnected;
 }
 
-fn lowerEndAxis(_: [][]const u8) !void {
+fn lowerEndAxis(_: std.Io, _: [][]const u8) !void {
     clients_lock.lockShared();
     defer clients_lock.unlockShared();
     if (clients.items.len > 0) {
@@ -311,7 +311,7 @@ fn lowerEndAxis(_: [][]const u8) !void {
     } else return error.ReturnSystemDisconnected;
 }
 
-fn beltMoveStart(_: [][]const u8) !void {
+fn beltMoveStart(_: std.Io, _: [][]const u8) !void {
     clients_lock.lockShared();
     defer clients_lock.unlockShared();
     if (clients.items.len > 0) {
@@ -336,7 +336,7 @@ fn beltMoveStart(_: [][]const u8) !void {
     } else return error.ReturnSystemDisconnected;
 }
 
-fn beltMoveEnd(_: [][]const u8) !void {
+fn beltMoveEnd(_: std.Io, _: [][]const u8) !void {
     clients_lock.lockShared();
     defer clients_lock.unlockShared();
     if (clients.items.len > 0) {

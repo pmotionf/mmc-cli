@@ -10,7 +10,7 @@ var original_canonical_context: OriginalCanonicalContext = undefined;
 pub fn init() !void {
     switch (comptime builtin.os.tag) {
         .linux => {
-            const stdin = std.fs.File.stdin().handle;
+            const stdin = std.Io.File.stdin().handle;
             var attr = try std.posix.tcgetattr(stdin);
             original_canonical_context = attr;
 
@@ -30,7 +30,7 @@ pub fn init() !void {
             try std.posix.tcsetattr(stdin, .NOW, attr);
         },
         .windows => {
-            const stdin = std.fs.File.stdin().handle;
+            const stdin = std.Io.File.stdin().handle;
 
             if (IsValidCodePage(65001) == 0) {
                 return error.Utf8CodePageNotInstalled;
@@ -77,7 +77,7 @@ pub fn init() !void {
 pub fn deinit() void {
     switch (comptime builtin.os.tag) {
         .linux => {
-            const stdin = std.fs.File.stdin().handle;
+            const stdin = std.Io.File.stdin().handle;
             std.posix.tcsetattr(
                 stdin,
                 .NOW,
@@ -85,7 +85,7 @@ pub fn deinit() void {
             ) catch {};
         },
         .windows => {
-            const stdin = std.fs.File.stdin().handle;
+            const stdin = std.Io.File.stdin().handle;
             _ = SetConsoleMode(stdin, original_canonical_context);
         },
         else => @compileError("unsupported OS"),
@@ -316,7 +316,7 @@ pub const event = struct {
         switch (comptime builtin.os.tag) {
             .linux => {
                 var fds: [1]std.posix.pollfd = .{.{
-                    .fd = std.fs.File.stdin().handle,
+                    .fd = std.Io.File.stdin().handle,
                     .events = std.posix.POLL.IN,
                     .revents = undefined,
                 }};
@@ -325,7 +325,7 @@ pub const event = struct {
             .windows => {
                 var num_events: u32 = undefined;
                 if (GetNumberOfConsoleInputEvents(
-                    std.fs.File.stdin().handle,
+                    std.Io.File.stdin().handle,
                     &num_events,
                 ) == 0) {
                     return std.os.windows.unexpectedError(
@@ -338,18 +338,18 @@ pub const event = struct {
         }
     }
 
-    fn readByte() !u8 {
+    fn readByte(io: std.Io) !u8 {
         switch (comptime builtin.os.tag) {
             .linux => {
                 var stdin_buf: [1]u8 = undefined;
-                var stdin = std.fs.File.stdin().reader(&stdin_buf);
+                var stdin = std.Io.File.stdin().reader(io, &stdin_buf);
                 return stdin.interface.takeByte();
             },
             .windows => {
                 var buf: [1]u8 = undefined;
                 var chars_read: u32 = 0;
                 if (ReadConsoleA(
-                    std.fs.File.stdin().handle,
+                    std.Io.File.stdin().handle,
                     &buf,
                     1,
                     &chars_read,
@@ -370,14 +370,14 @@ pub const event = struct {
         switch (comptime builtin.target.os.tag) {
             .linux => {
                 var fds: [1]std.posix.pollfd = .{.{
-                    .fd = std.fs.File.stdin().handle,
+                    .fd = std.Io.File.stdin().handle,
                     .events = std.posix.POLL.IN,
                     .revents = undefined,
                 }};
                 return try std.posix.poll(&fds, 0) > 0;
             },
             .windows => {
-                const stdin_handle = std.fs.File.stdin().handle;
+                const stdin_handle = std.Io.File.stdin().handle;
                 std.os.windows.WaitForSingleObject(
                     stdin_handle,
                     0,
@@ -386,7 +386,6 @@ pub const event = struct {
                         std.os.windows.GetLastError(),
                     ),
                     error.WaitAbandoned, error.WaitTimeOut => return false,
-                    else => return e,
                 };
                 return true;
             },
@@ -395,7 +394,7 @@ pub const event = struct {
     }
 
     /// Read event from terminal input buffer.
-    pub fn read(options: struct {
+    pub fn read(io: std.Io, options: struct {
         /// Nanosecond timeout between bytes in a sequence. Null is instant
         /// timeout (no waiting), 0 is infinite timeout.
         sequence_timeout: ?u64 = std.time.ns_per_ms * 10,
@@ -404,7 +403,7 @@ pub const event = struct {
         /// timeout (no waiting).
         escape_timeout: u64 = std.time.ns_per_ms * 10,
     }) !Event {
-        const byte = try readByte();
+        const byte = try readByte(io);
         const utf8_seq_len = std.unicode.utf8ByteSequenceLength(byte) catch 0;
         var result: Event = .{ .key = undefined };
 
@@ -422,14 +421,14 @@ pub const event = struct {
                 if (comptime builtin.os.tag == .windows) {
                     result.key.value.codepoint.buffer[
                         result.key.value.codepoint.len
-                    ] = try readByte();
+                    ] = try readByte(io);
                     result.key.value.codepoint.len += 1;
                 } else {
                     if (options.sequence_timeout) |seq_timeout| {
                         if (seq_timeout == 0) {
                             result.key.value.codepoint.buffer[
                                 result.key.value.codepoint.len
-                            ] = try readByte();
+                            ] = try readByte(io);
                             result.key.value.codepoint.len += 1;
                         } else {
                             timer.reset();
@@ -437,7 +436,7 @@ pub const event = struct {
                                 if (try pollByte()) {
                                     result.key.value.codepoint.buffer[
                                         result.key.value.codepoint.len
-                                    ] = try readByte();
+                                    ] = try readByte(io);
                                     result.key.value.codepoint.len += 1;
                                     break;
                                 }
@@ -449,7 +448,7 @@ pub const event = struct {
                         if (try pollByte()) {
                             result.key.value.codepoint.buffer[
                                 result.key.value.codepoint.len
-                            ] = try readByte();
+                            ] = try readByte(io);
                             result.key.value.codepoint.len += 1;
                         } else {
                             return error.IncompleteCodepoint;
@@ -477,7 +476,7 @@ pub const event = struct {
                 }
 
                 // Check for '[' after escape byte
-                const next = try readByte();
+                const next = try readByte(io);
                 if (next == '[') continue :parse '\x9B';
 
                 var seq_buf: [escape_sequences.max_len]u8 = undefined;
@@ -491,7 +490,7 @@ pub const event = struct {
                 if (options.sequence_timeout) |seq_timeout| {
                     if (seq_timeout == 0) {
                         while (seq.len < seq_buf.len) {
-                            seq_buf[seq.len] = try readByte();
+                            seq_buf[seq.len] = try readByte(io);
                             seq.len += 1;
                             // Eager match sequence
                             if (escape_sequences.get(seq)) |ev| {
@@ -515,7 +514,7 @@ pub const event = struct {
                             } else {
                                 return error.IncompleteEscapeSequence;
                             }
-                            seq_buf[seq.len] = try readByte();
+                            seq_buf[seq.len] = try readByte(io);
                             seq.len += 1;
                             // Eager match sequence
                             if (escape_sequences.get(seq)) |ev| {
@@ -535,7 +534,7 @@ pub const event = struct {
                         if (!(try pollByte())) {
                             return error.IncompleteEscapeSequence;
                         }
-                        seq_buf[seq.len] = try readByte();
+                        seq_buf[seq.len] = try readByte(io);
                         seq.len += 1;
                         // Eager match sequence
                         if (escape_sequences.get(seq)) |ev| {
@@ -558,7 +557,7 @@ pub const event = struct {
                 if (options.sequence_timeout) |seq_timeout| {
                     if (seq_timeout == 0) {
                         while (seq.len < seq_buf.len) {
-                            seq_buf[seq.len] = try readByte();
+                            seq_buf[seq.len] = try readByte(io);
                             seq.len += 1;
                             // Eager match sequence
                             if (csi_sequences.get(seq)) |ev| {
@@ -582,7 +581,7 @@ pub const event = struct {
                             } else {
                                 return error.IncompleteCsiSequence;
                             }
-                            seq_buf[seq.len] = try readByte();
+                            seq_buf[seq.len] = try readByte(io);
                             seq.len += 1;
                             // Eager match sequence
                             if (csi_sequences.get(seq)) |ev| {
@@ -602,7 +601,7 @@ pub const event = struct {
                         if (!(try pollByte())) {
                             return error.IncompleteCsiSequence;
                         }
-                        seq_buf[seq.len] = try readByte();
+                        seq_buf[seq.len] = try readByte(io);
                         seq.len += 1;
                         // Eager match sequence
                         if (csi_sequences.get(seq)) |ev| {

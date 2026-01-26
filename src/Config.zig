@@ -32,13 +32,13 @@ const Parse = struct {
     modules: []ModuleConfig,
 };
 
-pub fn parse(allocator: std.mem.Allocator, f: std.fs.File) !Config {
+pub fn parse(allocator: std.mem.Allocator, io: std.Io, f: std.Io.File) !Config {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const a = arena.allocator();
 
     var f_reader_buf: [4096]u8 = undefined;
-    var f_reader = f.reader(&f_reader_buf);
+    var f_reader = f.reader(io, &f_reader_buf);
     var reader: json5.Reader = .init(a, &f_reader.interface);
 
     const _result = try json5.parseFromTokenSource(

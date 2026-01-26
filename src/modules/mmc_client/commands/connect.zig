@@ -8,112 +8,92 @@ const api = @import("mmc-api");
 const Standard = client.Standard;
 const standard: Standard = .{};
 
-pub fn impl(params: [][]const u8) !void {
+pub fn impl(io: std.Io, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "connect");
     defer tracy_zone.end();
-    if (client.sock) |_| disconnect.impl(&.{}) catch unreachable;
-    const endpoint: client.Config =
-        if (params[0].len != 0) endpoint: {
-            const last_delimiter_idx =
-                std.mem.lastIndexOf(u8, params[0], ":") orelse
-                return error.MissingPort;
-            // IPv6 address shall be provided with square brackets. In addition,
-            // Ipv6 address has at least 2 ":" characters, with the port
-            // separator makes it 3 characters.
-            if (std.mem.count(u8, params[0], ":") > 2 and
-                std.mem.eql(u8, "[", params[0][0..1]) and
-                std.mem.eql(
-                    u8,
-                    "]",
-                    params[0][last_delimiter_idx - 1 .. last_delimiter_idx],
-                ))
-            {
-                // IPv6 address shall be provided with scope id. Required for
-                // local connection.
-                if (std.mem.count(u8, params[0], "%") == 0)
-                    return error.MissingScopeId;
+    if (client.stream) |_| disconnect.impl(io, &.{}) catch unreachable;
+    // Parse endpoint
+    const endpoint: union(enum) {
+        hostname: std.Io.net.HostName,
+        ip_address: std.Io.net.IpAddress,
+    }, const port: u16 = endpoint: {
+        if (params[0].len != 0) {
+            const last_delimiter_idx = std.mem.lastIndexOf(
+                u8,
+                params[0],
+                ":",
+            ) orelse return error.MissingPort;
+            // Parse port
+            const port = std.fmt.parseInt(
+                u16,
+                params[0][last_delimiter_idx + 1 ..],
+                0,
+            ) catch return error.InvalidPort;
+            // Resolve IP address
+            if (std.Io.net.IpAddress.resolve(
+                io,
+                params[0][0..last_delimiter_idx],
+                port,
+            )) |address| {
+                break :endpoint .{ .{ .ip_address = address }, port };
+            } else |_| {
+                // Use the parameter as hostname
                 break :endpoint .{
-                    .port = std.fmt.parseInt(
-                        u16,
-                        params[0][last_delimiter_idx + 1 ..],
-                        0,
-                    ) catch return error.InvalidEndpoint,
-                    .host = try client.allocator.dupe(
-                        u8,
-                        params[0][1 .. last_delimiter_idx - 1],
-                    ),
+                    .{
+                        .hostname = try .init(params[0][0..last_delimiter_idx]),
+                    },
+                    port,
                 };
             }
-            // IPv4 address or hostname logic.
+        } else if (client.endpoint) |endpoint| {
             break :endpoint .{
-                .port = std.fmt.parseInt(
-                    u16,
-                    params[0][last_delimiter_idx + 1 ..],
-                    0,
-                ) catch return error.InvalidEndpoint,
-                .host = try client.allocator.dupe(
-                    u8,
-                    params[0][0..last_delimiter_idx],
-                ),
+                .{ .ip_address = endpoint },
+                endpoint.getPort(),
             };
-        } else if (client.endpoint == null) .{
-            .host = try client.allocator.dupe(u8, client.config.host),
-            .port = client.config.port,
-        } else .{
-            .host = switch (client.endpoint.?.addr) {
-                .ipv4 => |ipv4| try std.fmt.allocPrint(
-                    client.allocator,
-                    "{f}",
-                    .{ipv4},
-                ),
-                .ipv6 => |ipv6| ipv6: {
-                    const format = try std.fmt.allocPrint(
-                        client.allocator,
-                        "{f}",
-                        .{ipv6},
-                    );
-                    defer client.allocator.free(format);
-                    // Remove the square bracket from ipv6
-                    break :ipv6 try std.fmt.allocPrint(
-                        client.allocator,
-                        "{s}",
-                        .{format[1 .. format.len - 1]},
-                    );
-                },
-            },
-            .port = client.endpoint.?.port,
-        };
-    defer client.allocator.free(endpoint.host);
-    std.log.info(
-        "Trying to connect to {s}:{d}",
-        .{ endpoint.host, endpoint.port },
-    );
-    const socket = try client.zignet.Socket.connectToHost(
-        client.allocator,
-        endpoint.host,
-        endpoint.port,
-        &command.checkCommandInterrupt,
-        3000,
-    );
-    client.endpoint = try socket.getRemoteEndPoint();
-    client.sock = socket;
-    client.reader = socket.reader(&client.reader_buf);
-    client.writer = socket.writer(&client.writer_buf);
+        } else {
+            // Resolve IP address
+            if (std.Io.net.IpAddress.resolve(
+                io,
+                client.config.host,
+                client.config.port,
+            )) |address| {
+                break :endpoint .{
+                    .{ .ip_address = address },
+                    client.config.port,
+                };
+            } else |_| {
+                // Use the parameter as hostname
+                break :endpoint .{
+                    .{ .hostname = try .init(client.config.host) },
+                    client.config.port,
+                };
+            }
+        }
+    };
+    // TODO: Interrupt if ctrl+c is pressed
+    const net = switch (endpoint) {
+        .hostname => |hostname| net: {
+            std.log.info(
+                "Trying to connect to {s}:{}",
+                .{ hostname.bytes, port },
+            );
+            break :net try hostname.connect(io, port, .{ .mode = .stream });
+        },
+        .ip_address => |address| net: {
+            std.log.info("Trying to connect to {f}", .{address});
+            break :net try address.connect(io, .{ .mode = .stream });
+        },
+    };
+    // Store net to global client
+    client.stream = net;
     errdefer {
-        client.reader = undefined;
-        client.writer = undefined;
         for (client.lines) |*line| {
             line.deinit(client.allocator);
         }
         client.allocator.free(client.lines);
-        client.sock = null;
-        socket.close();
+        client.stream = null;
+        net.socket.close(io);
     }
-    std.log.info(
-        "Connected to {f}",
-        .{try socket.getRemoteEndPoint()},
-    );
-    std.log.debug("Send API version request..", .{});
     // Asserting that API version matched between client and server
     {
         const request: api.protobuf.mmc.Request = .{
@@ -121,32 +101,10 @@ pub fn impl(params: [][]const u8) !void {
                 .core = .{ .kind = .CORE_REQUEST_KIND_API_VERSION },
             },
         };
-        // Clear all buffer in reader and writer for safety.
-        _ = client.reader.interface.discardRemaining() catch {};
-        _ = client.writer.interface.consumeAll();
-        // Send message
-        try request.encode(&client.writer.interface, client.allocator);
-        try client.writer.interface.flush();
-        // Receive response
-        while (true) {
-            try command.checkCommandInterrupt();
-            const byte = client.reader.interface.peekByte() catch |e| {
-                switch (e) {
-                    std.Io.Reader.Error.EndOfStream => continue,
-                    std.Io.Reader.Error.ReadFailed => {
-                        return switch (client.reader.error_state orelse error.Unexpected) {
-                            else => |err| err,
-                        };
-                    },
-                }
-            };
-            if (byte > 0) break;
-        }
-        const decoded: api.protobuf.mmc.Response = try .decode(
-            &client.reader.interface,
-            client.allocator,
-        );
-        const server_api_version = switch (decoded.body orelse
+        try client.sendRequest(io, client.allocator, net, request);
+        var response = try client.readResponse(io, client.allocator, net);
+        defer response.deinit(client.allocator);
+        const server_api_version = switch (response.body orelse
             return error.InvalidResponse) {
             .core => |core_resp| switch (core_resp.body orelse
                 return error.InvalidResponse) {
@@ -161,13 +119,13 @@ pub fn impl(params: [][]const u8) !void {
             },
             else => return error.InvalidResponse,
         };
-        if (api.version.major != server_api_version.major or
-            api.version.minor > server_api_version.minor)
+        if (api.protobuf.version.major != server_api_version.major or
+            api.protobuf.version.minor > server_api_version.minor)
         {
             std.log.info(
                 "Client API version: {f}, Server API version: {}.{}.{}",
                 .{
-                    api.version,
+                    api.protobuf.version,
                     server_api_version.major,
                     server_api_version.minor,
                     server_api_version.patch,
@@ -183,33 +141,10 @@ pub fn impl(params: [][]const u8) !void {
                 .core = .{ .kind = .CORE_REQUEST_KIND_TRACK_CONFIG },
             },
         };
-        // Clear all buffer in reader and writer for safety.
-        _ = client.reader.interface.discardRemaining() catch {};
-        _ = client.writer.interface.consumeAll();
-        // Send message
-        try request.encode(&client.writer.interface, client.allocator);
-        try client.writer.interface.flush();
-        // Receive response
-        while (true) {
-            try command.checkCommandInterrupt();
-            const byte = client.reader.interface.peekByte() catch |e| {
-                switch (e) {
-                    std.Io.Reader.Error.EndOfStream => continue,
-                    std.Io.Reader.Error.ReadFailed => {
-                        return switch (client.reader.error_state orelse error.Unexpected) {
-                            else => |err| err,
-                        };
-                    },
-                }
-            };
-            if (byte > 0) break;
-        }
-        var decoded: api.protobuf.mmc.Response = try .decode(
-            &client.reader.interface,
-            client.allocator,
-        );
-        defer decoded.deinit(client.allocator);
-        const track_config = switch (decoded.body orelse
+        try client.sendRequest(io, client.allocator, net, request);
+        var response = try client.readResponse(io, client.allocator, net);
+        defer response.deinit(client.allocator);
+        const track_config = switch (response.body orelse
             return error.InvalidResponse) {
             .core => |core_resp| switch (core_resp.body orelse
                 return error.InvalidResponse) {
@@ -247,33 +182,10 @@ pub fn impl(params: [][]const u8) !void {
                 .core = .{ .kind = .CORE_REQUEST_KIND_SERVER_INFO },
             },
         };
-        // Clear all buffer in reader and writer for safety.
-        _ = client.reader.interface.discardRemaining() catch {};
-        _ = client.writer.interface.consumeAll();
-        // Send message
-        try request.encode(&client.writer.interface, client.allocator);
-        try client.writer.interface.flush();
-        // Receive response
-        while (true) {
-            try command.checkCommandInterrupt();
-            const byte = client.reader.interface.peekByte() catch |e| {
-                switch (e) {
-                    std.Io.Reader.Error.EndOfStream => continue,
-                    std.Io.Reader.Error.ReadFailed => {
-                        return switch (client.reader.error_state orelse error.Unexpected) {
-                            else => |err| err,
-                        };
-                    },
-                }
-            };
-            if (byte > 0) break;
-        }
-        var decoded: api.protobuf.mmc.Response = try .decode(
-            &client.reader.interface,
-            client.allocator,
-        );
-        defer decoded.deinit(client.allocator);
-        const server = switch (decoded.body orelse
+        try client.sendRequest(io, client.allocator, net, request);
+        var response = try client.readResponse(io, client.allocator, net);
+        defer response.deinit(client.allocator);
+        const server = switch (response.body orelse
             return error.InvalidResponse) {
             .core => |core_resp| switch (core_resp.body orelse
                 return error.InvalidResponse) {
@@ -289,7 +201,7 @@ pub fn impl(params: [][]const u8) !void {
             else => return error.InvalidResponse,
         };
         std.log.info("Track configuration for {s}:", .{server.name});
-        var stdout = std.fs.File.stdout().writer(&.{});
+        var stdout = std.Io.File.stdout().writer(io, &.{});
         for (client.lines) |line| {
             try stdout.interface.print(
                 "\t {s} ({}) - {} {s} | {} {s}\n",
@@ -309,4 +221,39 @@ pub fn impl(params: [][]const u8) !void {
     // Initialize memory for logging configuration
     client.log_config =
         try client.log.Config.init(client.allocator, client.lines);
+    const remote_endpoint = try getRemoteEndPoint(net);
+    // Store the newly connected server as the new client endpoint.
+    std.log.info("Connected to {f}", .{remote_endpoint});
+    client.endpoint = remote_endpoint;
+}
+
+// Get the connected endpoint
+pub fn getRemoteEndPoint(
+    stream: std.Io.net.Stream,
+) (std.posix.GetSockNameError)!std.Io.net.IpAddress {
+    var sockaddr: std.posix.sockaddr.storage = undefined;
+    var sockaddr_len: std.posix.socklen_t =
+        @sizeOf(std.posix.sockaddr.storage);
+    const sockaddr_ptr: *std.posix.sockaddr = @ptrCast(&sockaddr);
+    try std.posix.getpeername(stream.socket.handle, sockaddr_ptr, &sockaddr_len);
+    if (sockaddr_ptr.family == std.posix.AF.INET) {
+        const value: *align(4) const std.posix.sockaddr.in =
+            @ptrCast(@alignCast(sockaddr_ptr));
+        return .{
+            .ip4 = .{
+                .port = std.mem.bigToNative(u16, value.port),
+                .bytes = @bitCast(value.addr),
+            },
+        };
+    } else if (sockaddr_ptr.family == std.posix.AF.INET6) {
+        const value: *align(4) const std.posix.sockaddr.in6 =
+            @ptrCast(@alignCast(sockaddr_ptr));
+        return .{
+            .ip6 = .{
+                .port = std.mem.bigToNative(u16, value.port),
+                .bytes = @bitCast(value.addr),
+                .interface = .{ .index = value.scope_id },
+            },
+        };
+    } else return error.Unexpected;
 }

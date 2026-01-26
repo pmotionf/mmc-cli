@@ -2,7 +2,7 @@
     .name = .mmc_cli,
     .version = "0.16.1",
     .fingerprint = 0x392c74984291bf14,
-    .minimum_zig_version = "0.15.1",
+    .minimum_zig_version = "0.16.0-dev.2193+fc517bd01",
     .dependencies = .{
         .json5 = .{
             .url = "https://github.com/mochalins/json5.zig/archive/2ef1032.tar.gz",
@@ -12,21 +12,17 @@
             .url = "https://github.com/mochalins/network/archive/084fed7.tar.gz",
             .hash = "network-0.1.0-Pm-AgiMxAQCuaDrGAfSxVHeozUQ2gU3jINGLFxJ1Zpld",
         },
-        .zignet = .{
-            .url = "https://github.com/aaumar25/zignet/archive/ca7d172.tar.gz",
-            .hash = "zignet-0.2.0-BAu-r4GpAACnu7GCkbPHa4F6lQaq5wypMWqr0z0BM9nO",
-        },
         .chrono = .{
-            .url = "https://github.com/pmotionf/chrono/archive/31e31b0.tar.gz",
-            .hash = "chrono-0.1.0-uVd76I_AAwCMh8lYH9E-5ia0tI-tda4Q2FjFoIdE2dYG",
+            .url = "https://github.com/aaumar25/chrono/archive/11b2a9b.tar.gz",
+            .hash = "chrono-0.1.0-uVd76ObCAwBL5hB9wCVWZLus9iLTKvINA_GYw_Lmkfid",
         },
         .mmc_api = .{
-            .url = "https://github.com/pmotionf/mmc-api/archive/907e011.tar.gz",
-            .hash = "mmc_api-1.2.0-P5raR2hzCwCUZ73y6Bl6QSWtoUeXric6xPMyUsU3_jDS",
+            .url = "https://github.com/pmotionf/mmc-api/archive/8fcf069.tar.gz",
+            .hash = "mmc_api-0.0.0-P5raR8DdOgBmx-t8_lU6fEcosMFSLiKAfi9JVGhz08vP",
         },
         .soem = .{
-            .url = "https://github.com/pmotionf/SOEM/archive/6dff3f5.tar.gz",
-            .hash = "soem-1.4.0-hMH6QwH7DQDhU4QpnIidSZbzZlVoljUcay_9RIbl4jPj",
+            .url = "https://github.com/aaumar25/SOEM/archive/195fbdd.tar.gz",
+            .hash = "soem-1.4.0-hMH6Q-37DQBvevB5XrCFluc-BgwBSzKqK7by3hn-Vss0",
             .lazy = true,
         },
         .tracy = .{

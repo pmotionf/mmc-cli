@@ -5,12 +5,12 @@ const builtin = @import("builtin");
 const std = @import("std");
 
 const command = @import("command.zig");
-const io = @import("io.zig");
+const mmc_io = @import("io.zig");
 
 const Complete = @import("Prompt/Complete.zig");
 const History = @import("Prompt/History.zig");
 
-pub const max_input_size = std.fs.max_path_bytes + 512;
+pub const max_input_size = std.Io.Dir.max_path_bytes + 512;
 
 /// Flag to hide prompt and ignore user input.
 disable: std.atomic.Value(bool) = .init(false),
@@ -36,12 +36,12 @@ selected_command: []const u8 = &.{},
 /// Prompt handler thread callback. Input must be set to non-canonical mode
 /// prior to spawning this thread. Only one prompt handler thread may be
 /// running at a time.
-pub fn handler(ctx: *Prompt) void {
+pub fn handler(ctx: *Prompt, io: std.Io) void {
     ctx.history.clear();
     ctx.clear();
 
     var stdout_buf: [4096]u8 = undefined;
-    var stdout = std.fs.File.stdout().writer(&stdout_buf);
+    var stdout = std.Io.File.stdout().writer(io, &stdout_buf);
 
     var prev_disable: bool = true;
     main: while (!ctx.close.load(.monotonic)) {
@@ -53,7 +53,7 @@ pub fn handler(ctx: *Prompt) void {
 
         // Print prompt once on enable.
         if (prev_disable) {
-            std.Thread.sleep(std.time.ns_per_ms * 10);
+            io.sleep(.fromMilliseconds(10), .real) catch continue :main;
             stdout.interface.writeAll(
                 "Enter command (HELP for usage):\n",
             ) catch continue :main;
@@ -61,7 +61,7 @@ pub fn handler(ctx: *Prompt) void {
         }
         prev_disable = false;
 
-        if (io.event.poll() catch continue :main == 0) {
+        if (mmc_io.event.poll() catch continue :main == 0) {
             continue :main;
         }
 
@@ -70,7 +70,7 @@ pub fn handler(ctx: *Prompt) void {
         // keep the completion selection.
         var keep_complete_selection: bool = false;
 
-        const event = io.event.read(.{}) catch continue :main;
+        const event = mmc_io.event.read(io, .{}) catch continue :main;
         parse: switch (event) {
             .key => |key_event| {
                 switch (key_event.value) {
@@ -161,7 +161,7 @@ pub fn handler(ctx: *Prompt) void {
                                     // Print newline at end of prompt before
                                     // command start.
                                     ctx.cursor.moveEnd();
-                                    io.cursor.moveColumn(
+                                    mmc_io.cursor.moveColumn(
                                         &stdout.interface,
                                         ctx.cursor.visible + 1,
                                     ) catch continue :main;
@@ -331,7 +331,7 @@ pub fn handler(ctx: *Prompt) void {
                                         .windows => {
                                             var buf: [max_input_size]u8 =
                                                 undefined;
-                                            const paste = io.clipboard.get(
+                                            const paste = mmc_io.clipboard.get(
                                                 &buf,
                                             ) catch {};
                                             ctx.insertString(paste);
@@ -405,7 +405,7 @@ pub fn handler(ctx: *Prompt) void {
                     // Underline fragment if it has just been completed.
                     if (ctx.complete_partial_start) |cvs| {
                         if (cvs == start and ctx.complete_selection != null) {
-                            io.style.set(
+                            mmc_io.style.set(
                                 &stdout.interface,
                                 .{ .underline = true },
                             ) catch continue :main;
@@ -414,19 +414,19 @@ pub fn handler(ctx: *Prompt) void {
                     const fragment = ctx.input[start..i];
                     // Parsing the first fragment
                     if (std.mem.count(u8, ctx.input[0..i], " ") == 0) {
-                        io.style.set(&stdout.interface, .{
+                        mmc_io.style.set(&stdout.interface, .{
                             .fg = .{ .named = .red },
                         }) catch continue :main;
                         for (command.registry.keys()) |key| {
                             if (std.ascii.eqlIgnoreCase(key, fragment)) {
-                                io.style.set(&stdout.interface, .{
+                                mmc_io.style.set(&stdout.interface, .{
                                     .fg = .{ .named = .green },
                                 }) catch continue :main;
                                 ctx.selected_command = key;
                                 break;
                             }
                         }
-                        defer io.style.reset(&stdout.interface) catch {};
+                        defer mmc_io.style.reset(&stdout.interface) catch {};
                         stdout.interface.writeAll(fragment) catch
                             continue :main;
                     } else {
@@ -438,10 +438,10 @@ pub fn handler(ctx: *Prompt) void {
                                 var_entry.key_ptr.*,
                                 fragment,
                             )) {
-                                io.style.set(&stdout.interface, .{
+                                mmc_io.style.set(&stdout.interface, .{
                                     .fg = .{ .named = .magenta },
                                 }) catch continue :main;
-                                defer io.style.reset(
+                                defer mmc_io.style.reset(
                                     &stdout.interface,
                                 ) catch {};
                                 stdout.interface.writeAll(fragment) catch
@@ -450,10 +450,10 @@ pub fn handler(ctx: *Prompt) void {
                             }
                         } else validation: {
                             if (ctx.selected_command.len == 0) {
-                                io.style.set(&stdout.interface, .{
+                                mmc_io.style.set(&stdout.interface, .{
                                     .fg = .{ .named = .red },
                                 }) catch continue :main;
-                                defer io.style.reset(
+                                defer mmc_io.style.reset(
                                     &stdout.interface,
                                 ) catch {};
                                 stdout.interface.writeAll(fragment) catch
@@ -462,10 +462,10 @@ pub fn handler(ctx: *Prompt) void {
                             }
                             const selected_command =
                                 command.registry.getPtr(ctx.selected_command) orelse {
-                                    io.style.set(&stdout.interface, .{
+                                    mmc_io.style.set(&stdout.interface, .{
                                         .fg = .{ .named = .red },
                                     }) catch continue :main;
-                                    defer io.style.reset(
+                                    defer mmc_io.style.reset(
                                         &stdout.interface,
                                     ) catch {};
                                     stdout.interface.writeAll(fragment) catch
@@ -482,10 +482,10 @@ pub fn handler(ctx: *Prompt) void {
                             // Parameter start at index 1 on command input
                             const param_idx = fragment_id - 1;
                             if (param_idx >= selected_command.parameters.len) {
-                                io.style.set(&stdout.interface, .{
+                                mmc_io.style.set(&stdout.interface, .{
                                     .fg = .{ .named = .red },
                                 }) catch continue :main;
-                                defer io.style.reset(
+                                defer mmc_io.style.reset(
                                     &stdout.interface,
                                 ) catch {};
                                 stdout.interface.writeAll(fragment) catch
@@ -498,10 +498,10 @@ pub fn handler(ctx: *Prompt) void {
                                 stdout.interface.writeAll(fragment) catch
                                     continue :main;
                             } else {
-                                io.style.set(&stdout.interface, .{
+                                mmc_io.style.set(&stdout.interface, .{
                                     .fg = .{ .named = .red },
                                 }) catch continue :main;
-                                defer io.style.reset(
+                                defer mmc_io.style.reset(
                                     &stdout.interface,
                                 ) catch {};
                                 stdout.interface.writeAll(fragment) catch
@@ -519,10 +519,10 @@ pub fn handler(ctx: *Prompt) void {
                         if (ctx.complete.prefix.len > completed_len) {
                             const suggestion =
                                 ctx.complete.prefix[completed_len..];
-                            io.style.set(&stdout.interface, .{
+                            mmc_io.style.set(&stdout.interface, .{
                                 .fg = .{ .lut = .grayscale(12) },
                             }) catch continue :main;
-                            defer io.style.reset(&stdout.interface) catch {};
+                            defer mmc_io.style.reset(&stdout.interface) catch {};
                             stdout.interface.writeAll(suggestion) catch
                                 continue :main;
                         }
@@ -538,7 +538,7 @@ pub fn handler(ctx: *Prompt) void {
                 // Underline fragment if it has just been completed.
                 if (ctx.complete_partial_start) |cvs| {
                     if (cvs == start and ctx.complete_selection != null) {
-                        io.style.set(
+                        mmc_io.style.set(
                             &stdout.interface,
                             .{ .underline = true },
                         ) catch continue :main;
@@ -549,11 +549,11 @@ pub fn handler(ctx: *Prompt) void {
                 if (std.mem.count(u8, ctx.input, " ") == 0) {
                     for (command.registry.keys()) |key| {
                         if (std.ascii.eqlIgnoreCase(key, fragment)) {
-                            io.style.set(&stdout.interface, .{
+                            mmc_io.style.set(&stdout.interface, .{
                                 .fg = .{ .named = .green },
                             }) catch continue :main;
                             ctx.selected_command = key;
-                            defer io.style.reset(&stdout.interface) catch {};
+                            defer mmc_io.style.reset(&stdout.interface) catch {};
                             stdout.interface.writeAll(fragment) catch
                                 continue :main;
                             break;
@@ -571,10 +571,10 @@ pub fn handler(ctx: *Prompt) void {
                             var_entry.key_ptr.*,
                             fragment,
                         )) {
-                            io.style.set(&stdout.interface, .{
+                            mmc_io.style.set(&stdout.interface, .{
                                 .fg = .{ .named = .magenta },
                             }) catch continue :main;
-                            defer io.style.reset(&stdout.interface) catch {};
+                            defer mmc_io.style.reset(&stdout.interface) catch {};
                             stdout.interface.writeAll(fragment) catch
                                 continue :main;
                             break;
@@ -592,10 +592,10 @@ pub fn handler(ctx: *Prompt) void {
                     if (ctx.complete.prefix.len > completed_len) {
                         const suggestion =
                             ctx.complete.prefix[completed_len..];
-                        io.style.set(&stdout.interface, .{
+                        mmc_io.style.set(&stdout.interface, .{
                             .fg = .{ .lut = .grayscale(12) },
                         }) catch continue :main;
-                        defer io.style.reset(&stdout.interface) catch {};
+                        defer mmc_io.style.reset(&stdout.interface) catch {};
                         stdout.interface.writeAll(suggestion) catch
                             continue :main;
                     }
@@ -607,17 +607,17 @@ pub fn handler(ctx: *Prompt) void {
         if (ctx.history.selection) |*selection| {
             const hist_item = selection.slice();
             if (hist_item.len > ctx.input.len) {
-                io.style.set(&stdout.interface, .{
+                mmc_io.style.set(&stdout.interface, .{
                     .fg = .{ .lut = .grayscale(12) },
                     .underline = true,
                 }) catch continue :main;
-                defer io.style.reset(&stdout.interface) catch {};
+                defer mmc_io.style.reset(&stdout.interface) catch {};
                 stdout.interface.writeAll(hist_item[ctx.input.len..]) catch
                     continue :main;
             }
         }
 
-        io.cursor.moveColumn(&stdout.interface, ctx.cursor.visible + 1) catch
+        mmc_io.cursor.moveColumn(&stdout.interface, ctx.cursor.visible + 1) catch
             continue :main;
     }
 }

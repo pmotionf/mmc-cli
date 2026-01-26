@@ -4,11 +4,11 @@ const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn impl(_: [][]const u8) !void {
+pub fn impl(io: std.Io, _: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "reset_system");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
-    if (client.sock == null) return error.ServerNotConnected;
+    const net = client.stream orelse return error.ServerNotConnected;
     for (client.lines) |line| {
         // Send deinitialize command
         {
@@ -21,13 +21,8 @@ pub fn impl(_: [][]const u8) !void {
                     },
                 },
             };
-            // Clear all buffer in reader and writer for safety.
-            _ = client.reader.interface.discardRemaining() catch {};
-            _ = client.writer.interface.consumeAll();
-            // Send message
-            try request.encode(&client.writer.interface, client.allocator);
-            try client.writer.interface.flush();
-            try client.waitCommandReceived();
+            try client.sendRequest(io, client.allocator, net, request);
+            try client.waitCommandCompleted(io);
         }
         // Send clear errors command
         {
@@ -40,13 +35,8 @@ pub fn impl(_: [][]const u8) !void {
                     },
                 },
             };
-            // Clear all buffer in reader and writer for safety.
-            _ = client.reader.interface.discardRemaining() catch {};
-            _ = client.writer.interface.consumeAll();
-            // Send message
-            try request.encode(&client.writer.interface, client.allocator);
-            try client.writer.interface.flush();
-            try client.waitCommandReceived();
+            try client.sendRequest(io, client.allocator, net, request);
+            try client.waitCommandCompleted(io);
         }
         // Send stop push command
         {
@@ -59,13 +49,8 @@ pub fn impl(_: [][]const u8) !void {
                     },
                 },
             };
-            // Clear all buffer in reader and writer for safety.
-            _ = client.reader.interface.discardRemaining() catch {};
-            _ = client.writer.interface.consumeAll();
-            // Send message
-            try request.encode(&client.writer.interface, client.allocator);
-            try client.writer.interface.flush();
-            try client.waitCommandReceived();
+            try client.sendRequest(io, client.allocator, net, request);
+            try client.waitCommandCompleted(io);
         }
         // Send stop pull command
         {
@@ -78,13 +63,8 @@ pub fn impl(_: [][]const u8) !void {
                     },
                 },
             };
-            // Clear all buffer in reader and writer for safety.
-            _ = client.reader.interface.discardRemaining() catch {};
-            _ = client.writer.interface.consumeAll();
-            // Send message
-            try request.encode(&client.writer.interface, client.allocator);
-            try client.writer.interface.flush();
-            try client.waitCommandReceived();
+            try client.sendRequest(io, client.allocator, net, request);
+            try client.waitCommandCompleted(io);
         }
     }
 }

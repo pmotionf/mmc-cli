@@ -15,7 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [Linux, Windows]
-    runs-on: [ self-hosted, "${{ matrix.os }}" ]
+    runs-on: [self-hosted, "${{ matrix.os }}"]
     steps:
       - name: Log masks on Linux
         if: matrix.os == 'Linux'
@@ -31,7 +31,7 @@ jobs:
 
       - uses: mlugg/setup-zig@v2
         with:
-          version: 0.15.2
+          version: 0.16.0-dev.2193+fc517bd01
 
       - name: Run zig fmt
         if: matrix.os == 'Linux'

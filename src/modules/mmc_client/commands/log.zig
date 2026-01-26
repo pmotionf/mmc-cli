@@ -4,14 +4,13 @@ const command = @import("../../../command.zig");
 const chrono = @import("chrono");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
-const zignet = @import("zignet");
 
 const Kind = enum { all, axis, driver };
 
-pub fn add(params: [][]const u8) !void {
+pub fn add(io: std.Io, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "add_log");
     defer tracy_zone.end();
-    if (client.sock == null) return error.ServerNotConnected;
+    const net = client.stream orelse return error.ServerNotConnected;
     // Parsing line name
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
@@ -56,11 +55,11 @@ pub fn add(params: [][]const u8) !void {
     // the only thing that can be done from this point is to always show the
     // logging configuration even if there is an error when trying to toggle
     // the driver flag for logging.
-    defer client.log_config.status() catch {};
-    try modify(line, kind, range, true);
+    defer client.log_config.status(io) catch {};
+    try modify(io, net, line, kind, range, true);
 }
 
-pub fn start(params: [][]const u8) !void {
+pub fn start(io: std.Io, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "start_log");
     defer tracy_zone.end();
     if (client.log.executing.load(.monotonic) == true)
@@ -73,7 +72,9 @@ pub fn start(params: [][]const u8) !void {
             break :p try client.allocator.dupe(u8, path);
         break :p try std.fmt.allocPrint(client.allocator, "{s}.csv", .{path});
     } else p: {
-        var timestamp: u64 = @intCast(std.time.timestamp());
+        const clock: std.Io.Clock = .real;
+        const timestamp_nano = try clock.now(io);
+        var timestamp: u64 = @intCast(timestamp_nano.toSeconds());
         timestamp += std.time.s_per_hour * 9;
         const days_since_epoch: i32 = @intCast(timestamp / std.time.s_per_day);
         const ymd =
@@ -100,21 +101,21 @@ pub fn start(params: [][]const u8) !void {
     const log_thread = try std.Thread.spawn(
         .{},
         client.log.runner,
-        .{ duration, try client.allocator.dupe(u8, file_path) },
+        .{ io, duration, try client.allocator.dupe(u8, file_path) },
     );
     log_thread.detach();
 }
 
-pub fn status(_: [][]const u8) !void {
+pub fn status(io: std.Io, _: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "status_log");
     defer tracy_zone.end();
-    try client.log_config.status();
+    try client.log_config.status(io);
 }
 
-pub fn remove(params: [][]const u8) !void {
+pub fn remove(io: std.Io, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "remove_log");
     defer tracy_zone.end();
-    if (client.sock == null) return error.ServerNotConnected;
+    const net = client.stream orelse return error.ServerNotConnected;
     // Parsing line name
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
@@ -159,11 +160,11 @@ pub fn remove(params: [][]const u8) !void {
     // the only thing that can be shown from this point is to always show the
     // logging configuration even if there is an error when trying to toggle
     // the driver flag for logging.
-    defer client.log_config.status() catch {};
-    try modify(line, kind, range, false);
+    defer client.log_config.status(io) catch {};
+    try modify(io, net, line, kind, range, false);
 }
 
-pub fn stop(_: [][]const u8) !void {
+pub fn stop(_: std.Io, _: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "stop_log");
     defer tracy_zone.end();
     if (client.log.executing.load(.monotonic))
@@ -172,7 +173,7 @@ pub fn stop(_: [][]const u8) !void {
         return error.NoRunningLogging;
 }
 
-pub fn cancel(_: [][]const u8) !void {
+pub fn cancel(_: std.Io, _: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "cancel_log");
     defer tracy_zone.end();
     if (client.log.executing.load(.monotonic))
@@ -182,6 +183,8 @@ pub fn cancel(_: [][]const u8) !void {
 }
 
 fn modify(
+    io: std.Io,
+    net: std.Io.net.Stream,
     line: client.Line,
     kind: Kind,
     range: client.log.Range,
@@ -211,33 +214,10 @@ fn modify(
                     },
                 },
             };
-            // Clear all buffer in reader and writer for safety.
-            _ = client.reader.interface.discardRemaining() catch {};
-            _ = client.writer.interface.consumeAll();
-            // Send message
-            try request.encode(&client.writer.interface, client.allocator);
-            try client.writer.interface.flush();
-            // Receive message
-            while (true) {
-                try command.checkCommandInterrupt();
-                const byte = client.reader.interface.peekByte() catch |e| {
-                    switch (e) {
-                        std.Io.Reader.Error.EndOfStream => continue,
-                        std.Io.Reader.Error.ReadFailed => {
-                            return switch (client.reader.error_state orelse error.Unexpected) {
-                                else => |err| err,
-                            };
-                        },
-                    }
-                };
-                if (byte > 0) break;
-            }
-            var decoded: api.protobuf.mmc.Response = try .decode(
-                &client.reader.interface,
-                client.allocator,
-            );
-            defer decoded.deinit(client.allocator);
-            var track = switch (decoded.body orelse return error.InvalidResponse) {
+            try client.sendRequest(io, client.allocator, net, request);
+            var response = try client.readResponse(io, client.allocator, net);
+            defer response.deinit(client.allocator);
+            var track = switch (response.body orelse return error.InvalidResponse) {
                 .info => |info_resp| switch (info_resp.body orelse
                     return error.InvalidResponse) {
                     .track => |track_resp| track_resp,

@@ -86,11 +86,6 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    const zignet = b.dependency("zignet", .{
-        .target = target,
-        .optimize = optimize,
-    });
-
     const build_zig_zon = b.createModule(.{
         .root_source_file = b.path("build.zig.zon"),
         .target = target,
@@ -103,7 +98,6 @@ pub fn build(b: *std.Build) !void {
         .{ .name = "mmc-api", .module = mmc_api.module("mmc-api") },
         .{ .name = "network", .module = network_dep.module("network") },
         .{ .name = "chrono", .module = chrono.module("chrono") },
-        .{ .name = "zignet", .module = zignet.module("zignet") },
         .{ .name = "tracy", .module = tracy_module },
     };
     const setup_options: SetupOptions = .{

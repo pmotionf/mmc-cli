@@ -2,7 +2,7 @@ name: Release
 
 on:
   workflow_run:
-    workflows: ['Test']
+    workflows: ["Test"]
     types: [completed]
     branches:
       - main
@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         os: [Linux]
-    runs-on: [ self-hosted, "${{ matrix.os }}" ]
+    runs-on: [self-hosted, "${{ matrix.os }}"]
     defaults:
       run:
         shell: bash
@@ -35,12 +35,12 @@ jobs:
 
       - uses: mlugg/setup-zig@v2
         with:
-          version: 0.15.2
+          version: 0.16.0-dev.2193+fc517bd01
 
       - uses: actions/github-script@v7
         id: parse-version
         env:
-          SHA: '${{env.parentSHA}}'
+          SHA: "${{env.parentSHA}}"
         with:
           script: |
             const script = require('./.github/workflows/zig-version.js');

@@ -189,7 +189,7 @@ var command_queue_lock: std.Thread.RwLock = undefined;
 var command_queue: std.DoublyLinkedList = undefined;
 
 var timer: ?std.time.Timer = null;
-var log_file: ?std.fs.File = null;
+var log_file: ?std.Io.File = null;
 
 const CommandString = struct {
     str: []u8,
@@ -212,7 +212,7 @@ pub const Command = union(enum) {
         short_description: []const u8,
         /// Long description of command.
         long_description: []const u8,
-        execute: *const fn ([][]const u8) anyerror!void,
+        execute: *const fn (std.Io, [][]const u8) anyerror!void,
 
         pub const Parameter = struct {
             name: []const u8,
@@ -235,44 +235,37 @@ pub const Command = union(enum) {
                         parameters += @typeInfo(Kind).@"enum".fields.len;
                     }
                 }
-                var result: std.builtin.Type.Enum = .{
-                    .fields = &.{},
-                    .decls = &.{},
-                    .is_exhaustive = true,
-                    .tag_type = std.math.IntFittingRange(0, parameters),
-                };
-                var tag_value = 0;
-                result.fields = result.fields ++ .{
-                    std.builtin.Type.EnumField{
-                        .value = tag_value,
-                        .name = "none",
-                    },
-                };
-                tag_value += 1;
+                const TagInt = std.math.IntFittingRange(0, parameters);
+                comptime var field_names: []const []const u8 = &.{};
+                field_names = field_names ++ .{"none"};
+                // command.zig command parameter validation.
                 if (@hasDecl(This, "Parameter")) {
                     const ti = @typeInfo(This.Parameter.Kind).@"enum";
                     inline for (ti.fields) |field| {
-                        result.fields = result.fields ++ .{std.builtin.Type.EnumField{
-                            .value = tag_value,
-                            .name = field.name,
-                        }};
-                        tag_value += 1;
+                        field_names = field_names ++ .{field.name};
                     }
                 }
                 inline for (@typeInfo(Config.Module).@"enum".fields) |field| {
                     const module: type = comptime @field(This, field.name);
-                    if (@typeInfo(module) == .@"struct" and @hasDecl(module, "Parameter")) {
+                    if (@typeInfo(module) == .@"struct" and
+                        @hasDecl(module, "Parameter"))
+                    {
                         const ti = @typeInfo(module.Parameter.Kind).@"enum";
                         inline for (ti.fields) |kind_field| {
-                            result.fields = result.fields ++ .{std.builtin.Type.EnumField{
-                                .value = tag_value,
-                                .name = field.name ++ "_" ++ kind_field.name,
-                            }};
-                            tag_value += 1;
+                            field_names = field_names ++
+                                .{std.fmt.comptimePrint(
+                                    "{s}_{s}",
+                                    .{ field.name, kind_field.name },
+                                )};
                         }
                     }
                 }
-                return @Type(.{ .@"enum" = result });
+                comptime var field_values: [field_names.len]TagInt =
+                    undefined;
+                for (field_names, 0..) |_, tag_value| {
+                    field_values[tag_value] = tag_value;
+                }
+                return @Enum(TagInt, .exhaustive, field_names, &field_values);
             }
 
             pub fn isValid(self: @This(), input: []const u8) bool {
@@ -311,10 +304,12 @@ pub fn logFn(
 ) void {
     const level_txt = comptime message_level.asText();
     const prefix2 = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
+    var threaded: std.Io.Threaded = .init_single_threaded;
+    const io = threaded.io();
 
     if (log_file) |f| {
         var writer_buf: [4096]u8 = undefined;
-        var writer = f.writer(&writer_buf);
+        var writer = f.writer(io, &writer_buf);
         writer.interface.print(
             level_txt ++ prefix2 ++ format ++ "\n",
             args,
@@ -323,16 +318,13 @@ pub fn logFn(
     }
 
     var stderr_buf: [4096]u8 = undefined;
-    var stderr = std.fs.File.stderr().writer(&stderr_buf);
-
-    std.debug.lockStdErr();
-    defer std.debug.unlockStdErr();
+    var stderr = std.debug.lockStderr(&stderr_buf);
+    defer std.debug.unlockStderr();
     nosuspend {
-        stderr.interface.print(
+        stderr.file_writer.interface.print(
             level_txt ++ prefix2 ++ format ++ "\n",
             args,
         ) catch return;
-        stderr.interface.flush() catch return;
     }
 }
 
@@ -600,7 +592,7 @@ pub fn enqueue(input: []const u8) !void {
     command_queue.append(&new_node.node);
 }
 
-pub fn execute() !void {
+pub fn execute(io: std.Io) !void {
     command_queue_lock.lock();
     const node_opt = command_queue.popFirst();
     command_queue_lock.unlock();
@@ -610,12 +602,12 @@ pub fn execute() !void {
             std.heap.smp_allocator.free(command_str.str);
             std.heap.smp_allocator.destroy(command_str);
         }
-        try parseAndRun(command_str.str);
+        try parseAndRun(io, command_str.str);
     }
 }
 
-fn parseAndRun(input: []const u8) !void {
-    const trimmed = std.mem.trimLeft(u8, input, "\n\t \r");
+fn parseAndRun(io: std.Io, input: []const u8) !void {
+    const trimmed = std.mem.trimStart(u8, input, "\n\t \r");
     std.log.info("Running command: {s}\n", .{trimmed});
     if (trimmed.len == 0 or trimmed[0] == '#') {
         return;
@@ -679,13 +671,13 @@ fn parseAndRun(input: []const u8) !void {
         }
     }
     if (token_iterator.peek() != null) return error.UnexpectedParameter;
-    try command.execute(params);
+    try command.execute(io, params);
 }
 
 var arena: std.heap.ArenaAllocator = undefined;
 var allocator: std.mem.Allocator = undefined;
 
-fn help(params: [][]const u8) !void {
+fn help(_: std.Io, params: [][]const u8) !void {
     if (params[0].len > 0) {
         var command: *Command.Executable = undefined;
         var command_buf: [32]u8 = undefined;
@@ -762,17 +754,17 @@ fn help(params: [][]const u8) !void {
     }
 }
 
-fn version(_: [][]const u8) !void {
+fn version(_: std.Io, _: [][]const u8) !void {
     // TODO: Figure out better way to get version from `build.zig.zon`.
     std.log.info("CLI Version: {s}\n", .{build.version});
 }
 
-fn set(params: [][]const u8) !void {
+fn set(_: std.Io, params: [][]const u8) !void {
     if (std.ascii.isDigit(params[0][0])) return error.InvalidParameter;
     try variables.put(params[0], params[1]);
 }
 
-fn get(params: [][]const u8) !void {
+fn get(_: std.Io, params: [][]const u8) !void {
     if (variables.get(params[0])) |value| {
         std.log.info("Variable \"{s}\": {s}\n", .{
             params[0],
@@ -781,7 +773,7 @@ fn get(params: [][]const u8) !void {
     } else return error.UndefinedVariable;
 }
 
-fn printVariables(_: [][]const u8) !void {
+fn printVariables(_: std.Io, _: [][]const u8) !void {
     var variables_it = variables.iterator();
     while (variables_it.next()) |entry| {
         try checkCommandInterrupt();
@@ -789,13 +781,13 @@ fn printVariables(_: [][]const u8) !void {
     }
 }
 
-fn tableReset(_: [][]const u8) !void {
+fn tableReset(_: std.Io, _: [][]const u8) !void {
     table.clearRows();
     // Should be impossible to fail with an empty header.
     table.setHeader(&.{}) catch unreachable;
 }
 
-fn tableSetColumns(params: [][]const u8) !void {
+fn tableSetColumns(_: std.Io, params: [][]const u8) !void {
     const all_variables = params[0];
     var names = std.mem.splitScalar(u8, all_variables, ',');
     var names_count: usize = 0;
@@ -807,32 +799,32 @@ fn tableSetColumns(params: [][]const u8) !void {
     try table.setHeader(names_buf[0..names_count]);
 }
 
-fn tableAddRow(_: [][]const u8) !void {
+fn tableAddRow(_: std.Io, _: [][]const u8) !void {
     try table.addRow();
 }
 
-fn tableSave(params: [][]const u8) !void {
+fn tableSave(io: std.Io, params: [][]const u8) !void {
     const path = params[0];
 
-    var f = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer f.close();
+    var f = try std.Io.Dir.cwd().createFile(io, path, .{ .truncate = true });
+    defer f.close(io);
+    var file_buffer: [4096]u8 = undefined;
+    var writer = f.writer(io, &file_buffer);
 
     for (table.header) |col| {
-        try f.writeAll(col);
-        try f.writeAll(",");
+        try writer.interface.print("{s},", .{col});
     }
-    try f.writeAll("\n");
+    try writer.interface.writeByte('\n');
 
     for (table.rows.items) |row| {
         for (row) |val| {
-            try f.writeAll(val);
-            try f.writeAll(",");
+            try writer.interface.print("{s},", .{val});
         }
-        try f.writeAll("\n");
+        try writer.interface.writeByte('\n');
     }
 }
 
-fn timerStart(_: [][]const u8) !void {
+fn timerStart(_: std.Io, _: [][]const u8) !void {
     if (timer) |*t| {
         t.reset();
     } else {
@@ -840,7 +832,7 @@ fn timerStart(_: [][]const u8) !void {
     }
 }
 
-fn timerRead(_: [][]const u8) !void {
+fn timerRead(_: std.Io, _: [][]const u8) !void {
     if (timer) |*t| {
         var timer_value: f64 = @floatFromInt(t.read());
         timer_value = timer_value / std.time.ns_per_s;
@@ -851,11 +843,11 @@ fn timerRead(_: [][]const u8) !void {
     }
 }
 
-fn file(params: [][]const u8) !void {
-    var f = try std.fs.cwd().openFile(params[0], .{});
-    defer f.close();
-    var reader_buf: [std.fs.max_path_bytes + 512]u8 = undefined;
-    var reader = f.reader(&reader_buf);
+fn file(io: std.Io, params: [][]const u8) !void {
+    var f = try std.Io.Dir.cwd().openFile(io, params[0], .{});
+    defer f.close(io);
+    var reader_buf: [std.Io.Dir.max_path_bytes + 512]u8 = undefined;
+    var reader = f.reader(io, &reader_buf);
     while (true) {
         const _line = reader.interface.takeDelimiter('\n') catch |e| {
             switch (e) {
@@ -864,9 +856,9 @@ fn file(params: [][]const u8) !void {
             }
         } orelse break;
         try checkCommandInterrupt();
-        const line = std.mem.trimLeft(
+        const line = std.mem.trimStart(
             u8,
-            std.mem.trimRight(u8, _line, "\r"),
+            std.mem.trimEnd(u8, _line, "\r"),
             "\n\t ",
         );
         if (line.len == 0 or line[0] == '#') continue;
@@ -895,72 +887,74 @@ fn deinitModules() void {
     }
 }
 
-fn loadConfig(params: [][]const u8) !void {
+fn loadConfig(io: std.Io, params: [][]const u8) !void {
     // De-initialize any previously initialized modules.
     deinitModules();
-
+    var environ_map = try main.environ.createMap(allocator);
+    defer environ_map.deinit();
     // Load config file.
     const config_file = if (params[0].len > 0)
-        std.fs.cwd().openFile(params[0], .{}) catch
-            try std.fs.openFileAbsolute(params[0], .{})
+        std.Io.Dir.cwd().openFile(io, params[0], .{}) catch
+            try std.Io.Dir.openFileAbsolute(io, params[0], .{})
     else
-        std.fs.cwd().openFile("config.json5", .{}) catch exe_local: {
-            var exe_dir_buf: [std.fs.max_path_bytes]u8 = undefined;
-            const exe_dir_path = std.fs.selfExeDirPath(&exe_dir_buf) catch
+        std.Io.Dir.cwd().openFile(io, "config.json5", .{}) catch exe_local: {
+            var exe_dir_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
+            const n = std.process.executableDirPath(io, &exe_dir_buf) catch
                 break :exe_local error.FileNotFound;
-            var exe_dir = std.fs.cwd().openDir(exe_dir_path, .{}) catch
+            var exe_dir = std.Io.Dir.cwd().openDir(io, exe_dir_buf[0..n], .{}) catch
                 break :exe_local error.FileNotFound;
-            defer exe_dir.close();
-            break :exe_local exe_dir.openFile("config.json5", .{});
+            defer exe_dir.close(io);
+            break :exe_local exe_dir.openFile(io, "config.json5", .{});
         } catch config_local: {
             var config_dir = switch (comptime builtin.os.tag) {
                 .windows => b: {
-                    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-                    var fba = std.heap.FixedBufferAllocator.init(&path_buf);
-                    const fba_alloc = fba.allocator();
-                    const home_path = try std.process.getEnvVarOwned(
-                        fba_alloc,
-                        "USERPROFILE",
-                    );
+                    const home_path = environ_map.get("USERPROFILE") orelse
+                        return error.FileNotFound;
 
-                    var home_dir = try std.fs.cwd().openDir(home_path, .{});
-                    defer home_dir.close();
-                    var config_root = try home_dir.openDir(".config", .{});
-                    defer config_root.close();
-                    break :b try config_root.openDir("mmc-cli", .{});
+                    var home_dir = try std.Io.Dir.cwd().openDir(
+                        io,
+                        home_path,
+                        .{},
+                    );
+                    defer home_dir.close(io);
+                    var config_root = try home_dir.openDir(io, ".config", .{});
+                    defer config_root.close(io);
+                    break :b try config_root.openDir(io, "mmc-cli", .{});
                 },
                 .linux => b: {
-                    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-                    var fba = std.heap.FixedBufferAllocator.init(&path_buf);
-                    const fba_alloc = fba.allocator();
-                    const config_path = std.process.getEnvVarOwned(
-                        fba_alloc,
-                        "XDG_CONFIG_HOME",
-                    ) catch "";
+                    const config_path =
+                        environ_map.get("XDG_CONFIG_HOME") orelse "";
                     if (config_path.len > 0) {
-                        break :b try std.fs.cwd().openDir(config_path, .{});
+                        break :b try std.Io.Dir.cwd().openDir(
+                            io,
+                            config_path,
+                            .{},
+                        );
                     }
-                    const home_path = try std.process.getEnvVarOwned(
-                        fba_alloc,
-                        "HOME",
+                    const home_path = environ_map.get("HOME") orelse
+                        return error.FileNotFound;
+                    var home_dir = try std.Io.Dir.cwd().openDir(
+                        io,
+                        home_path,
+                        .{},
                     );
-                    var home_dir = try std.fs.cwd().openDir(home_path, .{});
-                    defer home_dir.close();
-                    var config_root = try home_dir.openDir(".config", .{});
-                    defer config_root.close();
-                    break :b try config_root.openDir("mmc-cli", .{});
+                    defer home_dir.close(io);
+                    var config_root = try home_dir.openDir(io, ".config", .{});
+                    defer config_root.close(io);
+                    break :b try config_root.openDir(io, "mmc-cli", .{});
                 },
                 else => return error.UnsupportedOs,
             };
 
             break :config_local try config_dir.openFile(
+                io,
                 "config.json5",
                 .{},
             );
         };
     var m_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     const m_allocator = m_arena.allocator();
-    var conf = try Config.parse(m_allocator, config_file);
+    var conf = try Config.parse(m_allocator, io, config_file);
 
     // Initialize only the modules specified in config file.
     const fields = @typeInfo(Config.Module).@"enum".fields;
@@ -985,7 +979,7 @@ fn loadConfig(params: [][]const u8) !void {
     m_arena.deinit();
 }
 
-fn wait(params: [][]const u8) !void {
+fn wait(_: std.Io, params: [][]const u8) !void {
     const duration: u64 = try std.fmt.parseInt(u64, params[0], 0);
     var wait_timer = try std.time.Timer.start();
     while (wait_timer.read() < duration * std.time.ns_per_ms) {
@@ -993,13 +987,15 @@ fn wait(params: [][]const u8) !void {
     }
 }
 
-fn setLog(params: [][]const u8) !void {
+fn setLog(io: std.Io, params: [][]const u8) !void {
     const mode_str = params[0];
     const path = params[1];
 
     var buf: [512]u8 = undefined;
     const file_path = if (path.len > 0) path else p: {
-        var timestamp: u64 = @intCast(std.time.timestamp());
+        const clock: std.Io.Clock = .real;
+        const timestamp_nano = try clock.now(io);
+        var timestamp: u64 = @intCast(timestamp_nano.toSeconds());
         timestamp += std.time.s_per_hour * 9;
         const days_since_epoch: i32 = @intCast(timestamp / std.time.s_per_day);
         const ymd =
@@ -1023,32 +1019,36 @@ fn setLog(params: [][]const u8) !void {
 
     if (std.ascii.eqlIgnoreCase("stop", mode_str)) {
         if (log_file) |f| {
-            f.close();
+            f.close(io);
         }
         log_file = null;
     } else if (std.ascii.eqlIgnoreCase("append", mode_str)) {
         if (log_file) |f| {
-            f.close();
+            f.close(io);
         }
 
-        log_file = try std.fs.cwd().createFile(file_path, .{
-            .truncate = false,
-        });
+        log_file = try std.Io.Dir.cwd().createFile(
+            io,
+            file_path,
+            .{
+                .truncate = false,
+            },
+        );
     } else if (std.ascii.eqlIgnoreCase("replace", mode_str)) {
         if (log_file) |f| {
-            f.close();
+            f.close(io);
         }
-        log_file = try std.fs.cwd().createFile(file_path, .{});
+        log_file = try std.Io.Dir.cwd().createFile(io, file_path, .{});
     } else {
         return error.InvalidSaveOutputMode;
     }
 }
 
-fn clear(_: [][]const u8) !void {
-    var stdout = std.fs.File.stdout().writer(&.{});
+fn clear(io: std.Io, _: [][]const u8) !void {
+    var stdout = std.Io.File.stdout().writer(io, &.{});
     try stdout.interface.writeAll("\x1bc");
 }
 
-fn exit(_: [][]const u8) !void {
+fn exit(_: std.Io, _: [][]const u8) !void {
     main.exit.store(true, .monotonic);
 }

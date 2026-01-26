@@ -4,8 +4,8 @@ const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn impl(params: [][]const u8) !void {
-    if (client.sock == null) return error.ServerNotConnected;
+pub fn impl(io: std.Io, params: [][]const u8) !void {
+    const net = client.stream orelse return error.ServerNotConnected;
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -78,33 +78,10 @@ pub fn impl(params: [][]const u8) !void {
                     },
                 },
             };
-            // Clear all buffer in reader and writer for safety.
-            _ = client.reader.interface.discardRemaining() catch {};
-            _ = client.writer.interface.consumeAll();
-            // Send message
-            try request.encode(&client.writer.interface, client.allocator);
-            try client.writer.interface.flush();
-            // Receive response
-            while (true) {
-                try command.checkCommandInterrupt();
-                const byte = client.reader.interface.peekByte() catch |e| {
-                    switch (e) {
-                        std.Io.Reader.Error.EndOfStream => continue,
-                        std.Io.Reader.Error.ReadFailed => {
-                            return switch (client.reader.error_state orelse error.Unexpected) {
-                                else => |err| err,
-                            };
-                        },
-                    }
-                };
-                if (byte > 0) break;
-            }
-            var decoded: api.protobuf.mmc.Response = try .decode(
-                &client.reader.interface,
-                client.allocator,
-            );
-            defer decoded.deinit(client.allocator);
-            var track = switch (decoded.body orelse return error.InvalidResponse) {
+            try client.sendRequest(io, client.allocator, net, request);
+            var response = try client.readResponse(io, client.allocator, net);
+            defer response.deinit(client.allocator);
+            var track = switch (response.body orelse return error.InvalidResponse) {
                 .info => |info_resp| switch (info_resp.body orelse
                     return error.InvalidResponse) {
                     .track => |track_resp| track_resp,
@@ -160,13 +137,8 @@ pub fn impl(params: [][]const u8) !void {
                 },
             },
         };
-        // Clear all buffer in reader and writer for safety.
-        _ = client.reader.interface.discardRemaining() catch {};
-        _ = client.writer.interface.consumeAll();
-        // Send message
-        try request.encode(&client.writer.interface, client.allocator);
-        try client.writer.interface.flush();
-        try client.waitCommandReceived();
+        try client.sendRequest(io, client.allocator, net, request);
+        try client.waitCommandCompleted(io);
     }
     // Push command request
     {
@@ -190,12 +162,7 @@ pub fn impl(params: [][]const u8) !void {
                 },
             },
         };
-        // Clear all buffer in reader and writer for safety.
-        _ = client.reader.interface.discardRemaining() catch {};
-        _ = client.writer.interface.consumeAll();
-        // Send message
-        try request.encode(&client.writer.interface, client.allocator);
-        try client.writer.interface.flush();
-        try client.waitCommandReceived();
+        try client.sendRequest(io, client.allocator, net, request);
+        try client.waitCommandCompleted(io);
     }
 }

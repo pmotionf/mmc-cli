@@ -4,11 +4,11 @@ const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn impl(params: [][]const u8) !void {
+pub fn impl(io: std.Io, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "carrier_id");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
-    if (client.sock == null) return error.ServerNotConnected;
+    const net = client.stream orelse return error.ServerNotConnected;
     var line_name_iterator = std.mem.tokenizeSequence(
         u8,
         params[0],
@@ -59,33 +59,10 @@ pub fn impl(params: [][]const u8) !void {
                 },
             },
         };
-        // Clear all buffer in reader and writer for safety.
-        _ = client.reader.interface.discardRemaining() catch {};
-        _ = client.writer.interface.consumeAll();
-        // Send message
-        try request.encode(&client.writer.interface, client.allocator);
-        try client.writer.interface.flush();
-        // Receive response
-        while (true) {
-            try command.checkCommandInterrupt();
-            const byte = client.reader.interface.peekByte() catch |e| {
-                switch (e) {
-                    std.Io.Reader.Error.EndOfStream => continue,
-                    std.Io.Reader.Error.ReadFailed => {
-                        return switch (client.reader.error_state orelse error.Unexpected) {
-                            else => |err| err,
-                        };
-                    },
-                }
-            };
-            if (byte > 0) break;
-        }
-        var decoded: api.protobuf.mmc.Response = try .decode(
-            &client.reader.interface,
-            client.allocator,
-        );
-        defer decoded.deinit(client.allocator);
-        const track = switch (decoded.body orelse return error.InvalidResponse) {
+        try client.sendRequest(io, client.allocator, net, request);
+        var response = try client.readResponse(io, client.allocator, net);
+        defer response.deinit(client.allocator);
+        const track = switch (response.body orelse return error.InvalidResponse) {
             .info => |info_resp| switch (info_resp.body orelse
                 return error.InvalidResponse) {
                 .track => |track_resp| track_resp,
