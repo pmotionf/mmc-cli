@@ -11,6 +11,9 @@ pub fn impl(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
+    var lines: std.ArrayList(u32) = .{};
+    defer lines.deinit(client.allocator);
+    try lines.append(client.allocator, @as(u32, @intCast(line.id)));
     var filter: ?client.Filter = null;
     if (params[1].len > 0) {
         filter = try .parse(params[1]);
@@ -20,7 +23,7 @@ pub fn impl(params: [][]const u8) !void {
             .info = .{
                 .body = .{
                     .track = .{
-                        .line = line.id,
+                        .lines = lines,
                         .info_axis_errors = true,
                         .info_driver_errors = true,
                         .filter = if (filter) |*_filter|
@@ -72,9 +75,15 @@ pub fn impl(params: [][]const u8) !void {
         },
         else => return error.InvalidResponse,
     };
-    if (track.line != line.id) return error.InvalidResponse;
-    const axis_errors = track.axis_errors;
-    const driver_errors = track.driver_errors;
+    const wanted_line: u32 = @as(u32, @intCast(line.id));
+    const track_line = blk: {
+        for (track.lines.items) |*t| {
+            if (t.line == wanted_line) break :blk t;
+        }
+        return error.InvalidResponse;
+    };
+    const axis_errors = track_line.axis_errors;
+    const driver_errors = track_line.driver_errors;
     var writer_buf: [4096]u8 = undefined;
     var stdout = std.fs.File.stdout().writer(&writer_buf);
     const writer = &stdout.interface;
