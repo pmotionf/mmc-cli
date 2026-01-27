@@ -12,6 +12,9 @@ pub fn impl(params: [][]const u8) !void {
     var filter: ?client.Filter = null;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
+    var lines: std.ArrayList(u32) = .{};
+    defer lines.deinit(client.allocator);
+    try lines.append(client.allocator, @as(u32, @intCast(line.id)));
     if (params[1].len > 0) {
         filter = try .parse(params[1]);
     }
@@ -20,7 +23,7 @@ pub fn impl(params: [][]const u8) !void {
             .info = .{
                 .body = .{
                     .track = .{
-                        .line = line.id,
+                        .lines = lines,
                         .info_axis_state = true,
                         .filter = if (filter) |*_filter|
                             _filter.toProtobuf()
@@ -71,18 +74,25 @@ pub fn impl(params: [][]const u8) !void {
         },
         else => return error.InvalidResponse,
     };
-    if (track.line != line.id) return error.InvalidResponse;
+    const wanted_line: u32 = @as(u32, @intCast(line.id));
+    const track_line = blk: {
+        for (track.lines.items) |*t| {
+            if (t.line == wanted_line) break :blk t;
+        }
+        return error.InvalidResponse;
+    };
+
     if (filter) |_filter| {
         switch (_filter) {
-            .axis => if (track.axis_state.items.len != 1)
+            .axis => if (track_line.axis_state.items.len != 1)
                 return error.InvalidResponse,
             else => {},
         }
     } else {
-        if (track.axis_state.items.len != line.axes)
+        if (track_line.axis_state.items.len != line.axes)
             return error.InvalidResponse;
     }
-    for (track.axis_state.items) |axis| {
+    for (track_line.axis_state.items) |axis| {
         std.log.info(
             "Axis {} Hall Sensor:\n\t BACK - {s}\n\t FRONT - {s}",
             .{

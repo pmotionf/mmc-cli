@@ -44,12 +44,17 @@ pub fn impl(params: [][]const u8) !void {
             alarm_on = true;
         } else return error.InvalidHallAlarmState;
     }
+
+    var lines: std.ArrayList(u32) = .{};
+    defer lines.deinit(client.allocator);
+    try lines.append(client.allocator, @as(u32, @intCast(line.id)));
+
     const request: api.protobuf.mmc.Request = .{
         .body = .{
             .info = .{
                 .body = .{
                     .track = .{
-                        .line = line.id,
+                        .lines = lines,
                         .info_axis_state = true,
                         .filter = .{
                             .axes = .{
@@ -102,7 +107,7 @@ pub fn impl(params: [][]const u8) !void {
         client.allocator,
     );
     defer decoded.deinit(client.allocator);
-    var track = switch (decoded.body orelse return error.InvalidResponse) {
+    const track = switch (decoded.body orelse return error.InvalidResponse) {
         .info => |info_resp| switch (info_resp.body orelse
             return error.InvalidResponse) {
             .track => |track_resp| track_resp,
@@ -116,8 +121,22 @@ pub fn impl(params: [][]const u8) !void {
         },
         else => return error.InvalidResponse,
     };
-    if (track.line != line.id) return error.InvalidResponse;
-    const axis = track.axis_state.pop() orelse return error.InvalidResponse;
+
+    const wanted_line: u32 = @as(u32, @intCast(line.id));
+    const track_line = blk: {
+        for (track.lines.items) |*t| {
+            if (t.line == wanted_line) break :blk t;
+        }
+        return error.InvalidResponse;
+    };
+
+    const axis = blk: {
+        for (track_line.axis_state.items) |a| {
+            if (a.id == axis_id) break :blk a;
+        }
+        return error.InvalidResponse;
+    };
+
     switch (side) {
         .DIRECTION_BACKWARD => {
             if (axis.hall_alarm_back != alarm_on) {

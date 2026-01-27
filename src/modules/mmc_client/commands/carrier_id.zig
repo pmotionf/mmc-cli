@@ -29,11 +29,8 @@ pub fn impl(params: [][]const u8) !void {
             return e;
         }
     }
-    // Avoid dynamic allocation on each append.
-    var line_idxs: std.ArrayList(u32) = try .initCapacity(
-        client.allocator,
-        line_name_iterator.buffer.len,
-    );
+    var line_idxs: std.ArrayList(u32) = .{};
+    try line_idxs.ensureTotalCapacity(client.allocator, line_counter);
     defer line_idxs.deinit(client.allocator);
     line_name_iterator.reset();
     while (line_name_iterator.next()) |line_name| {
@@ -44,63 +41,75 @@ pub fn impl(params: [][]const u8) !void {
     }
 
     var count: usize = 1;
+    var lines: std.ArrayList(u32) = .{};
+    defer lines.deinit(client.allocator);
+    try lines.ensureTotalCapacity(client.allocator, line_idxs.items.len);
     for (line_idxs.items) |line_idx| {
-        const line = client.lines[line_idx];
-        const request: api.protobuf.mmc.Request = .{
-            .body = .{
-                .info = .{
-                    .body = .{
-                        .track = .{
-                            .line = line.id,
-                            .info_axis_state = true,
-                            .filter = null,
-                        },
+        const line = client.lines[@as(usize, @intCast(line_idx))];
+        try lines.append(client.allocator, @as(u32, @intCast(line.id)));
+    }
+    const request: api.protobuf.mmc.Request = .{
+        .body = .{
+            .info = .{
+                .body = .{
+                    .track = .{
+                        .lines = lines,
+                        .info_axis_state = true,
+                        .filter = null,
                     },
                 },
             },
+        },
+    };
+    // Clear all buffer in reader and writer for safety.
+    _ = client.reader.interface.discardRemaining() catch {};
+    _ = client.writer.interface.consumeAll();
+    // Send message
+    try request.encode(&client.writer.interface, client.allocator);
+    try client.writer.interface.flush();
+    // Receive response
+    while (true) {
+        try command.checkCommandInterrupt();
+        const byte = client.reader.interface.peekByte() catch |e| {
+            switch (e) {
+                std.Io.Reader.Error.EndOfStream => continue,
+                std.Io.Reader.Error.ReadFailed => {
+                    return switch (client.reader.error_state orelse error.Unexpected) {
+                        else => |err| err,
+                    };
+                },
+            }
         };
-        // Clear all buffer in reader and writer for safety.
-        _ = client.reader.interface.discardRemaining() catch {};
-        _ = client.writer.interface.consumeAll();
-        // Send message
-        try request.encode(&client.writer.interface, client.allocator);
-        try client.writer.interface.flush();
-        // Receive response
-        while (true) {
-            try command.checkCommandInterrupt();
-            const byte = client.reader.interface.peekByte() catch |e| {
-                switch (e) {
-                    std.Io.Reader.Error.EndOfStream => continue,
-                    std.Io.Reader.Error.ReadFailed => {
-                        return switch (client.reader.error_state orelse error.Unexpected) {
-                            else => |err| err,
-                        };
-                    },
-                }
-            };
-            if (byte > 0) break;
-        }
-        var decoded: api.protobuf.mmc.Response = try .decode(
-            &client.reader.interface,
-            client.allocator,
-        );
-        defer decoded.deinit(client.allocator);
-        const track = switch (decoded.body orelse return error.InvalidResponse) {
-            .info => |info_resp| switch (info_resp.body orelse
-                return error.InvalidResponse) {
-                .track => |track_resp| track_resp,
-                .request_error => |req_err| {
-                    return client.error_response.throwInfoError(req_err);
-                },
-                else => return error.InvalidResponse,
-            },
+        if (byte > 0) break;
+    }
+    var decoded: api.protobuf.mmc.Response = try .decode(
+        &client.reader.interface,
+        client.allocator,
+    );
+    defer decoded.deinit(client.allocator);
+    const track = switch (decoded.body orelse return error.InvalidResponse) {
+        .info => |info_resp| switch (info_resp.body orelse
+            return error.InvalidResponse) {
+            .track => |track_resp| track_resp,
             .request_error => |req_err| {
-                return client.error_response.throwMmcError(req_err);
+                return client.error_response.throwInfoError(req_err);
             },
             else => return error.InvalidResponse,
+        },
+        .request_error => |req_err| {
+            return client.error_response.throwMmcError(req_err);
+        },
+        else => return error.InvalidResponse,
+    };
+    for (track.lines.items) |track_line| {
+        const line_idx: usize = blk: {
+            for (client.lines, 0..) |l, i| {
+                if (@as(u32, @intCast(l.id)) == track_line.line) break :blk i;
+            }
+            continue;
         };
-        if (track.line != line.id) return error.InvalidResponse;
-        const axis_state = track.axis_state;
+        const line = client.lines[line_idx];
+        const axis_state = track_line.axis_state;
         if (axis_state.items.len != line.axes) return error.InvalidResponse;
         var last_carrier: u32 = 0;
         for (axis_state.items) |axis| {

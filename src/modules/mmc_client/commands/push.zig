@@ -59,13 +59,16 @@ pub fn impl(params: [][]const u8) !void {
         // hall sensor of the push direction is already on, the move command is
         // not necessary.
         check_carrier: {
+            var lines: std.ArrayList(u32) = .{};
+            defer lines.deinit(client.allocator);
+            try lines.append(client.allocator, @as(u32, @intCast(line.id)));
             // This blocks checks whether the move command is necessary or not.
             const request: api.protobuf.mmc.Request = .{
                 .body = .{
                     .info = .{
                         .body = .{
                             .track = .{
-                                .line = line.id,
+                                .lines = lines,
                                 .info_axis_state = true,
                                 .filter = .{
                                     .axes = .{
@@ -104,7 +107,7 @@ pub fn impl(params: [][]const u8) !void {
                 client.allocator,
             );
             defer decoded.deinit(client.allocator);
-            var track = switch (decoded.body orelse return error.InvalidResponse) {
+            const track = switch (decoded.body orelse return error.InvalidResponse) {
                 .info => |info_resp| switch (info_resp.body orelse
                     return error.InvalidResponse) {
                     .track => |track_resp| track_resp,
@@ -118,12 +121,18 @@ pub fn impl(params: [][]const u8) !void {
                 },
                 else => return error.InvalidResponse,
             };
-            if (track.line != line.id) return error.InvalidResponse;
-            const axis_state = track.axis_state.pop() orelse
+            const wanted_line: u32 = @as(u32, @intCast(line.id));
+            const track_line = blk: {
+                for (track.lines.items) |*t| {
+                    if (t.line == wanted_line) break :blk t;
+                }
+                return error.InvalidResponse;
+            };
+            const axis_state = track_line.axis_state.pop() orelse
                 return error.InvalidResponse;
             // If no carrier is detected, continue to move the specified carrier
             // to the pushing axis.
-            const carrier = track.carrier_state.pop() orelse
+            const carrier = track_line.carrier_state.pop() orelse
                 break :check_carrier;
             if (dir == .DIRECTION_FORWARD and axis_state.hall_alarm_front or
                 dir == .DIRECTION_BACKWARD and axis_state.hall_alarm_back)
