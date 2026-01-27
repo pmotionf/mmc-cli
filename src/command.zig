@@ -24,9 +24,9 @@ const Config = @import("Config.zig");
 pub const Registry = struct {
     mapping: std.StringArrayHashMap(Command.Executable),
 
-    pub fn init(alloc: std.mem.Allocator) Registry {
+    pub fn init(gpa: std.mem.Allocator) Registry {
         return .{
-            .mapping = std.StringArrayHashMap(Command.Executable).init(alloc),
+            .mapping = std.StringArrayHashMap(Command.Executable).init(gpa),
         };
     }
 
@@ -63,7 +63,7 @@ pub const Registry = struct {
 };
 
 pub const Table = struct {
-    allocator: std.mem.Allocator,
+    gpa: std.mem.Allocator,
 
     /// Header of pointers to variable names. Each variable name is not
     /// owned by the table.
@@ -72,7 +72,7 @@ pub const Table = struct {
 
     pub fn init(gpa: std.mem.Allocator) Table {
         return .{
-            .allocator = gpa,
+            .gpa = gpa,
             .header = &.{},
             .rows = .empty,
         };
@@ -83,24 +83,24 @@ pub const Table = struct {
             for (self.header) |*header| {
                 self.allocator.free(header.*);
             }
-            self.allocator.free(self.header);
+            self.gpa.free(self.header);
         }
         self.header = &.{};
         for (self.rows.items) |row| {
             for (row) |val| {
                 if (val.len > 0) {
-                    self.allocator.free(val);
+                    self.gpa.free(val);
                 }
             }
         }
-        self.rows.deinit(self.allocator);
+        self.rows.deinit(self.gpa);
     }
 
     fn clearRows(self: *Table) void {
         for (self.rows.items) |row| {
             for (row) |val| {
                 if (val.len > 0) {
-                    self.allocator.free(val);
+                    self.gpa.free(val);
                 }
             }
         }
@@ -115,27 +115,27 @@ pub const Table = struct {
         self.clearRows();
 
         if (self.header.len > 0) {
-            self.allocator.free(self.header);
+            self.gpa.free(self.header);
         }
 
         if (columns.len == 0) return;
 
-        self.header = try self.allocator.alloc([]const u8, columns.len);
+        self.header = try self.gpa.alloc([]const u8, columns.len);
         for (self.header) |*header| {
             header.* = &.{};
         }
         errdefer {
             for (self.header) |*header| {
                 if (header.len > 0) {
-                    self.allocator.free(header.*);
+                    self.gpa.free(header.*);
                 }
             }
 
-            self.allocator.free(self.header);
+            self.gpa.free(self.header);
             self.header = &.{};
         }
         for (columns, 0..) |col, i| {
-            self.header[i] = try self.allocator.dupe(
+            self.header[i] = try self.gpa.dupe(
                 u8,
                 variables.hash_map.getKey(col).?,
             );
@@ -145,23 +145,23 @@ pub const Table = struct {
     /// Add a filled row to the end of the table, looking up variable values
     /// at time of call.
     pub fn addRow(self: *Table) !void {
-        const new_row = try self.rows.addOne(self.allocator);
+        const new_row = try self.rows.addOne(self.gpa);
         errdefer self.rows.shrinkRetainingCapacity(self.rows.items.len - 1);
-        new_row.* = try self.allocator.alloc([]const u8, self.header.len);
-        errdefer self.allocator.free(new_row.*);
+        new_row.* = try self.gpa.alloc([]const u8, self.header.len);
+        errdefer self.gpa.free(new_row.*);
         for (new_row.*) |*val| {
             val.* = &.{};
         }
         errdefer {
             for (new_row.*) |*val| {
                 if (val.len > 0) {
-                    self.allocator.free(val.*);
+                    self.gpa.free(val.*);
                 }
             }
         }
         for (new_row.*, 0..) |*val, i| {
             if (variables.get(self.header[i])) |lookup_val| {
-                val.* = try self.allocator.dupe(u8, lookup_val);
+                val.* = try self.gpa.dupe(u8, lookup_val);
             }
         }
     }
@@ -337,8 +337,7 @@ pub fn logFn(
 }
 
 pub fn init() !void {
-    // Remove upon completion. Required to trigger test
-    _ = mmc_client.Parameter;
+    // TODO: Make every module as a type. It does not make sense to use arena here because it makes deinitialize a module impossible.
     arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     allocator = arena.allocator();
 

@@ -120,21 +120,21 @@ pub fn CircularBufferAlloc(comptime T: type) type {
         buffer: []T,
         head: usize,
         count: usize,
-        allocator: std.mem.Allocator,
+        gpa: std.mem.Allocator,
 
         /// Initialize circular buffer capacity. Capacity is not resizable.
-        pub fn initCapacity(allocator: std.mem.Allocator, num: usize) !Self {
-            const bytes = try allocator.alloc(T, num);
+        pub fn initCapacity(gpa: std.mem.Allocator, num: usize) !Self {
+            const bytes = try gpa.alloc(T, num);
             return Self{
                 .buffer = bytes,
                 .head = 0,
                 .count = 0,
-                .allocator = allocator,
+                .gpa = gpa,
             };
         }
 
         pub fn deinit(self: *Self) void {
-            self.allocator.free(self.buffer);
+            self.gpa.free(self.buffer);
             self.head = 0;
             self.count = 0;
         }
