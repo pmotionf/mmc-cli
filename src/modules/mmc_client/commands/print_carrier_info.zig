@@ -16,12 +16,15 @@ pub fn impl(params: [][]const u8) !void {
     const pb_filter = if (filter) |*f| f.toProtobuf() else null;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
+    var lines: std.ArrayList(u32) = .{};
+    defer lines.deinit(client.allocator);
+    try lines.append(client.allocator, @as(u32, @intCast(line.id)));
     const request: api.protobuf.mmc.Request = .{
         .body = .{
             .info = .{
                 .body = .{
                     .track = .{
-                        .line = line.id,
+                        .lines = lines,
                         .info_carrier_state = true,
                         .filter = pb_filter,
                     },
@@ -69,8 +72,14 @@ pub fn impl(params: [][]const u8) !void {
         },
         else => return error.InvalidResponse,
     };
-    if (track.line != line.id) return error.InvalidResponse;
-    const carriers = track.carrier_state;
+    const wanted_line: u32 = @as(u32, @intCast(line.id));
+    const track_line = blk: {
+        for (track.lines.items) |*t| {
+            if (t.line == wanted_line) break :blk t;
+        }
+        return error.InvalidResponse;
+    };
+    const carriers = track_line.carrier_state;
     if (carriers.items.len == 0) return error.CarrierNotFound;
     var writer_buf: [4096]u8 = undefined;
     var stdout = std.fs.File.stdout().writer(&writer_buf);
