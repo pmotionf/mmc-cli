@@ -4,14 +4,13 @@ const command = @import("../../../command.zig");
 const chrono = @import("chrono");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
-const zignet = @import("zignet");
 
 const Kind = enum { all, axis, driver };
 
 pub fn add(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "add_log");
     defer tracy_zone.end();
-    if (client.sock == null) return error.ServerNotConnected;
+    const net = client.sock orelse return error.ServerNotConnected;
     // Parsing line name
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
@@ -57,7 +56,7 @@ pub fn add(params: [][]const u8) !void {
     // logging configuration even if there is an error when trying to toggle
     // the driver flag for logging.
     defer client.log_config.status() catch {};
-    try modify(line, kind, range, true);
+    try modify(net, line, kind, range, true);
 }
 
 pub fn start(params: [][]const u8) !void {
@@ -114,7 +113,7 @@ pub fn status(_: [][]const u8) !void {
 pub fn remove(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "remove_log");
     defer tracy_zone.end();
-    if (client.sock == null) return error.ServerNotConnected;
+    const net = client.sock orelse return error.ServerNotConnected;
     // Parsing line name
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
@@ -160,7 +159,7 @@ pub fn remove(params: [][]const u8) !void {
     // logging configuration even if there is an error when trying to toggle
     // the driver flag for logging.
     defer client.log_config.status() catch {};
-    try modify(line, kind, range, false);
+    try modify(net, line, kind, range, false);
 }
 
 pub fn stop(_: [][]const u8) !void {
@@ -182,6 +181,7 @@ pub fn cancel(_: [][]const u8) !void {
 }
 
 fn modify(
+    net: client.zignet.Socket,
     line: client.Line,
     kind: Kind,
     range: client.log.Range,
@@ -211,31 +211,8 @@ fn modify(
                     },
                 },
             };
-            // Clear all buffer in reader and writer for safety.
-            _ = client.reader.interface.discardRemaining() catch {};
-            _ = client.writer.interface.consumeAll();
-            // Send message
-            try request.encode(&client.writer.interface, client.allocator);
-            try client.writer.interface.flush();
-            // Receive message
-            while (true) {
-                try command.checkCommandInterrupt();
-                const byte = client.reader.interface.peekByte() catch |e| {
-                    switch (e) {
-                        std.Io.Reader.Error.EndOfStream => continue,
-                        std.Io.Reader.Error.ReadFailed => {
-                            return switch (client.reader.error_state orelse error.Unexpected) {
-                                else => |err| err,
-                            };
-                        },
-                    }
-                };
-                if (byte > 0) break;
-            }
-            var decoded: api.protobuf.mmc.Response = try .decode(
-                &client.reader.interface,
-                client.allocator,
-            );
+            try client.sendRequest(client.allocator, net, request);
+            var decoded = try client.getResponse(client.allocator, net);
             defer decoded.deinit(client.allocator);
             var track = switch (decoded.body orelse return error.InvalidResponse) {
                 .info => |info_resp| switch (info_resp.body orelse

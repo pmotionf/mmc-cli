@@ -7,7 +7,7 @@ const api = @import("mmc-api");
 pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "set_carrier_id");
     defer tracy_zone.end();
-    if (client.sock == null) return error.ServerNotConnected;
+    const net = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -52,11 +52,6 @@ pub fn impl(params: [][]const u8) !void {
             },
         },
     };
-    // Clear all buffer in reader and writer for safety.
-    _ = client.reader.interface.discardRemaining() catch {};
-    _ = client.writer.interface.consumeAll();
-    // Send message
-    try request.encode(&client.writer.interface, client.allocator);
-    try client.writer.interface.flush();
-    try client.waitCommandReceived();
+    try client.sendRequest(client.allocator, net, request);
+    try client.waitCommandCompleted(client.allocator, net);
 }

@@ -8,6 +8,7 @@ pub fn isolate(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_isolate");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
+    const net = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, b: {
         const input = params[1];
@@ -30,6 +31,7 @@ pub fn isolate(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     try waitCarrierState(
+        net,
         line.id,
         carrier_id,
         .CARRIER_STATE_INITIALIZE_COMPLETED,
@@ -41,6 +43,7 @@ pub fn moveCarrier(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_move_carrier");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
+    const net = client.sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, b: {
         const input = params[1];
@@ -64,6 +67,7 @@ pub fn moveCarrier(params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     try waitCarrierState(
+        net,
         line.id,
         carrier_id,
         .CARRIER_STATE_MOVE_COMPLETED,
@@ -75,7 +79,7 @@ pub fn axisEmpty(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_axis_empty");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
-    if (client.sock == null) return error.ServerNotConnected;
+    const net = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
     const axis_id = try std.fmt.parseInt(u32, buf: {
         const input = params[1];
@@ -120,31 +124,8 @@ pub fn axisEmpty(params: [][]const u8) !void {
                 },
             },
         };
-        // Clear all buffer in reader and writer for safety.
-        _ = client.reader.interface.discardRemaining() catch {};
-        _ = client.writer.interface.consumeAll();
-        // Send message
-        try request.encode(&client.writer.interface, client.allocator);
-        try client.writer.interface.flush();
-        // Receive response
-        while (true) {
-            try command.checkCommandInterrupt();
-            const byte = client.reader.interface.peekByte() catch |e| {
-                switch (e) {
-                    std.Io.Reader.Error.EndOfStream => continue,
-                    std.Io.Reader.Error.ReadFailed => {
-                        return switch (client.reader.error_state orelse error.Unexpected) {
-                            else => |err| err,
-                        };
-                    },
-                }
-            };
-            if (byte > 0) break;
-        }
-        var decoded: api.protobuf.mmc.Response = try .decode(
-            &client.reader.interface,
-            client.allocator,
-        );
+        try client.sendRequest(client.allocator, net, request);
+        var decoded = try client.getResponse(client.allocator, net);
         defer decoded.deinit(client.allocator);
         var track = switch (decoded.body orelse return error.InvalidResponse) {
             .info => |info_resp| switch (info_resp.body orelse
@@ -174,12 +155,12 @@ pub fn axisEmpty(params: [][]const u8) !void {
 }
 
 fn waitCarrierState(
+    net: client.zignet.Socket,
     line: u32,
     id: std.math.IntFittingRange(1, 1023),
     state: api.protobuf.mmc.info.Response.Track.Carrier.State.State,
     timeout: u64,
 ) !void {
-    if (client.sock == null) return error.ServerNotConnected;
     var ids = [1]u32{id};
     var wait_timer = try std.time.Timer.start();
     while (true) {
@@ -201,31 +182,8 @@ fn waitCarrierState(
                 },
             },
         };
-        // Clear all buffer in reader and writer for safety.
-        _ = client.reader.interface.discardRemaining() catch {};
-        _ = client.writer.interface.consumeAll();
-        // Send message
-        try request.encode(&client.writer.interface, client.allocator);
-        try client.writer.interface.flush();
-        // Receive response
-        while (true) {
-            try command.checkCommandInterrupt();
-            const byte = client.reader.interface.peekByte() catch |e| {
-                switch (e) {
-                    std.Io.Reader.Error.EndOfStream => continue,
-                    std.Io.Reader.Error.ReadFailed => {
-                        return switch (client.reader.error_state orelse error.Unexpected) {
-                            else => |err| err,
-                        };
-                    },
-                }
-            };
-            if (byte > 0) break;
-        }
-        var decoded: api.protobuf.mmc.Response = try .decode(
-            &client.reader.interface,
-            client.allocator,
-        );
+        try client.sendRequest(client.allocator, net, request);
+        var decoded = try client.getResponse(client.allocator, net);
         defer decoded.deinit(client.allocator);
         var track = switch (decoded.body orelse return error.InvalidResponse) {
             .info => |info_resp| switch (info_resp.body orelse

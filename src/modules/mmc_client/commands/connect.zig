@@ -84,34 +84,31 @@ pub fn impl(params: [][]const u8) !void {
             .port = client.endpoint.?.port,
         };
     defer client.allocator.free(endpoint.host);
+    // TODO: Move this to end.
     std.log.info(
         "Trying to connect to {s}:{d}",
         .{ endpoint.host, endpoint.port },
     );
-    const socket = try client.zignet.Socket.connectToHost(
+    const net = try client.zignet.Socket.connectToHost(
         client.allocator,
         endpoint.host,
         endpoint.port,
         &command.checkCommandInterrupt,
         3000,
     );
-    client.endpoint = try socket.getRemoteEndPoint();
-    client.sock = socket;
-    client.reader = socket.reader(&client.reader_buf);
-    client.writer = socket.writer(&client.writer_buf);
+    client.endpoint = try net.getRemoteEndPoint();
+    client.sock = net;
     errdefer {
-        client.reader = undefined;
-        client.writer = undefined;
         for (client.lines) |*line| {
             line.deinit(client.allocator);
         }
         client.allocator.free(client.lines);
         client.sock = null;
-        socket.close();
+        net.close();
     }
     std.log.info(
         "Connected to {f}",
-        .{try socket.getRemoteEndPoint()},
+        .{try net.getRemoteEndPoint()},
     );
     std.log.debug("Send API version request..", .{});
     // Asserting that API version matched between client and server
@@ -121,31 +118,9 @@ pub fn impl(params: [][]const u8) !void {
                 .core = .{ .kind = .CORE_REQUEST_KIND_API_VERSION },
             },
         };
-        // Clear all buffer in reader and writer for safety.
-        _ = client.reader.interface.discardRemaining() catch {};
-        _ = client.writer.interface.consumeAll();
-        // Send message
-        try request.encode(&client.writer.interface, client.allocator);
-        try client.writer.interface.flush();
-        // Receive response
-        while (true) {
-            try command.checkCommandInterrupt();
-            const byte = client.reader.interface.peekByte() catch |e| {
-                switch (e) {
-                    std.Io.Reader.Error.EndOfStream => continue,
-                    std.Io.Reader.Error.ReadFailed => {
-                        return switch (client.reader.error_state orelse error.Unexpected) {
-                            else => |err| err,
-                        };
-                    },
-                }
-            };
-            if (byte > 0) break;
-        }
-        const decoded: api.protobuf.mmc.Response = try .decode(
-            &client.reader.interface,
-            client.allocator,
-        );
+        try client.sendRequest(client.allocator, net, request);
+        var decoded = try client.getResponse(client.allocator, net);
+        defer decoded.deinit(client.allocator);
         const server_api_version = switch (decoded.body orelse
             return error.InvalidResponse) {
             .core => |core_resp| switch (core_resp.body orelse
@@ -183,31 +158,8 @@ pub fn impl(params: [][]const u8) !void {
                 .core = .{ .kind = .CORE_REQUEST_KIND_TRACK_CONFIG },
             },
         };
-        // Clear all buffer in reader and writer for safety.
-        _ = client.reader.interface.discardRemaining() catch {};
-        _ = client.writer.interface.consumeAll();
-        // Send message
-        try request.encode(&client.writer.interface, client.allocator);
-        try client.writer.interface.flush();
-        // Receive response
-        while (true) {
-            try command.checkCommandInterrupt();
-            const byte = client.reader.interface.peekByte() catch |e| {
-                switch (e) {
-                    std.Io.Reader.Error.EndOfStream => continue,
-                    std.Io.Reader.Error.ReadFailed => {
-                        return switch (client.reader.error_state orelse error.Unexpected) {
-                            else => |err| err,
-                        };
-                    },
-                }
-            };
-            if (byte > 0) break;
-        }
-        var decoded: api.protobuf.mmc.Response = try .decode(
-            &client.reader.interface,
-            client.allocator,
-        );
+        try client.sendRequest(client.allocator, net, request);
+        var decoded = try client.getResponse(client.allocator, net);
         defer decoded.deinit(client.allocator);
         const track_config = switch (decoded.body orelse
             return error.InvalidResponse) {
@@ -247,31 +199,8 @@ pub fn impl(params: [][]const u8) !void {
                 .core = .{ .kind = .CORE_REQUEST_KIND_SERVER_INFO },
             },
         };
-        // Clear all buffer in reader and writer for safety.
-        _ = client.reader.interface.discardRemaining() catch {};
-        _ = client.writer.interface.consumeAll();
-        // Send message
-        try request.encode(&client.writer.interface, client.allocator);
-        try client.writer.interface.flush();
-        // Receive response
-        while (true) {
-            try command.checkCommandInterrupt();
-            const byte = client.reader.interface.peekByte() catch |e| {
-                switch (e) {
-                    std.Io.Reader.Error.EndOfStream => continue,
-                    std.Io.Reader.Error.ReadFailed => {
-                        return switch (client.reader.error_state orelse error.Unexpected) {
-                            else => |err| err,
-                        };
-                    },
-                }
-            };
-            if (byte > 0) break;
-        }
-        var decoded: api.protobuf.mmc.Response = try .decode(
-            &client.reader.interface,
-            client.allocator,
-        );
+        try client.sendRequest(client.allocator, net, request);
+        var decoded = try client.getResponse(client.allocator, net);
         defer decoded.deinit(client.allocator);
         const server = switch (decoded.body orelse
             return error.InvalidResponse) {

@@ -632,14 +632,6 @@ pub const Config = struct {
 /// Store the configuration.
 pub var config: Config = undefined;
 
-/// Reader buffer for network stream
-pub var reader_buf: [4096]u8 = undefined;
-/// Writer buffer for network stream
-pub var writer_buf: [4096]u8 = undefined;
-
-pub var reader: zignet.Socket.Reader = undefined;
-pub var writer: zignet.Socket.Writer = undefined;
-
 var debug_allocator = std.heap.DebugAllocator(.{}){};
 
 pub fn init(c: Config) !void {
@@ -1778,27 +1770,12 @@ pub fn matchLine(name: []const u8) !usize {
 
 /// Track a command until it executed completely followed by removing that
 /// command from the server.
-pub fn waitCommandReceived() !void {
-    if (sock == null) return error.ServerNotConnected;
-    const command_id = b: {
-        // Receive response
-        while (true) {
-            try command.checkCommandInterrupt();
-            const byte = reader.interface.peekByte() catch |e| {
-                switch (e) {
-                    std.Io.Reader.Error.EndOfStream => continue,
-                    std.Io.Reader.Error.ReadFailed => {
-                        return reader.error_state orelse error.Unexpected;
-                    },
-                }
-            };
-            if (byte > 0) break;
-        }
-        const decoded: api.protobuf.mmc.Response = try .decode(
-            &reader.interface,
-            allocator,
-        );
-        break :b switch (decoded.body orelse return error.InvalidResponse) {
+pub fn waitCommandCompleted(gpa: std.mem.Allocator, net: zignet.Socket) !void {
+    const command_id = command_id: {
+        // ISSUE: If command is cancelled in this block, there is no way remove the incoming message. In addition, there is no way to remove the command from the server as well.
+        var decoded = try getResponse(gpa, net);
+        defer decoded.deinit(gpa);
+        break :command_id switch (decoded.body orelse return error.InvalidResponse) {
             .request_error => |req_err| {
                 return error_response.throwMmcError(req_err);
             },
@@ -1824,29 +1801,8 @@ pub fn waitCommandReceived() !void {
                 },
             },
         };
-        // Clear all buffer in reader and writer for safety.
-        _ = try reader.interface.discardRemaining();
-        _ = writer.interface.consumeAll();
-        // Send message
-        try request.encode(&writer.interface, allocator);
-        try writer.interface.flush();
-        // Receive response
-        while (true) {
-            try command.checkCommandInterrupt();
-            const byte = reader.interface.peekByte() catch |e| {
-                switch (e) {
-                    std.Io.Reader.Error.EndOfStream => continue,
-                    std.Io.Reader.Error.ReadFailed => {
-                        return reader.error_state orelse error.Unexpected;
-                    },
-                }
-            };
-            if (byte > 0) break;
-        }
-        var decoded: api.protobuf.mmc.Response = try .decode(
-            &reader.interface,
-            allocator,
-        );
+        try sendRequest(allocator, net, request);
+        var decoded = try getResponse(allocator, net);
         defer decoded.deinit(allocator);
         var commands_resp = switch (decoded.body orelse
             return error.InvalidResponse) {
@@ -1886,8 +1842,54 @@ pub fn waitCommandReceived() !void {
     }
 }
 
+/// Send request to server.
+pub fn sendRequest(
+    ///  Internally used by zig-protobuf.
+    gpa: std.mem.Allocator,
+    net: zignet.Socket,
+    request: api.protobuf.mmc.Request,
+) !void {
+    var writer_buf: [4096]u8 = undefined;
+    var net_writer = net.writer(&writer_buf);
+    try request.encode(&net_writer.interface, gpa);
+    net_writer.interface.flush() catch {
+        if (net_writer.error_state) |err| return err;
+    };
+}
+
+/// Wait until response is received and decode the message. The caller is
+/// responsible to free the decoded message.
+/// TODO: If command is cancelled, we need to keep reading until the message is arrived. Big assumption is used here that the message always coming whenever this function is called.
+pub fn getResponse(
+    gpa: std.mem.Allocator,
+    net: zignet.Socket,
+) !api.protobuf.mmc.Response {
+    var reader_buf: [4096]u8 = undefined;
+    var net_reader = net.reader(&reader_buf);
+    while (true) {
+        // Read until the length is equal for consecutive peek.
+        try command.checkCommandInterrupt();
+        const prev_buffered_len = net_reader.interface.bufferedLen();
+        if (net_reader.interface.peekByte()) |_| {
+            if (prev_buffered_len == 0) continue;
+            if (net_reader.interface.bufferedLen() == prev_buffered_len)
+                break;
+        } else |e| {
+            switch (e) {
+                std.Io.Reader.Error.EndOfStream => continue,
+                std.Io.Reader.Error.ReadFailed => {
+                    return switch (net_reader.error_state orelse error.Unexpected) {
+                        else => |err| err,
+                    };
+                },
+            }
+        }
+    }
+    return try .decode(&net_reader.interface, gpa);
+}
+
 fn removeCommand(id: u32) !void {
-    if (sock == null) return error.ServerNotConnected;
+    const net = if (sock) |net| net else return error.ServerNotConnected;
     const request: api.protobuf.mmc.Request = .{
         .body = .{
             .command = .{
@@ -1897,29 +1899,9 @@ fn removeCommand(id: u32) !void {
             },
         },
     };
-    // Clear all buffer in reader and writer for safety.
-    _ = try reader.interface.discardRemaining();
-    _ = writer.interface.consumeAll();
-    // Send message
-    try request.encode(&writer.interface, allocator);
-    try writer.interface.flush();
-    // Receive message
-    while (true) {
-        try command.checkCommandInterrupt();
-        const byte = reader.interface.peekByte() catch |e| {
-            switch (e) {
-                std.Io.Reader.Error.EndOfStream => continue,
-                std.Io.Reader.Error.ReadFailed => {
-                    return reader.error_state orelse error.Unexpected;
-                },
-            }
-        };
-        if (byte > 0) break;
-    }
-    const decoded: api.protobuf.mmc.Response = try .decode(
-        &reader.interface,
-        allocator,
-    );
+    try sendRequest(allocator, net, request);
+    var decoded = try getResponse(allocator, net);
+    defer decoded.deinit(allocator);
     const removed_id = switch (decoded.body orelse
         return error.InvalidResponse) {
         .command => |command_resp| switch (command_resp.body orelse

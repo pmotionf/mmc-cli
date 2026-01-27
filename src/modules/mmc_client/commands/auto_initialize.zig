@@ -9,7 +9,7 @@ pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "auto_initialize");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
-    if (client.sock == null) return error.ServerNotConnected;
+    const net = client.sock orelse return error.ServerNotConnected;
     var init_lines: std.ArrayList(
         api.protobuf.mmc.command.Request.AutoInitialize.Line,
     ) = .empty;
@@ -40,11 +40,6 @@ pub fn impl(params: [][]const u8) !void {
             },
         },
     };
-    // Clear all buffer in reader and writer for safety.
-    _ = client.reader.interface.discardRemaining() catch {};
-    _ = client.writer.interface.consumeAll();
-    // Send message
-    try request.encode(&client.writer.interface, client.allocator);
-    try client.writer.interface.flush();
-    try client.waitCommandReceived();
+    try client.sendRequest(client.allocator, net, request);
+    try client.waitCommandCompleted(client.allocator, net);
 }
