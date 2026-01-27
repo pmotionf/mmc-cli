@@ -4,9 +4,6 @@ const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-const Standard = client.Standard;
-const standard: Standard = .{};
-
 pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "carrier_location");
     defer tracy_zone.end();
@@ -73,7 +70,7 @@ pub fn impl(params: [][]const u8) !void {
             .{
                 carrier.id,
                 carrier.position * 1000.0,
-                standard.length.unit_short,
+                client.standard.length.unit_short,
             },
         );
         if (save_var.len > 0) {

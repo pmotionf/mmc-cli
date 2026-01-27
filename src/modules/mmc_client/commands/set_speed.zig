@@ -3,9 +3,6 @@ const client = @import("../../mmc_client.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 
-const Standard = client.Standard;
-const standard: Standard = .{};
-
 pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "set_speed");
     defer tracy_zone.end();
@@ -27,7 +24,7 @@ pub fn impl(params: [][]const u8) !void {
         .{
             @as(f32, @floatFromInt(client.lines[line_idx].velocity.value)) /
                 @as(f32, if (low) 10 else 0.01),
-            standard.speed.unit,
+            client.standard.speed.unit,
         },
     );
 }

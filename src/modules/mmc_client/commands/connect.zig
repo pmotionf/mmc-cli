@@ -5,9 +5,6 @@ const disconnect = @import("disconnect.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-const Standard = client.Standard;
-const standard: Standard = .{};
-
 pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "connect");
     defer tracy_zone.end();
@@ -227,9 +224,9 @@ pub fn impl(params: [][]const u8) !void {
                     line.axes,
                     @as(f32, @floatFromInt(line.velocity.value)) /
                         @as(f32, if (line.velocity.low) 10 else 0.01),
-                    standard.speed.unit,
+                    client.standard.speed.unit,
                     @as(f32, @floatFromInt(line.acceleration)) * 100,
-                    standard.acceleration.unit,
+                    client.standard.acceleration.unit,
                 },
             );
             try stdout.interface.flush();

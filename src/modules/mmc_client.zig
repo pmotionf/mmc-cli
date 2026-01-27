@@ -13,33 +13,30 @@ pub const log = @import("mmc_client/log.zig");
 pub const zignet = @import("zignet");
 pub const api = @import("mmc-api");
 
-/// Stores standard units and min/max values for system
-pub const Standard = struct {
-    time: struct {
-        unit_short: []const u8 = "ms",
-        unit_long: []const u8 = "millisecond",
-    } = .{},
-
-    length: struct {
-        unit_short: []const u8 = "mm",
-        unit_long: []const u8 = "millimeter",
-    } = .{},
-    speed: struct {
-        range: struct {
-            min: u16 = 0,
-            max: u16 = 6000,
-        } = .{},
-        unit: []const u8 = "mm/s",
-    } = .{},
-    acceleration: struct {
-        range: struct {
-            min: f32 = 0,
-            max: f32 = 24_500,
-        } = .{},
-        unit: []const u8 = "mm/s²",
-    } = .{},
+pub const standard = struct {
+    pub const time = struct {
+        pub const unit_short: []const u8 = "ms";
+        pub const unit_long: []const u8 = "millisecond";
+    };
+    pub const length = struct {
+        pub const unit_short: []const u8 = "mm";
+        pub const unit_long: []const u8 = "millimeter";
+    };
+    pub const speed = struct {
+        pub const range = struct {
+            pub const min: u16 = 0;
+            pub const max: u16 = 6000;
+        };
+        pub const unit: []const u8 = "mm/s";
+    };
+    pub const acceleration = struct {
+        pub const range = struct {
+            pub const min: f32 = 0;
+            pub const max: f32 = 24_500;
+        };
+        pub const unit: []const u8 = "mm/s²";
+    };
 };
-const standard: Standard = .{};
 
 pub const error_response = struct {
     /// Throw an error if receive response of core request error
