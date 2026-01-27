@@ -161,13 +161,13 @@ pub fn impl(params: [][]const u8) !void {
             },
             else => return error.InvalidResponse,
         };
-        if (api.version.major != server_api_version.major or
-            api.version.minor > server_api_version.minor)
+        if (api.protobuf.version.major != server_api_version.major or
+            api.protobuf.version.minor > server_api_version.minor)
         {
             std.log.info(
                 "Client API version: {f}, Server API version: {}.{}.{}",
                 .{
-                    api.version,
+                    api.protobuf.version,
                     server_api_version.major,
                     server_api_version.minor,
                     server_api_version.patch,
