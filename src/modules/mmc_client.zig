@@ -6,59 +6,11 @@ const chrono = @import("chrono");
 const CircularBufferAlloc =
     @import("../circular_buffer.zig").CircularBufferAlloc;
 const command = @import("../command.zig");
+const commands = @import("mmc_client/commands.zig");
 pub const Line = @import("mmc_client/Line.zig");
 pub const log = @import("mmc_client/log.zig");
 pub const zignet = @import("zignet");
 pub const api = @import("mmc-api");
-
-const commands = struct {
-    const auto_initialize =
-        @import("mmc_client/commands/auto_initialize.zig");
-    const release_carrier =
-        @import("mmc_client/commands/release_carrier.zig");
-    const clear_errors = @import("mmc_client/commands/clear_errors.zig");
-    const clear_carrier_info =
-        @import("mmc_client/commands/clear_carrier_info.zig");
-    const reset_system = @import("mmc_client/commands/reset_system.zig");
-    const calibrate = @import("mmc_client/commands/calibrate.zig");
-    const set_line_zero = @import("mmc_client/commands/set_line_zero.zig");
-    const isolate = @import("mmc_client/commands/isolate.zig");
-    const wait = @import("mmc_client/commands/wait.zig");
-    const move = @import("mmc_client/commands/move.zig");
-    const push = @import("mmc_client/commands/push.zig");
-    const pull = @import("mmc_client/commands/pull.zig");
-    const stop_pull = @import("mmc_client/commands/stop_pull.zig");
-    const stop_push = @import("mmc_client/commands/stop_push.zig");
-    const set_carrier_id = @import("mmc_client/commands/set_carrier_id.zig");
-    const stop = @import("mmc_client/commands/stop.zig");
-    const pause = @import("mmc_client/commands/pause.zig");
-    const @"resume" = @import("mmc_client/commands/resume.zig");
-    const connect = @import("mmc_client/commands/connect.zig");
-    const disconnect = @import("mmc_client/commands/disconnect.zig");
-    const log = @import("mmc_client/commands/log.zig");
-    const set_speed = @import("mmc_client/commands/set_speed.zig");
-    const get_speed = @import("mmc_client/commands/get_speed.zig");
-    const set_acceleration =
-        @import("mmc_client/commands/set_acceleration.zig");
-    const get_acceleration =
-        @import("mmc_client/commands/get_acceleration.zig");
-    const assert_hall = @import("mmc_client/commands/assert_hall.zig");
-    const hall_status = @import("mmc_client/commands/hall_status.zig");
-    const carrier_axis = @import("mmc_client/commands/carrier_axis.zig");
-    const carrier_location =
-        @import("mmc_client/commands/carrier_location.zig");
-    const assert_location = @import("mmc_client/commands/assert_location.zig");
-    const carrier_id = @import("mmc_client/commands/carrier_id.zig");
-    const axis_carrier = @import("mmc_client/commands/axis_carrier.zig");
-    const print_carrier_info =
-        @import("mmc_client/commands/print_carrier_info.zig");
-    const print_axis_info =
-        @import("mmc_client/commands/print_axis_info.zig");
-    const print_driver_info =
-        @import("mmc_client/commands/print_driver_info.zig");
-    const show_errors = @import("mmc_client/commands/show_errors.zig");
-    const server_version = @import("mmc_client/commands/server_version.zig");
-};
 
 /// Stores standard units and min/max values for system
 pub const Standard = struct {
@@ -621,7 +573,6 @@ pub var sock: ?zignet.Socket = null;
 /// Currently saved endpoint. The endpoint will be overwritten if the client
 /// is connected to a different server. Stays null before connected to a socket.
 pub var endpoint: ?zignet.Endpoint = null;
-
 pub var allocator: std.mem.Allocator = undefined;
 
 pub var log_allocator: std.mem.Allocator = undefined;
