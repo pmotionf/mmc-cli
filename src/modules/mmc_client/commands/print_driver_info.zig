@@ -12,12 +12,15 @@ pub fn impl(params: [][]const u8) !void {
     var filter: client.Filter = try .parse(params[1]);
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
+    var lines: std.ArrayList(u32) = .{};
+    defer lines.deinit(client.allocator);
+    try lines.append(client.allocator, @as(u32, @intCast(line.id)));
     const request: api.protobuf.mmc.Request = .{
         .body = .{
             .info = .{
                 .body = .{
                     .track = .{
-                        .line = line.id,
+                        .lines = lines,
                         .info_driver_state = true,
                         .info_driver_errors = true,
                         .filter = filter.toProtobuf(),
@@ -66,8 +69,15 @@ pub fn impl(params: [][]const u8) !void {
         },
         else => return error.InvalidResponse,
     };
-    const driver_state = track.driver_state;
-    const driver_errors = track.driver_errors;
+    const wanted_line: u32 = @as(u32, @intCast(line.id));
+    const track_line = blk: {
+        for (track.lines.items) |*t| {
+            if (t.line == wanted_line) break :blk t;
+        }
+        return error.InvalidResponse;
+    };
+    const driver_state = track_line.driver_state;
+    const driver_errors = track_line.driver_errors;
     if (driver_state.items.len != driver_errors.items.len)
         return error.InvalidResponse;
     var stdout = std.fs.File.stdout().writer(&.{});
