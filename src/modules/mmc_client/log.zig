@@ -33,28 +33,28 @@ pub const Config = struct {
         }
     };
 
-    pub fn init(allocator: std.mem.Allocator, lines: []client.Line) !Config {
+    pub fn init(gpa: std.mem.Allocator, lines: []client.Line) !Config {
         var result: Config = undefined;
-        result.lines = try allocator.alloc(Line, lines.len);
+        result.lines = try gpa.alloc(Line, lines.len);
         for (result.lines) |*line|
             line.* = .{ .id = 0, .axes = &.{}, .drivers = &.{} };
-        errdefer result.deinit(allocator);
+        errdefer result.deinit(gpa);
         for (result.lines, lines) |*config_line, track_line| {
             config_line.id = track_line.id;
-            config_line.axes = try allocator.alloc(bool, track_line.axes);
+            config_line.axes = try gpa.alloc(bool, track_line.axes);
             for (config_line.axes) |*axis| axis.* = false;
-            config_line.drivers = try allocator.alloc(bool, track_line.drivers);
+            config_line.drivers = try gpa.alloc(bool, track_line.drivers);
             for (config_line.drivers) |*driver| driver.* = false;
         }
         return result;
     }
 
-    pub fn deinit(config: Config, allocator: std.mem.Allocator) void {
+    pub fn deinit(config: Config, gpa: std.mem.Allocator) void {
         for (config.lines) |line| {
-            allocator.free(line.axes);
-            allocator.free(line.drivers);
+            gpa.free(line.axes);
+            gpa.free(line.drivers);
         }
-        allocator.free(config.lines);
+        gpa.free(config.lines);
     }
 
     /// Check whether there is at least one axis or one driver is set to be
@@ -186,8 +186,6 @@ const Stream = struct {
     /// Optimized logging configuration for requesting data.
     config: Stream.Config,
     socket: zignet.Socket,
-    reader: zignet.Socket.Reader,
-    writer: zignet.Socket.Writer,
 
     /// Store one iteration of data.
     const Data = struct {
@@ -264,34 +262,34 @@ const Stream = struct {
     };
 
     fn init(
-        allocator: std.mem.Allocator,
+        gpa: std.mem.Allocator,
         logging_size: usize,
         config: log.Config,
         lines: []client.Line,
         endpoint: zignet.Endpoint,
     ) !Stream {
         var stream: Stream = undefined;
-        stream.data = try allocator.alloc(Stream.Data, logging_size);
+        stream.data = try gpa.alloc(Stream.Data, logging_size);
         for (stream.data) |*data| {
             data.* = .{ .timestamp = 0, .lines = &.{} };
         }
         errdefer {
             for (stream.data) |data| {
                 for (data.lines) |stream_line| {
-                    allocator.free(stream_line.axes);
-                    allocator.free(stream_line.drivers);
+                    gpa.free(stream_line.axes);
+                    gpa.free(stream_line.drivers);
                 }
-                allocator.free(data.lines);
+                gpa.free(data.lines);
             }
-            allocator.free(stream.data);
+            gpa.free(stream.data);
         }
         for (stream.data) |*data| {
-            data.lines = try allocator.alloc(Stream.Data.Line, lines.len);
+            data.lines = try gpa.alloc(Stream.Data.Line, lines.len);
             for (data.lines, lines) |*stream_line, track_line| {
                 stream_line.axes =
-                    try allocator.alloc(Stream.Data.Line.Axis, track_line.axes);
+                    try gpa.alloc(Stream.Data.Line.Axis, track_line.axes);
                 stream_line.drivers =
-                    try allocator.alloc(
+                    try gpa.alloc(
                         Stream.Data.Line.Driver,
                         track_line.drivers,
                     );
@@ -310,10 +308,8 @@ const Stream = struct {
             3000,
         );
         errdefer stream.socket.close();
-        stream.reader = stream.socket.reader(&stream_writer_buf);
-        stream.writer = stream.socket.writer(&stream_reader_buf);
         stream.config.lines = .empty;
-        errdefer stream.config.lines.deinit(allocator);
+        errdefer stream.config.lines.deinit(gpa);
         for (config.lines) |line| {
             // Check if there is any log configured for the line
             if (std.mem.allEqual(bool, line.axes, false) and
@@ -346,31 +342,9 @@ const Stream = struct {
                         },
                     },
                 };
-                // Clear all buffer in reader and writer for safety.
-                _ = try stream.reader.interface.discardRemaining();
-                _ = stream.writer.interface.consumeAll();
-                // Send message
-                try request.encode(&stream.writer.interface, allocator);
-                try stream.writer.interface.flush();
-                // Receive message
-                while (true) {
-                    try command.checkCommandInterrupt();
-                    const byte = stream.reader.interface.peekByte() catch |e| {
-                        switch (e) {
-                            std.Io.Reader.Error.EndOfStream => continue,
-                            std.Io.Reader.Error.ReadFailed => {
-                                return stream.reader.error_state orelse
-                                    error.Unexpected;
-                            },
-                        }
-                    };
-                    if (byte > 0) break;
-                }
-                var decoded: api.protobuf.mmc.Response = try .decode(
-                    &stream.reader.interface,
-                    allocator,
-                );
-                defer decoded.deinit(allocator);
+                try client.sendRequest(gpa, stream.socket, request);
+                var decoded = try client.getResponse(gpa, stream.socket);
+                defer decoded.deinit(client.allocator);
                 const track = switch (decoded.body orelse
                     return error.InvalidResponse) {
                     .info => |info_resp| switch (info_resp.body orelse
@@ -425,7 +399,7 @@ const Stream = struct {
                     axis_range.end = @intCast(id);
                 }
             }
-            try stream.config.lines.append(allocator, .{
+            try stream.config.lines.append(gpa, .{
                 .id = line.id,
                 .axis_range = axis_range,
                 .axis = log_axis,
@@ -435,23 +409,23 @@ const Stream = struct {
         return stream;
     }
 
-    fn deinit(stream: *Stream, allocator: std.mem.Allocator) void {
+    fn deinit(stream: *Stream, gpa: std.mem.Allocator) void {
         for (stream.data) |*data| {
             for (data.lines) |*line| {
-                allocator.free(line.axes);
-                allocator.free(line.drivers);
+                gpa.free(line.axes);
+                gpa.free(line.drivers);
             }
-            allocator.free(data.lines);
+            gpa.free(data.lines);
         }
-        allocator.free(stream.data);
-        stream.config.lines.deinit(allocator);
+        gpa.free(stream.data);
+        stream.config.lines.deinit(gpa);
         stream.socket.close();
     }
 
     /// Get the data from the server based on the stream config.
     fn get(
         stream: *Stream,
-        allocator: std.mem.Allocator,
+        gpa: std.mem.Allocator,
         timestamp: f64,
     ) !void {
         const tail = (stream.head + stream.count) % stream.data.len;
@@ -490,31 +464,9 @@ const Stream = struct {
                     },
                 },
             };
-            // Clear all buffer in reader and writer for safety.
-            _ = try stream.reader.interface.discardRemaining();
-            _ = stream.writer.interface.consumeAll();
-            // Send message
-            try request.encode(&stream.writer.interface, allocator);
-            try stream.writer.interface.flush();
-            // Receive message
-            while (true) {
-                try command.checkCommandInterrupt();
-                const byte = stream.reader.interface.peekByte() catch |e| {
-                    switch (e) {
-                        std.Io.Reader.Error.EndOfStream => continue,
-                        std.Io.Reader.Error.ReadFailed => {
-                            return stream.reader.error_state orelse
-                                error.Unexpected;
-                        },
-                    }
-                };
-                if (byte > 0) break;
-            }
-            var decoded: api.protobuf.mmc.Response = try .decode(
-                &stream.reader.interface,
-                allocator,
-            );
-            defer decoded.deinit(allocator);
+            try client.sendRequest(gpa, stream.socket, request);
+            var decoded = try client.getResponse(gpa, stream.socket);
+            defer decoded.deinit(client.allocator);
             const track = switch (decoded.body orelse
                 return error.InvalidResponse) {
                 .info => |info_resp| switch (info_resp.body orelse
@@ -621,8 +573,6 @@ pub var stop = std.atomic.Value(bool).init(false);
 /// Stop the logging and do not save the log data to a file.
 pub var cancel = std.atomic.Value(bool).init(false);
 
-var stream_writer_buf: [4096]u8 = undefined;
-var stream_reader_buf: [4096]u8 = undefined;
 var file_reader_buf: [4096]u8 = undefined;
 var file_writer_buf: [4096]u8 = undefined;
 

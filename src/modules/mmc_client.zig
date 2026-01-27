@@ -166,7 +166,6 @@ pub var sock: ?zignet.Socket = null;
 pub var endpoint: ?zignet.Endpoint = null;
 pub var allocator: std.mem.Allocator = undefined;
 
-pub var log_allocator: std.mem.Allocator = undefined;
 pub const Config = struct {
     host: []u8,
     port: u16,
