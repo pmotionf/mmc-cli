@@ -3,8 +3,6 @@ const builtin = @import("builtin");
 
 const chrono = @import("chrono");
 
-const CircularBufferAlloc =
-    @import("../circular_buffer.zig").CircularBufferAlloc;
 const command = @import("../command.zig");
 const commands = @import("mmc_client/commands.zig");
 pub const Parameter = @import("mmc_client/Parameter.zig");
@@ -12,6 +10,70 @@ pub const Line = @import("mmc_client/Line.zig");
 pub const log = @import("mmc_client/log.zig");
 pub const zignet = @import("zignet");
 pub const api = @import("mmc-api");
+
+pub const Config = struct {
+    host: []u8,
+    port: u16,
+};
+
+pub const Filter = union(enum) {
+    carrier: [1]u32,
+    driver: u32,
+    axis: u32,
+
+    pub fn parse(filter: []const u8) (error{InvalidParameter} || std.fmt.ParseIntError)!Filter {
+        var suffix_idx: usize = 0;
+        for (filter) |c| {
+            if (std.ascii.isDigit(c)) suffix_idx += 1 else break;
+        }
+        // No digit is recognized.
+        if (suffix_idx == 0) return error.InvalidParameter;
+        const id = try std.fmt.parseUnsigned(u32, filter[0..suffix_idx], 0);
+
+        // Check for single character suffix.
+        if (filter.len - suffix_idx == 1) {
+            if (std.ascii.eqlIgnoreCase(filter[suffix_idx..], "a"))
+                return Filter{ .axis = id }
+            else if (std.ascii.eqlIgnoreCase(filter[suffix_idx..], "c"))
+                return Filter{ .carrier = [1]u32{id} }
+            else if (std.ascii.eqlIgnoreCase(filter[suffix_idx..], "d"))
+                return Filter{ .driver = id };
+        }
+        // Check for `axis` suffix
+        else if (filter.len - suffix_idx == 4 and
+            std.ascii.eqlIgnoreCase(filter[suffix_idx..], "axis"))
+            return Filter{ .axis = id }
+            // Check for `driver` suffix
+        else if (filter.len - suffix_idx == 6 and
+            std.ascii.eqlIgnoreCase(filter[suffix_idx..], "driver"))
+            return Filter{ .driver = id }
+            // Check for `carrier` suffix
+        else if (std.ascii.eqlIgnoreCase(filter[suffix_idx..], "carrier"))
+            return Filter{ .carrier = [1]u32{id} };
+        return error.InvalidParameter;
+    }
+
+    /// Invalidates original filter's allocated memory ownership.
+    pub fn toProtobuf(filter: *Filter) api.protobuf.mmc.info.Request.Track.filter_union {
+        return switch (filter.*) {
+            .axis => |axis_id| .{
+                .axes = .{
+                    .start = axis_id,
+                    .end = axis_id,
+                },
+            },
+            .driver => |driver_id| .{
+                .drivers = .{
+                    .start = driver_id,
+                    .end = driver_id,
+                },
+            },
+            .carrier => .{
+                .carriers = .{ .ids = .fromOwnedSlice(&filter.carrier) },
+            },
+        };
+    }
+};
 
 pub const standard = struct {
     pub const time = struct {
@@ -94,65 +156,6 @@ pub const error_response = struct {
 };
 pub var parameter: Parameter = undefined;
 
-pub const Filter = union(enum) {
-    carrier: [1]u32,
-    driver: u32,
-    axis: u32,
-
-    pub fn parse(filter: []const u8) (error{InvalidParameter} || std.fmt.ParseIntError)!Filter {
-        var suffix_idx: usize = 0;
-        for (filter) |c| {
-            if (std.ascii.isDigit(c)) suffix_idx += 1 else break;
-        }
-        // No digit is recognized.
-        if (suffix_idx == 0) return error.InvalidParameter;
-        const id = try std.fmt.parseUnsigned(u32, filter[0..suffix_idx], 0);
-
-        // Check for single character suffix.
-        if (filter.len - suffix_idx == 1) {
-            if (std.ascii.eqlIgnoreCase(filter[suffix_idx..], "a"))
-                return Filter{ .axis = id }
-            else if (std.ascii.eqlIgnoreCase(filter[suffix_idx..], "c"))
-                return Filter{ .carrier = [1]u32{id} }
-            else if (std.ascii.eqlIgnoreCase(filter[suffix_idx..], "d"))
-                return Filter{ .driver = id };
-        }
-        // Check for `axis` suffix
-        else if (filter.len - suffix_idx == 4 and
-            std.ascii.eqlIgnoreCase(filter[suffix_idx..], "axis"))
-            return Filter{ .axis = id }
-            // Check for `driver` suffix
-        else if (filter.len - suffix_idx == 6 and
-            std.ascii.eqlIgnoreCase(filter[suffix_idx..], "driver"))
-            return Filter{ .driver = id }
-            // Check for `carrier` suffix
-        else if (std.ascii.eqlIgnoreCase(filter[suffix_idx..], "carrier"))
-            return Filter{ .carrier = [1]u32{id} };
-        return error.InvalidParameter;
-    }
-
-    /// Invalidates original filter's allocated memory ownership.
-    pub fn toProtobuf(filter: *Filter) api.protobuf.mmc.info.Request.Track.filter_union {
-        return switch (filter.*) {
-            .axis => |axis_id| .{
-                .axes = .{
-                    .start = axis_id,
-                    .end = axis_id,
-                },
-            },
-            .driver => |driver_id| .{
-                .drivers = .{
-                    .start = driver_id,
-                    .end = driver_id,
-                },
-            },
-            .carrier => .{
-                .carriers = .{ .ids = .fromOwnedSlice(&filter.carrier) },
-            },
-        };
-    }
-};
-
 /// `lines` is initialized once the client is connected to a server.
 /// Deinitialized once disconnected from a server.
 pub var lines: []Line = &.{};
@@ -166,10 +169,6 @@ pub var sock: ?zignet.Socket = null;
 pub var endpoint: ?zignet.Endpoint = null;
 pub var allocator: std.mem.Allocator = undefined;
 
-pub const Config = struct {
-    host: []u8,
-    port: u16,
-};
 /// Store the configuration.
 pub var config: Config = undefined;
 
