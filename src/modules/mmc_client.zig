@@ -1393,7 +1393,10 @@ pub fn sendRequest(
     var net_writer = net.writer(&writer_buf);
     try request.encode(&net_writer.interface, gpa);
     net_writer.interface.flush() catch {
-        if (net_writer.error_state) |err| return err;
+        if (net_writer.error_state) |err| {
+            commands.disconnect.impl(&.{}) catch {};
+            return err;
+        }
     };
 }
 
@@ -1418,14 +1421,18 @@ pub fn getResponse(
             switch (e) {
                 std.Io.Reader.Error.EndOfStream => continue,
                 std.Io.Reader.Error.ReadFailed => {
-                    return switch (net_reader.error_state orelse error.Unexpected) {
-                        else => |err| err,
-                    };
+                    switch (net_reader.error_state orelse error.Unexpected) {
+                        else => |err| {
+                            commands.disconnect.impl(&.{}) catch {};
+                            return err;
+                        },
+                    }
                 },
             }
         }
     }
-    return try .decode(&net_reader.interface, gpa);
+    var proto_reader: std.Io.Reader = .fixed(net_reader.interface.buffered());
+    return try .decode(&proto_reader, gpa);
 }
 
 fn removeCommand(id: u32) !void {
