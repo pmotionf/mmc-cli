@@ -81,7 +81,6 @@ pub fn impl(params: [][]const u8) !void {
             .port = client.endpoint.?.port,
         };
     defer client.allocator.free(endpoint.host);
-    // TODO: Move this to end.
     std.log.info(
         "Trying to connect to {s}:{d}",
         .{ endpoint.host, endpoint.port },
@@ -103,10 +102,6 @@ pub fn impl(params: [][]const u8) !void {
         client.sock = null;
         net.close();
     }
-    std.log.info(
-        "Connected to {f}",
-        .{try net.getRemoteEndPoint()},
-    );
     std.log.debug("Send API version request..", .{});
     // Asserting that API version matched between client and server
     {
@@ -189,6 +184,9 @@ pub fn impl(params: [][]const u8) !void {
             );
             try client.parameter.value.line.items.insert(config.name);
         }
+        // Initialize memory for logging configuration
+        client.log_config =
+            try client.log.Config.init(client.allocator, client.lines);
     }
     {
         const request: api.protobuf.mmc.Request = .{
@@ -232,7 +230,5 @@ pub fn impl(params: [][]const u8) !void {
             try stdout.interface.flush();
         }
     }
-    // Initialize memory for logging configuration
-    client.log_config =
-        try client.log.Config.init(client.allocator, client.lines);
+    std.log.info("Connected to {f}", .{try net.getRemoteEndPoint()});
 }
