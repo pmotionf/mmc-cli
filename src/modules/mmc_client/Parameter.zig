@@ -20,7 +20,6 @@ value: struct {
         fn isValid(_: *@This(), input: []const u8) bool {
             const carrier = std.fmt.parseUnsigned(u32, input, 0) catch
                 return false;
-            std.log.debug("valid: {}", .{carrier > 0 and carrier <= Line.max_axis});
             if (carrier > 0 and carrier <= Line.max_axis) return true;
             return false;
         }

@@ -76,13 +76,7 @@ pub fn main() !void {
     defer command.deinit();
 
     command_loop: while (!exit.load(.monotonic)) {
-        if (command.checkCommandInterrupt()) |_| {} else |e| {
-            std.log.err("{t}", .{e});
-        }
-        if (command.stop.load(.monotonic)) {
-            command.queueClear();
-            command.stop.store(false, .monotonic);
-        }
+        command.checkCommandInterrupt() catch |e| std.log.err("{t}", .{e});
         if (command.queueEmpty()) {
             prompt.disable.store(false, .monotonic);
             continue :command_loop;
