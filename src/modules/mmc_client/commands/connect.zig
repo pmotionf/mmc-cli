@@ -102,7 +102,6 @@ pub fn impl(params: [][]const u8) !void {
         client.sock = null;
         net.close();
     }
-    std.log.debug("Send API version request..", .{});
     // Asserting that API version matched between client and server
     {
         const request: api.protobuf.mmc.Request = .{
