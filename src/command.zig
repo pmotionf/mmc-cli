@@ -413,12 +413,26 @@ pub fn init() !void {
         },
         .short_description = "Set a variable equal to a value.",
         .long_description =
-        \\Create a variable name that resolves to the provided value in all
-        \\future commands. Variable names are case sensitive and shall not begin
-        \\with digit.
+        \\Create or update a variable name that resolves to the specified value
+        \\for all future commands. Variable names are case sensitive and shall
+        \\not begin with a digit.
         ,
         .execute = &set,
     } });
+    try registry.put(.{
+        .executable = .{
+            .name = "REMOVE",
+            .parameters = &[_]Command.Executable.Parameter{
+                .{ .name = "variable", .resolve = false },
+            },
+            .short_description = "Remove a variable.",
+            .long_description =
+            \\Remove a set variable. Variables are removed by name. Variable
+            \\names are case sensitive and do not begin with a digit.
+            ,
+            .execute = &remove,
+        },
+    });
     try registry.put(.{ .executable = .{
         .name = "GET",
         .parameters = &[_]Command.Executable.Parameter{
@@ -770,6 +784,18 @@ fn version(_: [][]const u8) !void {
 fn set(params: [][]const u8) !void {
     if (std.ascii.isDigit(params[0][0])) return error.InvalidParameter;
     try variables.put(params[0], params[1]);
+}
+
+fn remove(params: [][]const u8) !void {
+    if (std.ascii.isDigit(params[0][0])) {
+        return error.InvalidParameter;
+    } else if (variables.get(params[0])) |value| {
+        std.log.info("Remove Variable \"{s}\": {s}\n", .{
+            params[0],
+            value,
+        });
+    } else return error.UndefinedVariable;
+    variables.remove(params[0]);
 }
 
 fn get(params: [][]const u8) !void {
