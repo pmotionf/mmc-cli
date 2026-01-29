@@ -76,6 +76,9 @@ pub fn main() !void {
     defer command.deinit();
 
     command_loop: while (!exit.load(.monotonic)) {
+        if (command.checkCommandInterrupt()) |_| {} else |e| {
+            std.log.err("{t}", .{e});
+        }
         if (command.stop.load(.monotonic)) {
             command.queueClear();
             command.stop.store(false, .monotonic);

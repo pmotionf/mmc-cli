@@ -1312,10 +1312,35 @@ pub fn matchLine(name: []const u8) !usize {
 /// command from the server.
 pub fn waitCommandCompleted(gpa: std.mem.Allocator, net: zignet.Socket) !void {
     const command_id = command_id: {
-        // ISSUE: If command is cancelled in this block, there is no way remove the incoming message. In addition, there is no way to remove the command from the server as well.
-        var decoded = try getResponse(gpa, net);
+        // If command is cancelled while fetching the command ID, client has to
+        // keep waiting until command ID response is arrived. Client forces
+        // command removal even cancelled in this block, thus multithreading is
+        // implemented in this block.
+        // TODO: When upgrading to zig 0.16.0, implement the new concurrent method.
+        var cancel: std.atomic.Value(bool) = .init(false);
+        var finish: std.atomic.Value(bool) = .init(false);
+        const cancel_thread: std.Thread = try .spawn(
+            .{},
+            checkInterrupt,
+            .{ finish, &cancel },
+        );
+        var decoded = getResponse(gpa, net) catch |err| {
+            // It is impossible to remove command from the server if the
+            // connection is suddenly closed during reading this response.
+            //
+            // TODO: This block means there is no way to literally remove the
+            // command from the queue. It seems we have to manually clear it up
+            // in the server side. Give timeout to command queue in the server?
+            finish.store(true, .monotonic);
+            // Expected to be finished. Ensure no dangling thread.
+            cancel_thread.join();
+            return err;
+        };
         defer decoded.deinit(gpa);
-        break :command_id switch (decoded.body orelse return error.InvalidResponse) {
+        finish.store(true, .monotonic);
+        // Expected to be finished. Ensure no dangling thread.
+        cancel_thread.join();
+        const id = switch (decoded.body orelse return error.InvalidResponse) {
             .request_error => |req_err| {
                 return error_response.throwMmcError(req_err);
             },
@@ -1329,9 +1354,15 @@ pub fn waitCommandCompleted(gpa: std.mem.Allocator, net: zignet.Socket) !void {
             },
             else => return error.InvalidResponse,
         };
+        if (cancel.load(.monotonic)) {
+            try removeCommand(id);
+            return error.CommandStopped;
+        } else break :command_id id;
     };
     defer removeCommand(command_id) catch {};
     while (true) {
+        try command.checkCommandInterrupt();
+
         const request: api.protobuf.mmc.Request = .{
             .body = .{
                 .info = .{
@@ -1402,7 +1433,8 @@ pub fn sendRequest(
 
 /// Wait until response is received and decode the message. The caller is
 /// responsible to free the decoded message.
-/// TODO: If command is cancelled, we need to keep reading until the message is arrived. Big assumption is used here that the message always coming whenever this function is called.
+/// TODO: This implementation can now use a blocking socket call. Command that
+/// is cancellable is only command that require to remove command from server.
 pub fn getResponse(
     gpa: std.mem.Allocator,
     net: zignet.Socket,
@@ -1410,13 +1442,8 @@ pub fn getResponse(
     var reader_buf: [4096]u8 = undefined;
     var net_reader = net.reader(&reader_buf);
     while (true) {
-        // Read until the length is equal for consecutive peek.
-        try command.checkCommandInterrupt();
-        const prev_buffered_len = net_reader.interface.bufferedLen();
         if (net_reader.interface.peekByte()) |_| {
-            if (prev_buffered_len == 0) continue;
-            if (net_reader.interface.bufferedLen() == prev_buffered_len)
-                break;
+            break;
         } else |e| {
             switch (e) {
                 std.Io.Reader.Error.EndOfStream => continue,
@@ -1556,4 +1583,19 @@ pub fn nestedWrite(
         },
     }
     return written_bytes;
+}
+
+/// Looping to check command interrupt. Returned if other task is finished.
+fn checkInterrupt(
+    /// Flag to check if task on other thread is finished.
+    finish: std.atomic.Value(bool),
+    /// Flag to let the caller know that interrupt is detected.
+    cancel: *std.atomic.Value(bool),
+) void {
+    while (finish.load(.monotonic)) {
+        command.checkCommandInterrupt() catch {
+            cancel.store(true, .monotonic);
+            return;
+        };
+    }
 }

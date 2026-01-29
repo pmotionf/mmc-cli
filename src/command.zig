@@ -579,7 +579,8 @@ pub fn queueClear() void {
     }
 }
 
-/// Checks if the `stop` flag is set, and if so returns an error.
+/// Checks if the `stop` flag is set, and if so returns an error and clear
+/// command queue.
 pub fn checkCommandInterrupt() error{CommandStopped}!void {
     if (stop.load(.monotonic)) {
         defer stop.store(false, .monotonic);
@@ -660,7 +661,6 @@ fn parseAndRun(input: []const u8) !void {
                 const start_ind: usize = token_iterator.index + 1;
                 var len: usize = 0;
                 while (token_iterator.next()) |tok| {
-                    try checkCommandInterrupt();
                     if (tok[tok.len - 1] == '"') {
                         // 2 subtracted from length to account for the two
                         // quotation marks.
@@ -738,7 +738,6 @@ fn help(params: [][]const u8) !void {
         }
     } else {
         for (registry.values()) |c| {
-            try checkCommandInterrupt();
             var params_buffer: [512]u8 = .{0} ** 512;
             var params_len: usize = 0;
             for (c.parameters) |param| {
@@ -783,7 +782,6 @@ fn get(params: [][]const u8) !void {
 fn printVariables(_: [][]const u8) !void {
     var variables_it = variables.iterator();
     while (variables_it.next()) |entry| {
-        try checkCommandInterrupt();
         std.log.info("\t{s}: {s}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
     }
 }
@@ -856,13 +854,13 @@ fn file(params: [][]const u8) !void {
     var reader_buf: [std.fs.max_path_bytes + 512]u8 = undefined;
     var reader = f.reader(&reader_buf);
     while (true) {
+        try checkCommandInterrupt();
         const _line = reader.interface.takeDelimiter('\n') catch |e| {
             switch (e) {
                 error.StreamTooLong => break,
                 else => return e,
             }
         } orelse break;
-        try checkCommandInterrupt();
         const line = std.mem.trimLeft(
             u8,
             std.mem.trimRight(u8, _line, "\r"),

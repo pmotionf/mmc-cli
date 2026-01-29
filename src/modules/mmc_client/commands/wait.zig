@@ -103,6 +103,7 @@ pub fn axisEmpty(params: [][]const u8) !void {
     const line = client.lines[line_idx];
     var wait_timer = try std.time.Timer.start();
     while (true) {
+        try command.checkCommandInterrupt();
         if (timeout != 0 and
             wait_timer.read() > timeout * std.time.ns_per_ms)
             return error.WaitTimeout;
@@ -164,6 +165,7 @@ fn waitCarrierState(
     var ids = [1]u32{id};
     var wait_timer = try std.time.Timer.start();
     while (true) {
+        try command.checkCommandInterrupt();
         if (timeout != 0 and
             wait_timer.read() > timeout * std.time.ns_per_ms)
             return error.WaitTimeout;
