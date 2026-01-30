@@ -59,9 +59,8 @@ pub fn impl(params: [][]const u8) !void {
         // hall sensor of the push direction is already on, the move command is
         // not necessary.
         check_carrier: {
-            var lines: std.ArrayList(u32) = .{};
-            defer lines.deinit(client.allocator);
-            try lines.append(client.allocator, @as(u32, @intCast(line.id)));
+            var line_array: [1]u32 = .{line.id};
+            const lines: std.ArrayList(u32) = .fromOwnedSlice(&line_array);
             // This blocks checks whether the move command is necessary or not.
             const request: api.protobuf.mmc.Request = .{
                 .body = .{

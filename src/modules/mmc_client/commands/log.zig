@@ -191,9 +191,8 @@ fn modify(
         if (kind == .all or kind == .axis)
             client.log_config.lines[line.index].axes[axis_id - 1] = flag;
         if (kind == .all or kind == .driver) {
-            var lines: std.ArrayList(u32) = .{};
-            defer lines.deinit(client.allocator);
-            try lines.append(client.allocator, @as(u32, @intCast(line.id)));
+            var line_array: [1]u32 = .{line.id};
+            const lines: std.ArrayList(u32) = .fromOwnedSlice(&line_array);
             // Since the client does not know on which driver the axis is
             // located, the client has to request driver info with axis filter.
             const request: api.protobuf.mmc.Request = .{

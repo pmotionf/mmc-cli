@@ -16,9 +16,8 @@ pub fn impl(params: [][]const u8) !void {
     const pb_filter = if (filter) |*f| f.toProtobuf() else null;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    var lines: std.ArrayList(u32) = .{};
-    defer lines.deinit(client.allocator);
-    try lines.append(client.allocator, @as(u32, @intCast(line.id)));
+    var line_array: [1]u32 = .{line.id};
+    const lines: std.ArrayList(u32) = .fromOwnedSlice(&line_array);
     const request: api.protobuf.mmc.Request = .{
         .body = .{
             .info = .{

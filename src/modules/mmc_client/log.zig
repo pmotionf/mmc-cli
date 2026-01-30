@@ -324,9 +324,8 @@ const Stream = struct {
             for (line.drivers, 1..) |driver, id| {
                 if (driver == false) continue;
                 log_driver = true;
-                var req_lines: std.ArrayList(u32) = .{};
-                defer req_lines.deinit(client.allocator);
-                try req_lines.append(client.allocator, @as(u32, @intCast(line.id)));
+                var req_lines_array: [1]u32 = .{line.id};
+                const req_lines: std.ArrayList(u32) = .fromOwnedSlice(&req_lines_array);
                 const request: api.protobuf.mmc.Request = .{
                     .body = .{
                         .info = .{
@@ -450,9 +449,8 @@ const Stream = struct {
         }
         data.timestamp = timestamp;
         for (stream.config.lines.items) |line| {
-            var req_lines: std.ArrayList(u32) = .{};
-            defer req_lines.deinit(client.allocator);
-            try req_lines.append(client.allocator, @as(u32, @intCast(line.id)));
+            var req_lines_array: [1]u32 = .{line.id};
+            const req_lines: std.ArrayList(u32) = .fromOwnedSlice(&req_lines_array);
             // Get the data from the server
             const request: api.protobuf.mmc.Request = .{
                 .body = .{
