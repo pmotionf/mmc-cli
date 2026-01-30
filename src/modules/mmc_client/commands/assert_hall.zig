@@ -84,10 +84,9 @@ pub fn impl(params: [][]const u8) !void {
         else => return error.InvalidResponse,
     };
 
-    const wanted_line: u32 = @as(u32, @intCast(line.id));
     const track_line = blk: {
         for (track.lines.items) |*t| {
-            if (t.id == wanted_line) break :blk t;
+            if (t.id == line.id) break :blk t;
         }
         return error.InvalidResponse;
     };
