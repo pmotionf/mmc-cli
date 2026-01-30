@@ -81,7 +81,7 @@ pub fn impl(params: [][]const u8) !void {
     for (track.lines.items) |track_line| {
         const line_idx: usize = blk: {
             for (client.lines, 0..) |l, i| {
-                if (@as(u32, @intCast(l.id)) == track_line.line) break :blk i;
+                if (@as(u32, @intCast(l.id)) == track_line.id) break :blk i;
             }
             continue;
         };

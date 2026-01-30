@@ -214,7 +214,7 @@ const Stream = struct {
                 pub const Carrier = struct {
                     id: u10,
                     position: f32,
-                    state: api.protobuf.mmc.info.Response.Track.Carrier.State.State,
+                    state: api.protobuf.mmc.info.Response.Line.Carrier.State.State,
                     cas: struct { enabled: bool, triggered: bool },
                 };
                 pub const Error = struct {
@@ -367,7 +367,7 @@ const Stream = struct {
                 const wanted_line: u32 = @as(u32, @intCast(line.id));
                 const track_line = blk: {
                     for (track.lines.items) |*t| {
-                        if (t.line == wanted_line) break :blk t;
+                        if (t.id == wanted_line) break :blk t;
                     }
                     return error.InvalidResponse;
                 };
@@ -498,7 +498,7 @@ const Stream = struct {
             const wanted_line: u32 = @as(u32, @intCast(line.id));
             const track_line = blk: {
                 for (track.lines.items) |*t| {
-                    if (t.line == wanted_line) break :blk t;
+                    if (t.id == wanted_line) break :blk t;
                 }
                 return error.InvalidResponse;
             }; // Store the data to the buffer
@@ -506,7 +506,7 @@ const Stream = struct {
             // buffer instead of making a copy first before calling
             // `writeItemOverwrite()`
             // std.log.debug("{}", .{stream.data[tail].lines[0]});
-            data.lines[track_line.line - 1].id = track_line.line;
+            data.lines[track_line.id - 1].id = track_line.id;
             for (
                 track_line.axis_state.items,
                 track_line.axis_errors.items,

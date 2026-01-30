@@ -148,7 +148,7 @@ pub fn axisEmpty(params: [][]const u8) !void {
         const wanted_line: u32 = @as(u32, @intCast(line.id));
         const track_line = blk: {
             for (track.lines.items) |*t| {
-                if (t.line == wanted_line) break :blk t;
+                if (t.id == wanted_line) break :blk t;
             }
             return error.InvalidResponse;
         };
@@ -168,7 +168,7 @@ fn waitCarrierState(
     net: client.zignet.Socket,
     line: u32,
     id: std.math.IntFittingRange(1, 1023),
-    state: api.protobuf.mmc.info.Response.Track.Carrier.State.State,
+    state: api.protobuf.mmc.info.Response.Line.Carrier.State.State,
     timeout: u64,
 ) !void {
     var ids = [1]u32{id};
@@ -216,7 +216,7 @@ fn waitCarrierState(
         const wanted_line: u32 = @as(u32, @intCast(line));
         const track_line = blk: {
             for (track.lines.items) |*t| {
-                if (t.line == wanted_line) break :blk t;
+                if (t.id == wanted_line) break :blk t;
             }
             return error.InvalidResponse;
         };
