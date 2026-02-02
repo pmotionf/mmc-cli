@@ -67,18 +67,21 @@ pub fn impl(params: [][]const u8) !void {
         },
         else => return error.InvalidResponse,
     };
-    const track_line = blk: {
-        for (track.lines.items) |*t| {
-            if (t.id == line.id) break :blk t;
-        }
+
+    if (track.lines.items.len != 1)
         return error.InvalidResponse;
-    };
-    const carrier = blk: {
-        for (track_line.carrier_state.items) |c| {
-            if (c.id == ids[0]) break :blk c;
-        }
+
+    const track_line = track.lines.items[0];
+    if (track_line.id != line.id)
+        return error.InvalidResponse;
+
+    if (track_line.carrier_state.items.len != 1)
+        return error.InvalidResponse;
+
+    const carrier = track_line.carrier_state.items[0];
+    if (carrier.id != ids[0])
         return error.CarrierNotFound;
-    };
+
     const location = carrier.position;
     if (location < expected_location - location_thr or
         location > expected_location + location_thr)
