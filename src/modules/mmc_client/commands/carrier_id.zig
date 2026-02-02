@@ -29,8 +29,8 @@ pub fn impl(params: [][]const u8) !void {
             return e;
         }
     }
-    var line_idxs: std.ArrayList(u32) = .{};
-    try line_idxs.ensureTotalCapacity(client.allocator, line_counter);
+    var line_idxs: std.ArrayList(u32) =
+        try .initCapacity(client.allocator, line_counter);
     defer line_idxs.deinit(client.allocator);
     line_name_iterator.reset();
     while (line_name_iterator.next()) |line_name| {
@@ -41,9 +41,9 @@ pub fn impl(params: [][]const u8) !void {
     }
 
     var count: usize = 1;
-    var lines: std.ArrayList(u32) = .{};
+    var lines: std.ArrayList(u32) =
+        try .initCapacity(client.allocator, line_idxs.items.len);
     defer lines.deinit(client.allocator);
-    try lines.ensureTotalCapacity(client.allocator, line_idxs.items.len);
     for (line_idxs.items) |line_idx| {
         const line = client.lines[@as(usize, @intCast(line_idx))];
         try lines.append(client.allocator, @as(u32, @intCast(line.id)));
@@ -81,7 +81,7 @@ pub fn impl(params: [][]const u8) !void {
     for (track.lines.items) |track_line| {
         const line_idx: usize = blk: {
             for (client.lines, 0..) |l, i| {
-                if (@as(u32, @intCast(l.id)) == track_line.id) break :blk i;
+                if (l.id == track_line.id) break :blk i;
             }
             continue;
         };

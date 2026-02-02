@@ -73,10 +73,9 @@ pub fn impl(params: [][]const u8) !void {
         }
         return error.InvalidResponse;
     };
-    const wanted_carrier_id: u32 = ids[0];
     const carrier = blk: {
         for (track_line.carrier_state.items) |c| {
-            if (c.id == wanted_carrier_id) break :blk c;
+            if (c.id == ids[0]) break :blk c;
         }
         return error.CarrierNotFound;
     };
