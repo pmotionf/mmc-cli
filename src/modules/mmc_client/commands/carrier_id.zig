@@ -79,12 +79,7 @@ pub fn impl(params: [][]const u8) !void {
         else => return error.InvalidResponse,
     };
     for (track.lines.items) |track_line| {
-        const line_idx: usize = blk: {
-            for (client.lines, 0..) |l, i| {
-                if (l.id == track_line.id) break :blk i;
-            }
-            continue;
-        };
+        const line_idx: usize = @intCast(track_line.id - 1);
         const line = client.lines[line_idx];
         const axis_state = track_line.axis_state;
         if (axis_state.items.len != line.axes) return error.InvalidResponse;
