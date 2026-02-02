@@ -50,12 +50,10 @@ pub fn impl(params: [][]const u8) !void {
         },
         else => return error.InvalidResponse,
     };
-    const track_line = blk: {
-        for (track.lines.items) |*t| {
-            if (t.id == line.id) break :blk t;
-        }
+
+    const track_line = &track.lines.items[0];
+    if (track_line.id != line.id)
         return error.InvalidResponse;
-    };
 
     if (filter) |_filter| {
         switch (_filter) {

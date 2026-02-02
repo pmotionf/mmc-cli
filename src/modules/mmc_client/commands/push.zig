@@ -97,12 +97,14 @@ pub fn impl(params: [][]const u8) !void {
                 },
                 else => return error.InvalidResponse,
             };
-            const track_line = blk: {
-                for (track.lines.items) |*t| {
-                    if (t.id == line.id) break :blk t;
-                }
+
+            if (track.lines.items.len != 1)
                 return error.InvalidResponse;
-            };
+
+            const track_line = &track.lines.items[0];
+            if (track_line.id != line.id)
+                return error.InvalidResponse;
+
             const axis_state = track_line.axis_state.pop() orelse
                 return error.InvalidResponse;
             // If no carrier is detected, continue to move the specified carrier

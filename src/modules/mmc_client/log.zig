@@ -363,12 +363,14 @@ const Stream = struct {
                     },
                     else => return error.InvalidResponse,
                 };
-                const track_line = blk: {
-                    for (track.lines.items) |*t| {
-                        if (t.id == line.id) break :blk t;
-                    }
+
+                if (track.lines.items.len != 1)
                     return error.InvalidResponse;
-                };
+
+                const track_line = &track.lines.items[0];
+                if (track_line.id != line.id)
+                    return error.InvalidResponse;
+
                 for (track_line.axis_state.items) |axis| {
                     // Check if axis range is still default
                     if (axis_range.start == 0 and axis_range.end == 0) {
@@ -492,12 +494,15 @@ const Stream = struct {
                 },
                 else => return error.InvalidResponse,
             };
-            const track_line = blk: {
-                for (track.lines.items) |*t| {
-                    if (t.id == line.id) break :blk t;
-                }
+
+            if (track.lines.items.len != 1)
                 return error.InvalidResponse;
-            }; // Store the data to the buffer
+
+            const track_line = &track.lines.items[0];
+            if (track_line.id != line.id)
+                return error.InvalidResponse;
+
+            // Store the data to the buffer
             // TODO: Optimize the storing to store directly to circular
             // buffer instead of making a copy first before calling
             // `writeItemOverwrite()`

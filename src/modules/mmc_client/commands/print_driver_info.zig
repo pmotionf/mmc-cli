@@ -45,12 +45,14 @@ pub fn impl(params: [][]const u8) !void {
         },
         else => return error.InvalidResponse,
     };
-    const track_line = blk: {
-        for (track.lines.items) |*t| {
-            if (t.id == line.id) break :blk t;
-        }
+
+    if (track.lines.items.len != 1)
         return error.InvalidResponse;
-    };
+
+    const track_line = &track.lines.items[0];
+    if (track_line.id != line.id)
+        return error.InvalidResponse;
+
     const driver_state = track_line.driver_state;
     const driver_errors = track_line.driver_errors;
     if (driver_state.items.len != driver_errors.items.len)

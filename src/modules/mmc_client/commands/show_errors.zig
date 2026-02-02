@@ -51,12 +51,14 @@ pub fn impl(params: [][]const u8) !void {
         },
         else => return error.InvalidResponse,
     };
-    const track_line = blk: {
-        for (track.lines.items) |*t| {
-            if (t.id == line.id) break :blk t;
-        }
+
+    if (track.lines.items.len != 1)
         return error.InvalidResponse;
-    };
+
+    const track_line = &track.lines.items[0];
+    if (track_line.id != line.id)
+        return error.InvalidResponse;
+
     const axis_errors = track_line.axis_errors;
     const driver_errors = track_line.driver_errors;
     var writer_buf: [4096]u8 = undefined;
