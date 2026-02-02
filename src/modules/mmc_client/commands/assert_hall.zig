@@ -84,19 +84,19 @@ pub fn impl(params: [][]const u8) !void {
         else => return error.InvalidResponse,
     };
 
-    const track_line = blk: {
-        for (track.lines.items) |*t| {
-            if (t.id == line.id) break :blk t;
-        }
+    if (track.lines.items.len != 1)
         return error.InvalidResponse;
-    };
 
-    const axis = blk: {
-        for (track_line.axis_state.items) |a| {
-            if (a.id == axis_id) break :blk a;
-        }
+    const track_line = &track.lines.items[0];
+    if (track_line.id != line.id)
         return error.InvalidResponse;
-    };
+
+    if (track_line.axis_state.items.len != 1)
+        return error.InvalidResponse;
+
+    const axis = track_line.axis_state.items[0];
+    if (axis.id != axis_id)
+        return error.InvalidResponse;
 
     switch (side) {
         .DIRECTION_BACKWARD => {
