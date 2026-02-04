@@ -29,25 +29,23 @@ pub fn impl(params: [][]const u8) !void {
             return e;
         }
     }
-    var line_idxs: std.ArrayList(u32) =
+    var lines: std.ArrayList(u32) =
         try .initCapacity(client.allocator, line_counter);
-    defer line_idxs.deinit(client.allocator);
+    defer lines.deinit(client.allocator);
+
     line_name_iterator.reset();
     while (line_name_iterator.next()) |line_name| {
-        try line_idxs.append(
+        try lines.append(
             client.allocator,
             @intCast(try client.matchLine(line_name)),
         );
     }
 
-    var count: usize = 1;
-    var lines: std.ArrayList(u32) =
-        try .initCapacity(client.allocator, line_idxs.items.len);
-    defer lines.deinit(client.allocator);
-    for (line_idxs.items) |line_idx| {
+    for (lines.items, 0..) |line_idx, i| {
         const line = client.lines[@as(usize, @intCast(line_idx))];
-        try lines.append(client.allocator, @as(u32, @intCast(line.id)));
+        lines.items[i] = @as(u32, @intCast(line.id));
     }
+
     const request: api.protobuf.mmc.Request = .{
         .body = .{
             .info = .{
@@ -78,6 +76,7 @@ pub fn impl(params: [][]const u8) !void {
         },
         else => return error.InvalidResponse,
     };
+    var count: usize = 1;
     for (track.lines.items) |track_line| {
         const line_idx: usize = @intCast(track_line.id - 1);
         const line = client.lines[line_idx];
