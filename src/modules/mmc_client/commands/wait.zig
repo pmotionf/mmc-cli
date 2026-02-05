@@ -101,6 +101,8 @@ pub fn axisEmpty(params: [][]const u8) !void {
         0;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
+    var line_array: [1]u32 = .{line.id};
+    const lines: std.ArrayList(u32) = .fromOwnedSlice(&line_array);
     var wait_timer = try std.time.Timer.start();
     while (true) {
         try command.checkCommandInterrupt();
@@ -112,7 +114,7 @@ pub fn axisEmpty(params: [][]const u8) !void {
                 .info = .{
                     .body = .{
                         .track = .{
-                            .line = line.id,
+                            .lines = lines,
                             .info_axis_state = true,
                             .filter = .{
                                 .axes = .{
@@ -128,7 +130,7 @@ pub fn axisEmpty(params: [][]const u8) !void {
         try client.sendRequest(client.allocator, net, request);
         var decoded = try client.getResponse(client.allocator, net);
         defer decoded.deinit(client.allocator);
-        var track = switch (decoded.body orelse return error.InvalidResponse) {
+        const track = switch (decoded.body orelse return error.InvalidResponse) {
             .info => |info_resp| switch (info_resp.body orelse
                 return error.InvalidResponse) {
                 .track => |track_resp| track_resp,
@@ -142,8 +144,15 @@ pub fn axisEmpty(params: [][]const u8) !void {
             },
             else => return error.InvalidResponse,
         };
-        if (track.line != line.id) return error.InvalidResponse;
-        const axis = track.axis_state.pop() orelse return error.InvalidResponse;
+
+        if (track.lines.items.len != 1)
+            return error.InvalidResponse;
+
+        const track_line = &track.lines.items[0];
+        if (track_line.id != line.id)
+            return error.InvalidResponse;
+
+        const axis = track_line.axis_state.pop() orelse return error.InvalidResponse;
         if (axis.carrier == 0 and
             !axis.hall_alarm_back and
             !axis.hall_alarm_front and
@@ -159,7 +168,7 @@ fn waitCarrierState(
     net: client.zignet.Socket,
     line: u32,
     id: std.math.IntFittingRange(1, 1023),
-    state: api.protobuf.mmc.info.Response.Track.Carrier.State.State,
+    state: api.protobuf.mmc.info.Response.Line.Carrier.State.State,
     timeout: u64,
 ) !void {
     var ids = [1]u32{id};
@@ -169,12 +178,14 @@ fn waitCarrierState(
         if (timeout != 0 and
             wait_timer.read() > timeout * std.time.ns_per_ms)
             return error.WaitTimeout;
+        var line_array: [1]u32 = .{line};
+        const lines: std.ArrayList(u32) = .fromOwnedSlice(&line_array);
         const request: api.protobuf.mmc.Request = .{
             .body = .{
                 .info = .{
                     .body = .{
                         .track = .{
-                            .line = line,
+                            .lines = lines,
                             .info_carrier_state = true,
                             .filter = .{
                                 .carriers = .{ .ids = .fromOwnedSlice(&ids) },
@@ -187,7 +198,7 @@ fn waitCarrierState(
         try client.sendRequest(client.allocator, net, request);
         var decoded = try client.getResponse(client.allocator, net);
         defer decoded.deinit(client.allocator);
-        var track = switch (decoded.body orelse return error.InvalidResponse) {
+        const track = switch (decoded.body orelse return error.InvalidResponse) {
             .info => |info_resp| switch (info_resp.body orelse
                 return error.InvalidResponse) {
                 .track => |track_resp| track_resp,
@@ -201,12 +212,17 @@ fn waitCarrierState(
             },
             else => return error.InvalidResponse,
         };
-        if (track.line != line) return error.InvalidResponse;
+        const track_line = blk: {
+            for (track.lines.items) |*t| {
+                if (t.id == line) break :blk t;
+            }
+            return error.InvalidResponse;
+        };
         // If a carrier is not found, it shall not return error.CarrierNotFound.
         // Every wait command shall be guaranteed by the user to be available
         // even after some time the carrier not found, e.g. when pulling
         // a carrier from different line.
-        const carrier = track.carrier_state.pop() orelse continue;
+        const carrier = track_line.carrier_state.pop() orelse continue;
         if (carrier.state == .CARRIER_STATE_OVERCURRENT) return error.Overcurrent;
         if (carrier.state == state) return;
     }

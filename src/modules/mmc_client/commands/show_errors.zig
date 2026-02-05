@@ -11,6 +11,8 @@ pub fn impl(params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
+    var line_array: [1]u32 = .{line.id};
+    const lines: std.ArrayList(u32) = .fromOwnedSlice(&line_array);
     var filter: ?client.Filter = null;
     if (params[1].len > 0) {
         filter = try .parse(params[1]);
@@ -20,7 +22,7 @@ pub fn impl(params: [][]const u8) !void {
             .info = .{
                 .body = .{
                     .track = .{
-                        .line = line.id,
+                        .lines = lines,
                         .info_axis_errors = true,
                         .info_driver_errors = true,
                         .filter = if (filter) |*_filter|
@@ -49,9 +51,16 @@ pub fn impl(params: [][]const u8) !void {
         },
         else => return error.InvalidResponse,
     };
-    if (track.line != line.id) return error.InvalidResponse;
-    const axis_errors = track.axis_errors;
-    const driver_errors = track.driver_errors;
+
+    if (track.lines.items.len != 1)
+        return error.InvalidResponse;
+
+    const track_line = &track.lines.items[0];
+    if (track_line.id != line.id)
+        return error.InvalidResponse;
+
+    const axis_errors = track_line.axis_errors;
+    const driver_errors = track_line.driver_errors;
     var writer_buf: [4096]u8 = undefined;
     var stdout = std.fs.File.stdout().writer(&writer_buf);
     const writer = &stdout.interface;

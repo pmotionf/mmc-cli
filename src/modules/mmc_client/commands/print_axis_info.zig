@@ -12,12 +12,14 @@ pub fn impl(params: [][]const u8) !void {
     var filter: client.Filter = try .parse(params[1]);
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
+    var line_array: [1]u32 = .{line.id};
+    const lines: std.ArrayList(u32) = .fromOwnedSlice(&line_array);
     const request: api.protobuf.mmc.Request = .{
         .body = .{
             .info = .{
                 .body = .{
                     .track = .{
-                        .line = line.id,
+                        .lines = lines,
                         .info_axis_errors = true,
                         .info_axis_state = true,
                         .filter = filter.toProtobuf(),
@@ -43,9 +45,16 @@ pub fn impl(params: [][]const u8) !void {
         },
         else => return error.InvalidResponse,
     };
-    if (track.line != line.id) return error.InvalidResponse;
-    const axis_state = track.axis_state;
-    const axis_errors = track.axis_errors;
+
+    if (track.lines.items.len != 1)
+        return error.InvalidResponse;
+
+    const track_line = &track.lines.items[0];
+    if (track_line.id != line.id)
+        return error.InvalidResponse;
+
+    const axis_state = track_line.axis_state;
+    const axis_errors = track_line.axis_errors;
     if (axis_state.items.len != axis_errors.items.len)
         return error.InvalidResponse;
     var writer_buf: [4096]u8 = undefined;

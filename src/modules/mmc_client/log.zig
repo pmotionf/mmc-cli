@@ -214,7 +214,7 @@ const Stream = struct {
                 pub const Carrier = struct {
                     id: u10,
                     position: f32,
-                    state: api.protobuf.mmc.info.Response.Track.Carrier.State.State,
+                    state: api.protobuf.mmc.info.Response.Line.Carrier.State.State,
                     cas: struct { enabled: bool, triggered: bool },
                 };
                 pub const Error = struct {
@@ -324,12 +324,14 @@ const Stream = struct {
             for (line.drivers, 1..) |driver, id| {
                 if (driver == false) continue;
                 log_driver = true;
+                var req_lines_array: [1]u32 = .{line.id};
+                const req_lines: std.ArrayList(u32) = .fromOwnedSlice(&req_lines_array);
                 const request: api.protobuf.mmc.Request = .{
                     .body = .{
                         .info = .{
                             .body = .{
                                 .track = .{
-                                    .line = line.id,
+                                    .lines = req_lines,
                                     .info_axis_state = true,
                                     .filter = .{
                                         .drivers = .{
@@ -361,8 +363,15 @@ const Stream = struct {
                     },
                     else => return error.InvalidResponse,
                 };
-                if (track.line != line.id) return error.InvalidResponse;
-                for (track.axis_state.items) |axis| {
+
+                if (track.lines.items.len != 1)
+                    return error.InvalidResponse;
+
+                const track_line = &track.lines.items[0];
+                if (track_line.id != line.id)
+                    return error.InvalidResponse;
+
+                for (track_line.axis_state.items) |axis| {
                     // Check if axis range is still default
                     if (axis_range.start == 0 and axis_range.end == 0) {
                         axis_range = .{ .start = axis.id, .end = axis.id };
@@ -441,13 +450,15 @@ const Stream = struct {
         }
         data.timestamp = timestamp;
         for (stream.config.lines.items) |line| {
+            var req_lines_array: [1]u32 = .{line.id};
+            const req_lines: std.ArrayList(u32) = .fromOwnedSlice(&req_lines_array);
             // Get the data from the server
             const request: api.protobuf.mmc.Request = .{
                 .body = .{
                     .info = .{
                         .body = .{
                             .track = .{
-                                .line = line.id,
+                                .lines = req_lines,
                                 .info_axis_errors = line.axis,
                                 .info_axis_state = line.axis,
                                 .info_carrier_state = line.axis,
@@ -483,16 +494,23 @@ const Stream = struct {
                 },
                 else => return error.InvalidResponse,
             };
-            if (track.line != line.id) return error.InvalidResponse;
+
+            if (track.lines.items.len != 1)
+                return error.InvalidResponse;
+
+            const track_line = &track.lines.items[0];
+            if (track_line.id != line.id)
+                return error.InvalidResponse;
+
             // Store the data to the buffer
             // TODO: Optimize the storing to store directly to circular
             // buffer instead of making a copy first before calling
             // `writeItemOverwrite()`
             // std.log.debug("{}", .{stream.data[tail].lines[0]});
-            data.lines[track.line - 1].id = track.line;
+            data.lines[track_line.id - 1].id = track_line.id;
             for (
-                track.axis_state.items,
-                track.axis_errors.items,
+                track_line.axis_state.items,
+                track_line.axis_errors.items,
             ) |axis_info, axis_err| {
                 data.lines[line.id - 1].axes[axis_info.id - 1] = .{
                     .id = axis_info.id,
@@ -512,7 +530,7 @@ const Stream = struct {
                     ),
                 };
             }
-            for (track.carrier_state.items) |carrier| {
+            for (track_line.carrier_state.items) |carrier| {
                 data.lines[line.id - 1]
                     .axes[carrier.axis_main - 1].carrier = .{
                     .id = @intCast(carrier.id),
@@ -535,8 +553,8 @@ const Stream = struct {
                     };
             }
             for (
-                track.driver_state.items,
-                track.driver_errors.items,
+                track_line.driver_state.items,
+                track_line.driver_errors.items,
             ) |driver_info, driver_err| {
                 data.lines[line.id - 1].drivers[driver_info.id - 1] = .{
                     .id = driver_info.id,
