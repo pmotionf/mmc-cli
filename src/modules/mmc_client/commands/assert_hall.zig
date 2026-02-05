@@ -44,12 +44,16 @@ pub fn impl(params: [][]const u8) !void {
             alarm_on = true;
         } else return error.InvalidHallAlarmState;
     }
+
+    var line_array: [1]u32 = .{line.id};
+    const lines: std.ArrayList(u32) = .fromOwnedSlice(&line_array);
+
     const request: api.protobuf.mmc.Request = .{
         .body = .{
             .info = .{
                 .body = .{
                     .track = .{
-                        .line = line.id,
+                        .lines = lines,
                         .info_axis_state = true,
                         .filter = .{
                             .axes = .{
@@ -65,7 +69,7 @@ pub fn impl(params: [][]const u8) !void {
     try client.sendRequest(client.allocator, net, request);
     var decoded = try client.getResponse(client.allocator, net);
     defer decoded.deinit(client.allocator);
-    var track = switch (decoded.body orelse return error.InvalidResponse) {
+    const track = switch (decoded.body orelse return error.InvalidResponse) {
         .info => |info_resp| switch (info_resp.body orelse
             return error.InvalidResponse) {
             .track => |track_resp| track_resp,
@@ -79,8 +83,21 @@ pub fn impl(params: [][]const u8) !void {
         },
         else => return error.InvalidResponse,
     };
-    if (track.line != line.id) return error.InvalidResponse;
-    const axis = track.axis_state.pop() orelse return error.InvalidResponse;
+
+    if (track.lines.items.len != 1)
+        return error.InvalidResponse;
+
+    const track_line = &track.lines.items[0];
+    if (track_line.id != line.id)
+        return error.InvalidResponse;
+
+    if (track_line.axis_state.items.len != 1)
+        return error.InvalidResponse;
+
+    const axis = track_line.axis_state.items[0];
+    if (axis.id != axis_id)
+        return error.InvalidResponse;
+
     switch (side) {
         .DIRECTION_BACKWARD => {
             if (axis.hall_alarm_back != alarm_on) {
