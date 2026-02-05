@@ -191,6 +191,8 @@ fn modify(
         if (kind == .all or kind == .axis)
             client.log_config.lines[line.index].axes[axis_id - 1] = flag;
         if (kind == .all or kind == .driver) {
+            var line_array: [1]u32 = .{line.id};
+            const lines: std.ArrayList(u32) = .fromOwnedSlice(&line_array);
             // Since the client does not know on which driver the axis is
             // located, the client has to request driver info with axis filter.
             const request: api.protobuf.mmc.Request = .{
@@ -198,7 +200,7 @@ fn modify(
                     .info = .{
                         .body = .{
                             .track = .{
-                                .line = line.id,
+                                .lines = lines,
                                 .info_driver_state = true,
                                 .filter = .{
                                     .axes = .{
@@ -214,7 +216,7 @@ fn modify(
             try client.sendRequest(client.allocator, net, request);
             var decoded = try client.getResponse(client.allocator, net);
             defer decoded.deinit(client.allocator);
-            var track = switch (decoded.body orelse return error.InvalidResponse) {
+            const track = switch (decoded.body orelse return error.InvalidResponse) {
                 .info => |info_resp| switch (info_resp.body orelse
                     return error.InvalidResponse) {
                     .track => |track_resp| track_resp,
@@ -228,8 +230,15 @@ fn modify(
                 },
                 else => return error.InvalidResponse,
             };
-            if (track.line != line.id) return error.InvalidResponse;
-            const driver = track.driver_state.pop() orelse
+
+            if (track.lines.items.len != 1)
+                return error.InvalidResponse;
+
+            const track_line = &track.lines.items[0];
+            if (track_line.id != line.id)
+                return error.InvalidResponse;
+
+            const driver = track_line.driver_state.pop() orelse
                 return error.InvalidResponse;
             client.log_config.lines[line.index].drivers[driver.id - 1] = flag;
         }

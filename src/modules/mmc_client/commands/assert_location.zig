@@ -33,12 +33,14 @@ pub fn impl(params: [][]const u8) !void {
         1;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
+    var line_array: [1]u32 = .{line.id};
+    const lines: std.ArrayList(u32) = .fromOwnedSlice(&line_array);
     const request: api.protobuf.mmc.Request = .{
         .body = .{
             .info = .{
                 .body = .{
                     .track = .{
-                        .line = line.id,
+                        .lines = lines,
                         .info_carrier_state = true,
                         .filter = .{
                             .carriers = .{ .ids = .fromOwnedSlice(&ids) },
@@ -65,10 +67,21 @@ pub fn impl(params: [][]const u8) !void {
         },
         else => return error.InvalidResponse,
     };
-    if (track.line != line.id) return error.InvalidResponse;
-    var carriers = track.carrier_state;
-    if (carriers.items.len != 1) return error.InvalidResponse;
-    const carrier = carriers.pop() orelse return error.CarrierNotFound;
+
+    if (track.lines.items.len != 1)
+        return error.InvalidResponse;
+
+    const track_line = track.lines.items[0];
+    if (track_line.id != line.id)
+        return error.InvalidResponse;
+
+    if (track_line.carrier_state.items.len != 1)
+        return error.InvalidResponse;
+
+    const carrier = track_line.carrier_state.items[0];
+    if (carrier.id != ids[0])
+        return error.CarrierNotFound;
+
     const location = carrier.position;
     if (location < expected_location - location_thr or
         location > expected_location + location_thr)
