@@ -83,9 +83,7 @@ pub fn impl(params: [][]const u8) !void {
                                 else
                                     .CONTROL_POSITION,
                                 .disable_cas = disable_cas,
-                                .target = .{
-                                    .location = loc,
-                                },
+                                .target = loc,
                             } else break :blk null;
                         },
                     },
