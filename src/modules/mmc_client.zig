@@ -142,6 +142,7 @@ pub const error_response = struct {
             .INFO_REQUEST_ERROR_INVALID_AXIS => error.InvalidAxis,
             .INFO_REQUEST_ERROR_INVALID_DRIVER => error.InvalidDriver,
             .INFO_REQUEST_ERROR_MISSING_PARAMETER => error.MissingParameter,
+            .INFO_REQUEST_ERROR_COMMAND_NOT_FOUND => error.CommandNotFound,
             _ => return error.UnexpectedResponse,
         };
     }
