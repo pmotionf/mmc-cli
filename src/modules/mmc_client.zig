@@ -131,6 +131,7 @@ pub const error_response = struct {
             .COMMAND_REQUEST_ERROR_OUT_OF_MEMORY => error.ServerRunningOutOfMemory,
             .COMMAND_REQUEST_ERROR_MAXIMUM_AUTO_INITIALIZE_EXCEEDED => error.MaximumAutoInitializeExceeded,
             .COMMAND_REQUEST_ERROR_CONFLICTING_CARRIER_ID => error.ConflictingCarrierId,
+            .COMMAND_REQUEST_ERROR_INVALID_COMMAND => error.InvalidCommand,
             _ => return error.UnexpectedResponse,
         };
     }
@@ -143,6 +144,7 @@ pub const error_response = struct {
             .INFO_REQUEST_ERROR_INVALID_DRIVER => error.InvalidDriver,
             .INFO_REQUEST_ERROR_MISSING_PARAMETER => error.MissingParameter,
             .INFO_REQUEST_ERROR_COMMAND_NOT_FOUND => error.CommandNotFound,
+            .INFO_REQUEST_ERROR_INVALID_COMMAND => error.InvalidCommand,
             _ => return error.UnexpectedResponse,
         };
     }
