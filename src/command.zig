@@ -412,9 +412,9 @@ pub fn init() !void {
         },
         .short_description = "Set a variable equal to a value.",
         .long_description =
-        \\Create a variable name that resolves to the provided value in all
-        \\future commands. Variable names are case sensitive and shall not begin
-        \\with digit.
+        \\Create or update a variable name that resolves to the provided value
+        \\in all future commands. Variable names are case sensitive and shall
+        \\not begin with digit.
         ,
         .execute = &set,
     } });
@@ -429,6 +429,18 @@ pub fn init() !void {
         \\Variable names are case sensitive.
         ,
         .execute = &get,
+    } });
+    try registry.put(.{ .executable = .{
+        .name = "REMOVE",
+        .parameters = &[_]Command.Executable.Parameter{
+            .{ .name = "variable", .resolve = false },
+        },
+        .short_description = "Remove a variable.",
+        .long_description =
+        \\Remove a previously created variable. Variable names are case
+        \\sensitive.
+        ,
+        .execute = &remove,
     } });
     try registry.put(.{ .executable = .{
         .name = "VARIABLES",
@@ -777,6 +789,18 @@ fn get(params: [][]const u8) !void {
             value,
         });
     } else return error.UndefinedVariable;
+}
+
+fn remove(params: [][]const u8) !void {
+    if (std.ascii.isDigit(params[0][0])) {
+        return error.InvalidParameter;
+    } else if (variables.get(params[0])) |value| {
+        std.log.info("Remove variable \"{s}\": {s}\n", .{
+            params[0],
+            value,
+        });
+    } else return error.UndefinedVariable;
+    variables.remove(params[0]);
 }
 
 fn printVariables(_: [][]const u8) !void {
