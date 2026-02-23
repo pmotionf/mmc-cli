@@ -145,6 +145,7 @@ pub const error_response = struct {
             .INFO_REQUEST_ERROR_MISSING_PARAMETER => error.MissingParameter,
             .INFO_REQUEST_ERROR_COMMAND_NOT_FOUND => error.CommandNotFound,
             .INFO_REQUEST_ERROR_INVALID_COMMAND => error.InvalidCommand,
+            .INFO_REQUEST_ERROR_INVALID_CARRIER => error.InvalidCarrier,
             _ => return error.UnexpectedResponse,
         };
     }
