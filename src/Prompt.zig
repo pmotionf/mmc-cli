@@ -658,11 +658,12 @@ fn argIndexAtCursor(ctx: *const Prompt) ?usize {
     return ti - 1;
 }
 
-fn clearTwoLinesAndReturnToTop(w: *std.Io.Writer) !void {
-    try w.writeAll("\x1B[1E"); // moves cursor to beginning of next line
-    try w.writeAll("\x1B[2K\r"); // clear the line
-    try w.writeAll("\x1B[1A"); // cursor up
-    try w.writeAll("\x1B[2K\r"); // clear the line
+fn clearTwoLinesAndReturnToTop(w: *std.io.Writer) !void {
+    try w.writeAll("\x1B7"); // Save cursor position
+    try w.writeAll("\x1B[2K"); // Clear line, return to column 1
+    try w.writeAll("\x1B[1B"); // Cursor down by 1
+    try w.writeAll("\x1B[2K"); // Clear entire line
+    try w.writeAll("\x1B8\r"); // Restore cursor position, return to column 1
 }
 
 fn renderArgHintLine(ctx: *const Prompt, w: *std.Io.Writer) !void {
