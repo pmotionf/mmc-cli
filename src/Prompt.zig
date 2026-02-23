@@ -58,9 +58,9 @@ pub fn handler(ctx: *Prompt) void {
                 "Enter command (HELP for usage):\n",
             ) catch continue :main;
             // Create new line to have space for hint line
-            _ = stdout.interface.writeAll("\x0A") catch // new line
+            stdout.interface.writeAll("\x0A") catch // new line
                 continue :main;
-            _ = stdout.interface.writeAll("\x1B[1A") catch // cursor up
+            stdout.interface.writeAll("\x1B[1A") catch // cursor up
                 continue :main;
 
             stdout.interface.flush() catch continue :main;
