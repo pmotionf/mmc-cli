@@ -102,131 +102,106 @@ pub fn impl(params: [][]const u8) !void {
         client.sock = null;
         net.close();
     }
-    // Asserting that API version matched between client and server
-    {
-        const request: api.protobuf.mmc.Request = .{
-            .body = .{
-                .core = .{ .kind = .CORE_REQUEST_KIND_API_VERSION },
-            },
-        };
-        try client.sendRequest(client.allocator, net, request);
-        var decoded = try client.getResponse(client.allocator, net);
-        defer decoded.deinit(client.allocator);
-        const server_api_version = switch (decoded.body orelse
+    // Request server information, for matching API and getting server name.
+    const server_request: api.protobuf.mmc.Request = .{
+        .body = .{
+            .core = .{ .kind = .CORE_REQUEST_KIND_SERVER_INFO },
+        },
+    };
+    try client.sendRequest(client.allocator, net, server_request);
+    var server_decoded = try client.getResponse(client.allocator, net);
+    defer server_decoded.deinit(client.allocator);
+    const server = switch (server_decoded.body orelse
+        return error.InvalidResponse) {
+        .core => |core_resp| switch (core_resp.body orelse
             return error.InvalidResponse) {
-            .core => |core_resp| switch (core_resp.body orelse
-                return error.InvalidResponse) {
-                .api_version => |api_version| api_version,
-                .request_error => |req_err| {
-                    return client.error_response.throwCoreError(req_err);
-                },
-                else => return error.InvalidResponse,
-            },
+            .server => |server| server,
             .request_error => |req_err| {
-                return client.error_response.throwMmcError(req_err);
+                return client.error_response.throwCoreError(req_err);
             },
             else => return error.InvalidResponse,
-        };
-        if (api.protobuf.version.major != server_api_version.major or
-            api.protobuf.version.minor > server_api_version.minor)
-        {
-            std.log.info(
-                "Client API version: {f}, Server API version: {}.{}.{}",
-                .{
-                    api.protobuf.version,
-                    server_api_version.major,
-                    server_api_version.minor,
-                    server_api_version.patch,
-                },
-            );
-            return error.APIVersionMismatch;
-        }
-    }
-    // Getting track configuration
+        },
+        .request_error => |req_err| {
+            return client.error_response.throwMmcError(req_err);
+        },
+        else => return error.InvalidResponse,
+    };
+
+    // API matching
+    const server_api_version = server.api orelse return error.InvalidResponse;
+    if (api.protobuf.version.major != server_api_version.major or
+        api.protobuf.version.minor > server_api_version.minor)
     {
-        const request: api.protobuf.mmc.Request = .{
-            .body = .{
-                .core = .{ .kind = .CORE_REQUEST_KIND_TRACK_CONFIG },
+        std.log.info(
+            "Client API version: {f}, Server API version: {}.{}.{}",
+            .{
+                api.protobuf.version,
+                server_api_version.major,
+                server_api_version.minor,
+                server_api_version.patch,
             },
-        };
-        try client.sendRequest(client.allocator, net, request);
-        var decoded = try client.getResponse(client.allocator, net);
-        defer decoded.deinit(client.allocator);
-        const track_config = switch (decoded.body orelse
-            return error.InvalidResponse) {
-            .core => |core_resp| switch (core_resp.body orelse
-                return error.InvalidResponse) {
-                .track_config => |track_config| track_config,
-                .request_error => |req_err| {
-                    return client.error_response.throwCoreError(req_err);
-                },
-                else => return error.InvalidResponse,
-            },
-            .request_error => |req_err| {
-                return client.error_response.throwMmcError(req_err);
-            },
-            else => return error.InvalidResponse,
-        };
-        client.lines = try client.allocator.alloc(
-            client.Line,
-            track_config.lines.items.len,
         );
-        for (
-            track_config.lines.items,
-            client.lines,
-            0..,
-        ) |config, *line, idx| {
-            line.* = try client.Line.init(
-                client.allocator,
-                @intCast(idx),
-                config,
-            );
-            try client.parameter.value.line.items.insert(config.name);
-        }
-        // Initialize memory for logging configuration
-        client.log_config =
-            try client.log.Config.init(client.allocator, client.lines);
+        return error.APIVersionMismatch;
     }
-    {
-        const request: api.protobuf.mmc.Request = .{
-            .body = .{
-                .core = .{ .kind = .CORE_REQUEST_KIND_SERVER_INFO },
-            },
-        };
-        try client.sendRequest(client.allocator, net, request);
-        var decoded = try client.getResponse(client.allocator, net);
-        defer decoded.deinit(client.allocator);
-        const server = switch (decoded.body orelse
+    // Track configuration request
+    const track_request: api.protobuf.mmc.Request = .{
+        .body = .{
+            .core = .{ .kind = .CORE_REQUEST_KIND_TRACK_CONFIG },
+        },
+    };
+    try client.sendRequest(client.allocator, net, track_request);
+    var track_decoded = try client.getResponse(client.allocator, net);
+    defer track_decoded.deinit(client.allocator);
+    const track_config = switch (track_decoded.body orelse
+        return error.InvalidResponse) {
+        .core => |core_resp| switch (core_resp.body orelse
             return error.InvalidResponse) {
-            .core => |core_resp| switch (core_resp.body orelse
-                return error.InvalidResponse) {
-                .server => |server| server,
-                .request_error => |req_err| {
-                    return client.error_response.throwCoreError(req_err);
-                },
-                else => return error.InvalidResponse,
-            },
+            .track_config => |track_config| track_config,
             .request_error => |req_err| {
-                return client.error_response.throwMmcError(req_err);
+                return client.error_response.throwCoreError(req_err);
             },
             else => return error.InvalidResponse,
-        };
-        std.log.info("Track configuration for {s}:", .{server.name});
-        var stdout = std.fs.File.stdout().writer(&.{});
-        for (client.lines) |line| {
-            try stdout.interface.print(
-                "\t {s} ({}) - {} {s} | {} {s}\n",
-                .{
-                    line.name,
-                    line.axes,
-                    line.velocity,
-                    client.standard.speed.unit,
-                    line.acceleration,
-                    client.standard.acceleration.unit,
-                },
-            );
-            try stdout.interface.flush();
-        }
+        },
+        .request_error => |req_err| {
+            return client.error_response.throwMmcError(req_err);
+        },
+        else => return error.InvalidResponse,
+    };
+    client.lines = try client.allocator.alloc(
+        client.Line,
+        track_config.lines.items.len,
+    );
+    for (
+        track_config.lines.items,
+        client.lines,
+        0..,
+    ) |config, *line, idx| {
+        line.* = try client.Line.init(
+            client.allocator,
+            @intCast(idx),
+            config,
+        );
+        try client.parameter.value.line.items.insert(config.name);
+    }
+    // Initialize memory for logging configuration
+    client.log_config =
+        try client.log.Config.init(client.allocator, client.lines);
+    // Displaying track configuration
+    std.log.info("Track configuration for {s}:", .{server.name});
+    var stdout = std.fs.File.stdout().writer(&.{});
+    for (client.lines) |line| {
+        try stdout.interface.print(
+            "\t {s} ({}) - {} {s} | {} {s}\n",
+            .{
+                line.name,
+                line.axes,
+                line.velocity,
+                client.standard.speed.unit,
+                line.acceleration,
+                client.standard.acceleration.unit,
+            },
+        );
+        try stdout.interface.flush();
     }
     std.log.info("Connected to {f}", .{try net.getRemoteEndPoint()});
 }
