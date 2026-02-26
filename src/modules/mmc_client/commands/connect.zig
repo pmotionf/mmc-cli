@@ -171,6 +171,12 @@ pub fn impl(params: [][]const u8) !void {
         client.Line,
         track_config.lines.items.len,
     );
+    errdefer {
+        for (client.lines) |*line| {
+            line.deinit(client.allocator);
+        }
+        client.allocator.free(client.lines);
+    }
     for (
         track_config.lines.items,
         client.lines,
@@ -186,6 +192,7 @@ pub fn impl(params: [][]const u8) !void {
     // Initialize memory for logging configuration
     client.log_config =
         try client.log.Config.init(client.allocator, client.lines);
+    errdefer client.log_config.deinit(client.allocator);
     // Displaying track configuration
     std.log.info("Track configuration for {s}:", .{server.name});
     var stdout = std.fs.File.stdout().writer(&.{});
