@@ -21,8 +21,8 @@
             .hash = "chrono-0.1.0-uVd76I_AAwCMh8lYH9E-5ia0tI-tda4Q2FjFoIdE2dYG",
         },
         .mmc_api = .{
-            .url = "https://github.com/pmotionf/mmc-api/archive/3bb8fc8.tar.gz",
-            .hash = "mmc_api-0.0.0-P5raR6PxMQCkstG_0E8PrOyIotYgw_IaDrDKHx7h7nu9",
+            .url = "https://github.com/pmotionf/mmc-api/archive/f6ae53a.tar.gz",
+            .hash = "mmc_api-0.0.0-P5raR3vpMQCsSgyIirsbIF-H2dPqpHplFvmVA6LMoJZe",
         },
         .soem = .{
             .url = "https://github.com/pmotionf/SOEM/archive/6dff3f5.tar.gz",
