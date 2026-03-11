@@ -57,6 +57,12 @@ pub fn handler(ctx: *Prompt) void {
             stdout.interface.writeAll(
                 "Enter command (HELP for usage):\n",
             ) catch continue :main;
+            // Create new line to have space for hint line
+            stdout.interface.writeAll("\x0A") catch // new line
+                continue :main;
+            stdout.interface.writeAll("\x1B[1A") catch // cursor up
+                continue :main;
+
             stdout.interface.flush() catch continue :main;
         }
         prev_disable = false;
@@ -393,8 +399,8 @@ pub fn handler(ctx: *Prompt) void {
         };
         ctx.complete_partial_start = start_completion;
 
-        // Clear input line to prepare for writing
-        stdout.interface.writeAll("\x1B[2K\r") catch continue :main;
+        // Clear input line and hint line to prepare for writing
+        clearTwoLinesAndReturnToTop(&stdout.interface) catch continue :main;
 
         ctx.selected_command = &.{};
         // Parse and print syntax highlighted input
@@ -617,8 +623,78 @@ pub fn handler(ctx: *Prompt) void {
             }
         }
 
+        // Go to hint line, then print hints and then to input line
+        stdout.interface.writeByte('\n') catch continue :main;
+        renderArgHintLine(ctx, &stdout.interface) catch continue :main;
+
+        // Move back to input line
+        stdout.interface.writeAll("\x1B[1A") catch continue :main;
         io.cursor.moveColumn(&stdout.interface, ctx.cursor.visible + 1) catch
             continue :main;
+    }
+}
+
+fn tokenIndexAtCursor(input: []const u8, cursor_raw: usize) usize {
+    // Token index where the cursor currently is
+    // 0 = command, 1 = first arg, 2 = second arg..
+    const slice = input[0..@min(cursor_raw, input.len)];
+    var it = std.mem.tokenizeAny(u8, slice, &std.ascii.whitespace);
+
+    var tok_count: usize = 0;
+    while (it.next()) |_| tok_count += 1;
+
+    const ends_with_space =
+        cursor_raw > 0 and
+        cursor_raw <= input.len and
+        std.ascii.isWhitespace(input[cursor_raw - 1]);
+
+    if (ends_with_space or tok_count == 0) return tok_count;
+    return tok_count - 1;
+}
+
+fn argIndexAtCursor(ctx: *const Prompt) ?usize {
+    const ti = tokenIndexAtCursor(ctx.input, ctx.cursor.raw);
+    if (ti == 0) return null;
+    return ti - 1;
+}
+
+fn clearTwoLinesAndReturnToTop(w: *std.io.Writer) !void {
+    try w.writeAll("\x1B7"); // Save cursor position
+    try w.writeAll("\x1B[2K"); // Clear line, return to column 1
+    try w.writeAll("\x1B[1B"); // Cursor down by 1
+    try w.writeAll("\x1B[2K"); // Clear entire line
+    try w.writeAll("\x1B8\r"); // Restore cursor position, return to column 1
+}
+
+fn renderArgHintLine(ctx: *const Prompt, w: *std.Io.Writer) !void {
+    if (ctx.selected_command.len == 0) return;
+
+    const cmd_ptr = command.registry.getPtr(ctx.selected_command) orelse return;
+    const cmd = cmd_ptr.*;
+
+    const ai_cursor = argIndexAtCursor(ctx) orelse return;
+
+    try io.style.set(w, .{ .fg = .{ .lut = .grayscale(12) } });
+    defer io.style.reset(w) catch {};
+
+    try w.writeAll("Parameter: ");
+
+    for (cmd.parameters, 0..) |p, i| {
+        const open: u8 = if (p.optional) '[' else '(';
+        const close: u8 = if (p.optional) ']' else ')';
+
+        if (i == ai_cursor and ai_cursor < cmd.parameters.len) {
+            try io.style.set(w, .{ .underline = true });
+        }
+
+        try w.print("{c}{s}{c}", .{ open, p.name, close });
+
+        if (i == ai_cursor and ai_cursor < cmd.parameters.len) {
+            try io.style.reset(w);
+            try io.style.set(w, .{ .fg = .{ .lut = .grayscale(12) } });
+        }
+
+        if (i + 1 < cmd.parameters.len) try w.writeByte(' ');
     }
 }
 
