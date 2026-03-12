@@ -154,6 +154,13 @@ pub fn handler(ctx: *Prompt) void {
                                 }
                             },
                             .enter => {
+                                stdout.interface.writeAll("\x1B[1B") catch
+                                    continue :main;
+                                stdout.interface.writeAll("\x1B[0J") catch
+                                    continue :main;
+                                stdout.interface.writeAll("\x1B[1A") catch
+                                    continue :main;
+
                                 if (ctx.history.selection) |*selection| {
                                     const hist_item = selection.slice();
                                     ctx.input =
