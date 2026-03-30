@@ -1,5 +1,5 @@
 const std = @import("std");
-const client = @import("../../mmc_client.zig");
+const client = @import("../../MmcClient.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 
@@ -12,12 +12,12 @@ pub fn impl(params: [][]const u8) !void {
     // from 0.1 to 6000.0 mm/s
 
     const line_idx = try client.matchLine(line_name);
-    client.lines[line_idx].velocity = carrier_speed;
+    client.get().lines[line_idx].velocity = carrier_speed;
 
     std.log.info(
         "Set speed to {d} {s}",
         .{
-            client.lines[line_idx].velocity,
+            client.get().lines[line_idx].velocity,
             client.standard.speed.unit,
         },
     );

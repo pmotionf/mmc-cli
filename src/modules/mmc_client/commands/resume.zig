@@ -1,5 +1,5 @@
 const std = @import("std");
-const client = @import("../../mmc_client.zig");
+const client = @import("../../MmcClient.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
@@ -7,7 +7,7 @@ const api = @import("mmc-api");
 pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "resume");
     defer tracy_zone.end();
-    const net = client.sock orelse return error.ServerNotConnected;
+    const net = client.get().sock orelse return error.ServerNotConnected;
     var ids: [1]u32 = .{0};
     if (params[0].len > 0) {
         const line_name = params[0];
@@ -25,6 +25,6 @@ pub fn impl(params: [][]const u8) !void {
             },
         },
     };
-    try client.sendRequest(client.allocator, net, request);
-    try client.waitCommandCompleted(client.allocator, net);
+    try client.sendRequest(client.get().allocator, net, request);
+    try client.waitCommandCompleted(client.get().allocator, net);
 }

@@ -10,7 +10,7 @@ const ReturnDemo2Config = if (config.return_demo2)
 else
     void;
 const ClientCliConfig =
-    if (config.mmc_client) @import("modules/mmc_client.zig").Config else void;
+    if (config.mmc_client) @import("modules/MmcClient.zig").Config else void;
 const Mes07Config =
     if (config.mes07) @import("modules/mes07.zig").Config else void;
 

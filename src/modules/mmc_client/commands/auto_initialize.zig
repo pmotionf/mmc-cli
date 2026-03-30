@@ -1,6 +1,6 @@
 //! This file contains callbacks for managing the server-side state.
 const std = @import("std");
-const client = @import("../../mmc_client.zig");
+const client = @import("../../MmcClient.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
@@ -9,11 +9,11 @@ pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "auto_initialize");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
-    const net = client.sock orelse return error.ServerNotConnected;
+    const net = client.get().sock orelse return error.ServerNotConnected;
     var init_lines: std.ArrayList(
         api.protobuf.mmc.command.Request.AutoInitialize.Line,
     ) = .empty;
-    defer init_lines.deinit(client.allocator);
+    defer init_lines.deinit(client.get().allocator);
     if (params[0].len != 0) {
         var iterator = std.mem.tokenizeSequence(
             u8,
@@ -22,11 +22,11 @@ pub fn impl(params: [][]const u8) !void {
         );
         while (iterator.next()) |line_name| {
             const line_idx = try client.matchLine(line_name);
-            const _line = client.lines[line_idx];
+            const _line = client.get().lines[line_idx];
             const line: api.protobuf.mmc.command.Request.AutoInitialize.Line = .{
                 .line = _line.id,
             };
-            try init_lines.append(client.allocator, line);
+            try init_lines.append(client.get().allocator, line);
         }
     }
     const request: api.protobuf.mmc.Request = .{
@@ -40,6 +40,6 @@ pub fn impl(params: [][]const u8) !void {
             },
         },
     };
-    try client.sendRequest(client.allocator, net, request);
-    try client.waitCommandCompleted(client.allocator, net);
+    try client.sendRequest(client.get().allocator, net, request);
+    try client.waitCommandCompleted(client.get().allocator, net);
 }

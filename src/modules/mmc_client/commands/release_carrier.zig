@@ -1,6 +1,6 @@
 //! This file contains client for managing the server-side state.
 const std = @import("std");
-const client = @import("../../mmc_client.zig");
+const client = @import("../../MmcClient.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
@@ -9,10 +9,10 @@ pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "release_carrier");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
-    const net = client.sock orelse return error.ServerNotConnected;
+    const net = client.get().sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
-    const line = client.lines[line_idx];
+    const line = client.get().lines[line_idx];
     var filter: ?client.Filter = null;
     if (params[1].len > 0) {
         filter = try .parse(params[1]);
@@ -39,6 +39,6 @@ pub fn impl(params: [][]const u8) !void {
             },
         },
     };
-    try client.sendRequest(client.allocator, net, request);
-    try client.waitCommandCompleted(client.allocator, net);
+    try client.sendRequest(client.get().allocator, net, request);
+    try client.waitCommandCompleted(client.get().allocator, net);
 }

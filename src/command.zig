@@ -16,7 +16,7 @@ const config = @import("config");
 const return_demo2 =
     if (config.return_demo2) @import("modules/return_demo2.zig") else void;
 const mmc_client =
-    if (config.mmc_client) @import("modules/mmc_client.zig") else void;
+    if (config.mmc_client) @import("modules/MmcClient.zig") else void;
 const mes07 = if (config.mes07) @import("modules/mes07.zig") else void;
 
 const Config = @import("Config.zig");
@@ -287,7 +287,7 @@ pub const Command = union(enum) {
                                 const module = @field(This, module_name);
                                 const kind_name =
                                     field.name[field_name_idx + 1 ..];
-                                return module.parameter.isValid(
+                                return module.get().parameter.isValid(
                                     @field(module.Parameter.Kind, kind_name),
                                     input,
                                 );

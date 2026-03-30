@@ -1,5 +1,5 @@
 const std = @import("std");
-const client = @import("../../mmc_client.zig");
+const client = @import("../../MmcClient.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
@@ -8,7 +8,7 @@ pub fn isolate(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_isolate");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
-    const net = client.sock orelse return error.ServerNotConnected;
+    const net = client.get().sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, b: {
         const input = params[1];
@@ -29,7 +29,7 @@ pub fn isolate(params: [][]const u8) !void {
     else
         0;
     const line_idx = try client.matchLine(line_name);
-    const line = client.lines[line_idx];
+    const line = client.get().lines[line_idx];
     try waitCarrierState(
         net,
         line.id,
@@ -43,7 +43,7 @@ pub fn moveCarrier(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_move_carrier");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
-    const net = client.sock orelse return error.ServerNotConnected;
+    const net = client.get().sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     const carrier_id = try std.fmt.parseInt(u10, b: {
         const input = params[1];
@@ -65,7 +65,7 @@ pub fn moveCarrier(params: [][]const u8) !void {
         0;
 
     const line_idx = try client.matchLine(line_name);
-    const line = client.lines[line_idx];
+    const line = client.get().lines[line_idx];
     try waitCarrierState(
         net,
         line.id,
@@ -79,7 +79,7 @@ pub fn axisEmpty(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_axis_empty");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
-    const net = client.sock orelse return error.ServerNotConnected;
+    const net = client.get().sock orelse return error.ServerNotConnected;
     const line_name = params[0];
     const axis_id = try std.fmt.parseInt(u32, buf: {
         const input = params[1];
@@ -100,7 +100,7 @@ pub fn axisEmpty(params: [][]const u8) !void {
     else
         0;
     const line_idx = try client.matchLine(line_name);
-    const line = client.lines[line_idx];
+    const line = client.get().lines[line_idx];
     var line_array: [1]u32 = .{line.id};
     const lines: std.ArrayList(u32) = .fromOwnedSlice(&line_array);
     var wait_timer = try std.time.Timer.start();
@@ -127,9 +127,9 @@ pub fn axisEmpty(params: [][]const u8) !void {
                 },
             },
         };
-        try client.sendRequest(client.allocator, net, request);
-        var decoded = try client.getResponse(client.allocator, net);
-        defer decoded.deinit(client.allocator);
+        try client.sendRequest(client.get().allocator, net, request);
+        var decoded = try client.getResponse(client.get().allocator, net);
+        defer decoded.deinit(client.get().allocator);
         const track = switch (decoded.body orelse return error.InvalidResponse) {
             .info => |info_resp| switch (info_resp.body orelse
                 return error.InvalidResponse) {
@@ -195,9 +195,9 @@ fn waitCarrierState(
                 },
             },
         };
-        try client.sendRequest(client.allocator, net, request);
-        var decoded = try client.getResponse(client.allocator, net);
-        defer decoded.deinit(client.allocator);
+        try client.sendRequest(client.get().allocator, net, request);
+        var decoded = try client.getResponse(client.get().allocator, net);
+        defer decoded.deinit(client.get().allocator);
         const track = switch (decoded.body orelse return error.InvalidResponse) {
             .info => |info_resp| switch (info_resp.body orelse
                 return error.InvalidResponse) {

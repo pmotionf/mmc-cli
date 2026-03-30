@@ -1,3 +1,4 @@
+const MmcClient = @This();
 const std = @import("std");
 const builtin = @import("builtin");
 
@@ -156,38 +157,74 @@ pub const error_response = struct {
         };
     }
 };
-pub var parameter: Parameter = undefined;
 
+parameter: Parameter,
 /// `lines` is initialized once the client is connected to a server.
 /// Deinitialized once disconnected from a server.
-pub var lines: []Line = &.{};
+lines: []Line,
 /// The logging configuration is initialized once the client is connected, and
 /// deinitialized if the client is disconnected.
-pub var log_config: log.Config = undefined;
+log_config: log.Config,
 /// Currently connected socket. Nulled when disconnect.
-pub var sock: ?zignet.Socket = null;
+sock: ?zignet.Socket,
 /// Currently saved endpoint. The endpoint will be overwritten if the client
 /// is connected to a different server. Stays null before connected to a socket.
-pub var endpoint: ?zignet.Endpoint = null;
-pub var allocator: std.mem.Allocator = undefined;
-
+endpoint: ?zignet.Endpoint,
+allocator: std.mem.Allocator,
 /// Store the configuration.
-pub var config: Config = undefined;
+config: Config,
+
+pub fn create(c: Config) !MmcClient {
+    var self: MmcClient = .{
+        .allocator = if (builtin.mode == .Debug)
+            debug_allocator.allocator()
+        else
+            std.heap.smp_allocator,
+
+        // Store the configuration.
+        .config = undefined,
+        .parameter = undefined,
+        // `lines` is initialized once the client is connected to a server.
+        // Deinitialized once disconnected from a server.
+        .lines = &.{},
+        // The logging configuration is initialized once the client is connected, and
+        // deinitialized if the client is disconnected.
+        .log_config = undefined,
+        // Currently connected socket. Nulled when disconnect.
+        .sock = null,
+        // Currently saved endpoint. The endpoint will be overwritten if the client
+        // is connected to a different server. Stays null before connected to a socket.
+        .endpoint = null,
+    };
+
+    self.config = .{
+        .host = try self.allocator.dupe(u8, c.host),
+        .port = c.port,
+    };
+    errdefer self.allocator.free(self.config.host);
+    self.parameter = .init(self.allocator);
+    errdefer self.parameter.deinit();
+    return self;
+}
 
 var debug_allocator = std.heap.DebugAllocator(.{}){};
 
+var current: ?MmcClient = null;
+
+pub fn get() *MmcClient {
+    // scaffold:
+    // throw error here
+    // e.g. ModuleNotInitialized
+    return &(current orelse std.debug.panic("Mmc_client module is not initialized", .{}));
+    // if (current) |*c| {
+    //     return c;
+    // }
+    // return error.ModuleNotInitialized;
+}
+
 pub fn init(c: Config) !void {
-    allocator = if (builtin.mode == .Debug)
-        debug_allocator.allocator()
-    else
-        std.heap.smp_allocator;
-    config = .{
-        .host = try allocator.dupe(u8, c.host),
-        .port = c.port,
-    };
-    errdefer allocator.free(config.host);
-    parameter = .init(allocator);
-    errdefer parameter.deinit();
+    current = try MmcClient.create(c);
+    errdefer current = null;
 
     try command.registry.put(.{ .executable = .{
         .name = "SERVER_VERSION",
@@ -1295,9 +1332,11 @@ pub fn init(c: Config) !void {
 }
 
 pub fn deinit() void {
+    if (current == null) return;
     commands.disconnect.impl(&.{}) catch {};
-    parameter.deinit();
-    allocator.free(config.host);
+    get().parameter.deinit();
+    get().allocator.free(get().config.host);
+    current = null;
     if (debug_allocator.detectLeaks()) {
         std.log.debug("Leaks detected", .{});
     }
@@ -1305,7 +1344,7 @@ pub fn deinit() void {
 }
 
 pub fn matchLine(name: []const u8) !usize {
-    for (lines) |line| {
+    for (get().lines) |line| {
         if (std.mem.eql(u8, line.name, name)) return line.index;
     } else return error.LineNameNotFound;
 }
@@ -1374,9 +1413,12 @@ pub fn waitCommandCompleted(gpa: std.mem.Allocator, net: zignet.Socket) !void {
                 },
             },
         };
-        try sendRequest(allocator, net, request);
-        var decoded = try getResponse(allocator, net);
-        defer decoded.deinit(allocator);
+        // try sendRequest(allocator, net, request);
+        // var decoded = try getResponse(allocator, net);
+        // defer decoded.deinit(allocator);
+        try sendRequest(get().allocator, net, request);
+        var decoded = try getResponse(get().allocator, net);
+        defer decoded.deinit(get().allocator);
         var commands_resp = switch (decoded.body orelse
             return error.InvalidResponse) {
             .request_error => |req_err| {
@@ -1465,7 +1507,7 @@ pub fn getResponse(
 }
 
 fn removeCommand(id: u32) !void {
-    const net = if (sock) |net| net else return error.ServerNotConnected;
+    const net = if (get().sock) |net| net else return error.ServerNotConnected;
     const request: api.protobuf.mmc.Request = .{
         .body = .{
             .command = .{
@@ -1475,9 +1517,9 @@ fn removeCommand(id: u32) !void {
             },
         },
     };
-    try sendRequest(allocator, net, request);
-    var decoded = try getResponse(allocator, net);
-    defer decoded.deinit(allocator);
+    try sendRequest(get().allocator, net, request);
+    var decoded = try getResponse(get().allocator, net);
+    defer decoded.deinit(get().allocator);
     const removed_id = switch (decoded.body orelse
         return error.InvalidResponse) {
         .command => |command_resp| switch (command_resp.body orelse
