@@ -21,6 +21,72 @@ const mes07 = if (config.mes07) @import("modules/mes07.zig") else void;
 
 const Config = @import("Config.zig");
 
+const ModuleSpec = struct {
+    init: *const fn (Config.ModuleConfig) anyerror!void,
+    deinit: *const fn () void,
+    commands: []const Command,
+};
+
+fn initModuleDisabled(_: Config.ModuleConfig) !void {
+    return error.ModuleDisabledAtBuildTime;
+}
+
+fn deinitModuleDisabled() void {}
+
+fn initReturnDemo2(module_config: Config.ModuleConfig) !void {
+    const cfg = switch (module_config) {
+        .return_demo2 => |cfg| cfg,
+        else => unreachable,
+    };
+    try return_demo2.init(cfg);
+}
+
+fn initMmcClient(module_config: Config.ModuleConfig) !void {
+    const cfg = switch (module_config) {
+        .mmc_client => |cfg| cfg,
+        else => unreachable,
+    };
+    try mmc_client.init(cfg);
+}
+
+fn initMes07(module_config: Config.ModuleConfig) !void {
+    const cfg = switch (module_config) {
+        .mes07 => |cfg| cfg,
+        else => unreachable,
+    };
+    try mes07.init(cfg);
+}
+
+const module_specs = std.EnumArray(Config.Module, ModuleSpec).init(.{
+    .return_demo2 = if (config.return_demo2) .{
+        .init = initReturnDemo2,
+        .deinit = return_demo2.deinit,
+        .commands = return_demo2.module_commands[0..],
+    } else .{
+        .init = initModuleDisabled,
+        .deinit = deinitModuleDisabled,
+        .commands = &.{},
+    },
+    .mmc_client = if (config.mmc_client) .{
+        .init = initMmcClient,
+        .deinit = mmc_client.deinit,
+        .commands = mmc_client.module_commands[0..],
+    } else .{
+        .init = initModuleDisabled,
+        .deinit = deinitModuleDisabled,
+        .commands = &.{},
+    },
+    .mes07 = if (config.mes07) .{
+        .init = initMes07,
+        .deinit = mes07.deinit,
+        .commands = mes07.module_commands[0..],
+    } else .{
+        .init = initModuleDisabled,
+        .deinit = deinitModuleDisabled,
+        .commands = &.{},
+    },
+});
+
 pub const Registry = struct {
     mapping: std.StringArrayHashMap(Command.Executable),
 
@@ -975,21 +1041,13 @@ fn file(params: [][]const u8) !void {
 
 fn deinitModules() void {
     var mod_it = initialized_modules.iterator();
-    const fields = @typeInfo(Config.Module).@"enum".fields;
-    while (mod_it.next()) |e| {
-        if (e.value.*) {
-            switch (@intFromEnum(e.key)) {
-                inline 0...fields.len - 1 => |i| {
-                    const f_type = @typeInfo(@field(@This(), fields[i].name));
-                    if (comptime f_type != .void) {
-                        @field(@This(), fields[i].name).deinit();
-                        const module = @field(Config.Module, fields[i].name);
-                        initialized_modules.set(module, false);
-                    }
-                },
-                else => unreachable,
-            }
-        }
+    while (mod_it.next()) |entry| {
+        if (!entry.value.*) continue;
+
+        const spec = module_specs.get(entry.key);
+        unregisterCommands(spec.commands);
+        spec.deinit();
+        initialized_modules.set(entry.key, false);
     }
     active_config_id = null;
 }
@@ -1098,25 +1156,19 @@ fn genLoadedConfigId(file_path: []const u8, config_id: []const u8) ![]u8 {
 }
 
 fn initModulesFromConfig(conf: *Config) !void {
-    const fields = @typeInfo(Config.Module).@"enum".fields;
     errdefer deinitModules();
 
     for (conf.modules()) |module| {
-        switch (@intFromEnum(module)) {
-            inline 0...fields.len - 1 => |i| {
-                const f_type = @typeInfo(@field(@This(), fields[i].name));
-                if (comptime f_type != .void) {
-                    try @field(@This(), fields[i].name).init(
-                        @field(module, fields[i].name),
-                    );
-                    initialized_modules.set(
-                        @field(Config.Module, fields[i].name),
-                        true,
-                    );
-                }
-            },
-            else => unreachable,
-        }
+        const module_id = std.meta.activeTag(module);
+        const spec = module_specs.get(module_id);
+
+        try spec.init(module);
+        errdefer spec.deinit();
+
+        try registerCommands(spec.commands);
+        errdefer unregisterCommands(spec.commands);
+
+        initialized_modules.set(module_id, true);
     }
 }
 
@@ -1207,8 +1259,9 @@ fn unloadConfig(params: [][]const u8) !void {
     }
 
     std.log.debug(
-        "unload config: id={s}, was active={}, fallback={s}",
+        "Unload config: idx={d}, id={s}, was active={}, fallback={s}",
         .{
+            idx,
             id,
             was_active,
             fallback_id orelse "nope",

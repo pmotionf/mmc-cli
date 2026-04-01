@@ -17,6 +17,1012 @@ pub const Config = struct {
     port: u16,
 };
 
+pub const module_commands = [_]command.Command{
+    .{ .executable = .{
+        .name = "SERVER_VERSION",
+        .short_description = "Display the connected MMC server version.",
+        .long_description =
+        \\Display the version of the currently connected MMC server in Semantic
+        \\Version format ({major}.{minor}.{patch}).
+        ,
+        .execute = &commands.server_version.impl,
+    } },
+    .{ .executable = .{
+        .name = "CONNECT",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "endpoint", .optional = true },
+        },
+        .short_description = "Connect to MMC server.",
+        .long_description = std.fmt.comptimePrint(
+            \\Attempt to connect to MMC server.
+            \\
+            \\Endpoint may be specified using one of the following formats:
+            \\ - `HOSTNAME:PORT`
+            \\ - `IPv4_ADDRESS:PORT`
+            \\ - `[IPv6_ADDRESS%SCOPE]:PORT`
+            \\
+            \\If no endpoint provided, last connected server is used. If no server has
+            \\been connected since `LOAD_CONFIG`, connect to the default endpoint
+            \\provided in the configuration file.
+        , .{}),
+        .execute = &commands.connect.impl,
+    } },
+    .{ .executable = .{
+        .name = "DISCONNECT",
+        .short_description = "End connection with MMC server.",
+        .long_description = std.fmt.comptimePrint(
+            \\Disconnect from currently connected MMC server.
+        , .{}),
+        .execute = &commands.disconnect.impl,
+    } },
+    .{ .executable = .{
+        .name = "SET_SPEED",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "speed" },
+        },
+        .short_description = "Set Carrier speed of specified Line",
+        .long_description = std.fmt.comptimePrint(
+            \\Set Carrier speed of specified Line. The speed value must be
+            \\greater than {d} and less than or equal to {d} {s}.
+            \\
+            \\Example: Set speed of Line "line1" to 300 {s}.
+            \\SET_SPEED line1 300
+        , .{
+            standard.speed.range.min,
+            standard.speed.range.max,
+            standard.speed.unit,
+            standard.speed.unit,
+        }),
+        .execute = &commands.set_speed.impl,
+    } },
+    .{ .executable = .{
+        .name = "SET_ACCELERATION",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "acceleration" },
+        },
+        .short_description = "Set Carrier acceleration of specified Line",
+        .long_description = std.fmt.comptimePrint(
+            \\Set Carrier acceleration of specified Line. The acceleration value
+            \\must be greater than {d} and less than or equal to {d} {s}.
+            \\
+            \\Example: Set acceleration of Line "line1" to 200 {s}.
+            \\SET_ACCELERATION line1 200
+        , .{
+            standard.acceleration.range.min,
+            standard.acceleration.range.max,
+            standard.acceleration.unit,
+            standard.acceleration.unit,
+        }),
+        .execute = &commands.set_acceleration.impl,
+    } },
+    .{ .executable = .{
+        .name = "GET_SPEED",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+        },
+        .short_description = "Print Carrier speed of the specified Line",
+        .long_description = std.fmt.comptimePrint(
+            \\Print Carrier speed of specified Line.
+            \\
+            \\Example: Print speed of Line "line1".
+            \\GET_SPEED line1
+        , .{}),
+        .execute = &commands.get_speed.impl,
+    } },
+    .{ .executable = .{
+        .name = "GET_ACCELERATION",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+        },
+        .short_description = "Print Carrier acceleration of the specified Line",
+        .long_description = std.fmt.comptimePrint(
+            \\Print Carrier acceleration of the specified Line.
+            \\
+            \\Example: Print acceleration of Line "line1".
+            \\GET_ACCELERATION line1
+        , .{}),
+        .execute = &commands.get_acceleration.impl,
+    } },
+    .{ .executable = .{
+        .name = "PRINT_AXIS_INFO",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "filter", .kind = .mmc_client_filter },
+        },
+        .short_description = "Print Axis information.",
+        .long_description = std.fmt.comptimePrint(
+            \\Print Axis information of specified Line. Specify which Axis or Axes
+            \\to print info via filter. To apply filter, provide ID with filter
+            \\suffix (e.g., 1a). Supported suffixes are:
+            \\ - "a" or "axis" to filter by Axis
+            \\ - "c" or "carrier" to filter by Carrier
+            \\ - "d" or "driver" to filter by Driver
+            \\
+            \\Example: Print Axis information of Axis "1" on Line "line1".
+            \\PRINT_AXIS_INFO line1 1a
+        , .{}),
+        .execute = &commands.print_axis_info.impl,
+    } },
+    .{ .executable = .{
+        .name = "PRINT_DRIVER_INFO",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "filter", .kind = .mmc_client_filter },
+        },
+        .short_description = "Print Driver information.",
+        .long_description = std.fmt.comptimePrint(
+            \\Print Driver information of specified Line. Specify which Driver to
+            \\print info via filter. To apply filter, provide ID with filter suffix
+            \\(e.g., 1d). Supported suffixes are:
+            \\ - "a" or "axis" to filter by Axis
+            \\ - "c" or "carrier" to filter by Carrier
+            \\ - "d" or "driver" to filter by Driver
+            \\
+            \\Example: Get Driver information of Driver "2" on Line "line1".
+            \\PRINT_DRIVER_INFO line1 2d
+        , .{}),
+        .execute = &commands.print_driver_info.impl,
+    } },
+    .{ .executable = .{
+        .name = "PRINT_CARRIER_INFO",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{
+                .name = "filter",
+                .optional = true,
+                .kind = .mmc_client_filter,
+            },
+        },
+        .short_description = "Print Carrier information.",
+        .long_description = std.fmt.comptimePrint(
+            \\Print Carrier information of specified Line.
+            \\Optional: Provide filter to specify selection of Carrier(s). To apply
+            \\filter, provide ID with filter suffix (e.g., 1c). Supported suffixes
+            \\are:
+            \\ - "a" or "axis" to filter by Axis
+            \\ - "c" or "carrier" to filter by Carrier
+            \\ - "d" or "driver" to filter by Driver
+            \\
+            \\Example: Get Carrier information of Line "line1".
+            \\PRINT_CARRIER_INFO line1
+            \\
+            \\Example: Get Carrier information on Axis "2" on Line "line1".
+            \\PRINT_CARRIER_INFO line1 2a
+        , .{}),
+        .execute = &commands.print_carrier_info.impl,
+    } },
+    .{ .executable = .{
+        .name = "AXIS_CARRIER",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "Axis", .kind = .mmc_client_axis },
+            .{
+                .name = "result variable",
+                .optional = true,
+                .resolve = false,
+                .kind = .mmc_client_variable,
+            },
+        },
+        .short_description = "Print Carrier ID on Axis, if exists.",
+        .long_description = std.fmt.comptimePrint(
+            \\Print Carrier ID on Axis, if exists. Information only provided
+            \\when:
+            \\ - Carrier is on specified Axis.
+            \\ - Carrier is initialized
+            \\
+            \\Optional: Store Carrier ID in provided variable. Variable cannot start
+            \\with a number and is case sensitive.
+            \\
+            \\Example: Get Carrier ID on Axis "3" on Line "line1".
+            \\AXIS_CARRIER line1 3
+            \\
+            \\Example: Get Carrier ID on Axis "3" on Line "line1" and store
+            \\Carrier ID in variable "var".
+            \\AXIS_CARRIER line1 3 var
+        , .{}),
+        .execute = &commands.axis_carrier.impl,
+    } },
+    .{ .executable = .{
+        .name = "CARRIER_ID",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line(s)", .kind = .mmc_client_line },
+            .{
+                .name = "result variable prefix",
+                .optional = true,
+                .resolve = false,
+                .kind = .mmc_client_variable,
+            },
+        },
+        .short_description = "Display Carrier IDs on Line.",
+        .long_description = std.fmt.comptimePrint(
+            \\Display Carrier IDs on Line. Scans specified Line(s), starting from
+            \\first Axis. Carrier IDs are provided in order of occurrence. Multi Line
+            \\input possible (e.g., line1,line2,line3).
+            \\Optional: Stores Carrier IDs in provided variable as indexed entries
+            \\(e.g., var1, var2, ...). Variable cannot start with a number and is
+            \\case sensitive.
+            \\
+            \\Example: Get Carrier IDs on Line "line1".
+            \\CARRIER_ID line1
+            \\
+            \\Example: Get Carrier IDs on Line "line1" and "line2".
+            \\CARRIER_ID line1,line2
+        , .{}),
+        .execute = &commands.carrier_id.impl,
+    } },
+    .{ .executable = .{
+        .name = "ASSERT_CARRIER_LOCATION",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "Carrier", .kind = .mmc_client_carrier },
+            .{ .name = "location" },
+            .{ .name = "threshold", .optional = true },
+        },
+        .short_description = "Assert Carrier location.",
+        .long_description = std.fmt.comptimePrint(
+            \\Assert Carrier location. Error if Carrier is not at specified location.
+            \\Optional: Provide threshold to change default location threshold value.
+            \\Default location threshold value is 1 {s}. Location and threshold must
+            \\be provided in {s}.
+            \\
+            \\Example: Check Carrier location of Carrier "1" on Line "line1" at
+            \\location 500 {s}.
+            \\ASSERT_CARRIER_LOCATION line1 1 500
+            \\
+            \\Example: Check Carrier location of Carrier "1" on Line "line1" at
+            \\location 500 {s} with threshold 20 {s}.
+            \\ASSERT_CARRIER_LOCATION line1 1 500 20
+        , .{
+            standard.length.unit_short,
+            standard.length.unit_long,
+            standard.length.unit_short,
+            standard.length.unit_short,
+            standard.time.unit_long,
+        }),
+        .execute = &commands.assert_location.impl,
+    } },
+    .{ .executable = .{
+        .name = "CARRIER_LOCATION",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "Carrier", .kind = .mmc_client_carrier },
+            .{
+                .name = "result variable",
+                .resolve = false,
+                .optional = true,
+                .kind = .mmc_client_variable,
+            },
+        },
+        .short_description = "Display Carrier location, if exists.",
+        .long_description = std.fmt.comptimePrint(
+            \\Display location of Carrier on specified Line, if exists.
+            \\Optional: Store Carrier location in variable. Variable cannot start
+            \\with a number and is case sensitive.
+            \\
+            \\Example: Display Carrier location of Carrier "2" on Line "line1".
+            \\CARRIER_LOCATION line1 2
+        , .{}),
+        .execute = &commands.carrier_location.impl,
+    } },
+    .{ .executable = .{
+        .name = "CARRIER_AXIS",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "Carrier", .kind = .mmc_client_carrier },
+        },
+        .short_description = "Display Carrier Axis",
+        .long_description = std.fmt.comptimePrint(
+            \\Display Axis on which Carrier is currently.
+            \\
+            \\Example: Display Carrier Axis of Carrier "2" on Line "line1".
+            \\CARRIER_AXIS line1 2
+        , .{}),
+        .execute = &commands.carrier_axis.impl,
+    } },
+    .{ .executable = .{
+        .name = "HALL_STATUS",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{
+                .name = "filter",
+                .optional = true,
+                .kind = .mmc_client_filter,
+            },
+        },
+        .short_description = "Display Hall Sensor state.",
+        .long_description = std.fmt.comptimePrint(
+            \\Display Hall Sensor status.
+            \\Optional: Provide filter to specify selection of Hall Sensor(s). To
+            \\apply filter, provide ID with filter suffix (e.g., 1a).Supported
+            \\suffixes are:
+            \\ - "a" or "axis" to filter by Axis
+            \\ - "c" or "carrier" to filter by Carrier
+            \\ - "d" or "driver" to filter by Driver
+            \\
+            \\Example: Display all Hall Sensor states on Line "line1".
+            \\HALL_STATUS line1
+            \\
+            \\Example: Display Hall Sensors states on Axis "2" on Line "line1".
+            \\HALL_STATUS line1 2a
+        , .{}),
+        .execute = &commands.hall_status.impl,
+    } },
+    .{ .executable = .{
+        .name = "ASSERT_HALL",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "Axis", .kind = .mmc_client_axis },
+            .{ .name = "side", .kind = .mmc_client_hall_side },
+            .{
+                .name = "on/off",
+                .optional = true,
+                .kind = .mmc_client_hall_state,
+            },
+        },
+        .short_description = "Assert Hall Sensor state.",
+        .long_description = std.fmt.comptimePrint(
+            \\Assert if Hall Sensor is in expected state. Hall Sensor location must
+            \\be provided, as:
+            \\ - front (direction of increasing Axis number)
+            \\ - back  (direction of decreasing Axis number)
+            \\
+            \\Hall Sensor state provided, as:
+            \\ - on  (Hall Sensor indicator "on")
+            \\ - off (Hall Sensor indicator "off")
+            \\ - default state if not provided as "on"
+            \\
+            \\Example: Assert Hall Sensor "on" state of Axis "3" at side "front" on
+            \\Line "line1".
+            \\ASSERT_HALL line1 3 front
+            \\
+            \\Example: Assert Hall Sensor "off" state of Axis "3" at side "front" on
+            \\Line "line1".
+            \\ASSERT_HALL line1 3 front off
+        , .{}),
+        .execute = &commands.assert_hall.impl,
+    } },
+    .{ .executable = .{
+        .name = "CLEAR_ERRORS",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{
+                .name = "filter",
+                .optional = true,
+                .kind = .mmc_client_filter,
+            },
+        },
+        .short_description = "Clear error states.",
+        .long_description = std.fmt.comptimePrint(
+            \\Clear error states on all Driver(s) of specified Line.
+            \\Optional: Provide filter to specify Driver. To apply filter, provide
+            \\ID with filter suffix (e.g., 1d). Supported suffixes are:
+            \\ - "a" or "axis" to filter by Axis
+            \\ - "c" or "carrier" to filter by Carrier
+            \\ - "d" or "driver" to filter by Driver
+            \\
+            \\Example: Clear error states on all Driver(s) of Line "line1".
+            \\CLEAR_ERRORS line1
+            \\
+            \\Example: Clear error states on Driver "2" of Line "line1".
+            \\CLEAR_ERRORS line1 2d
+        , .{}),
+        .execute = &commands.clear_errors.impl,
+    } },
+    .{ .executable = .{
+        .name = "DEINITIALIZE",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{
+                .name = "filter",
+                .optional = true,
+                .kind = .mmc_client_filter,
+            },
+        },
+        .short_description = "Deinitialize Carrier.",
+        .long_description = std.fmt.comptimePrint(
+            \\Deinitialize Carrier on specified Line.
+            \\Optional: Provide filter to specify selection of Carrier(s). To apply
+            \\filter, provide ID with filter suffix (e.g., 1c). Supported suffixes
+            \\are:
+            \\ - "a" or "axis" to filter by Axis
+            \\ - "c" or "carrier" to filter by Carrier
+            \\ - "d" or "driver" to filter by Driver
+            \\
+            \\Example: Deinitialize Carrier(s) on Line "line1".
+            \\DEINITIALIZE line1
+            \\
+            \\Example: Deinitialize Carrier(s) on Driver "2" on Line "line1".
+            \\DEINITIALIZE line1 2d
+            \\
+            \\Example: Deinitialize Carrier "3" on Line "line1".
+            \\DEINITIALIZE line1 3c
+        , .{}),
+        .execute = &commands.clear_carrier_info.impl,
+    } },
+    .{ .executable = .{
+        .name = "RESET_SYSTEM",
+        .short_description = "Reset system state.",
+        .long_description = std.fmt.comptimePrint(
+            \\Reset system:
+            \\ - Deinitialize all Carriers.
+            \\ - Clear all system errors.
+            \\ - Reset all push and pull states.
+        , .{}),
+        .execute = &commands.reset_system.impl,
+    } },
+    .{ .executable = .{
+        .name = "RELEASE_CARRIER",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{
+                .name = "filter",
+                .optional = true,
+                .kind = .mmc_client_filter,
+            },
+        },
+        .short_description = "Release Carrier",
+        .long_description = std.fmt.comptimePrint(
+            \\Release Carrier, allows to move Carrier through external force. Carrier
+            \\stays initialized.
+            \\Optional: Provide filter to specify selection of Carrier(s). To apply
+            \\filter, provide ID with filter suffix (e.g., 1c). Supported suffixes
+            \\are:
+            \\ - "a" or "axis" to filter by Axis
+            \\ - "c" or "carrier" to filter by Carrier
+            \\ - "d" or "driver" to filter by Driver
+            \\
+            \\Example: Release Carrier(s) on Line "line1".
+            \\RELEASE_CARRIER line1
+            \\
+            \\Example: Release Carrier(s) on Driver "2" on Line "line1".
+            \\RELEASE_CARRIER line1 2d
+            \\
+            \\Example: Release Carrier "3" on Line "line1".
+            \\RELEASE_CARRIER line1 3c
+        , .{}),
+        .execute = &commands.release_carrier.impl,
+    } },
+    .{ .executable = .{
+        .name = "AUTO_INITIALIZE",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{
+                .name = "Line(s)",
+                .optional = true,
+                .kind = .mmc_client_line,
+            },
+        },
+        .short_description = "Initialize all Carriers automatically.",
+        .long_description = std.fmt.comptimePrint(
+            \\Automatically initializes all uninitialized Carriers. This process
+            \\operates on carrier clusters, where a cluster is defined as a group of
+            \\uninitialized Carriers located on adjacent Axis. Each cluster requires
+            \\at least one free Axis to successfully initialize cluster. Multiple
+            \\Line auto initialization is supported (e.g., line1,line2,line3). If
+            \\Line is not provided, auto initializes Carriers on all Lines.
+            \\
+            \\Example: Auto initialize Carrier(s) on all Lines.
+            \\AUTO_INITIALIZE
+            \\
+            \\Example: Auto initialize Carrier(s) on Line "line1".
+            \\AUTO_INITIALIZE line1
+            \\
+            \\Example: Auto initialize Carrier(s) on Line "line1" and "line2".
+            \\AUTO_INITIALIZE line1,line2
+        , .{}),
+        .execute = &commands.auto_initialize.impl,
+    } },
+    .{ .executable = .{
+        .name = "CALIBRATE",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+        },
+        .short_description = "Calibrate Track Line.",
+        .long_description = std.fmt.comptimePrint(
+            \\Calibrate Track Line. Uninitialized Carrier must be positioned at start
+            \\of Line and first Axis Hall Sensors are both in "on" state.
+            \\
+            \\Example: Calibrate Line "line1".
+            \\CALIBRATE line1
+        , .{}),
+        .execute = &commands.calibrate.impl,
+    } },
+    .{ .executable = .{
+        .name = "SET_ZERO",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+        },
+        .short_description = "Set Line zero position.",
+        .long_description = std.fmt.comptimePrint(
+            \\Set zero position for specified Line. Initialized Carrier must be on
+            \\first Axis of specified Line.
+            \\
+            \\Example: Set zero position for Line "line1".
+            \\SET_ZERO line1
+        , .{}),
+        .execute = &commands.set_line_zero.impl,
+    } },
+    .{ .executable = .{
+        .name = "INITIALIZE",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "Axis", .kind = .mmc_client_axis },
+            .{ .name = "direction", .kind = .mmc_client_direction },
+            .{ .name = "Carrier", .kind = .mmc_client_carrier },
+            .{
+                .name = "link Axis",
+                .resolve = false,
+                .optional = true,
+                .kind = .mmc_client_link_axis,
+            },
+        },
+        .short_description = "Initialize Carrier.",
+        .long_description = std.fmt.comptimePrint(
+            \\Slowly moves an uninitialized Carrier to the next Hall Sensor in the
+            \\provided direction, and assign provided Carrier ID to the Carrier.
+            \\Direction options:
+            \\ - forward  (direction of increasing Axis number)
+            \\ - backward (direction of decreasing Axis number)
+            \\
+            \\Optional: Provide link Axis if the uninitialized Carrier is located
+            \\between two Axis. Link Axis options:
+            \\ - next  (direction of increasing Axis number)
+            \\ - prev  (direction of decreasing Axis number)
+            \\ - right (direction of increasing Axis number)
+            \\ - left  (direction of decreasing Axis number)
+            \\
+            \\Example: Initialize Carrier on Axis "3" on Line "line1". Assign Carrier
+            \\ID "123". Initializing movement direction toward Axis "4".
+            \\INITIALIZE line1 3 forward 123
+            \\
+            \\Example: Initialize Carrier on Axis "3" and "4" on Line "line1". Assign
+            \\Carrier ID "123". Initializing movement direction toward Axis "3".
+            \\INITIALIZE line1 3 backward 123 next
+        , .{}),
+        .execute = &commands.isolate.impl,
+    } },
+    .{ .executable = .{
+        .name = "WAIT_INITIALIZE",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "Carrier", .kind = .mmc_client_carrier },
+            .{ .name = "timeout", .optional = true },
+        },
+        .short_description = "Wait until Carrier initialization complete.",
+        .long_description = std.fmt.comptimePrint(
+            \\Pauses command execution until specified Carrier completes initialization.
+            \\Optional: Provide timeout. Returns error if specified timeout is exceeded.
+            \\Timeout must be provided in {s}.
+            \\
+            \\Example: Wait for initialization of Carrier "3" on Line "line1".
+            \\WAIT_INITIALIZE line1 3
+            \\
+            \\Example: Wait max 5000 {s} for initialization of Carrier "3" on
+            \\Line "line1".
+            \\WAIT_INITIALIZE line1 3 5000
+        , .{
+            standard.time.unit_long,
+            standard.time.unit_short,
+        }),
+        .execute = &commands.wait.isolate,
+    } },
+    .{ .executable = .{
+        .name = "WAIT_MOVE_CARRIER",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "Carrier", .kind = .mmc_client_carrier },
+            .{ .name = "timeout", .optional = true },
+        },
+        .short_description = "Wait until Carrier movement complete.",
+        .long_description = std.fmt.comptimePrint(
+            \\Pauses command execution until specified Carrier completes movement.
+            \\Optional: Provide timeout. Returns error if specified timeout is
+            \\exceeded. Timeout must be provided in {s}.
+            \\
+            \\Example: Wait for movement completion of Carrier "3" on Line "line1".
+            \\WAIT_MOVE_CARRIER line1 3
+            \\
+            \\Example: Wait max 5000 {s} movement completion of Carrier "3" on Line
+            \\"line1".
+            \\WAIT_MOVE_CARRIER line1 3 5000
+        , .{
+            standard.time.unit_long,
+            standard.time.unit_short,
+        }),
+        .execute = &commands.wait.moveCarrier,
+    } },
+    .{ .executable = .{
+        .name = "MOVE_CARRIER",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "Carrier", .kind = .mmc_client_carrier },
+            .{ .name = "target", .kind = .mmc_client_target },
+            .{
+                .name = "control mode",
+                .optional = true,
+                .kind = .mmc_client_control_mode,
+            },
+            .{ .name = "CAS", .optional = true, .kind = .mmc_client_cas },
+        },
+        .short_description = "Move Carrier to specified target.",
+        .long_description = std.fmt.comptimePrint(
+            \\Move initialized Carrier to specified target. Provide target value
+            \\followed by suffix to specify target movement (e.g., 1a). Supported
+            \\suffixes are:
+            \\- "a" or "axis" to target Axis.
+            \\- "l" or "location" to target absolute location in Line, provided in
+            \\  {s}.
+            \\- "d" or "distance" to target relative distance to current Carrier
+            \\  position, provided in {s}.
+            \\
+            \\Optional: Provide following to specify movement control mode:
+            \\- "speed" to move Carrier with speed profile feedback.
+            \\- "position" to move Carrier with position profile feedback.
+            \\Optional: Provide "on" or "off" to specify CAS (Collision Avoidance
+            \\System) activation (enabled by default).
+            \\
+            \\Example: Move Carrier "2" to Axis "3" on Line "line1".
+            \\MOVE_CARRIER line1 2 3a
+            \\
+            \\Example: Move Carrier "2" to location 150 {s} on Line "line1" and move
+            \\Carrier with speed profile feedback.
+            \\MOVE_CARRIER line1 2 150l speed
+            \\
+            \\Example: Move Carrier "2" to location 150 {s} on Line "line1" and disable
+            \\CAS.
+            \\MOVE_CARRIER line1 2 150l position off
+        , .{
+            standard.length.unit_short,
+            standard.length.unit_short,
+            standard.length.unit_short,
+            standard.length.unit_short,
+        }),
+        .execute = &commands.move.impl,
+    } },
+    .{ .executable = .{
+        .name = "PUSH_CARRIER",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "Axis", .kind = .mmc_client_axis },
+            .{ .name = "direction", .kind = .mmc_client_direction },
+            .{
+                .name = "Carrier",
+                .optional = true,
+                .kind = .mmc_client_carrier,
+            },
+        },
+        .short_description = "Push Carrier on the specified Axis.",
+        .long_description = std.fmt.comptimePrint(
+            \\Push a Carrier on the specified Axis. This movement targets a
+            \\distance of Carrier length, and thus if it is used to cross a Line
+            \\boundary, the receiving Axis at the destination Line must be in
+            \\pulling state. Direction must be provided as:
+            \\- forward  (direction of increasing Axis number)
+            \\- backward (direction of decreasing Axis number)
+            \\
+            \\Optional: Provide Carrier to move the specified Carrier to the center
+            \\of the specified Axis, then push it according to direction.
+            \\
+            \\Example: Push Carrier on Axis "3" to Axis "4". If Line "line1" only has
+            \\3 Axes, push Carrier out from Line "line1" to Line "line2".
+            \\PUSH_CARRIER line1 3 forward
+            \\
+            \\Example: Move Carrier "2" to Axis "3" and transition to push movement to
+            \\Axis "4". If Line "line1" only has 3 Axes, then transition to push movement
+            \\out from Line "line1" to Line "line2".
+            \\PUSH_CARRIER line1 3 forward 2
+        , .{}),
+        .execute = &commands.push.impl,
+    } },
+    .{ .executable = .{
+        .name = "PULL_CARRIER",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "Axis", .kind = .mmc_client_axis },
+            .{ .name = "Carrier", .kind = .mmc_client_carrier },
+            .{ .name = "direction", .kind = .mmc_client_direction },
+            .{ .name = "location", .optional = true },
+            .{ .name = "CAS", .optional = true, .kind = .mmc_client_cas },
+        },
+        .short_description = "Pull incoming Carrier.",
+        .long_description = std.fmt.comptimePrint(
+            \\Sets the specified Axis to a pulling state, enabling Axis to initialize
+            \\and move incoming carrier to specified Axis. The pulled Carrier is
+            \\assigned with the specified Carrier ID. There must be no Carrier on
+            \\pulling Axis upon invocation. Direction must be provided as:
+            \\ - forward  (direction of increasing Axis number)
+            \\ - backward (direction of decreasing Axis number)
+            \\
+            \\Optional: Provide location to move Carrier after completed pulling
+            \\Carrier. Location must be provided as:
+            \\- {s} (move Carrier to specified location after pulled to
+            \\  specified  Axis), or
+            \\- "nan" (Carrier can move through external force after pulled to
+            \\  specified Axis).
+            \\
+            \\Optional: Provide "on" or "off" to specify CAS (Collision
+            \\Avoidance System) activation (enabled by default) while Carrier is
+            \\being moved to specified location.
+            \\
+            \\Example: Pull Carrier onto Axis "1" on Line "line2" from Line "line1" and
+            \\assign Carrier ID to "123".
+            \\PULL_CARRIER line2 1 123 forward
+            \\
+            \\Example: Pull Carrier to Line "line2" from Line "line1", assign Carrier ID
+            \\to "123" and move Carrier "123" to location 1500 {s} upon recognized on
+            \\Line "line2".
+            \\PULL_CARRIER line2 1 123 forward 1500
+            \\
+            \\Example: Pull Carrier to Line "line2" from Line "line1", assign Carrier ID
+            \\to "123", and move Carrier "123" to location 1500 {s} with CAS deactivated
+            \\upon recognized on Line "line2".
+            \\PULL_CARRIER line2 1 123 forward 1500 off
+        , .{
+            standard.length.unit_long,
+            standard.length.unit_short,
+            standard.length.unit_short,
+        }),
+        .execute = &commands.pull.impl,
+    } },
+    .{ .executable = .{
+        .name = "STOP_PULL_CARRIER",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "filter", .optional = true, .kind = .mmc_client_filter },
+        },
+        .short_description = "Stop pulling Carrier at axis.",
+        .long_description = std.fmt.comptimePrint(
+            \\Stop active Carrier pull of specified Line.
+            \\Optional: Provide filter to specify selection of pull. To apply filter,
+            \\provide ID with filter suffix (e.g., 1c). Supported suffixes are:
+            \\ - "a" or "axis" to filter by Axis
+            \\ - "c" or "Carrier" to filter by Carrier
+            \\ - "d" or "driver" to filter by Driver
+            \\
+            \\Example: Stop pull Carrier(s) on Line "line1".
+            \\STOP_PULL_CARRIER line1
+            \\
+            \\Example: Stop pull for Axis "1" on Line "line1".
+            \\STOP_PULL_CARRIER line1 1a
+        , .{}),
+        .execute = &commands.stop_pull.impl,
+    } },
+    .{ .executable = .{
+        .name = "STOP_PUSH_CARRIER",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "filter", .optional = true, .kind = .mmc_client_filter },
+        },
+        .short_description = "Stop pushing Carrier at axis.",
+        .long_description = std.fmt.comptimePrint(
+            \\Stop active Carrier push on specified Line.
+            \\Optional: Provide filter to specify selection of push. To apply
+            \\filter, provide ID with filter suffix (e.g., 1c).
+            \\Supported suffixes are:
+            \\ - "a" or "axis" to filter by Axis
+            \\ - "c" or "Carrier" to filter by Carrier
+            \\ - "d" or "driver" to filter by Driver
+            \\
+            \\Example: Stop push Carrier(s) on Line "line1".
+            \\STOP_PUSH_CARRIER line1
+            \\
+            \\Example: Stop push for Axis "3" on Line "line1".
+            \\STOP_PUSH_CARRIER line1 3a
+        , .{}),
+        .execute = &commands.stop_push.impl,
+    } },
+    .{ .executable = .{
+        .name = "WAIT_AXIS_EMPTY",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "Axis", .kind = .mmc_client_axis },
+            .{ .name = "timeout", .optional = true },
+        },
+        .short_description = "Wait until no Carrier on Axis.",
+        .long_description = std.fmt.comptimePrint(
+            \\Pause execution of commands until specified Axis has:
+            \\ - no carriers,
+            \\ - no active hall alarms,
+            \\ - no wait for push/pull.
+            \\Optional: timeout will return error if timeout duration is exceeded.
+            \\Timeout duration must be provided in {s}.
+            \\
+            \\Example: Wait until no Carrier on Axis "2" on Line "line1".
+            \\WAIT_AXIS_EMPTY line1 2
+            \\
+            \\Example: Wait max 5000 {s} until no Carrier on Axis "2" on Line "line1".
+            \\WAIT_AXIS_EMPTY line1 2 5000
+        , .{
+            standard.time.unit_long,
+            standard.time.unit_short,
+        }),
+        .execute = &commands.wait.axisEmpty,
+    } },
+    .{ .executable = .{
+        .name = "ADD_LOG_INFO",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "kind", .kind = .mmc_client_log_kind },
+            .{ .name = "range", .optional = true },
+        },
+        .short_description = "Add logging configuration.",
+        .long_description = std.fmt.comptimePrint(
+            \\Add logging configuration. Overwrites existing logging configuration
+            \\of specified Line. Parameter "kind" specifies information to add to
+            \\logging configuration. Valid "kind" options:
+            \\ - driver
+            \\ - axis
+            \\ - all
+            \\
+            \\Optional: "range" defines Axis range and must be provided as
+            \\start:end value (e.g., "1:9").
+            \\
+            \\Example: Add Driver(s) on Line "line1" to logging configuration.
+            \\ADD_LOG_INFO line1 driver
+            \\
+            \\Example: Add Axis "2" to "3" on Line "line1" to logging configuration.
+            \\ADD_LOG_INFO line1 axis 2:3
+        , .{}),
+        .execute = &commands.log.add,
+    } },
+    .{ .executable = .{
+        .name = "START_LOG_INFO",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "duration" },
+            .{ .name = "path", .optional = true },
+        },
+        .short_description = "Start logging.",
+        .long_description = std.fmt.comptimePrint(
+            \\Start logging process. Log file contains only recent data during specified
+            \\time (in seconds). Logging runs until:
+            \\ - error occurs or
+            \\ - cancelled by "STOP_LOGGING" command.
+            \\
+            \\If path not specified, log file will be created in working directory:
+            \\ - "mmc-logging-YYYY.MM.DD-HH.MM.SS.csv".
+            \\
+            \\Example: Start logging process and provide logging data for a duration of
+            \\10 s before logging is stopped.
+            \\START_LOG_INFO 10
+            \\
+            \\Example: Start logging process and save logging file at
+            \\"folder/log_info.csv".
+            \\START_LOG_INFO 10 folder/log_info.csv
+        , .{}),
+        .execute = &commands.log.start,
+    } },
+    .{ .executable = .{
+        .name = "REMOVE_LOG_INFO",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "kind", .kind = .mmc_client_log_kind },
+            .{ .name = "range", .optional = true },
+        },
+        .short_description = "Remove logging configuration.",
+        .long_description = std.fmt.comptimePrint(
+            \\Remove logging configuration. Parameter "kind" specifies information to
+            \\remove from logging configuration. Valid "kind" options:
+            \\ - driver
+            \\ - axis
+            \\ - all
+            \\
+            \\Optional: "range" defines Axis range and must be provided as start:end
+            \\value (e.g., "1:9").
+            \\
+            \\Example: Clear logging configuration for Line "line1".
+            \\REMOVE_LOG_INFO line1 all
+            \\
+            \\Example: Remove Driver(s) on Line "line1" from logging configuration.
+            \\REMOVE_LOG_INFO line1 driver
+            \\
+            \\Example: Remove Axis "1" to "3" on Line "line1" from logging configuration.
+            \\REMOVE_LOG_INFO line1 axis 1:3
+        , .{}),
+        .execute = &commands.log.remove,
+    } },
+    .{ .executable = .{
+        .name = "STATUS_LOG_INFO",
+        .short_description = "Show logging configuration.",
+        .long_description = std.fmt.comptimePrint(
+            \\Show logging configuration for specified Line(s).
+        , .{}),
+        .execute = &commands.log.status,
+    } },
+    .{ .executable = .{
+        .name = "STOP_LOG_INFO",
+        .short_description = "Stop MMC logging.",
+        .long_description = std.fmt.comptimePrint(
+            \\Stop MMC logging and save logging data to file.
+        , .{}),
+        .execute = &commands.log.stop,
+    } },
+    .{ .executable = .{
+        .name = "CANCEL_LOG_INFO",
+        .short_description = "Cancel MMC logging process.",
+        .long_description = std.fmt.comptimePrint(
+            \\Cancel MMC logging without saving the logging data.
+        , .{}),
+        .execute = &commands.log.cancel,
+    } },
+    .{ .executable = .{
+        .name = "PRINT_ERRORS",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "filter", .optional = true, .kind = .mmc_client_filter },
+        },
+        .short_description = "Print Axis and Driver errors.",
+        .long_description = std.fmt.comptimePrint(
+            \\Print Axis and Driver errors on specified Line.
+            \\Optional: Provide filter to specify selection of error(s). To apply filter,
+            \\provide ID with filter suffix (e.g., 1a). Supported suffixes are:
+            \\ - "a" or "axis" to filter by Axis
+            \\ - "c" or "Carrier" to filter by Carrier
+            \\ - "d" or "driver" to filter by Driver
+            \\
+            \\Example: Print Axis and Driver errors on Line "line1".
+            \\PRINT_ERRORS line1
+            \\
+            \\Example: Print errors on Axis "3" on Line "line1".
+            \\PRINT_ERRORS line1 3a
+        , .{}),
+        .execute = &commands.show_errors.impl,
+    } },
+    .{ .executable = .{
+        .name = "STOP",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line, .optional = true },
+        },
+        .short_description = "Stop all processes.",
+        .long_description = std.fmt.comptimePrint(
+            \\Stop all running and queued processes on System.
+            \\Optional: Stop all running and queued processes only on specified Line.
+        , .{}),
+        .execute = &commands.stop.impl,
+    } },
+    .{ .executable = .{
+        .name = "PAUSE",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+        },
+        .short_description = "Pause all processes.",
+        .long_description = std.fmt.comptimePrint(
+            \\Pause all processes on System.
+            \\Optional: Pause all processes only on specified Line.
+        , .{}),
+        .execute = &commands.pause.impl,
+    } },
+    .{ .executable = .{
+        .name = "RESUME",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+        },
+        .short_description = "Resume all paused processes.",
+        .long_description = std.fmt.comptimePrint(
+            \\Resume all paused processes on System.
+            \\Optional: Resume all paused processes only on specified Line.
+        , .{}),
+        .execute = &commands.@"resume".impl,
+    } },
+    .{ .executable = .{
+        .name = "SET_CARRIER_ID",
+        .parameters = &[_]command.Command.Executable.Parameter{
+            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "Carrier", .kind = .mmc_client_carrier },
+            .{ .name = "new Carrier id", .kind = .mmc_client_carrier },
+        },
+        .short_description = "Modify Carrier ID.",
+        .long_description = std.fmt.comptimePrint(
+            \\Modify Carrier ID of initialized Carrier. Carrier ID must be unique per
+            \\Line.
+            \\
+            \\Example: Modify Carrier ID of Carrier "3" to "4" on Line "line1".
+            \\SET_CARRIER_ID line1 3 4
+        , .{}),
+        .execute = &commands.set_carrier_id.impl,
+    } },
+};
+
 pub const Filter = union(enum) {
     carrier: [1]u32,
     driver: u32,
@@ -225,1110 +1231,6 @@ pub fn get() *MmcClient {
 pub fn init(c: Config) !void {
     current = try MmcClient.create(c);
     errdefer current = null;
-
-    try command.registry.put(.{ .executable = .{
-        .name = "SERVER_VERSION",
-        .short_description = "Display the connected MMC server version.",
-        .long_description =
-        \\Display the version of the currently connected MMC server in Semantic
-        \\Version format ({major}.{minor}.{patch}).
-        ,
-        .execute = &commands.server_version.impl,
-    } });
-    errdefer command.registry.orderedRemove("SERVER_VERSION");
-    try command.registry.put(.{ .executable = .{
-        .name = "CONNECT",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "endpoint", .optional = true },
-        },
-        .short_description = "Connect to MMC server.",
-        .long_description = std.fmt.comptimePrint(
-            \\Attempt to connect to MMC server.
-            \\
-            \\Endpoint may be specified using one of the following formats:
-            \\ - `HOSTNAME:PORT`
-            \\ - `IPv4_ADDRESS:PORT`
-            \\ - `[IPv6_ADDRESS%SCOPE]:PORT`
-            \\
-            \\If no endpoint provided, last connected server is used. If no server has
-            \\been connected since `LOAD_CONFIG`, connect to the default endpoint
-            \\provided in the configuration file.
-        , .{}),
-        .execute = &commands.connect.impl,
-    } });
-    errdefer command.registry.orderedRemove("CONNECT");
-    try command.registry.put(.{ .executable = .{
-        .name = "DISCONNECT",
-        .short_description = "End connection with MMC server.",
-        .long_description = std.fmt.comptimePrint(
-            \\Disconnect from currently connected MMC server.
-        , .{}),
-        .execute = &commands.disconnect.impl,
-    } });
-    errdefer command.registry.orderedRemove("DISCONNECT");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "SET_SPEED",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-                .{ .name = "speed" },
-            },
-            .short_description = "Set Carrier speed of specified Line",
-            .long_description = std.fmt.comptimePrint(
-                \\Set Carrier speed of specified Line. The speed value must be
-                \\greater than {d} and less than or equal to {d} {s}.
-                \\
-                \\Example: Set speed of Line "line1" to 300 {s}.
-                \\SET_SPEED line1 300
-            , .{
-                standard.speed.range.min,
-                standard.speed.range.max,
-                standard.speed.unit,
-                standard.speed.unit,
-            }),
-            .execute = &commands.set_speed.impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("SET_SPEED");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "SET_ACCELERATION",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-                .{ .name = "acceleration" },
-            },
-            .short_description = "Set Carrier acceleration of specified Line",
-            .long_description = std.fmt.comptimePrint(
-                \\Set Carrier acceleration of specified Line. The acceleration value
-                \\must be greater than {d} and less than or equal to {d} {s}.
-                \\
-                \\Example: Set acceleration of Line "line1" to 200 {s}.
-                \\SET_ACCELERATION line1 200
-            , .{
-                standard.acceleration.range.min,
-                standard.acceleration.range.max,
-                standard.acceleration.unit,
-                standard.acceleration.unit,
-            }),
-            .execute = &commands.set_acceleration.impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("SET_ACCELERATION");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "GET_SPEED",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-            },
-            .short_description = "Print Carrier speed of the specified Line",
-            .long_description = std.fmt.comptimePrint(
-                \\Print Carrier speed of specified Line.
-                \\
-                \\Example: Print speed of Line "line1".
-                \\GET_SPEED line1
-            , .{}),
-            .execute = &commands.get_speed.impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("GET_SPEED");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "GET_ACCELERATION",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-            },
-            .short_description = "Print Carrier acceleration of the specified Line",
-            .long_description = std.fmt.comptimePrint(
-                \\Print Carrier acceleration of the specified Line.
-                \\
-                \\Example: Print acceleration of Line "line1".
-                \\GET_ACCELERATION line1
-            , .{}),
-            .execute = &commands.get_acceleration.impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("GET_ACCELERATION");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "PRINT_AXIS_INFO",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-                .{ .name = "filter", .kind = .mmc_client_filter },
-            },
-            .short_description = "Print Axis information.",
-            .long_description = std.fmt.comptimePrint(
-                \\Print Axis information of specified Line. Specify which Axis or Axes
-                \\to print info via filter. To apply filter, provide ID with filter
-                \\suffix (e.g., 1a). Supported suffixes are:
-                \\ - "a" or "axis" to filter by Axis
-                \\ - "c" or "carrier" to filter by Carrier
-                \\ - "d" or "driver" to filter by Driver
-                \\
-                \\Example: Print Axis information of Axis "1" on Line "line1".
-                \\PRINT_AXIS_INFO line1 1a
-            , .{}),
-            .execute = &commands.print_axis_info.impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("PRINT_AXIS_INFO");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "PRINT_DRIVER_INFO",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-                .{ .name = "filter", .kind = .mmc_client_filter },
-            },
-            .short_description = "Print Driver information.",
-            .long_description = std.fmt.comptimePrint(
-                \\Print Driver information of specified Line. Specify which Driver to
-                \\print info via filter. To apply filter, provide ID with filter suffix
-                \\(e.g., 1d). Supported suffixes are:
-                \\ - "a" or "axis" to filter by Axis
-                \\ - "c" or "carrier" to filter by Carrier
-                \\ - "d" or "driver" to filter by Driver
-                \\
-                \\Example: Get Driver information of Driver "2" on Line "line1".
-                \\PRINT_DRIVER_INFO line1 2d
-            , .{}),
-            .execute = &commands.print_driver_info.impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("PRINT_DRIVER_INFO");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "PRINT_CARRIER_INFO",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-                .{
-                    .name = "filter",
-                    .optional = true,
-                    .kind = .mmc_client_filter,
-                },
-            },
-            .short_description = "Print Carrier information.",
-            .long_description = std.fmt.comptimePrint(
-                \\Print Carrier information of specified Line.
-                \\Optional: Provide filter to specify selection of Carrier(s). To apply
-                \\filter, provide ID with filter suffix (e.g., 1c). Supported suffixes
-                \\are:
-                \\ - "a" or "axis" to filter by Axis
-                \\ - "c" or "carrier" to filter by Carrier
-                \\ - "d" or "driver" to filter by Driver
-                \\
-                \\Example: Get Carrier information of Line "line1".
-                \\PRINT_CARRIER_INFO line1
-                \\
-                \\Example: Get Carrier information on Axis "2" on Line "line1".
-                \\PRINT_CARRIER_INFO line1 2a
-            , .{}),
-            .execute = &commands.print_carrier_info.impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("PRINT_CARRIER_INFO");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "AXIS_CARRIER",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-                .{ .name = "Axis", .kind = .mmc_client_axis },
-                .{
-                    .name = "result variable",
-                    .optional = true,
-                    .resolve = false,
-                    .kind = .mmc_client_variable,
-                },
-            },
-            .short_description = "Print Carrier ID on Axis, if exists.",
-            .long_description = std.fmt.comptimePrint(
-                \\Print Carrier ID on Axis, if exists. Information only provided
-                \\when:
-                \\ - Carrier is on specified Axis.
-                \\ - Carrier is initialized
-                \\
-                \\Optional: Store Carrier ID in provided variable. Variable cannot start
-                \\with a number and is case sensitive.
-                \\
-                \\Example: Get Carrier ID on Axis "3" on Line "line1".
-                \\AXIS_CARRIER line1 3
-                \\
-                \\Example: Get Carrier ID on Axis "3" on Line "line1" and store
-                \\Carrier ID in variable "var".
-                \\AXIS_CARRIER line1 3 var
-            , .{}),
-            .execute = &commands.axis_carrier.impl,
-        },
-    });
-    errdefer _ = command.registry.orderedRemove("AXIS_CARRIER");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "CARRIER_ID",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line(s)", .kind = .mmc_client_line },
-                .{
-                    .name = "result variable prefix",
-                    .optional = true,
-                    .resolve = false,
-                    .kind = .mmc_client_variable,
-                },
-            },
-            .short_description = "Display Carrier IDs on Line.",
-            .long_description = std.fmt.comptimePrint(
-                \\Display Carrier IDs on Line. Scans specified Line(s), starting from
-                \\first Axis. Carrier IDs are provided in order of occurrence. Multi Line
-                \\input possible (e.g., line1,line2,line3).
-                \\Optional: Stores Carrier IDs in provided variable as indexed entries
-                \\(e.g., var1, var2, ...). Variable cannot start with a number and is
-                \\case sensitive.
-                \\
-                \\Example: Get Carrier IDs on Line "line1".
-                \\CARRIER_ID line1
-                \\
-                \\Example: Get Carrier IDs on Line "line1" and "line2".
-                \\CARRIER_ID line1,line2
-            , .{}),
-            .execute = &commands.carrier_id.impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("CARRIER_ID");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "ASSERT_CARRIER_LOCATION",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-                .{ .name = "Carrier", .kind = .mmc_client_carrier },
-                .{ .name = "location" },
-                .{ .name = "threshold", .optional = true },
-            },
-            .short_description = "Assert Carrier location.",
-            .long_description = std.fmt.comptimePrint(
-                \\Assert Carrier location. Error if Carrier is not at specified location.
-                \\Optional: Provide threshold to change default location threshold value.
-                \\Default location threshold value is 1 {s}. Location and threshold must
-                \\be provided in {s}.
-                \\
-                \\Example: Check Carrier location of Carrier "1" on Line "line1" at
-                \\location 500 {s}.
-                \\ASSERT_CARRIER_LOCATION line1 1 500
-                \\
-                \\Example: Check Carrier location of Carrier "1" on Line "line1" at
-                \\location 500 {s} with threshold 20 {s}.
-                \\ASSERT_CARRIER_LOCATION line1 1 500 20
-            , .{
-                standard.length.unit_short,
-                standard.length.unit_long,
-                standard.length.unit_short,
-                standard.length.unit_short,
-                standard.time.unit_long,
-            }),
-            .execute = &commands.assert_location.impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("ASSERT_CARRIER_LOCATION");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "CARRIER_LOCATION",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-                .{ .name = "Carrier", .kind = .mmc_client_carrier },
-                .{
-                    .name = "result variable",
-                    .resolve = false,
-                    .optional = true,
-                    .kind = .mmc_client_variable,
-                },
-            },
-            .short_description = "Display Carrier location, if exists.",
-            .long_description = std.fmt.comptimePrint(
-                \\Display location of Carrier on specified Line, if exists.
-                \\Optional: Store Carrier location in variable. Variable cannot start
-                \\with a number and is case sensitive.
-                \\
-                \\Example: Display Carrier location of Carrier "2" on Line "line1".
-                \\CARRIER_LOCATION line1 2
-            , .{}),
-            .execute = &commands.carrier_location.impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("CARRIER_LOCATION");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "CARRIER_AXIS",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-                .{ .name = "Carrier", .kind = .mmc_client_carrier },
-            },
-            .short_description = "Display Carrier Axis",
-            .long_description = std.fmt.comptimePrint(
-                \\Display Axis on which Carrier is currently.
-                \\
-                \\Example: Display Carrier Axis of Carrier "2" on Line "line1".
-                \\CARRIER_AXIS line1 2
-            , .{}),
-            .execute = &commands.carrier_axis.impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("CARRIER_AXIS");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "HALL_STATUS",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-                .{
-                    .name = "filter",
-                    .optional = true,
-                    .kind = .mmc_client_filter,
-                },
-            },
-            .short_description = "Display Hall Sensor state.",
-            .long_description = std.fmt.comptimePrint(
-                \\Display Hall Sensor status.
-                \\Optional: Provide filter to specify selection of Hall Sensor(s). To
-                \\apply filter, provide ID with filter suffix (e.g., 1a).Supported
-                \\suffixes are:
-                \\ - "a" or "axis" to filter by Axis
-                \\ - "c" or "carrier" to filter by Carrier
-                \\ - "d" or "driver" to filter by Driver
-                \\
-                \\Example: Display all Hall Sensor states on Line "line1".
-                \\HALL_STATUS line1
-                \\
-                \\Example: Display Hall Sensors states on Axis "2" on Line "line1".
-                \\HALL_STATUS line1 2a
-            , .{}),
-            .execute = &commands.hall_status.impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("HALL_STATUS");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "ASSERT_HALL",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-                .{ .name = "Axis", .kind = .mmc_client_axis },
-                .{ .name = "side", .kind = .mmc_client_hall_side },
-                .{
-                    .name = "on/off",
-                    .optional = true,
-                    .kind = .mmc_client_hall_state,
-                },
-            },
-            .short_description = "Assert Hall Sensor state.",
-            .long_description = std.fmt.comptimePrint(
-                \\Assert if Hall Sensor is in expected state. Hall Sensor location must
-                \\be provided, as:
-                \\ - front (direction of increasing Axis number)
-                \\ - back  (direction of decreasing Axis number)
-                \\
-                \\Hall Sensor state provided, as:
-                \\ - on  (Hall Sensor indicator "on")
-                \\ - off (Hall Sensor indicator "off")
-                \\ - default state if not provided as "on"
-                \\
-                \\Example: Assert Hall Sensor "on" state of Axis "3" at side "front" on
-                \\Line "line1".
-                \\ASSERT_HALL line1 3 front
-                \\
-                \\Example: Assert Hall Sensor "off" state of Axis "3" at side "front" on
-                \\Line "line1".
-                \\ASSERT_HALL line1 3 front off
-            , .{}),
-            .execute = &commands.assert_hall.impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("ASSERT_HALL");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "CLEAR_ERRORS",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-                .{
-                    .name = "filter",
-                    .optional = true,
-                    .kind = .mmc_client_filter,
-                },
-            },
-            .short_description = "Clear error states.",
-            .long_description = std.fmt.comptimePrint(
-                \\Clear error states on all Driver(s) of specified Line.
-                \\Optional: Provide filter to specify Driver. To apply filter, provide
-                \\ID with filter suffix (e.g., 1d). Supported suffixes are:
-                \\ - "a" or "axis" to filter by Axis
-                \\ - "c" or "carrier" to filter by Carrier
-                \\ - "d" or "driver" to filter by Driver
-                \\
-                \\Example: Clear error states on all Driver(s) of Line "line1".
-                \\CLEAR_ERRORS line1
-                \\
-                \\Example: Clear error states on Driver "2" of Line "line1".
-                \\CLEAR_ERRORS line1 2d
-            , .{}),
-            .execute = &commands.clear_errors.impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("CLEAR_ERRORS");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "DEINITIALIZE",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-                .{
-                    .name = "filter",
-                    .optional = true,
-                    .kind = .mmc_client_filter,
-                },
-            },
-            .short_description = "Deinitialize Carrier.",
-            .long_description = std.fmt.comptimePrint(
-                \\Deinitialize Carrier on specified Line.
-                \\Optional: Provide filter to specify selection of Carrier(s). To apply
-                \\filter, provide ID with filter suffix (e.g., 1c). Supported suffixes
-                \\are:
-                \\ - "a" or "axis" to filter by Axis
-                \\ - "c" or "carrier" to filter by Carrier
-                \\ - "d" or "driver" to filter by Driver
-                \\
-                \\Example: Deinitialize Carrier(s) on Line "line1".
-                \\DEINITIALIZE line1
-                \\
-                \\Example: Deinitialize Carrier(s) on Driver "2" on Line "line1".
-                \\DEINITIALIZE line1 2d
-                \\
-                \\Example: Deinitialize Carrier "3" on Line "line1".
-                \\DEINITIALIZE line1 3c
-            , .{}),
-            .execute = &commands.clear_carrier_info.impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("DEINITIALIZE");
-    try command.registry.put(.{ .executable = .{
-        .name = "RESET_SYSTEM",
-        .short_description = "Reset system state.",
-        .long_description = std.fmt.comptimePrint(
-            \\Reset system:
-            \\ - Deinitialize all Carriers.
-            \\ - Clear all system errors.
-            \\ - Reset all push and pull states.
-        , .{}),
-        .execute = &commands.reset_system.impl,
-    } });
-    errdefer command.registry.orderedRemove("RESET_SYSTEM");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "RELEASE_CARRIER",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-                .{
-                    .name = "filter",
-                    .optional = true,
-                    .kind = .mmc_client_filter,
-                },
-            },
-            .short_description = "Release Carrier",
-            .long_description = std.fmt.comptimePrint(
-                \\Release Carrier, allows to move Carrier through external force. Carrier
-                \\stays initialized.
-                \\Optional: Provide filter to specify selection of Carrier(s). To apply
-                \\filter, provide ID with filter suffix (e.g., 1c). Supported suffixes
-                \\are:
-                \\ - "a" or "axis" to filter by Axis
-                \\ - "c" or "carrier" to filter by Carrier
-                \\ - "d" or "driver" to filter by Driver
-                \\
-                \\Example: Release Carrier(s) on Line "line1".
-                \\RELEASE_CARRIER line1
-                \\
-                \\Example: Release Carrier(s) on Driver "2" on Line "line1".
-                \\RELEASE_CARRIER line1 2d
-                \\
-                \\Example: Release Carrier "3" on Line "line1".
-                \\RELEASE_CARRIER line1 3c
-            , .{}),
-            .execute = &commands.release_carrier.impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("RELEASE_CARRIER");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "AUTO_INITIALIZE",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{
-                    .name = "Line(s)",
-                    .optional = true,
-                    .kind = .mmc_client_line,
-                },
-            },
-            .short_description = "Initialize all Carriers automatically.",
-            .long_description = std.fmt.comptimePrint(
-                \\Automatically initializes all uninitialized Carriers. This process
-                \\operates on carrier clusters, where a cluster is defined as a group of
-                \\uninitialized Carriers located on adjacent Axis. Each cluster requires
-                \\at least one free Axis to successfully initialize cluster. Multiple
-                \\Line auto initialization is supported (e.g., line1,line2,line3). If
-                \\Line is not provided, auto initializes Carriers on all Lines.
-                \\
-                \\Example: Auto initialize Carrier(s) on all Lines.
-                \\AUTO_INITIALIZE
-                \\
-                \\Example: Auto initialize Carrier(s) on Line "line1".
-                \\AUTO_INITIALIZE line1
-                \\
-                \\Example: Auto initialize Carrier(s) on Line "line1" and "line2".
-                \\AUTO_INITIALIZE line1,line2
-            , .{}),
-            .execute = &commands.auto_initialize.impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("AUTO_INITIALIZE");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "CALIBRATE",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-            },
-            .short_description = "Calibrate Track Line.",
-            .long_description = std.fmt.comptimePrint(
-                \\Calibrate Track Line. Uninitialized Carrier must be positioned at start
-                \\of Line and first Axis Hall Sensors are both in "on" state.
-                \\
-                \\Example: Calibrate Line "line1".
-                \\CALIBRATE line1
-            , .{}),
-            .execute = &commands.calibrate.impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("CALIBRATE");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "SET_ZERO",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-            },
-            .short_description = "Set Line zero position.",
-            .long_description = std.fmt.comptimePrint(
-                \\Set zero position for specified Line. Initialized Carrier must be on
-                \\first Axis of specified Line.
-                \\
-                \\Example: Set zero position for Line "line1".
-                \\SET_ZERO line1
-            , .{}),
-            .execute = &commands.set_line_zero.impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("SET_ZERO");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "INITIALIZE",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-                .{ .name = "Axis", .kind = .mmc_client_axis },
-                .{ .name = "direction", .kind = .mmc_client_direction },
-                .{ .name = "Carrier", .kind = .mmc_client_carrier },
-                .{
-                    .name = "link Axis",
-                    .resolve = false,
-                    .optional = true,
-                    .kind = .mmc_client_link_axis,
-                },
-            },
-            .short_description = "Initialize Carrier.",
-            .long_description = std.fmt.comptimePrint(
-                \\Slowly moves an uninitialized Carrier to the next Hall Sensor in the
-                \\provided direction, and assign provided Carrier ID to the Carrier.
-                \\Direction options:
-                \\ - forward  (direction of increasing Axis number)
-                \\ - backward (direction of decreasing Axis number)
-                \\
-                \\Optional: Provide link Axis if the uninitialized Carrier is located
-                \\between two Axis. Link Axis options:
-                \\ - next  (direction of increasing Axis number)
-                \\ - prev  (direction of decreasing Axis number)
-                \\ - right (direction of increasing Axis number)
-                \\ - left  (direction of decreasing Axis number)
-                \\
-                \\Example: Initialize Carrier on Axis "3" on Line "line1". Assign Carrier
-                \\ID "123". Initializing movement direction toward Axis "4".
-                \\INITIALIZE line1 3 forward 123
-                \\
-                \\Example: Initialize Carrier on Axis "3" and "4" on Line "line1". Assign
-                \\Carrier ID "123". Initializing movement direction toward Axis "3".
-                \\INITIALIZE line1 3 backward 123 next
-            , .{}),
-            .execute = &commands.isolate.impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("INITIALIZE");
-    try command.registry.put(.{ .executable = .{
-        .name = "WAIT_INITIALIZE",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "Line", .kind = .mmc_client_line },
-            .{ .name = "Carrier", .kind = .mmc_client_carrier },
-            .{ .name = "timeout", .optional = true },
-        },
-        .short_description = "Wait until Carrier initialization complete.",
-        .long_description = std.fmt.comptimePrint(
-            \\Pauses command execution until specified Carrier completes initialization.
-            \\Optional: Provide timeout. Returns error if specified timeout is exceeded.
-            \\Timeout must be provided in {s}.
-            \\
-            \\Example: Wait for initialization of Carrier "3" on Line "line1".
-            \\WAIT_INITIALIZE line1 3
-            \\
-            \\Example: Wait max 5000 {s} for initialization of Carrier "3" on
-            \\Line "line1".
-            \\WAIT_INITIALIZE line1 3 5000
-        , .{
-            standard.time.unit_long,
-            standard.time.unit_short,
-        }),
-        .execute = &commands.wait.isolate,
-    } });
-    errdefer command.registry.orderedRemove("WAIT_INITIALIZE");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "WAIT_MOVE_CARRIER",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-                .{ .name = "Carrier", .kind = .mmc_client_carrier },
-                .{ .name = "timeout", .optional = true },
-            },
-            .short_description = "Wait until Carrier movement complete.",
-            .long_description = std.fmt.comptimePrint(
-                \\Pauses command execution until specified Carrier completes movement.
-                \\Optional: Provide timeout. Returns error if specified timeout is
-                \\exceeded. Timeout must be provided in {s}.
-                \\
-                \\Example: Wait for movement completion of Carrier "3" on Line "line1".
-                \\WAIT_MOVE_CARRIER line1 3
-                \\
-                \\Example: Wait max 5000 {s} movement completion of Carrier "3" on Line
-                \\"line1".
-                \\WAIT_MOVE_CARRIER line1 3 5000
-            , .{
-                standard.time.unit_long,
-                standard.time.unit_short,
-            }),
-            .execute = &commands.wait.moveCarrier,
-        },
-    });
-    errdefer command.registry.orderedRemove("WAIT_MOVE_CARRIER");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "MOVE_CARRIER",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-                .{ .name = "Carrier", .kind = .mmc_client_carrier },
-                .{ .name = "target", .kind = .mmc_client_target },
-                .{
-                    .name = "control mode",
-                    .optional = true,
-                    .kind = .mmc_client_control_mode,
-                },
-                .{ .name = "CAS", .optional = true, .kind = .mmc_client_cas },
-            },
-            .short_description = "Move Carrier to specified target.",
-            .long_description = std.fmt.comptimePrint(
-                \\Move initialized Carrier to specified target. Provide target value
-                \\followed by suffix to specify target movement (e.g., 1a). Supported
-                \\suffixes are:
-                \\- "a" or "axis" to target Axis.
-                \\- "l" or "location" to target absolute location in Line, provided in
-                \\  {s}.
-                \\- "d" or "distance" to target relative distance to current Carrier
-                \\  position, provided in {s}.
-                \\
-                \\Optional: Provide following to specify movement control mode:
-                \\- "speed" to move Carrier with speed profile feedback.
-                \\- "position" to move Carrier with position profile feedback.
-                \\Optional: Provide "on" or "off" to specify CAS (Collision Avoidance
-                \\System) activation (enabled by default).
-                \\
-                \\Example: Move Carrier "2" to Axis "3" on Line "line1".
-                \\MOVE_CARRIER line1 2 3a
-                \\
-                \\Example: Move Carrier "2" to location 150 {s} on Line "line1" and move
-                \\Carrier with speed profile feedback.
-                \\MOVE_CARRIER line1 2 150l speed
-                \\
-                \\Example: Move Carrier "2" to location 150 {s} on Line "line1" and disable
-                \\CAS.
-                \\MOVE_CARRIER line1 2 150l position off
-            , .{
-                standard.length.unit_short,
-                standard.length.unit_short,
-                standard.length.unit_short,
-                standard.length.unit_short,
-            }),
-            .execute = &commands.move.impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("MOVE_CARRIER");
-    try command.registry.put(.{ .executable = .{
-        .name = "PUSH_CARRIER",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "Line", .kind = .mmc_client_line },
-            .{ .name = "Axis", .kind = .mmc_client_axis },
-            .{ .name = "direction", .kind = .mmc_client_direction },
-            .{
-                .name = "Carrier",
-                .optional = true,
-                .kind = .mmc_client_carrier,
-            },
-        },
-        .short_description = "Push Carrier on the specified Axis.",
-        .long_description = std.fmt.comptimePrint(
-            \\Push a Carrier on the specified Axis. This movement targets a
-            \\distance of Carrier length, and thus if it is used to cross a Line
-            \\boundary, the receiving Axis at the destination Line must be in
-            \\pulling state. Direction must be provided as:
-            \\- forward  (direction of increasing Axis number)
-            \\- backward (direction of decreasing Axis number)
-            \\
-            \\Optional: Provide Carrier to move the specified Carrier to the center
-            \\of the specified Axis, then push it according to direction.
-            \\
-            \\Example: Push Carrier on Axis "3" to Axis "4". If Line "line1" only has
-            \\3 Axes, push Carrier out from Line "line1" to Line "line2".
-            \\PUSH_CARRIER line1 3 forward
-            \\
-            \\Example: Move Carrier "2" to Axis "3" and transition to push movement to
-            \\Axis "4". If Line "line1" only has 3 Axes, then transition to push movement
-            \\out from Line "line1" to Line "line2".
-            \\PUSH_CARRIER line1 3 forward 2
-        , .{}),
-        .execute = &commands.push.impl,
-    } });
-    errdefer command.registry.orderedRemove("PUSH_CARRIER");
-    try command.registry.put(.{ .executable = .{
-        .name = "PULL_CARRIER",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "Line", .kind = .mmc_client_line },
-            .{ .name = "Axis", .kind = .mmc_client_axis },
-            .{ .name = "Carrier", .kind = .mmc_client_carrier },
-            .{ .name = "direction", .kind = .mmc_client_direction },
-            .{ .name = "location", .optional = true },
-            .{ .name = "CAS", .optional = true, .kind = .mmc_client_cas },
-        },
-        .short_description = "Pull incoming Carrier.",
-        .long_description = std.fmt.comptimePrint(
-            \\Sets the specified Axis to a pulling state, enabling Axis to initialize
-            \\and move incoming carrier to specified Axis. The pulled Carrier is
-            \\assigned with the specified Carrier ID. There must be no Carrier on
-            \\pulling Axis upon invocation. Direction must be provided as:
-            \\ - forward  (direction of increasing Axis number)
-            \\ - backward (direction of decreasing Axis number)
-            \\
-            \\Optional: Provide location to move Carrier after completed pulling
-            \\Carrier. Location must be provided as:
-            \\- {s} (move Carrier to specified location after pulled to
-            \\  specified  Axis), or
-            \\- "nan" (Carrier can move through external force after pulled to
-            \\  specified Axis).
-            \\
-            \\Optional: Provide "on" or "off" to specify CAS (Collision
-            \\Avoidance System) activation (enabled by default) while Carrier is
-            \\being moved to specified location.
-            \\
-            \\Example: Pull Carrier onto Axis "1" on Line "line2" from Line "line1" and
-            \\assign Carrier ID to "123".
-            \\PULL_CARRIER line2 1 123 forward
-            \\
-            \\Example: Pull Carrier to Line "line2" from Line "line1", assign Carrier ID
-            \\to "123" and move Carrier "123" to location 1500 {s} upon recognized on
-            \\Line "line2".
-            \\PULL_CARRIER line2 1 123 forward 1500
-            \\
-            \\Example: Pull Carrier to Line "line2" from Line "line1", assign Carrier ID
-            \\to "123", and move Carrier "123" to location 1500 {s} with CAS deactivated
-            \\upon recognized on Line "line2".
-            \\PULL_CARRIER line2 1 123 forward 1500 off
-        , .{
-            standard.length.unit_long,
-            standard.length.unit_short,
-            standard.length.unit_short,
-        }),
-        .execute = &commands.pull.impl,
-    } });
-    errdefer command.registry.orderedRemove("PULL_CARRIER");
-    try command.registry.put(.{ .executable = .{
-        .name = "STOP_PULL_CARRIER",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "Line", .kind = .mmc_client_line },
-            .{ .name = "filter", .optional = true, .kind = .mmc_client_filter },
-        },
-        .short_description = "Stop pulling Carrier at axis.",
-        .long_description = std.fmt.comptimePrint(
-            \\Stop active Carrier pull of specified Line.
-            \\Optional: Provide filter to specify selection of pull. To apply filter,
-            \\provide ID with filter suffix (e.g., 1c). Supported suffixes are:
-            \\ - "a" or "axis" to filter by Axis
-            \\ - "c" or "Carrier" to filter by Carrier
-            \\ - "d" or "driver" to filter by Driver
-            \\
-            \\Example: Stop pull Carrier(s) on Line "line1".
-            \\STOP_PULL_CARRIER line1
-            \\
-            \\Example: Stop pull for Axis "1" on Line "line1".
-            \\STOP_PULL_CARRIER line1 1a
-        , .{}),
-        .execute = &commands.stop_pull.impl,
-    } });
-    errdefer command.registry.orderedRemove("STOP_PULL_CARRIER");
-    try command.registry.put(.{ .executable = .{
-        .name = "STOP_PUSH_CARRIER",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "Line", .kind = .mmc_client_line },
-            .{ .name = "filter", .optional = true, .kind = .mmc_client_filter },
-        },
-        .short_description = "Stop pushing Carrier at axis.",
-        .long_description = std.fmt.comptimePrint(
-            \\Stop active Carrier push on specified Line.
-            \\Optional: Provide filter to specify selection of push. To apply
-            \\filter, provide ID with filter suffix (e.g., 1c).
-            \\Supported suffixes are:
-            \\ - "a" or "axis" to filter by Axis
-            \\ - "c" or "Carrier" to filter by Carrier
-            \\ - "d" or "driver" to filter by Driver
-            \\
-            \\Example: Stop push Carrier(s) on Line "line1".
-            \\STOP_PUSH_CARRIER line1
-            \\
-            \\Example: Stop push for Axis "3" on Line "line1".
-            \\STOP_PUSH_CARRIER line1 3a
-        , .{}),
-        .execute = &commands.stop_push.impl,
-    } });
-    errdefer command.registry.orderedRemove("STOP_PUSH_CARRIER");
-    try command.registry.put(.{ .executable = .{
-        .name = "WAIT_AXIS_EMPTY",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "Line", .kind = .mmc_client_line },
-            .{ .name = "Axis", .kind = .mmc_client_axis },
-            .{ .name = "timeout", .optional = true },
-        },
-        .short_description = "Wait until no Carrier on Axis.",
-        .long_description = std.fmt.comptimePrint(
-            \\Pause execution of commands until specified Axis has:
-            \\ - no carriers,
-            \\ - no active hall alarms,
-            \\ - no wait for push/pull.
-            \\Optional: timeout will return error if timeout duration is exceeded.
-            \\Timeout duration must be provided in {s}.
-            \\
-            \\Example: Wait until no Carrier on Axis "2" on Line "line1".
-            \\WAIT_AXIS_EMPTY line1 2
-            \\
-            \\Example: Wait max 5000 {s} until no Carrier on Axis "2" on Line "line1".
-            \\WAIT_AXIS_EMPTY line1 2 5000
-        , .{
-            standard.time.unit_long,
-            standard.time.unit_short,
-        }),
-        .execute = &commands.wait.axisEmpty,
-    } });
-    errdefer command.registry.orderedRemove("WAIT_AXIS_EMPTY");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "ADD_LOG_INFO",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-                .{ .name = "kind", .kind = .mmc_client_log_kind },
-                .{ .name = "range", .optional = true },
-            },
-            .short_description = "Add logging configuration.",
-            .long_description = std.fmt.comptimePrint(
-                \\Add logging configuration. Overwrites existing logging configuration
-                \\of specified Line. Parameter "kind" specifies information to add to
-                \\logging configuration. Valid "kind" options:
-                \\ - driver
-                \\ - axis
-                \\ - all
-                \\
-                \\Optional: "range" defines Axis range and must be provided as
-                \\start:end value (e.g., "1:9").
-                \\
-                \\Example: Add Driver(s) on Line "line1" to logging configuration.
-                \\ADD_LOG_INFO line1 driver
-                \\
-                \\Example: Add Axis "2" to "3" on Line "line1" to logging configuration.
-                \\ADD_LOG_INFO line1 axis 2:3
-            , .{}),
-            .execute = &commands.log.add,
-        },
-    });
-    errdefer command.registry.orderedRemove("ADD_LOG_INFO");
-    try command.registry.put(.{ .executable = .{
-        .name = "START_LOG_INFO",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "duration" },
-            .{ .name = "path", .optional = true },
-        },
-        .short_description = "Start logging.",
-        .long_description = std.fmt.comptimePrint(
-            \\Start logging process. Log file contains only recent data during specified
-            \\time (in seconds). Logging runs until:
-            \\ - error occurs or
-            \\ - cancelled by "STOP_LOGGING" command.
-            \\
-            \\If path not specified, log file will be created in working directory:
-            \\ - "mmc-logging-YYYY.MM.DD-HH.MM.SS.csv".
-            \\
-            \\Example: Start logging process and provide logging data for a duration of
-            \\10 s before logging is stopped.
-            \\START_LOG_INFO 10
-            \\
-            \\Example: Start logging process and save logging file at
-            \\"folder/log_info.csv".
-            \\START_LOG_INFO 10 folder/log_info.csv
-        , .{}),
-        .execute = &commands.log.start,
-    } });
-    errdefer command.registry.orderedRemove("START_LOG_INFO");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "REMOVE_LOG_INFO",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-                .{ .name = "kind", .kind = .mmc_client_log_kind },
-                .{ .name = "range", .optional = true },
-            },
-            .short_description = "Remove logging configuration.",
-            .long_description = std.fmt.comptimePrint(
-                \\Remove logging configuration. Parameter "kind" specifies information to
-                \\remove from logging configuration. Valid "kind" options:
-                \\ - driver
-                \\ - axis
-                \\ - all
-                \\
-                \\Optional: "range" defines Axis range and must be provided as start:end
-                \\value (e.g., "1:9").
-                \\
-                \\Example: Clear logging configuration for Line "line1".
-                \\REMOVE_LOG_INFO line1 all
-                \\
-                \\Example: Remove Driver(s) on Line "line1" from logging configuration.
-                \\REMOVE_LOG_INFO line1 driver
-                \\
-                \\Example: Remove Axis "1" to "3" on Line "line1" from logging configuration.
-                \\REMOVE_LOG_INFO line1 axis 1:3
-            , .{}),
-            .execute = &commands.log.remove,
-        },
-    });
-    errdefer command.registry.orderedRemove("REMOVE_LOG_INFO");
-    try command.registry.put(.{ .executable = .{
-        .name = "STATUS_LOG_INFO",
-        .short_description = "Show logging configuration.",
-        .long_description = std.fmt.comptimePrint(
-            \\Show logging configuration for specified Line(s).
-        , .{}),
-        .execute = &commands.log.status,
-    } });
-    errdefer command.registry.orderedRemove("STATUS_LOG_INFO");
-    try command.registry.put(.{ .executable = .{
-        .name = "STOP_LOG_INFO",
-        .short_description = "Stop MMC logging.",
-        .long_description = std.fmt.comptimePrint(
-            \\Stop MMC logging and save logging data to file.
-        , .{}),
-        .execute = &commands.log.stop,
-    } });
-    errdefer command.registry.orderedRemove("STOP_LOG_INFO");
-    try command.registry.put(.{ .executable = .{
-        .name = "CANCEL_LOG_INFO",
-        .short_description = "Cancel MMC logging process.",
-        .long_description = std.fmt.comptimePrint(
-            \\Cancel MMC logging without saving the logging data.
-        , .{}),
-        .execute = &commands.log.cancel,
-    } });
-    errdefer command.registry.orderedRemove("CANCEL_LOG_INFO");
-    try command.registry.put(.{ .executable = .{
-        .name = "PRINT_ERRORS",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "Line", .kind = .mmc_client_line },
-            .{ .name = "filter", .optional = true, .kind = .mmc_client_filter },
-        },
-        .short_description = "Print Axis and Driver errors.",
-        .long_description = std.fmt.comptimePrint(
-            \\Print Axis and Driver errors on specified Line.
-            \\Optional: Provide filter to specify selection of error(s). To apply filter,
-            \\provide ID with filter suffix (e.g., 1a). Supported suffixes are:
-            \\ - "a" or "axis" to filter by Axis
-            \\ - "c" or "Carrier" to filter by Carrier
-            \\ - "d" or "driver" to filter by Driver
-            \\
-            \\Example: Print Axis and Driver errors on Line "line1".
-            \\PRINT_ERRORS line1
-            \\
-            \\Example: Print errors on Axis "3" on Line "line1".
-            \\PRINT_ERRORS line1 3a
-        , .{}),
-        .execute = &commands.show_errors.impl,
-    } });
-    errdefer command.registry.orderedRemove("PRINT_ERRORS");
-    try command.registry.put(.{ .executable = .{
-        .name = "STOP",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "Line", .kind = .mmc_client_line, .optional = true },
-        },
-        .short_description = "Stop all processes.",
-        .long_description = std.fmt.comptimePrint(
-            \\Stop all running and queued processes on System.
-            \\Optional: Stop all running and queued processes only on specified Line.
-        , .{}),
-        .execute = &commands.stop.impl,
-    } });
-    errdefer command.registry.orderedRemove("STOP");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "PAUSE",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line, .optional = true },
-            },
-            .short_description = "Pause all processes.",
-            .long_description = std.fmt.comptimePrint(
-                \\Pause all processes on System.
-                \\Optional: Pause all processes only on specified Line.
-            , .{}),
-            .execute = &commands.pause.impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("PAUSE");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "RESUME",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line, .optional = true },
-            },
-            .short_description = "Resume all paused processes.",
-            .long_description = std.fmt.comptimePrint(
-                \\Resume all paused processes on System.
-                \\Optional: Resume all paused processes only on specified Line.
-            , .{}),
-            .execute = &commands.@"resume".impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("RESUME");
-    try command.registry.put(.{
-        .executable = .{
-            .name = "SET_CARRIER_ID",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-                .{ .name = "Carrier", .kind = .mmc_client_carrier },
-                .{ .name = "new Carrier id", .kind = .mmc_client_carrier },
-            },
-            .short_description = "Modify Carrier ID.",
-            .long_description = std.fmt.comptimePrint(
-                \\Modify Carrier ID of initialized Carrier. Carrier ID must be unique per
-                \\Line.
-                \\
-                \\Example: Modify Carrier ID of Carrier "3" to "4" on Line "line1".
-                \\SET_CARRIER_ID line1 3 4
-            , .{}),
-            .execute = &commands.set_carrier_id.impl,
-        },
-    });
-    errdefer command.registry.orderedRemove("SET_CARRIER_ID");
 }
 
 pub fn deinit() void {

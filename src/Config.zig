@@ -22,7 +22,7 @@ pub const Module = enum {
     mes07,
 };
 
-const ModuleConfig = union(Module) {
+pub const ModuleConfig = union(Module) {
     return_demo2: ReturnDemo2Config,
     mmc_client: ClientCliConfig,
     mes07: Mes07Config,
