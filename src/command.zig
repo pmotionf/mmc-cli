@@ -444,8 +444,8 @@ pub fn init() !void {
         },
         .short_description = "Unload a previously loaded configuration.",
         .long_description =
-        \\Unload the currently active configuration. Optionally, a config ID can be
-        \\provided to unload a specific configuration. If an active configuration
+        \\Unload the currently active configuration. Optionally, provided a
+        \\config ID to unload a specific configuration. If an active configuration
         \\is unloaded, the first loaded configuration will be activated.
         ,
         .execute = &unloadConfig,
@@ -455,8 +455,7 @@ pub fn init() !void {
         .short_description = "List all loaded configurations.",
         .long_description =
         \\Display all currently loaded configurations with config ID and their
-        \\source path and whether they are active. The active configuration is
-        \\marked with '*'.
+        \\source path. The active configuration is marked with '*'.
         ,
         .execute = &listLoadedConfigs,
     } });
