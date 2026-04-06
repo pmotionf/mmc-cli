@@ -1062,66 +1062,109 @@ fn deinitLoadedConfigs() void {
     active_config_id = null;
 }
 
+/// Attempts to open a config file at `path` with additional fallback locations.
+/// Fallback:
+/// 1. Current working directory
+/// 2. Executable directory
+/// 3. Platform specific directory
 fn openConfigFile(path: []const u8) !std.fs.File {
     if (path.len >= std.fs.max_path_bytes) return error.FilePathTooLong;
+    if (path.len == 0) return error.InvalidParameter;
 
-    return if (path.len > 0)
-        std.fs.cwd().openFile(path, .{}) catch error.FileNotFound
-    else
-        std.fs.cwd().openFile("config.json5", .{}) catch exe_local: {
-            var exe_dir_buf: [std.fs.max_path_bytes]u8 = undefined;
-            const exe_dir_path = std.fs.selfExeDirPath(&exe_dir_buf) catch
-                break :exe_local error.FileNotFound;
-            var exe_dir = std.fs.cwd().openDir(exe_dir_path, .{}) catch
-                break :exe_local error.FileNotFound;
-            defer exe_dir.close();
-            break :exe_local exe_dir.openFile("config.json5", .{});
-        } catch config_local: {
-            var config_dir = switch (comptime builtin.os.tag) {
-                .windows => b: {
-                    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-                    var fba = std.heap.FixedBufferAllocator.init(&path_buf);
-                    const fba_alloc = fba.allocator();
-                    const home_path = try std.process.getEnvVarOwned(
-                        fba_alloc,
-                        "USERPROFILE",
+    return std.fs.cwd().openFile(path, .{}) catch exe_local: {
+        var exe_dir_buf: [std.fs.max_path_bytes]u8 = undefined;
+        const exe_dir_path = std.fs.selfExeDirPath(&exe_dir_buf) catch
+            break :exe_local error.FileNotFound;
+
+        std.log.info(
+            \\Config file '{s}' not found in current working directory!
+            \\Trying executable directory: {s}
+            \\
+        ,
+            .{ path, exe_dir_path },
+        );
+
+        var exe_dir = std.fs.cwd().openDir(exe_dir_path, .{}) catch
+            break :exe_local error.FileNotFound;
+        defer exe_dir.close();
+
+        break :exe_local exe_dir.openFile(path, .{});
+    } catch config_local: {
+        var config_dir = switch (comptime builtin.os.tag) {
+            .windows => b: {
+                var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+                var fba = std.heap.FixedBufferAllocator.init(&path_buf);
+                const fba_alloc = fba.allocator();
+
+                const home_path = try std.process.getEnvVarOwned(
+                    fba_alloc,
+                    "USERPROFILE",
+                );
+
+                std.log.info(
+                    \\Config file '{s}' not found in executable directory!
+                    \\Trying Windows user config directory under: {s}\.config\mmc-cli
+                    \\
+                ,
+                    .{ path, home_path },
+                );
+
+                var home_dir = try std.fs.cwd().openDir(home_path, .{});
+                defer home_dir.close();
+
+                var config_root = try home_dir.openDir(".config", .{});
+                defer config_root.close();
+
+                break :b try config_root.openDir("mmc-cli", .{});
+            },
+            .linux => b: {
+                var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+                var fba = std.heap.FixedBufferAllocator.init(&path_buf);
+                const fba_alloc = fba.allocator();
+
+                const config_path = std.process.getEnvVarOwned(
+                    fba_alloc,
+                    "XDG_CONFIG_HOME",
+                ) catch "";
+
+                if (config_path.len > 0) {
+                    std.log.info(
+                        \\Config file '{s}' not found in executable directory!
+                        \\Trying XDG config home directory: {s}
+                        \\
+                    ,
+                        .{ path, config_path },
                     );
+                    break :b try std.fs.cwd().openDir(config_path, .{});
+                }
 
-                    var home_dir = try std.fs.cwd().openDir(home_path, .{});
-                    defer home_dir.close();
-                    var config_root = try home_dir.openDir(".config", .{});
-                    defer config_root.close();
-                    break :b try config_root.openDir("mmc-cli", .{});
-                },
-                .linux => b: {
-                    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-                    var fba = std.heap.FixedBufferAllocator.init(&path_buf);
-                    const fba_alloc = fba.allocator();
-                    const config_path = std.process.getEnvVarOwned(
-                        fba_alloc,
-                        "XDG_CONFIG_HOME",
-                    ) catch "";
-                    if (config_path.len > 0) {
-                        break :b try std.fs.cwd().openDir(config_path, .{});
-                    }
-                    const home_path = try std.process.getEnvVarOwned(
-                        fba_alloc,
-                        "HOME",
-                    );
-                    var home_dir = try std.fs.cwd().openDir(home_path, .{});
-                    defer home_dir.close();
-                    var config_root = try home_dir.openDir(".config", .{});
-                    defer config_root.close();
-                    break :b try config_root.openDir("mmc-cli", .{});
-                },
-                else => return error.UnsupportedOs,
-            };
+                const home_path = try std.process.getEnvVarOwned(
+                    fba_alloc,
+                    "HOME",
+                );
 
-            break :config_local try config_dir.openFile(
-                "config.json5",
-                .{},
-            );
+                std.log.info(
+                    \\Config file '{s}' not found in executable directory!
+                    \\Trying Linux user config directory under: {s}/.config/mmc-cli
+                    \\
+                ,
+                    .{ path, home_path },
+                );
+
+                var home_dir = try std.fs.cwd().openDir(home_path, .{});
+                defer home_dir.close();
+
+                var config_root = try home_dir.openDir(".config", .{});
+                defer config_root.close();
+
+                break :b try config_root.openDir("mmc-cli", .{});
+            },
+            else => return error.UnsupportedOs,
         };
+        defer config_dir.close();
+
+        break :config_local try config_dir.openFile(path, .{});
+    };
 }
 
 /// Generates a unique config ID.
