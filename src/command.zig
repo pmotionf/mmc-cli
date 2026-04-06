@@ -1063,6 +1063,8 @@ fn deinitLoadedConfigs() void {
 }
 
 fn openConfigFile(path: []const u8) !std.fs.File {
+    if (path.len >= std.fs.max_path_bytes) return error.FilePathTooLong;
+
     return if (path.len > 0)
         std.fs.cwd().openFile(path, .{}) catch error.InvalidParameter
     else
@@ -1181,10 +1183,24 @@ fn activateLoadedConfig(id: []const u8) !void {
 }
 
 fn loadConfig(params: [][]const u8) !void {
-    const file_path = if (params.len > 0) params[0] else "";
-    const config_id = if (params.len > 1) params[1] else "";
-    const resolved_source_path =
-        if (file_path.len > 0) file_path else "config.json5";
+    const file_path: []const u8 = if (params.len > 0) params[0] else "";
+    const config_id: []const u8 = if (params.len > 1) params[1] else "";
+    var buf: [std.fs.max_path_bytes]u8 = undefined;
+
+    // Validate path length
+    if (std.mem.endsWith(u8, file_path, ".json5") and
+        file_path.len > buf.len)
+        return error.PathTooLong
+    else if (file_path.len + ".json5".len > buf.len)
+        return error.PathTooLong;
+
+    const resolved_file_path: []const u8 =
+        if (file_path.len == 0)
+            "config.json5"
+        else if (std.mem.endsWith(u8, file_path, ".json5"))
+            file_path
+        else
+            try std.fmt.bufPrint(&buf, "{s}.json5", .{file_path});
 
     var config_file = try openConfigFile(file_path);
     defer config_file.close();
