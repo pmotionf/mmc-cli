@@ -1066,7 +1066,7 @@ fn openConfigFile(path: []const u8) !std.fs.File {
     if (path.len >= std.fs.max_path_bytes) return error.FilePathTooLong;
 
     return if (path.len > 0)
-        std.fs.cwd().openFile(path, .{}) catch error.InvalidParameter
+        std.fs.cwd().openFile(path, .{}) catch error.FileNotFound
     else
         std.fs.cwd().openFile("config.json5", .{}) catch exe_local: {
             var exe_dir_buf: [std.fs.max_path_bytes]u8 = undefined;
@@ -1202,7 +1202,7 @@ fn loadConfig(params: [][]const u8) !void {
         else
             try std.fmt.bufPrint(&buf, "{s}.json5", .{file_path});
 
-    var config_file = try openConfigFile(file_path);
+    var config_file = try openConfigFile(resolved_file_path);
     defer config_file.close();
 
     const config_arena = try std.heap.smp_allocator.create(std.heap.ArenaAllocator);
@@ -1228,7 +1228,7 @@ fn loadConfig(params: [][]const u8) !void {
 
     const source_path = try std.heap.smp_allocator.dupe(
         u8,
-        resolved_source_path,
+        resolved_file_path,
     );
     errdefer std.heap.smp_allocator.free(source_path);
 
