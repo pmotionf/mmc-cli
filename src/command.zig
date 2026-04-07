@@ -21,16 +21,20 @@ const mes07 = if (config.mes07) @import("modules/mes07.zig") else void;
 
 const Config = @import("Config.zig");
 
+/// Module lifecycle hooks to load and unload modules and its module
+/// commands set.
 const ModuleSpec = struct {
     init: *const fn (Config.ModuleConfig) anyerror!void,
     deinit: *const fn () void,
     commands: []const Command,
 };
 
+/// Stub initializer for modules disabled at build time.
 fn initModuleDisabled(_: Config.ModuleConfig) !void {
     return error.ModuleDisabledAtBuildTime;
 }
 
+/// Stub deinitializer for modules disabled at build time.
 fn deinitModuleDisabled() void {}
 
 fn initReturnDemo2(module_config: Config.ModuleConfig) !void {
@@ -1217,9 +1221,11 @@ fn initModulesFromConfig(conf: *Config) !void {
     }
 }
 
+/// Activates a loaded configuration by config ID. Deinit current modules,
+/// initializes modules from target config and updates `active_config_id`.
 fn activateLoadedConfig(id: []const u8) !void {
     const loaded = loaded_configs.getPtr(id) orelse
-        return error.InvalidParameter;
+        return error.ConfigIdNotFound;
     deinitModules();
     try initModulesFromConfig(&loaded.config);
     active_config_id = loaded.id;
