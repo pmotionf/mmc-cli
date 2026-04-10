@@ -1180,8 +1180,16 @@ allocator: std.mem.Allocator,
 /// Store the configuration.
 config: Config,
 
-pub fn create(c: Config) !MmcClient {
-    var self: MmcClient = .{
+var debug_allocator = std.heap.DebugAllocator(.{}){};
+
+var current: ?MmcClient = null;
+
+pub fn get() *MmcClient {
+    return &(current orelse std.debug.panic("Mmc_client module is not initialized", .{}));
+}
+
+pub fn init(c: Config) !void {
+    current = .{
         .allocator = if (builtin.mode == .Debug)
             debug_allocator.allocator()
         else
@@ -1202,35 +1210,15 @@ pub fn create(c: Config) !MmcClient {
         // is connected to a different server. Stays null before connected to a socket.
         .endpoint = null,
     };
+    errdefer current = null;
 
-    self.config = .{
-        .host = try self.allocator.dupe(u8, c.host),
+    current.?.config = .{
+        .host = try current.?.allocator.dupe(u8, c.host),
         .port = c.port,
     };
-    errdefer self.allocator.free(self.config.host);
-    self.parameter = .init(self.allocator);
-    errdefer self.parameter.deinit();
-    return self;
-}
-
-var debug_allocator = std.heap.DebugAllocator(.{}){};
-
-var current: ?MmcClient = null;
-
-pub fn get() *MmcClient {
-    // scaffold:
-    // throw error here
-    // e.g. ModuleNotInitialized
-    return &(current orelse std.debug.panic("Mmc_client module is not initialized", .{}));
-    // if (current) |*c| {
-    //     return c;
-    // }
-    // return error.ModuleNotInitialized;
-}
-
-pub fn init(c: Config) !void {
-    current = try MmcClient.create(c);
-    errdefer current = null;
+    errdefer current.allocator.free(current.?.config.host);
+    current.?.parameter = .init(current.?.allocator);
+    errdefer current.?.parameter.deinit();
 }
 
 pub fn deinit() void {
@@ -1315,9 +1303,6 @@ pub fn waitCommandCompleted(gpa: std.mem.Allocator, net: zignet.Socket) !void {
                 },
             },
         };
-        // try sendRequest(allocator, net, request);
-        // var decoded = try getResponse(allocator, net);
-        // defer decoded.deinit(allocator);
         try sendRequest(get().allocator, net, request);
         var decoded = try getResponse(get().allocator, net);
         defer decoded.deinit(get().allocator);

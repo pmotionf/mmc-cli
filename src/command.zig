@@ -1198,9 +1198,6 @@ fn genLoadedConfigId(file_path: []const u8, config_id: []const u8) ![]u8 {
 
         if (!loaded_configs.contains(candidate)) return candidate;
         std.heap.smp_allocator.free(candidate);
-
-        // if (suffix == std.math.maxInt(@TypeOf(suffix))) return error.InvalidConfigID;
-        // std.log.debug("maxInt: {d}\n", .{std.math.maxInt(@TypeOf(suffix))});
     }
 }
 
@@ -1400,16 +1397,6 @@ fn unloadConfig(params: [][]const u8) !void {
             }
         }
     }
-
-    std.log.debug(
-        "Unload config: idx={d}, id={s}, was active={}, fallback={s}",
-        .{
-            idx,
-            id,
-            was_active,
-            fallback_id orelse "nope",
-        },
-    );
 
     const removed_entry = loaded_configs.fetchOrderedRemove(id) orelse
         return error.InvalidParameter;
