@@ -1231,6 +1231,47 @@ fn activateLoadedConfig(id: []const u8) !void {
     active_config_id = loaded.id;
 }
 
+/// Returns module tag if module exists in configuration else null.
+fn findModule(
+    modules: []const Config.ModuleConfig,
+    comptime tag: Config.Module,
+) ?*const Config.ModuleConfig {
+    for (modules) |*mod| {
+        if (std.meta.activeTag(mod.*) == tag) return mod;
+    }
+    return null;
+}
+
+/// Returns true when both configs contain the same modules.
+/// For `mmc_client` module, `host` and `port` must also match.
+fn configEql(a: *const Config, b: *const Config) bool {
+    const a_modules = a.parsed.value.modules;
+    const b_modules = b.parsed.value.modules;
+
+    inline for (@typeInfo(Config.Module).@"enum".fields) |field| {
+        const tag: Config.Module = @enumFromInt(field.value);
+
+        const a_mod = findModule(a_modules, tag);
+        const b_mod = findModule(b_modules, tag);
+
+        if ((a_mod == null) != (b_mod == null)) return false;
+
+        if (a_mod != null) {
+            switch (a_mod.?.*) {
+                .mmc_client => |a_mmc| {
+                    if (a_mmc.port != b_mod.?.mmc_client.port) return false;
+                    if (!std.mem.eql(u8, a_mmc.host, b_mod.?.mmc_client.host))
+                        return false;
+                },
+                .mes07 => {},
+                .return_demo2 => {},
+            }
+        }
+    }
+
+    return true;
+}
+
 fn loadConfig(params: [][]const u8) !void {
     const file_path: []const u8 = if (params.len > 0) params[0] else "";
     const config_id: []const u8 = if (params.len > 1) params[1] else "";
@@ -1265,11 +1306,48 @@ fn loadConfig(params: [][]const u8) !void {
     var conf = try Config.parse(config_allocator, config_file);
     errdefer conf.deinit();
 
+    // Check if Config file exclusively contains disabled module(s)
+    const parsed_mods = conf.parsed.value.modules;
+    var any_enabled = false;
+
+    for (parsed_mods) |mod| {
+        const tag = std.meta.activeTag(mod);
+        switch (tag) {
+            .return_demo2 => {
+                if (config.return_demo2) any_enabled = true;
+            },
+            .mmc_client => {
+                if (config.mmc_client) any_enabled = true;
+            },
+            .mes07 => {
+                if (config.mes07) any_enabled = true;
+            },
+        }
+    }
+
+    if (!any_enabled) return error.ModuleDisabledAtBuildTime;
+
     // Check if Config already loaded
     var it_loaded = loaded_configs.iterator();
     while (it_loaded.next()) |entry| {
-        if (configEql(&conf, &entry.value_ptr.config))
+        if (configEql(&conf, &entry.value_ptr.config)) {
+            std.log.info(
+                "Config already loaded as '{s}'.",
+                .{entry.value_ptr.id},
+            );
+            if (std.mem.eql(u8, entry.value_ptr.id, active_config_id orelse ""))
+                std.log.info(
+                    "Config '{s}' is currently active.\n",
+                    .{entry.value_ptr.id},
+                )
+            else
+                std.log.info(
+                    "Type 'USE_CONFIG {s}' to activate this config.\n",
+                    .{entry.value_ptr.id},
+                );
+
             return error.ConfigAlreadyLoaded;
+        }
     }
 
     const id = try genLoadedConfigId(file_path, config_id);
