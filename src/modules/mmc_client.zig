@@ -1232,7 +1232,7 @@ pub fn init(c: Config) !void {
     try command.registry.put(.{ .executable = .{
         .name = "STOP",
         .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "Line", .kind = .mmc_client_line },
+            .{ .name = "Line", .kind = .mmc_client_line, .optional = true },
         },
         .short_description = "Stop all processes.",
         .long_description = std.fmt.comptimePrint(
@@ -1246,7 +1246,7 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "PAUSE",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
+                .{ .name = "Line", .kind = .mmc_client_line, .optional = true },
             },
             .short_description = "Pause all processes.",
             .long_description = std.fmt.comptimePrint(
@@ -1261,7 +1261,7 @@ pub fn init(c: Config) !void {
         .executable = .{
             .name = "RESUME",
             .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
+                .{ .name = "Line", .kind = .mmc_client_line, .optional = true },
             },
             .short_description = "Resume all paused processes.",
             .long_description = std.fmt.comptimePrint(
