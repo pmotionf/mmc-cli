@@ -13,8 +13,6 @@ const build = @import("build.zig.zon");
 const config = @import("config");
 
 // Command modules.
-const return_demo2 =
-    if (config.return_demo2) @import("modules/return_demo2.zig") else void;
 const mmc_client =
     if (config.mmc_client) @import("modules/MmcClient.zig") else void;
 const mes07 = if (config.mes07) @import("modules/mes07.zig") else void;
@@ -37,14 +35,6 @@ fn initModuleDisabled(_: Config.ModuleConfig) !void {
 /// Stub deinitializer for modules disabled at build time.
 fn deinitModuleDisabled() void {}
 
-fn initReturnDemo2(module_config: Config.ModuleConfig) !void {
-    const cfg = switch (module_config) {
-        .return_demo2 => |cfg| cfg,
-        else => unreachable,
-    };
-    try return_demo2.init(cfg);
-}
-
 fn initMmcClient(module_config: Config.ModuleConfig) !void {
     const cfg = switch (module_config) {
         .mmc_client => |cfg| cfg,
@@ -62,15 +52,6 @@ fn initMes07(module_config: Config.ModuleConfig) !void {
 }
 
 const module_specs = std.EnumArray(Config.Module, ModuleSpec).init(.{
-    .return_demo2 = if (config.return_demo2) .{
-        .init = initReturnDemo2,
-        .deinit = return_demo2.deinit,
-        .commands = return_demo2.module_commands[0..],
-    } else .{
-        .init = initModuleDisabled,
-        .deinit = deinitModuleDisabled,
-        .commands = &.{},
-    },
     .mmc_client = if (config.mmc_client) .{
         .init = initMmcClient,
         .deinit = mmc_client.deinit,
@@ -1261,7 +1242,6 @@ fn configEql(a: *const Config, b: *const Config) bool {
                         return false;
                 },
                 .mes07 => {},
-                .return_demo2 => {},
             }
         }
     }
@@ -1310,9 +1290,6 @@ fn loadConfig(params: [][]const u8) !void {
     for (parsed_mods) |mod| {
         const tag = std.meta.activeTag(mod);
         switch (tag) {
-            .return_demo2 => {
-                if (config.return_demo2) any_enabled = true;
-            },
             .mmc_client => {
                 if (config.mmc_client) any_enabled = true;
             },

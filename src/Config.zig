@@ -5,10 +5,6 @@ const std = @import("std");
 const config = @import("config");
 const json5 = @import("json5");
 
-const ReturnDemo2Config = if (config.return_demo2)
-    @import("modules/return_demo2.zig").Config
-else
-    void;
 const ClientCliConfig =
     if (config.mmc_client) @import("modules/MmcClient.zig").Config else void;
 const Mes07Config =
@@ -17,13 +13,11 @@ const Mes07Config =
 parsed: json5.Parsed(Parse),
 
 pub const Module = enum {
-    return_demo2,
     mmc_client,
     mes07,
 };
 
 pub const ModuleConfig = union(Module) {
-    return_demo2: ReturnDemo2Config,
     mmc_client: ClientCliConfig,
     mes07: Mes07Config,
 };
