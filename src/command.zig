@@ -407,14 +407,36 @@ pub fn init() !void {
     try registry.put(.{ .executable = .{
         .name = "SET",
         .parameters = &[_]Command.Executable.Parameter{
-            .{ .name = "variable", .resolve = false },
-            .{ .name = "value" },
+            .{ .name = "name", .resolve = false },
+            .{ .name = "value1", .resolve = true },
+            .{ .name = "operator", .resolve = false, .optional = true },
+            .{ .name = "value2", .resolve = true, .optional = true },
         },
         .short_description = "Set a variable equal to a value.",
         .long_description =
         \\Create or update a variable name that resolves to the provided value
-        \\in all future commands. Variable names are case sensitive and shall
-        \\not begin with digit.
+        \\in all future commands. If no operator is provided, the variable is
+        \\set directly to value1. Optional if an operator is provided, the
+        \\result of the operation is assigned. Variable names are case sensitive
+        \\and shall not begin with digit.
+        \\
+        \\Example: Set variable 'var' to the value 5 and variable 'var2' to
+        \\value 'line1'.
+        \\SET var 5
+        \\SET var2 line1
+        \\
+        \\Example: Set variable 'var' to value of 'var2'.
+        \\SET var var2
+        \\
+        \\Example: Set variable 'var' to value of variable 'var2' plus 5.
+        \\SET var var2 + 5
+        \\
+        \\Operators:
+        \\* Addition +
+        \\* Subtraction -
+        \\* Multiplication *
+        \\* Division /
+        \\* Modulo %
         ,
         .execute = &set,
     } });
@@ -779,12 +801,48 @@ fn version(_: [][]const u8) !void {
 
 fn set(params: [][]const u8) !void {
     if (std.ascii.isDigit(params[0][0])) return error.InvalidParameter;
-    try variables.put(params[0], params[1]);
+    const name: []const u8 = params[0];
+    const value1: []const u8 = params[1];
+    const op: []const u8 = params[2];
+    const value2: []const u8 = params[3];
+
+    // Simple assign
+    if (std.mem.eql(u8, op, "")) {
+        try variables.put(name, value1);
+        std.log.info("Variable '{s}': {s}", .{ name, value1 });
+        return;
+    }
+
+    // Compute and assign
+    if (value1.len == 0 or value2.len == 0 or op.len != 1)
+        return error.InvalidParameter;
+
+    const a: u16 = try std.fmt.parseInt(u8, value1, 10);
+    const b: u16 = try std.fmt.parseInt(u8, value2, 10);
+    const result: u16 = switch (op[0]) {
+        '+' => try std.math.add(u16, a, b),
+        '-' => try std.math.sub(u16, a, b),
+        '*' => try std.math.mul(u16, a, b),
+        '/' => try std.math.divTrunc(u16, a, b),
+        '%' => try std.math.mod(u16, a, b),
+        else => {
+            std.log.err("Invalid operator: {s}", .{op});
+            return error.InvalidParameter;
+        },
+    };
+
+    const max_len =
+        comptime std.fmt.count("{}", .{std.math.maxInt(@TypeOf(result))});
+    var buf: [max_len]u8 = undefined;
+    const out = try std.fmt.bufPrint(&buf, "{d}", .{result});
+
+    try variables.put(name, out);
+    std.log.info("Variable '{s}': {s}", .{ name, out });
 }
 
 fn get(params: [][]const u8) !void {
     if (variables.get(params[0])) |value| {
-        std.log.info("Variable \"{s}\": {s}\n", .{
+        std.log.info("Variable '{s}': {s}\n", .{
             params[0],
             value,
         });
@@ -795,7 +853,7 @@ fn remove(params: [][]const u8) !void {
     if (std.ascii.isDigit(params[0][0])) {
         return error.InvalidParameter;
     } else if (variables.get(params[0])) |value| {
-        std.log.info("Remove variable \"{s}\": {s}\n", .{
+        std.log.info("Remove variable '{s}': {s}\n", .{
             params[0],
             value,
         });
