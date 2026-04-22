@@ -19,58 +19,40 @@ const mes07 = if (config.mes07) @import("modules/mes07.zig") else void;
 
 const Config = @import("Config.zig");
 
-/// Module lifecycle hooks to load and unload modules and its module
-/// commands set.
-const ModuleSpec = struct {
-    init: *const fn (Config.ModuleConfig) anyerror!void,
-    deinit: *const fn () void,
-    commands: []const Command,
-};
+fn moduleCommands(tag: Config.Module) []const Command {
+    switch (tag) {
+        inline else => |t| {
+            const module = @field(@This(), @tagName(t));
 
-/// Stub initializer for modules disabled at build time.
-fn initModuleDisabled(_: Config.ModuleConfig) !void {
-    return error.ModuleDisabledAtBuildTime;
+            if (@TypeOf(module) == void) return &.{};
+
+            return module.module_commands[0..];
+        },
+    }
 }
 
-/// Stub deinitializer for modules disabled at build time.
-fn deinitModuleDisabled() void {}
+fn initModule(module_config: Config.ModuleConfig) !void {
+    switch (module_config) {
+        inline else => |module, tag| {
+            const tag_name = &@field(@This(), @tagName(tag));
 
-fn initMmcClient(module_config: Config.ModuleConfig) !void {
-    const cfg = switch (module_config) {
-        .mmc_client => |cfg| cfg,
-        else => unreachable,
-    };
-    try mmc_client.init(cfg);
+            if (@TypeOf(tag_name.*) == void)
+                return error.ModuleDisabledAtBuildTime;
+
+            try tag_name.init(module);
+        },
+    }
 }
 
-fn initMes07(module_config: Config.ModuleConfig) !void {
-    const cfg = switch (module_config) {
-        .mes07 => |cfg| cfg,
-        else => unreachable,
-    };
-    try mes07.init(cfg);
-}
+fn deinitModule(tag: Config.Module) void {
+    switch (tag) {
+        inline else => |t| {
+            const module = @field(@This(), @tagName(t));
 
-const module_specs = std.EnumArray(Config.Module, ModuleSpec).init(.{
-    .mmc_client = if (config.mmc_client) .{
-        .init = initMmcClient,
-        .deinit = mmc_client.deinit,
-        .commands = mmc_client.module_commands[0..],
-    } else .{
-        .init = initModuleDisabled,
-        .deinit = deinitModuleDisabled,
-        .commands = &.{},
-    },
-    .mes07 = if (config.mes07) .{
-        .init = initMes07,
-        .deinit = mes07.deinit,
-        .commands = mes07.module_commands[0..],
-    } else .{
-        .init = initModuleDisabled,
-        .deinit = deinitModuleDisabled,
-        .commands = &.{},
-    },
-});
+            if (module != void) module.deinit();
+        },
+    }
+}
 
 pub const Registry = struct {
     mapping: std.StringArrayHashMap(Command.Executable),
@@ -1029,9 +1011,8 @@ fn deinitModules() void {
     while (mod_it.next()) |entry| {
         if (!entry.value.*) continue;
 
-        const spec = module_specs.get(entry.key);
-        unregisterCommands(spec.commands);
-        spec.deinit();
+        unregisterCommands(moduleCommands(entry.key));
+        deinitModule(entry.key);
         initialized_modules.set(entry.key, false);
     }
     active_config_id = null;
@@ -1185,17 +1166,16 @@ fn genLoadedConfigId(file_path: []const u8, config_id: []const u8) ![]u8 {
 fn initModulesFromConfig(conf: *Config) !void {
     errdefer deinitModules();
 
-    for (conf.modules()) |module| {
-        const module_id = std.meta.activeTag(module);
-        const spec = module_specs.get(module_id);
+    for (conf.modules()) |module_config| {
+        const tag = std.meta.activeTag(module_config);
 
-        try spec.init(module);
-        errdefer spec.deinit();
+        try initModule(module_config);
+        errdefer deinitModule(tag);
 
-        try registerCommands(spec.commands);
-        errdefer unregisterCommands(spec.commands);
+        try registerCommands(moduleCommands(tag));
+        errdefer unregisterCommands(moduleCommands(tag));
 
-        initialized_modules.set(module_id, true);
+        initialized_modules.set(tag, true);
     }
 }
 
