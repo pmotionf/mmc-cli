@@ -220,6 +220,8 @@ pub const Command = union(enum) {
             optional: bool = false,
             quotable: bool = true,
             resolve: bool = true,
+            /// The 'rest' parameter can only be used as the last parameter.
+            rest: bool = false,
 
             fn resolveKind() type {
                 // Calculate how many parameters are there that has parsing rule.
@@ -707,11 +709,21 @@ fn parseAndRun(input: []const u8) !void {
                 }
                 params[i] = input[start_ind .. start_ind + len];
             } else params[i] = token;
-        } else {
-            params[i] = token;
+        } else params[i] = token;
+
+        if (param.rest) {
+            params[i] = token_iterator.rest();
+            break;
         }
     }
-    if (token_iterator.peek() != null) return error.UnexpectedParameter;
+
+    const is_rest: bool =
+        command.parameters.len > 0 and
+        command.parameters[command.parameters.len - 1].rest;
+
+    if (!is_rest and token_iterator.peek() != null)
+        return error.UnexpectedParameter;
+
     try command.execute(params);
 }
 
