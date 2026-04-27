@@ -837,23 +837,32 @@ fn set(params: [][]const u8) !void {
     }
 }
 
-const Parser = struct {
+const CalcError = error{
+    DivisionByZero,
+    ExpectedClosingParentheses,
+    TrailingCharacters,
+    InvalidCharacter,
+    ExpectedNumber,
+    UndefinedVariable,
+    InvalidVariableValue,
+};
+
+const CalcParser = struct {
     input: []const u8,
     pos: usize = 0,
 
-    fn peek(self: *Parser) ?u8 {
-        std.log.debug("peek", .{});
+    fn peek(self: *CalcParser) ?u8 {
         if (self.pos >= self.input.len) return null;
         return self.input[self.pos];
     }
 
-    fn skipSpaces(self: *Parser) void {
+    fn skipSpaces(self: *CalcParser) void {
         while (self.pos < self.input.len and
             std.ascii.isWhitespace(self.input[self.pos])) : (self.pos += 1)
         {}
     }
 
-    fn consume(self: *Parser, char: u8) bool {
+    fn consume(self: *CalcParser, char: u8) bool {
         std.log.debug("consume", .{});
         self.skipSpaces();
         if (self.pos < self.input.len and self.input[self.pos] == char) {
@@ -864,8 +873,7 @@ const Parser = struct {
         return false;
     }
 
-    fn parseExpression(self: *Parser) !f32 {
-        std.log.debug("parseExpression", .{});
+    fn parseExpression(self: *CalcParser) CalcError!f32 {
         var lhs = try self.parseTerm();
 
         while (true) {
@@ -875,9 +883,6 @@ const Parser = struct {
 
             self.pos += 1;
             const rhs = try self.parseTerm();
-
-            std.log.debug("parseExpression: {d} {c} {d}", .{ lhs, op, rhs });
-
             lhs = switch (op) {
                 '+' => lhs + rhs,
                 '-' => lhs - rhs,
@@ -888,7 +893,7 @@ const Parser = struct {
         return lhs;
     }
 
-    fn parseTerm(self: *Parser) !f32 {
+    fn parseTerm(self: *CalcParser) CalcError!f32 {
         std.log.debug("parseTerm", .{});
         var lhs = try self.parseFactor();
 
@@ -917,32 +922,41 @@ const Parser = struct {
         return lhs;
     }
 
-    fn parseFactor(self: *Parser) !f32 {
+    fn parseFactor(self: *CalcParser) CalcError!f32 {
         std.log.debug("parseFactor", .{});
         self.skipSpaces();
 
         if (self.consume('+')) return self.parseFactor();
-
         if (self.consume('-')) {
             const value = try self.parseFactor();
-            return value * -1.0;
+            return -value;
+        }
+
+        if (self.consume('(')) {
+            const value = try self.parseExpression();
+            if (!self.consume(')')) return error.ExpectedClosingParentheses;
+            return value;
         }
 
         return self.parseNumber();
     }
 
-    fn parseNumber(self: *Parser) !f32 {
+    fn parseNumber(self: *CalcParser) CalcError!f32 {
         self.skipSpaces();
 
         const start = self.pos;
         while (self.pos < self.input.len and std.ascii.isDigit(self.input[self.pos])) : (self.pos += 1) {}
 
-        return try std.fmt.parseFloat(f32, self.input[start..self.pos]);
+        if (self.pos == start) return error.ExpectedNumber;
+
+        return std.fmt.parseFloat(f32, self.input[start..self.pos]) catch {
+            return error.InvalidCharacter;
+        };
     }
 };
 
-pub fn calc(input: []const u8) !i32 {
-    var parser = Parser{ .input = input };
+pub fn calc(input: []const u8) CalcError!i32 {
+    var parser = CalcParser{ .input = input };
 
     const value = try parser.parseExpression();
 
@@ -953,24 +967,28 @@ pub fn calc(input: []const u8) !i32 {
     return @as(i32, @intFromFloat(@round(value)));
 }
 
-test "basic precedence" {
+test "calc" {
     try std.testing.expectEqual(14, try calc("2 + 3 * 4"));
-}
-
-test "whitespace and unary minus" {
     try std.testing.expectEqual(30, try calc("    20 + 5 * 2 "));
-}
-
-test "division and modulo" {
     try std.testing.expectEqual(5, try calc("17 % 5 + 6 / 2"));
-}
-
-test "no spaces" {
     try std.testing.expectEqual(5, try calc("17%5+6/2"));
-}
-
-test "division" {
     try std.testing.expectEqual(1, try calc("1/3 + 1/3"));
+    try std.testing.expectEqual(72, try calc("(2+2)*2*(3+3*2)"));
+
+    try std.testing.expectError(error.DivisionByZero, calc("2/0"));
+    try std.testing.expectError(error.DivisionByZero, calc("2%0"));
+    try std.testing.expectError(error.ExpectedClosingParentheses, calc("(((2+1)*(((1+1))))*(((2-1)))"));
+    try std.testing.expectError(error.ExpectedClosingParentheses, calc("2 +2*( 2-1"));
+    try std.testing.expectError(error.ExpectedClosingParentheses, calc("(2 +2*( 2-1) + 2"));
+    try std.testing.expectError(error.TrailingCharacters, calc("2 + 2 abc")); //Todo: check if variable and multiply
+    try std.testing.expectError(error.TrailingCharacters, calc("2 + 2 )"));
+    try std.testing.expectError(error.TrailingCharacters, calc("2 + 2 (3 + 2)")); //Todo: this should be a multiplication
+    try std.testing.expectError(error.TrailingCharacters, calc("2 + 2(3 + 2)")); //Todo: this should be a multiplication
+    try std.testing.expectError(error.TrailingCharacters, calc("2 + 2 @"));
+    try std.testing.expectError(error.ExpectedNumber, calc("2+2+"));
+    try std.testing.expectError(error.ExpectedNumber, calc("2+a")); //Todo: check if variable and multiply
+    try std.testing.expectError(error.ExpectedNumber, calc("2+ a")); //Todo: check if variable and multiply
+    try std.testing.expectError(error.ExpectedNumber, calc("2+ @"));
 }
 
 fn get(params: [][]const u8) !void {
