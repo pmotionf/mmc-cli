@@ -1,5 +1,5 @@
 const std = @import("std");
-const client = @import("../../mmc_client.zig");
+const client = @import("../../MmcClient.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 
@@ -13,7 +13,7 @@ pub fn impl(params: [][]const u8) !void {
         "Line {s} acceleration: {d} {s}",
         .{
             line_name,
-            client.lines[line_idx].acceleration,
+            client.get().lines[line_idx].acceleration,
             client.standard.acceleration.unit,
         },
     );

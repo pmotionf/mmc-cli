@@ -1,11 +1,11 @@
 const std = @import("std");
-const client = @import("../../mmc_client.zig");
+const client = @import("../../MmcClient.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
 pub fn impl(params: [][]const u8) !void {
-    const net = client.sock orelse return error.ServerNotConnected;
+    const net = client.get().sock orelse return error.ServerNotConnected;
     const line_name = params[0];
     const axis_id = try std.fmt.parseInt(u32, buf: {
         const input = params[1];
@@ -53,7 +53,7 @@ pub fn impl(params: [][]const u8) !void {
         false;
 
     const line_idx = try client.matchLine(line_name);
-    const line = client.lines[line_idx];
+    const line = client.get().lines[line_idx];
     const disable_cas = if (params[5].len == 0)
         false
     else if (std.ascii.eqlIgnoreCase("on", params[5]))
@@ -91,6 +91,6 @@ pub fn impl(params: [][]const u8) !void {
             },
         },
     };
-    try client.sendRequest(client.allocator, net, request);
-    try client.waitCommandCompleted(client.allocator, net);
+    try client.sendRequest(client.get().allocator, net, request);
+    try client.waitCommandCompleted(client.get().allocator, net);
 }

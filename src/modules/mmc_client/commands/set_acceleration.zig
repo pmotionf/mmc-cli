@@ -1,5 +1,5 @@
 const std = @import("std");
-const client = @import("../../mmc_client.zig");
+const client = @import("../../MmcClient.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 
@@ -12,10 +12,10 @@ pub fn impl(params: [][]const u8) !void {
         return error.InvalidAcceleration;
 
     const line_idx = try client.matchLine(line_name);
-    client.lines[line_idx].acceleration = carrier_acceleration;
+    client.get().lines[line_idx].acceleration = carrier_acceleration;
 
     std.log.info("Set acceleration to {d} {s}.", .{
-        client.lines[line_idx].acceleration,
+        client.get().lines[line_idx].acceleration,
         client.standard.acceleration.unit,
     });
 }

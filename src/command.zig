@@ -13,13 +13,46 @@ const build = @import("build.zig.zon");
 const config = @import("config");
 
 // Command modules.
-const return_demo2 =
-    if (config.return_demo2) @import("modules/return_demo2.zig") else void;
 const mmc_client =
-    if (config.mmc_client) @import("modules/mmc_client.zig") else void;
+    if (config.mmc_client) @import("modules/MmcClient.zig") else void;
 const mes07 = if (config.mes07) @import("modules/mes07.zig") else void;
 
 const Config = @import("Config.zig");
+
+fn moduleCommands(tag: Config.Module) []const Command {
+    switch (tag) {
+        inline else => |t| {
+            const module = @field(@This(), @tagName(t));
+
+            if (@TypeOf(module) == void) return &.{};
+
+            return module.module_commands[0..];
+        },
+    }
+}
+
+fn initModule(module_config: Config.ModuleConfig) !void {
+    switch (module_config) {
+        inline else => |module, tag| {
+            const tag_name = &@field(@This(), @tagName(tag));
+
+            if (@TypeOf(tag_name.*) == void)
+                return error.ModuleDisabledAtBuildTime;
+
+            try tag_name.init(module);
+        },
+    }
+}
+
+fn deinitModule(tag: Config.Module) void {
+    switch (tag) {
+        inline else => |t| {
+            const module = @field(@This(), @tagName(t));
+
+            if (module != void) module.deinit();
+        },
+    }
+}
 
 pub const Registry = struct {
     mapping: std.StringArrayHashMap(Command.Executable),
@@ -62,6 +95,23 @@ pub const Registry = struct {
     }
 };
 
+/// Registers commands into the global command registry.
+fn registerCommands(commands: []const Command) !void {
+    for (commands) |cmd| {
+        try registry.put(cmd);
+    }
+}
+
+/// Unregisters commands from the global command registry.
+fn unregisterCommands(commands: []const Command) void {
+    for (commands) |cmd| {
+        switch (cmd) {
+            .executable => registry.orderedRemove(cmd.executable.name),
+            .alias => registry.orderedRemove(cmd.alias.name),
+        }
+    }
+}
+
 pub const Table = struct {
     gpa: std.mem.Allocator,
 
@@ -81,7 +131,7 @@ pub const Table = struct {
     pub fn deinit(self: *Table) void {
         if (self.header.len > 0) {
             for (self.header) |*header| {
-                self.allocator.free(header.*);
+                self.gpa.free(header.*);
             }
             self.gpa.free(self.header);
         }
@@ -180,6 +230,24 @@ pub var stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false);
 pub var variables: std.BufMap = undefined;
 
 pub var table: Table = undefined;
+
+const LoadedConfig = struct {
+    id: []const u8,
+    source_path: []const u8,
+    arena: *std.heap.ArenaAllocator,
+    config: Config,
+
+    pub fn deinit(self: *LoadedConfig) void {
+        self.config.deinit();
+        self.arena.deinit();
+        std.heap.smp_allocator.destroy(self.arena);
+        std.heap.smp_allocator.free(self.id);
+        std.heap.smp_allocator.free(self.source_path);
+    }
+};
+
+var loaded_configs: std.StringArrayHashMap(LoadedConfig) = undefined;
+var active_config_id: ?[]const u8 = null;
 
 // Flags to keep track of currently initialized modules, so that only
 // initialized will be deinitialized.
@@ -287,7 +355,7 @@ pub const Command = union(enum) {
                                 const module = @field(This, module_name);
                                 const kind_name =
                                     field.name[field_name_idx + 1 ..];
-                                return module.parameter.isValid(
+                                return module.get().parameter.isValid(
                                     @field(module.Parameter.Kind, kind_name),
                                     input,
                                 );
@@ -345,6 +413,8 @@ pub fn init() !void {
     registry = Registry.init(allocator);
     variables = std.BufMap.init(allocator);
     table = Table.init(std.heap.smp_allocator);
+    loaded_configs = std.StringArrayHashMap(LoadedConfig).init(std.heap.smp_allocator);
+    active_config_id = null;
     command_queue = .{ .first = null, .last = null };
     command_queue_lock = .{};
     stop.store(false, .monotonic);
@@ -376,14 +446,51 @@ pub fn init() !void {
         .name = "LOAD_CONFIG",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "file path", .optional = true },
+            .{ .name = "config id", .optional = true, .resolve = false },
         },
         .short_description = "Load CLI configuration file.",
         .long_description =
         \\Read given configuration file to dynamically load specified command
         \\modules. This configuration file must be in valid JSON5 format, with
         \\configuration parameters according to provided documentation.
+        \\Optional: Provide a config ID. If none is provided, a default ID will
+        \\be assigned. The config ID is used to switch between configurations.
         ,
         .execute = &loadConfig,
+    } });
+    try registry.put(.{ .executable = .{
+        .name = "USE_CONFIG",
+        .parameters = &[_]Command.Executable.Parameter{
+            .{ .name = "config id", .resolve = false },
+        },
+        .short_description = "Activate a loaded configuration via its ID.",
+        .long_description =
+        \\Deactivate the currently active configuration and activate another
+        \\previously loaded configuration.
+        ,
+        .execute = &useConfig,
+    } });
+    try registry.put(.{ .executable = .{
+        .name = "UNLOAD_CONFIG",
+        .parameters = &[_]Command.Executable.Parameter{
+            .{ .name = "config id", .optional = true, .resolve = false },
+        },
+        .short_description = "Unload a previously loaded configuration.",
+        .long_description =
+        \\Unload the currently active configuration. Optionally, provided a
+        \\config ID to unload a specific configuration. If an active configuration
+        \\is unloaded, the first loaded configuration will be activated.
+        ,
+        .execute = &unloadConfig,
+    } });
+    try registry.put(.{ .executable = .{
+        .name = "LIST_LOADED_CONFIGS",
+        .short_description = "List all loaded configurations.",
+        .long_description =
+        \\Display all currently loaded configurations with config ID and their
+        \\source path. The active configuration is marked with '*'.
+        ,
+        .execute = &listLoadedConfigs,
     } });
     try registry.put(.{ .executable = .{
         .name = "WAIT",
@@ -566,11 +673,14 @@ pub fn init() !void {
 
 pub fn deinit() void {
     deinitModules();
+    deinitLoadedConfigs();
     stop.store(true, .monotonic);
     defer stop.store(false, .monotonic);
+    table.deinit();
     variables.deinit();
     queueClear();
     command_queue_lock = undefined;
+    loaded_configs.deinit();
     registry.deinit();
     arena.deinit();
 }
@@ -898,112 +1008,402 @@ fn file(params: [][]const u8) !void {
 
 fn deinitModules() void {
     var mod_it = initialized_modules.iterator();
-    const fields = @typeInfo(Config.Module).@"enum".fields;
-    while (mod_it.next()) |e| {
-        if (e.value.*) {
-            switch (@intFromEnum(e.key)) {
-                inline 0...fields.len - 1 => |i| {
-                    const f_type = @typeInfo(@field(@This(), fields[i].name));
-                    if (comptime f_type != .void) {
-                        @field(@This(), fields[i].name).deinit();
-                        const module = @field(Config.Module, fields[i].name);
-                        initialized_modules.set(module, false);
-                    }
-                },
-                else => unreachable,
-            }
-        }
+    while (mod_it.next()) |entry| {
+        if (!entry.value.*) continue;
+
+        unregisterCommands(moduleCommands(entry.key));
+        deinitModule(entry.key);
+        initialized_modules.set(entry.key, false);
+    }
+    active_config_id = null;
+}
+
+fn deinitLoadedConfigs() void {
+    while (loaded_configs.count() > 0) {
+        const key = loaded_configs.keys()[0];
+        var loaded = loaded_configs.get(key).?;
+        _ = loaded_configs.orderedRemove(key);
+        loaded.deinit();
+    }
+    active_config_id = null;
+}
+
+/// Attempts to open a config file at `path` with additional fallback locations.
+/// Fallback:
+/// 1. Current working directory
+/// 2. Executable directory
+/// 3. Platform specific directory
+fn openConfigFile(path: []const u8) !std.fs.File {
+    if (path.len >= std.fs.max_path_bytes) return error.FilePathTooLong;
+    if (path.len == 0) return error.InvalidParameter;
+
+    return std.fs.cwd().openFile(path, .{}) catch exe_local: {
+        var exe_dir_buf: [std.fs.max_path_bytes]u8 = undefined;
+        const exe_dir_path = std.fs.selfExeDirPath(&exe_dir_buf) catch
+            break :exe_local error.FileNotFound;
+
+        std.log.info(
+            \\Config file '{s}' not found in current working directory!
+            \\Trying executable directory: {s}
+            \\
+        ,
+            .{ path, exe_dir_path },
+        );
+
+        var exe_dir = std.fs.cwd().openDir(exe_dir_path, .{}) catch
+            break :exe_local error.FileNotFound;
+        defer exe_dir.close();
+
+        break :exe_local exe_dir.openFile(path, .{});
+    } catch config_local: {
+        var config_dir = switch (comptime builtin.os.tag) {
+            .windows => b: {
+                var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+                var fba = std.heap.FixedBufferAllocator.init(&path_buf);
+                const fba_alloc = fba.allocator();
+
+                const home_path = try std.process.getEnvVarOwned(
+                    fba_alloc,
+                    "USERPROFILE",
+                );
+
+                std.log.info(
+                    \\Config file '{s}' not found in executable directory!
+                    \\Trying Windows user config directory under: {s}\.config\mmc-cli
+                    \\
+                ,
+                    .{ path, home_path },
+                );
+
+                var home_dir = try std.fs.cwd().openDir(home_path, .{});
+                defer home_dir.close();
+
+                var config_root = try home_dir.openDir(".config", .{});
+                defer config_root.close();
+
+                break :b try config_root.openDir("mmc-cli", .{});
+            },
+            .linux => b: {
+                var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+                var fba = std.heap.FixedBufferAllocator.init(&path_buf);
+                const fba_alloc = fba.allocator();
+
+                const config_path = std.process.getEnvVarOwned(
+                    fba_alloc,
+                    "XDG_CONFIG_HOME",
+                ) catch "";
+
+                if (config_path.len > 0) {
+                    std.log.info(
+                        \\Config file '{s}' not found in executable directory!
+                        \\Trying XDG config home directory: {s}
+                        \\
+                    ,
+                        .{ path, config_path },
+                    );
+                    break :b try std.fs.cwd().openDir(config_path, .{});
+                }
+
+                const home_path = try std.process.getEnvVarOwned(
+                    fba_alloc,
+                    "HOME",
+                );
+
+                std.log.info(
+                    \\Config file '{s}' not found in executable directory!
+                    \\Trying Linux user config directory under: {s}/.config/mmc-cli
+                    \\
+                ,
+                    .{ path, home_path },
+                );
+
+                var home_dir = try std.fs.cwd().openDir(home_path, .{});
+                defer home_dir.close();
+
+                var config_root = try home_dir.openDir(".config", .{});
+                defer config_root.close();
+
+                break :b try config_root.openDir("mmc-cli", .{});
+            },
+            else => return error.UnsupportedOs,
+        };
+        defer config_dir.close();
+
+        break :config_local try config_dir.openFile(path, .{});
+    };
+}
+
+/// Generates a unique config ID.
+fn genLoadedConfigId(file_path: []const u8, config_id: []const u8) ![]u8 {
+    var requested_id: []const u8 = config_id;
+
+    if (requested_id.len == 0) {
+        requested_id = if (file_path.len > 0)
+            std.fs.path.stem(file_path)
+        else
+            "config";
+    }
+
+    if (!loaded_configs.contains(requested_id)) {
+        return try std.heap.smp_allocator.dupe(u8, requested_id);
+    }
+
+    const base: []const u8 = requested_id;
+    var suffix: usize = 2;
+
+    while (true) : (suffix += 1) {
+        const candidate = try std.fmt.allocPrint(
+            std.heap.smp_allocator,
+            "{s}_{d}",
+            .{ base, suffix },
+        );
+
+        if (!loaded_configs.contains(candidate)) return candidate;
+        std.heap.smp_allocator.free(candidate);
     }
 }
 
-fn loadConfig(params: [][]const u8) !void {
-    // De-initialize any previously initialized modules.
+fn initModulesFromConfig(conf: *Config) !void {
+    errdefer deinitModules();
+
+    for (conf.modules()) |module_config| {
+        const tag = std.meta.activeTag(module_config);
+
+        try initModule(module_config);
+        errdefer deinitModule(tag);
+
+        try registerCommands(moduleCommands(tag));
+        errdefer unregisterCommands(moduleCommands(tag));
+
+        initialized_modules.set(tag, true);
+    }
+}
+
+/// Activates a loaded configuration by config ID. Deinit current modules,
+/// initializes modules from target config and updates `active_config_id`.
+fn activateLoadedConfig(id: []const u8) !void {
+    const loaded = loaded_configs.getPtr(id) orelse
+        return error.ConfigIdNotFound;
     deinitModules();
+    try initModulesFromConfig(&loaded.config);
+    active_config_id = loaded.id;
+}
 
-    // Load config file.
-    const config_file = if (params[0].len > 0)
-        std.fs.cwd().openFile(params[0], .{}) catch
-            try std.fs.openFileAbsolute(params[0], .{})
-    else
-        std.fs.cwd().openFile("config.json5", .{}) catch exe_local: {
-            var exe_dir_buf: [std.fs.max_path_bytes]u8 = undefined;
-            const exe_dir_path = std.fs.selfExeDirPath(&exe_dir_buf) catch
-                break :exe_local error.FileNotFound;
-            var exe_dir = std.fs.cwd().openDir(exe_dir_path, .{}) catch
-                break :exe_local error.FileNotFound;
-            defer exe_dir.close();
-            break :exe_local exe_dir.openFile("config.json5", .{});
-        } catch config_local: {
-            var config_dir = switch (comptime builtin.os.tag) {
-                .windows => b: {
-                    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-                    var fba = std.heap.FixedBufferAllocator.init(&path_buf);
-                    const fba_alloc = fba.allocator();
-                    const home_path = try std.process.getEnvVarOwned(
-                        fba_alloc,
-                        "USERPROFILE",
-                    );
+/// Returns module tag if module exists in configuration else null.
+fn findModule(
+    modules: []const Config.ModuleConfig,
+    comptime tag: Config.Module,
+) ?*const Config.ModuleConfig {
+    for (modules) |*mod| {
+        if (std.meta.activeTag(mod.*) == tag) return mod;
+    }
+    return null;
+}
 
-                    var home_dir = try std.fs.cwd().openDir(home_path, .{});
-                    defer home_dir.close();
-                    var config_root = try home_dir.openDir(".config", .{});
-                    defer config_root.close();
-                    break :b try config_root.openDir("mmc-cli", .{});
+/// Returns true when both configs contain the same modules.
+/// For `mmc_client` module, `host` and `port` must also match.
+fn configEql(a: *const Config, b: *const Config) bool {
+    const a_modules = a.parsed.value.modules;
+    const b_modules = b.parsed.value.modules;
+
+    inline for (@typeInfo(Config.Module).@"enum".fields) |field| {
+        const tag: Config.Module = @enumFromInt(field.value);
+
+        const a_mod = findModule(a_modules, tag);
+        const b_mod = findModule(b_modules, tag);
+
+        if ((a_mod == null) != (b_mod == null)) return false;
+
+        if (a_mod != null) {
+            switch (a_mod.?.*) {
+                .mmc_client => |a_mmc| {
+                    if (a_mmc.port != b_mod.?.mmc_client.port) return false;
+                    if (!std.mem.eql(u8, a_mmc.host, b_mod.?.mmc_client.host))
+                        return false;
                 },
-                .linux => b: {
-                    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-                    var fba = std.heap.FixedBufferAllocator.init(&path_buf);
-                    const fba_alloc = fba.allocator();
-                    const config_path = std.process.getEnvVarOwned(
-                        fba_alloc,
-                        "XDG_CONFIG_HOME",
-                    ) catch "";
-                    if (config_path.len > 0) {
-                        break :b try std.fs.cwd().openDir(config_path, .{});
-                    }
-                    const home_path = try std.process.getEnvVarOwned(
-                        fba_alloc,
-                        "HOME",
-                    );
-                    var home_dir = try std.fs.cwd().openDir(home_path, .{});
-                    defer home_dir.close();
-                    var config_root = try home_dir.openDir(".config", .{});
-                    defer config_root.close();
-                    break :b try config_root.openDir("mmc-cli", .{});
-                },
-                else => return error.UnsupportedOs,
-            };
-
-            break :config_local try config_dir.openFile(
-                "config.json5",
-                .{},
-            );
-        };
-    var m_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    const m_allocator = m_arena.allocator();
-    var conf = try Config.parse(m_allocator, config_file);
-
-    // Initialize only the modules specified in config file.
-    const fields = @typeInfo(Config.Module).@"enum".fields;
-    for (conf.modules()) |module| {
-        switch (@intFromEnum(module)) {
-            inline 0...fields.len - 1 => |i| {
-                const f_type = @typeInfo(@field(@This(), fields[i].name));
-                if (comptime f_type != .void) {
-                    try @field(@This(), fields[i].name).init(
-                        @field(module, fields[i].name),
-                    );
-                    initialized_modules.set(
-                        @field(Config.Module, fields[i].name),
-                        true,
-                    );
-                }
-            },
-            else => unreachable,
+                .mes07 => {},
+            }
         }
     }
-    conf.deinit();
-    m_arena.deinit();
+
+    return true;
+}
+
+fn loadConfig(params: [][]const u8) !void {
+    const file_path: []const u8 = if (params.len > 0) params[0] else "";
+    const config_id: []const u8 = if (params.len > 1) params[1] else "";
+    var buf: [std.fs.max_path_bytes]u8 = undefined;
+
+    // Validate path length
+    if (std.mem.endsWith(u8, file_path, ".json5") and
+        file_path.len > buf.len)
+        return error.PathTooLong
+    else if (file_path.len + ".json5".len > buf.len)
+        return error.PathTooLong;
+
+    const resolved_file_path: []const u8 =
+        if (file_path.len == 0)
+            "config.json5"
+        else if (std.mem.endsWith(u8, file_path, ".json5"))
+            file_path
+        else
+            try std.fmt.bufPrint(&buf, "{s}.json5", .{file_path});
+
+    var config_file = try openConfigFile(resolved_file_path);
+    defer config_file.close();
+
+    const config_arena = try std.heap.smp_allocator.create(std.heap.ArenaAllocator);
+    errdefer std.heap.smp_allocator.destroy(config_arena);
+
+    config_arena.* = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    errdefer config_arena.deinit();
+
+    const config_allocator = config_arena.allocator();
+
+    var conf = try Config.parse(config_allocator, config_file);
+    errdefer conf.deinit();
+
+    // Check if Config file exclusively contains disabled module(s)
+    const parsed_mods = conf.parsed.value.modules;
+    var any_enabled = false;
+
+    for (parsed_mods) |mod| {
+        const tag = std.meta.activeTag(mod);
+        switch (tag) {
+            .mmc_client => {
+                if (config.mmc_client) any_enabled = true;
+            },
+            .mes07 => {
+                if (config.mes07) any_enabled = true;
+            },
+        }
+    }
+
+    if (!any_enabled) return error.ModuleDisabledAtBuildTime;
+
+    // Check if Config already loaded
+    var it_loaded = loaded_configs.iterator();
+    while (it_loaded.next()) |entry| {
+        if (configEql(&conf, &entry.value_ptr.config)) {
+            std.log.info(
+                "Config already loaded as '{s}'.",
+                .{entry.value_ptr.id},
+            );
+            if (std.mem.eql(u8, entry.value_ptr.id, active_config_id orelse ""))
+                std.log.info(
+                    "Config '{s}' is currently active.\n",
+                    .{entry.value_ptr.id},
+                )
+            else
+                std.log.info(
+                    "Type 'USE_CONFIG {s}' to activate this config.\n",
+                    .{entry.value_ptr.id},
+                );
+
+            return error.ConfigAlreadyLoaded;
+        }
+    }
+
+    const id = try genLoadedConfigId(file_path, config_id);
+    errdefer std.heap.smp_allocator.free(id);
+
+    const source_path = try std.heap.smp_allocator.dupe(
+        u8,
+        resolved_file_path,
+    );
+    errdefer std.heap.smp_allocator.free(source_path);
+
+    try loaded_configs.put(id, .{
+        .id = id,
+        .source_path = source_path,
+        .arena = config_arena,
+        .config = conf,
+    });
+
+    try activateLoadedConfig(id);
+    std.log.info("Loaded config as '{s}' from {s}\n", .{ id, source_path });
+}
+
+fn useConfig(params: [][]const u8) !void {
+    if (params.len == 0) return error.InvalidParameter;
+    try activateLoadedConfig(params[0]);
+    std.log.info("Using config '{s}'\n", .{params[0]});
+}
+
+fn unloadConfig(params: [][]const u8) !void {
+    const id = if (params[0].len > 0)
+        params[0]
+    else
+        active_config_id orelse return error.InvalidParameter;
+
+    const idx = loaded_configs.getIndex(id) orelse
+        return error.InvalidParameter;
+
+    const was_active = if (active_config_id) |active_id|
+        std.mem.eql(u8, active_id, id)
+    else
+        false;
+
+    // Choose fallback config before removing
+    var fallback_id: ?[]const u8 = null;
+    if (was_active) {
+        for (loaded_configs.keys(), 0..) |loaded_id, i| {
+            if (i != idx and !std.mem.eql(u8, loaded_id, id)) {
+                fallback_id = loaded_id;
+                break;
+            }
+        }
+    }
+
+    const removed_entry = loaded_configs.fetchOrderedRemove(id) orelse
+        return error.InvalidParameter;
+
+    if (was_active) {
+        deinitModules();
+    }
+
+    var removed = removed_entry.value;
+    errdefer removed.deinit();
+
+    if (was_active) {
+        if (fallback_id) |next_id| {
+            try activateLoadedConfig(next_id);
+            std.log.info("Unloaded config '{s}'. Active config now '{s}'\n", .{ id, next_id });
+        } else {
+            std.log.info("Unloaded config '{s}'. No loaded config to activate available.", .{id});
+        }
+    } else {
+        std.log.info("Unloaded config '{s}'\n", .{id});
+    }
+
+    removed.deinit();
+}
+
+fn listLoadedConfigs(_: [][]const u8) !void {
+    if (loaded_configs.count() == 0) {
+        std.log.info("No configs loaded.\n", .{});
+        return;
+    }
+
+    std.log.info(
+        \\Config ID: Config path
+        \\------------------------------------
+    , .{});
+    for (loaded_configs.keys(), loaded_configs.values()) |id, *loaded| {
+        const active = if (active_config_id) |active_id|
+            std.mem.eql(u8, active_id, id)
+        else
+            false;
+
+        std.log.info(
+            "{s}{s}: {s}\n",
+            .{
+                if (active) "* " else "  ",
+                id,
+                loaded.source_path,
+            },
+        );
+    }
 }
 
 fn wait(params: [][]const u8) !void {

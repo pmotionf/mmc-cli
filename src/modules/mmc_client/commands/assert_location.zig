@@ -1,5 +1,5 @@
 const std = @import("std");
-const client = @import("../../mmc_client.zig");
+const client = @import("../../MmcClient.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
@@ -8,7 +8,7 @@ pub fn impl(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "assert_location");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
-    const net = client.sock orelse return error.ServerNotConnected;
+    const net = client.get().sock orelse return error.ServerNotConnected;
     const line_name: []const u8 = params[0];
     var ids = [1]u32{try std.fmt.parseInt(u32, b: {
         const input = params[1];
@@ -32,7 +32,7 @@ pub fn impl(params: [][]const u8) !void {
     else
         1;
     const line_idx = try client.matchLine(line_name);
-    const line = client.lines[line_idx];
+    const line = client.get().lines[line_idx];
     var line_array: [1]u32 = .{line.id};
     const lines: std.ArrayList(u32) = .fromOwnedSlice(&line_array);
     const request: api.protobuf.mmc.Request = .{
@@ -50,9 +50,9 @@ pub fn impl(params: [][]const u8) !void {
             },
         },
     };
-    try client.sendRequest(client.allocator, net, request);
-    var decoded = try client.getResponse(client.allocator, net);
-    defer decoded.deinit(client.allocator);
+    try client.sendRequest(client.get().allocator, net, request);
+    var decoded = try client.getResponse(client.get().allocator, net);
+    defer decoded.deinit(client.get().allocator);
     const track = switch (decoded.body orelse return error.InvalidResponse) {
         .info => |info_resp| switch (info_resp.body orelse
             return error.InvalidResponse) {

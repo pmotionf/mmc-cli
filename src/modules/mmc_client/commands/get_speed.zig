@@ -1,5 +1,5 @@
 const std = @import("std");
-const client = @import("../../mmc_client.zig");
+const client = @import("../../MmcClient.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 
@@ -8,7 +8,7 @@ pub fn impl(params: [][]const u8) !void {
     defer tracy_zone.end();
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
-    const velocity = client.lines[line_idx].velocity;
+    const velocity = client.get().lines[line_idx].velocity;
     std.log.info(
         "Line {s} speed: {d} {s}",
         .{

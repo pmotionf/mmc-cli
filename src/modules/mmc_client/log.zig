@@ -4,7 +4,7 @@ const std = @import("std");
 const api = @import("mmc-api");
 const zignet = @import("zignet");
 
-const client = @import("../mmc_client.zig");
+const client = @import("../MmcClient.zig");
 const command = @import("../../command.zig");
 
 pub const Range = struct { start: u32 = 0, end: u32 = 0 };
@@ -74,7 +74,7 @@ pub const Config = struct {
         for (self.lines) |line| {
             if (line.isInitialized() == false) continue;
             try stdout.interface
-                .print("Line {s}: ", .{client.lines[line.id - 1].name});
+                .print("Line {s}: ", .{client.get().lines[line.id - 1].name});
             var axis_range: Range = .{};
             var driver_range: Range = .{};
             var first_axis_entry = true;
@@ -346,7 +346,7 @@ const Stream = struct {
                 };
                 try client.sendRequest(gpa, stream.socket, request);
                 var decoded = try client.getResponse(gpa, stream.socket);
-                defer decoded.deinit(client.allocator);
+                defer decoded.deinit(gpa);
                 const track = switch (decoded.body orelse
                     return error.InvalidResponse) {
                     .info => |info_resp| switch (info_resp.body orelse
@@ -477,7 +477,7 @@ const Stream = struct {
             };
             try client.sendRequest(gpa, stream.socket, request);
             var decoded = try client.getResponse(gpa, stream.socket);
-            defer decoded.deinit(client.allocator);
+            defer decoded.deinit(gpa);
             const track = switch (decoded.body orelse
                 return error.InvalidResponse) {
                 .info => |info_resp| switch (info_resp.body orelse
@@ -595,9 +595,9 @@ var file_reader_buf: [4096]u8 = undefined;
 var file_writer_buf: [4096]u8 = undefined;
 
 pub fn runner(duration: f64, file_path: []const u8) !void {
-    defer client.allocator.free(file_path);
+    defer client.get().allocator.free(file_path);
     // Validation steps
-    if (client.log_config.isInitialized() == false)
+    if (client.get().log_config.isInitialized() == false)
         return error.LoggingNotConfigured;
     // Assumption: The register is updated every 3 ms.
     const update_rate = 3;
@@ -610,15 +610,15 @@ pub fn runner(duration: f64, file_path: []const u8) !void {
     executing.store(true, .monotonic);
     defer executing.store(false, .monotonic);
     // Stream setup.
-    if (client.sock == null) return error.SocketNotConnected;
+    if (client.get().sock == null) return error.SocketNotConnected;
     var stream: Stream = try .init(
-        client.allocator,
+        client.get().allocator,
         @as(usize, @intFromFloat(logging_size_float)),
-        client.log_config,
-        client.lines,
-        client.endpoint orelse return error.MissingEndpoint,
+        client.get().log_config,
+        client.get().lines,
+        client.get().endpoint orelse return error.MissingEndpoint,
     );
-    defer stream.deinit(client.allocator);
+    defer stream.deinit(client.get().allocator);
     // Logging file setup.
     const log_file = try std.fs.cwd().createFile(file_path, .{});
     defer {
@@ -642,7 +642,7 @@ pub fn runner(duration: f64, file_path: []const u8) !void {
             f64,
             @floatFromInt(std.time.microTimestamp() - log_time_start),
         ) / std.time.us_per_s;
-        stream.get(client.allocator, timestamp) catch |e| {
+        stream.get(client.get().allocator, timestamp) catch |e| {
             std.log.err("{t}", .{e});
             std.log.debug("{?f}", .{@errorReturnTrace()});
             break;
@@ -656,7 +656,7 @@ pub fn runner(duration: f64, file_path: []const u8) !void {
     var log_writer = log_file.writer(&.{});
     // Write the headers of the data to the logging file.
     try log_writer.interface.print("timestamp,", .{});
-    for (client.log_config.lines) |line_config| {
+    for (client.get().log_config.lines) |line_config| {
         var buf: [64]u8 = undefined;
         for (line_config.drivers, 1..) |log_driver, driver_id| {
             if (log_driver == false) continue;
@@ -665,7 +665,7 @@ pub fn runner(duration: f64, file_path: []const u8) !void {
                 try std.fmt.bufPrint(
                     &buf,
                     "{s}_driver{d}",
-                    .{ client.lines[line_config.id - 1].name, driver_id },
+                    .{ client.get().lines[line_config.id - 1].name, driver_id },
                 ),
                 "",
                 Stream.Data.Line.Driver,
@@ -678,7 +678,7 @@ pub fn runner(duration: f64, file_path: []const u8) !void {
                 try std.fmt.bufPrint(
                     &buf,
                     "{s}_axis{d}",
-                    .{ client.lines[line_config.id - 1].name, axis_id },
+                    .{ client.get().lines[line_config.id - 1].name, axis_id },
                 ),
                 "",
                 Stream.Data.Line.Axis,
@@ -693,7 +693,7 @@ pub fn runner(duration: f64, file_path: []const u8) !void {
         if (timestamp - log_data.timestamp > duration) continue;
         try log_writer.interface.writeByte('\n');
         try log_writer.interface.print("{},", .{log_data.timestamp});
-        for (client.log_config.lines) |line_config| {
+        for (client.get().log_config.lines) |line_config| {
             const line_data = log_data.lines[line_config.id - 1];
             for (
                 line_data.drivers,

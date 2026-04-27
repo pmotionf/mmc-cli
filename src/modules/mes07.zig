@@ -13,6 +13,32 @@ const Command = command.Command;
 
 pub const Config = struct {};
 
+pub const module_commands = [_]command.Command{
+    .{ .executable = .{
+        .name = "MES07_CONNECT",
+        .parameters = &.{
+            .{ .name = "adapter", .optional = true },
+        },
+        .short_description = "Connect to MES07 laser device.",
+        .long_description =
+        \\Connect to MES07 laser device. Must be called before `MES07_READ`.
+        ,
+        .execute = &connect,
+    } },
+    .{ .executable = .{
+        .name = "MES07_READ",
+        .parameters = &.{
+            .{ .name = "variable", .optional = true, .resolve = false },
+        },
+        .short_description = "Read laser device measurement value.",
+        .long_description =
+        \\Read laser device measurement value, and print to output. Variable
+        \\names are case sensitive and shall not begin with digit.
+        ,
+        .execute = &read,
+    } },
+};
+
 var connection_buf: [128]u8 = .{0} ** 128;
 var connection: []u8 = connection_buf[0..0];
 var io_map: [4096]u8 = .{0} ** 4096;
@@ -32,32 +58,7 @@ var laser_value = std.atomic.Value(i32).init(0);
 /// process thread has unexpectedly quit.
 var read_laser_value = std.atomic.Value(bool).init(false);
 
-pub fn init(_: Config) !void {
-    try command.registry.put(.{ .executable = .{
-        .name = "MES07_CONNECT",
-        .parameters = &.{
-            .{ .name = "adapter", .optional = true },
-        },
-        .short_description = "Connect to MES07 laser device.",
-        .long_description =
-        \\Connect to MES07 laser device. Must be called before `MES07_READ`.
-        ,
-        .execute = &connect,
-    } });
-
-    try command.registry.put(.{ .executable = .{
-        .name = "MES07_READ",
-        .parameters = &.{
-            .{ .name = "variable", .optional = true, .resolve = false },
-        },
-        .short_description = "Read laser device measurement value.",
-        .long_description =
-        \\Read laser device measurement value, and print to output. Variable
-        \\names are case sensitive and shall not begin with digit.
-        ,
-        .execute = &read,
-    } });
-}
+pub fn init(_: Config) !void {}
 
 pub fn deinit() void {
     if (connection.len > 0) {

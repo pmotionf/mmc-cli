@@ -1,5 +1,5 @@
 const std = @import("std");
-const client = @import("../../mmc_client.zig");
+const client = @import("../../MmcClient.zig");
 const command = @import("../../../command.zig");
 const chrono = @import("chrono");
 const tracy = @import("tracy");
@@ -10,11 +10,11 @@ const Kind = enum { all, axis, driver };
 pub fn add(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "add_log");
     defer tracy_zone.end();
-    const net = client.sock orelse return error.ServerNotConnected;
+    const net = client.get().sock orelse return error.ServerNotConnected;
     // Parsing line name
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
-    const line = client.lines[line_idx];
+    const line = client.get().lines[line_idx];
     // Parsing logging kind
     const kind: Kind = kind: {
         if (params[1].len == 0)
@@ -55,7 +55,7 @@ pub fn add(params: [][]const u8) !void {
     // the only thing that can be done from this point is to always show the
     // logging configuration even if there is an error when trying to toggle
     // the driver flag for logging.
-    defer client.log_config.status() catch {};
+    defer client.get().log_config.status() catch {};
     try modify(net, line, kind, range, true);
 }
 
@@ -69,8 +69,8 @@ pub fn start(params: [][]const u8) !void {
     const file_path = if (path.len > 0) p: {
         // Check if the specified path is ended in csv.
         if (std.mem.eql(u8, path[path.len - 4 .. path.len], ".csv"))
-            break :p try client.allocator.dupe(u8, path);
-        break :p try std.fmt.allocPrint(client.allocator, "{s}.csv", .{path});
+            break :p try client.get().allocator.dupe(u8, path);
+        break :p try std.fmt.allocPrint(client.get().allocator, "{s}.csv", .{path});
     } else p: {
         var timestamp: u64 = @intCast(std.time.timestamp());
         timestamp += std.time.s_per_hour * 9;
@@ -83,7 +83,7 @@ pub fn start(params: [][]const u8) !void {
             0,
         );
         break :p try std.fmt.allocPrint(
-            client.allocator,
+            client.get().allocator,
             "mmc-logging-{}.{:0>2}.{:0>2}-{:0>2}.{:0>2}.{:0>2}.csv",
             .{
                 ymd.year,
@@ -95,11 +95,11 @@ pub fn start(params: [][]const u8) !void {
             },
         );
     };
-    defer client.allocator.free(file_path);
+    defer client.get().allocator.free(file_path);
     const log_thread = try std.Thread.spawn(
         .{},
         client.log.runner,
-        .{ duration, try client.allocator.dupe(u8, file_path) },
+        .{ duration, try client.get().allocator.dupe(u8, file_path) },
     );
     log_thread.detach();
 }
@@ -107,17 +107,17 @@ pub fn start(params: [][]const u8) !void {
 pub fn status(_: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "status_log");
     defer tracy_zone.end();
-    try client.log_config.status();
+    try client.get().log_config.status();
 }
 
 pub fn remove(params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "remove_log");
     defer tracy_zone.end();
-    const net = client.sock orelse return error.ServerNotConnected;
+    const net = client.get().sock orelse return error.ServerNotConnected;
     // Parsing line name
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
-    const line = client.lines[line_idx];
+    const line = client.get().lines[line_idx];
     // Parsing logging kind
     const kind: Kind = kind: {
         if (params[1].len == 0)
@@ -158,7 +158,7 @@ pub fn remove(params: [][]const u8) !void {
     // the only thing that can be shown from this point is to always show the
     // logging configuration even if there is an error when trying to toggle
     // the driver flag for logging.
-    defer client.log_config.status() catch {};
+    defer client.get().log_config.status() catch {};
     try modify(net, line, kind, range, false);
 }
 
@@ -189,7 +189,7 @@ fn modify(
 ) !void {
     for (range.start..range.end + 1) |axis_id| {
         if (kind == .all or kind == .axis)
-            client.log_config.lines[line.index].axes[axis_id - 1] = flag;
+            client.get().log_config.lines[line.index].axes[axis_id - 1] = flag;
         if (kind == .all or kind == .driver) {
             var line_array: [1]u32 = .{line.id};
             const lines: std.ArrayList(u32) = .fromOwnedSlice(&line_array);
@@ -213,9 +213,9 @@ fn modify(
                     },
                 },
             };
-            try client.sendRequest(client.allocator, net, request);
-            var decoded = try client.getResponse(client.allocator, net);
-            defer decoded.deinit(client.allocator);
+            try client.sendRequest(client.get().allocator, net, request);
+            var decoded = try client.getResponse(client.get().allocator, net);
+            defer decoded.deinit(client.get().allocator);
             const track = switch (decoded.body orelse return error.InvalidResponse) {
                 .info => |info_resp| switch (info_resp.body orelse
                     return error.InvalidResponse) {
@@ -240,7 +240,7 @@ fn modify(
 
             const driver = track_line.driver_state.pop() orelse
                 return error.InvalidResponse;
-            client.log_config.lines[line.index].drivers[driver.id - 1] = flag;
+            client.get().log_config.lines[line.index].drivers[driver.id - 1] = flag;
         }
     }
 }

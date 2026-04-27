@@ -2,7 +2,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const Line = @import("Line.zig");
-const client = @import("../mmc_client.zig");
+const client = @import("../MmcClient.zig");
 const Parameter = @This();
 
 // TODO: Support auto completion
@@ -161,7 +161,7 @@ value: struct {
         /// Assert the parameter is a valid line name
         fn isValid(self: *@This(), input: []const u8) bool {
             // Invalidate if not connected to server.
-            if (builtin.is_test == false and client.sock == null) return false;
+            if (builtin.is_test == false and client.get().sock == null) return false;
             var it = std.mem.tokenizeSequence(u8, input, ",");
             while (it.next()) |item| {
                 if (self.items.contains(item) == false) return false;

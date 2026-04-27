@@ -6,12 +6,6 @@ pub fn build(b: *std.Build) !void {
 
     const options = b.addOptions();
     // Enable/disable backends selectively through options.
-    const return_demo2 = b.option(
-        bool,
-        "return_demo2",
-        "Enable the `return_demo2` backend (default false).",
-    ) orelse false;
-    options.addOption(bool, "return_demo2", return_demo2);
     const mmc_client = b.option(
         bool,
         "mmc_client",
