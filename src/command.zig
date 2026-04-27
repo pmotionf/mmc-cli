@@ -864,7 +864,7 @@ const Parser = struct {
         return false;
     }
 
-    fn parseExpression(self: *Parser) !i32 {
+    fn parseExpression(self: *Parser) !f32 {
         std.log.debug("parseExpression", .{});
         var lhs = try self.parseTerm();
 
@@ -879,8 +879,8 @@ const Parser = struct {
             std.log.debug("parseExpression: {d} {c} {d}", .{ lhs, op, rhs });
 
             lhs = switch (op) {
-                '+' => try std.math.add(i32, lhs, rhs),
-                '-' => try std.math.sub(i32, lhs, rhs),
+                '+' => lhs + rhs,
+                '-' => lhs - rhs,
                 else => unreachable,
             };
         }
@@ -888,7 +888,7 @@ const Parser = struct {
         return lhs;
     }
 
-    fn parseTerm(self: *Parser) !i32 {
+    fn parseTerm(self: *Parser) !f32 {
         std.log.debug("parseTerm", .{});
         var lhs = try self.parseFactor();
 
@@ -901,9 +901,15 @@ const Parser = struct {
             const rhs = try self.parseFactor();
 
             lhs = switch (op) {
-                '*' => try std.math.mul(i32, lhs, rhs),
-                '/' => try std.math.divTrunc(i32, lhs, rhs),
-                '%' => try std.math.mod(i32, lhs, rhs),
+                '*' => lhs * rhs,
+                '/' => blk: {
+                    if (rhs == 0.0) return error.DivisionByZero;
+                    break :blk lhs / rhs;
+                },
+                '%' => blk: {
+                    if (rhs == 0.0) return error.DivisionByZero;
+                    break :blk @mod(lhs, rhs);
+                },
                 else => unreachable,
             };
         }
@@ -911,7 +917,7 @@ const Parser = struct {
         return lhs;
     }
 
-    fn parseFactor(self: *Parser) !i32 {
+    fn parseFactor(self: *Parser) !f32 {
         std.log.debug("parseFactor", .{});
         self.skipSpaces();
 
@@ -919,19 +925,19 @@ const Parser = struct {
 
         if (self.consume('-')) {
             const value = try self.parseFactor();
-            return try std.math.sub(i32, 0, value);
+            return value * -1.0;
         }
 
         return self.parseNumber();
     }
 
-    fn parseNumber(self: *Parser) !i32 {
+    fn parseNumber(self: *Parser) !f32 {
         self.skipSpaces();
 
         const start = self.pos;
         while (self.pos < self.input.len and std.ascii.isDigit(self.input[self.pos])) : (self.pos += 1) {}
 
-        return try std.fmt.parseInt(i32, self.input[start..self.pos], 10);
+        return try std.fmt.parseFloat(f32, self.input[start..self.pos]);
     }
 };
 
@@ -943,7 +949,8 @@ pub fn calc(input: []const u8) !i32 {
     parser.skipSpaces();
     if (parser.pos != parser.input.len) return error.TrailingCharacters;
 
-    return value;
+    std.log.debug("Exact reuslt: {d:.2}", .{value});
+    return @as(i32, @intFromFloat(@round(value)));
 }
 
 test "basic precedence" {
@@ -963,7 +970,7 @@ test "no spaces" {
 }
 
 test "division" {
-    try std.testing.expectEqual(0, try calc("1/3"));
+    try std.testing.expectEqual(1, try calc("1/3 + 1/3"));
 }
 
 fn get(params: [][]const u8) !void {
