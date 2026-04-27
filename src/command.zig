@@ -411,7 +411,7 @@ pub fn init() !void {
             .name = "SET",
             .parameters = &[_]Command.Executable.Parameter{
                 .{ .name = "name", .resolve = false },
-                .{ .name = "value", .resolve = true, .rest = true },
+                .{ .name = "value", .resolve = false, .rest = true },
                 // .{ .name = "expression", .resolve = true, .optional = true, .rest = true },
                 // .{ .name = "value2", .resolve = true, .optional = true },
             },
@@ -824,9 +824,11 @@ fn set(params: [][]const u8) !void {
         // Compute and assign
         std.log.info("Calc '{s}' = '{s}'", .{ name, value[1..] });
 
-        var buf: [11]u8 = undefined;
+        var buf: [
+            std.fmt.count("{d}", .{std.math.minInt(@TypeOf(try calc("1")))})
+        ]u8 = undefined;
         const res = try std.fmt.bufPrint(&buf, "{d}", .{try calc(value[1..])});
-        std.log.info("Calc '{s}' = '{s}'", .{ name, res });
+        std.log.info("Variable '{s}': {s}", .{ name, res });
         try variables.put(name, res);
         return;
     } else {
@@ -858,15 +860,12 @@ const CalcParser = struct {
 
     fn skipSpaces(self: *CalcParser) void {
         while (self.pos < self.input.len and
-            std.ascii.isWhitespace(self.input[self.pos])) : (self.pos += 1)
-        {}
+            std.ascii.isWhitespace(self.input[self.pos])) self.pos += 1;
     }
 
     fn consume(self: *CalcParser, char: u8) bool {
-        std.log.debug("consume", .{});
         self.skipSpaces();
         if (self.pos < self.input.len and self.input[self.pos] == char) {
-            std.log.debug("consume char: {c}", .{char});
             self.pos += 1;
             return true;
         }
@@ -889,12 +888,10 @@ const CalcParser = struct {
                 else => unreachable,
             };
         }
-
         return lhs;
     }
 
     fn parseTerm(self: *CalcParser) CalcError!f32 {
-        std.log.debug("parseTerm", .{});
         var lhs = try self.parseFactor();
 
         while (true) {
@@ -904,7 +901,6 @@ const CalcParser = struct {
 
             self.pos += 1;
             const rhs = try self.parseFactor();
-
             lhs = switch (op) {
                 '*' => lhs * rhs,
                 '/' => blk: {
@@ -918,12 +914,10 @@ const CalcParser = struct {
                 else => unreachable,
             };
         }
-
         return lhs;
     }
 
     fn parseFactor(self: *CalcParser) CalcError!f32 {
-        std.log.debug("parseFactor", .{});
         self.skipSpaces();
 
         if (self.consume('+')) return self.parseFactor();
@@ -938,19 +932,45 @@ const CalcParser = struct {
             return value;
         }
 
+        const c = self.peek() orelse return error.ExpectedNumber;
+        if (std.ascii.isAlphabetic(c)) return self.parseVariable();
+        if (std.ascii.isDigit(c)) return self.parseNumber();
+
         return self.parseNumber();
     }
 
     fn parseNumber(self: *CalcParser) CalcError!f32 {
         self.skipSpaces();
-
         const start = self.pos;
-        while (self.pos < self.input.len and std.ascii.isDigit(self.input[self.pos])) : (self.pos += 1) {}
+
+        while (self.pos < self.input.len and
+            std.ascii.isDigit(self.input[self.pos])) self.pos += 1;
 
         if (self.pos == start) return error.ExpectedNumber;
 
-        return std.fmt.parseFloat(f32, self.input[start..self.pos]) catch {
+        return std.fmt.parseFloat(f32, self.input[start..self.pos]) catch
             return error.InvalidCharacter;
+    }
+
+    fn parseVariable(self: *CalcParser) CalcError!f32 {
+        self.skipSpaces();
+        const start = self.pos;
+
+        if (self.pos >= self.input.len) return error.ExpectedNumber;
+        if (!std.ascii.isAlphabetic(self.input[self.pos]))
+            return error.InvalidCharacter;
+
+        self.pos += 1;
+        while (self.pos < self.input.len and
+            std.ascii.isAlphanumeric(self.input[self.pos])) self.pos += 1;
+
+        const name = self.input[start..self.pos];
+        const value_string = variables.get(name) orelse
+            return error.UndefinedVariable;
+        std.log.info("{s}: {s}", .{ name, value_string });
+
+        return std.fmt.parseFloat(f32, value_string) catch {
+            return error.InvalidVariableValue;
         };
     }
 };
@@ -962,8 +982,6 @@ pub fn calc(input: []const u8) CalcError!i32 {
 
     parser.skipSpaces();
     if (parser.pos != parser.input.len) return error.TrailingCharacters;
-
-    std.log.debug("Exact reuslt: {d:.2}", .{value});
     return @as(i32, @intFromFloat(@round(value)));
 }
 
@@ -980,14 +998,12 @@ test "calc" {
     try std.testing.expectError(error.ExpectedClosingParentheses, calc("(((2+1)*(((1+1))))*(((2-1)))"));
     try std.testing.expectError(error.ExpectedClosingParentheses, calc("2 +2*( 2-1"));
     try std.testing.expectError(error.ExpectedClosingParentheses, calc("(2 +2*( 2-1) + 2"));
-    try std.testing.expectError(error.TrailingCharacters, calc("2 + 2 abc")); //Todo: check if variable and multiply
+    try std.testing.expectError(error.TrailingCharacters, calc("2 + 2 abc")); //Todo: check if variable if yes multiply
     try std.testing.expectError(error.TrailingCharacters, calc("2 + 2 )"));
     try std.testing.expectError(error.TrailingCharacters, calc("2 + 2 (3 + 2)")); //Todo: this should be a multiplication
     try std.testing.expectError(error.TrailingCharacters, calc("2 + 2(3 + 2)")); //Todo: this should be a multiplication
     try std.testing.expectError(error.TrailingCharacters, calc("2 + 2 @"));
     try std.testing.expectError(error.ExpectedNumber, calc("2+2+"));
-    try std.testing.expectError(error.ExpectedNumber, calc("2+a")); //Todo: check if variable and multiply
-    try std.testing.expectError(error.ExpectedNumber, calc("2+ a")); //Todo: check if variable and multiply
     try std.testing.expectError(error.ExpectedNumber, calc("2+ @"));
 }
 
