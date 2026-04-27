@@ -822,8 +822,6 @@ fn set(params: [][]const u8) !void {
 
     if (value[0] == '=') {
         // Compute and assign
-        std.log.info("Calc '{s}' = '{s}'", .{ name, value[1..] });
-
         var buf: [
             std.fmt.count("{d}", .{std.math.minInt(@TypeOf(try calc("1")))})
         ]u8 = undefined;
@@ -960,9 +958,9 @@ const CalcParser = struct {
         if (!std.ascii.isAlphabetic(self.input[self.pos]))
             return error.InvalidCharacter;
 
-        self.pos += 1;
         while (self.pos < self.input.len and
-            std.ascii.isAlphanumeric(self.input[self.pos])) self.pos += 1;
+            (std.ascii.isAlphanumeric(self.input[self.pos]) or
+                '_' == self.input[self.pos])) self.pos += 1;
 
         const name = self.input[start..self.pos];
         const value_string = variables.get(name) orelse
