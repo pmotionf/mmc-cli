@@ -406,42 +406,44 @@ pub fn init() !void {
         .long_description = "Clear visible screen output.",
         .execute = &clear,
     } });
-    try registry.put(.{ .executable = .{
-        .name = "SET",
-        .parameters = &[_]Command.Executable.Parameter{
-            .{ .name = "name", .resolve = false },
-            .{ .name = "value1", .resolve = true },
-            .{ .name = "operator", .resolve = false, .optional = true },
-            .{ .name = "value2", .resolve = true, .optional = true },
+    try registry.put(.{
+        .executable = .{
+            .name = "SET",
+            .parameters = &[_]Command.Executable.Parameter{
+                .{ .name = "name", .resolve = false },
+                .{ .name = "value", .resolve = true, .rest = true },
+                // .{ .name = "expression", .resolve = true, .optional = true, .rest = true },
+                // .{ .name = "value2", .resolve = true, .optional = true },
+            },
+            .short_description = "Set a variable equal to a value.",
+            .long_description =
+            \\Create or update a variable name that resolves to the provided value
+            \\in all future commands. If no operator is provided, the variable is
+            \\set directly to value1. Optional if an operator is provided, the
+            \\result of the operation is assigned. Variable names are case sensitive
+            \\and shall not begin with digit.
+            \\
+            \\Example: Set variable 'var' to the value 5 and variable 'var2' to
+            \\value 'line1'.
+            \\SET var 5
+            \\SET var2 line1
+            \\
+            \\Example: Set variable 'var' to value of 'var2'.
+            \\SET var var2
+            \\
+            \\Example: Set variable 'var' to value of variable 'var2' plus 5.
+            \\SET var var2 + 5
+            \\
+            \\Operators:
+            \\* Addition +
+            \\* Subtraction -
+            \\* Multiplication *
+            \\* Division /
+            \\* Modulo %
+            ,
+            .execute = &set,
         },
-        .short_description = "Set a variable equal to a value.",
-        .long_description =
-        \\Create or update a variable name that resolves to the provided value
-        \\in all future commands. If no operator is provided, the variable is
-        \\set directly to value1. Optional if an operator is provided, the
-        \\result of the operation is assigned. Variable names are case sensitive
-        \\and shall not begin with digit.
-        \\
-        \\Example: Set variable 'var' to the value 5 and variable 'var2' to
-        \\value 'line1'.
-        \\SET var 5
-        \\SET var2 line1
-        \\
-        \\Example: Set variable 'var' to value of 'var2'.
-        \\SET var var2
-        \\
-        \\Example: Set variable 'var' to value of variable 'var2' plus 5.
-        \\SET var var2 + 5
-        \\
-        \\Operators:
-        \\* Addition +
-        \\* Subtraction -
-        \\* Multiplication *
-        \\* Division /
-        \\* Modulo %
-        ,
-        .execute = &set,
-    } });
+    });
     try registry.put(.{ .executable = .{
         .name = "GET",
         .parameters = &[_]Command.Executable.Parameter{
@@ -660,10 +662,7 @@ fn parseAndRun(input: []const u8) !void {
     var command: *Command.Executable = undefined;
     var command_buf: [256]u8 = undefined;
     if (token_iterator.next()) |token| {
-        if (registry.getPtr(std.ascii.upperString(
-            &command_buf,
-            token,
-        ))) |c| {
+        if (registry.getPtr(std.ascii.upperString(&command_buf, token))) |c| {
             command = c;
         } else return error.InvalidCommand;
     } else return;
@@ -675,6 +674,7 @@ fn parseAndRun(input: []const u8) !void {
     defer allocator.free(params);
 
     for (command.parameters, 0..) |param, i| {
+        std.log.debug("cmd parameters: {}, {d}", .{ param, i });
         const _token = token_iterator.peek();
         defer _ = token_iterator.next();
         if (_token == null) {
@@ -814,42 +814,156 @@ fn version(_: [][]const u8) !void {
 fn set(params: [][]const u8) !void {
     if (std.ascii.isDigit(params[0][0])) return error.InvalidParameter;
     const name: []const u8 = params[0];
-    const value1: []const u8 = params[1];
-    const op: []const u8 = params[2];
-    const value2: []const u8 = params[3];
+    const value: []const u8 = params[1];
 
-    // Simple assign
-    if (std.mem.eql(u8, op, "")) {
-        try variables.put(name, value1);
-        std.log.info("Variable '{s}': {s}", .{ name, value1 });
-        return;
+    for (params, 0..) |param, j| {
+        std.log.debug("param {d}: '{s}'", .{ j, param });
     }
 
-    // Compute and assign
-    if (value1.len == 0 or value2.len == 0 or op.len != 1)
-        return error.InvalidParameter;
+    if (value[0] == '=') {
+        // Compute and assign
+        std.log.info("Calc '{s}' = '{s}'", .{ name, value[1..] });
 
-    const a: u16 = try std.fmt.parseInt(u8, value1, 10);
-    const b: u16 = try std.fmt.parseInt(u8, value2, 10);
-    const result: u16 = switch (op[0]) {
-        '+' => try std.math.add(u16, a, b),
-        '-' => try std.math.sub(u16, a, b),
-        '*' => try std.math.mul(u16, a, b),
-        '/' => try std.math.divTrunc(u16, a, b),
-        '%' => try std.math.mod(u16, a, b),
-        else => {
-            std.log.err("Invalid operator: {s}", .{op});
-            return error.InvalidParameter;
-        },
-    };
+        var buf: [11]u8 = undefined;
+        const res = try std.fmt.bufPrint(&buf, "{d}", .{try calc(value[1..])});
+        std.log.info("Calc '{s}' = '{s}'", .{ name, res });
+        try variables.put(name, res);
+        return;
+    } else {
+        // Simple assign
+        try variables.put(name, value);
+        std.log.info("Variable '{s}': {s}", .{ name, value });
+        return;
+    }
+}
 
-    const max_len =
-        comptime std.fmt.count("{}", .{std.math.maxInt(@TypeOf(result))});
-    var buf: [max_len]u8 = undefined;
-    const out = try std.fmt.bufPrint(&buf, "{d}", .{result});
+const Parser = struct {
+    input: []const u8,
+    pos: usize = 0,
 
-    try variables.put(name, out);
-    std.log.info("Variable '{s}': {s}", .{ name, out });
+    fn peek(self: *Parser) ?u8 {
+        std.log.debug("peek", .{});
+        if (self.pos >= self.input.len) return null;
+        return self.input[self.pos];
+    }
+
+    fn skipSpaces(self: *Parser) void {
+        while (self.pos < self.input.len and
+            std.ascii.isWhitespace(self.input[self.pos])) : (self.pos += 1)
+        {}
+    }
+
+    fn consume(self: *Parser, char: u8) bool {
+        std.log.debug("consume", .{});
+        self.skipSpaces();
+        if (self.pos < self.input.len and self.input[self.pos] == char) {
+            std.log.debug("consume char: {c}", .{char});
+            self.pos += 1;
+            return true;
+        }
+        return false;
+    }
+
+    fn parseExpression(self: *Parser) !i32 {
+        std.log.debug("parseExpression", .{});
+        var lhs = try self.parseTerm();
+
+        while (true) {
+            self.skipSpaces();
+            const op = self.peek() orelse break;
+            if (op != '+' and op != '-') break;
+
+            self.pos += 1;
+            const rhs = try self.parseTerm();
+
+            std.log.debug("parseExpression: {d} {c} {d}", .{ lhs, op, rhs });
+
+            lhs = switch (op) {
+                '+' => try std.math.add(i32, lhs, rhs),
+                '-' => try std.math.sub(i32, lhs, rhs),
+                else => unreachable,
+            };
+        }
+
+        return lhs;
+    }
+
+    fn parseTerm(self: *Parser) !i32 {
+        std.log.debug("parseTerm", .{});
+        var lhs = try self.parseFactor();
+
+        while (true) {
+            self.skipSpaces();
+            const op = self.peek() orelse break;
+            if (op != '*' and op != '/' and op != '%') break;
+
+            self.pos += 1;
+            const rhs = try self.parseFactor();
+
+            lhs = switch (op) {
+                '*' => try std.math.mul(i32, lhs, rhs),
+                '/' => try std.math.divTrunc(i32, lhs, rhs),
+                '%' => try std.math.mod(i32, lhs, rhs),
+                else => unreachable,
+            };
+        }
+
+        return lhs;
+    }
+
+    fn parseFactor(self: *Parser) !i32 {
+        std.log.debug("parseFactor", .{});
+        self.skipSpaces();
+
+        if (self.consume('+')) return self.parseFactor();
+
+        if (self.consume('-')) {
+            const value = try self.parseFactor();
+            return try std.math.sub(i32, 0, value);
+        }
+
+        return self.parseNumber();
+    }
+
+    fn parseNumber(self: *Parser) !i32 {
+        self.skipSpaces();
+
+        const start = self.pos;
+        while (self.pos < self.input.len and std.ascii.isDigit(self.input[self.pos])) : (self.pos += 1) {}
+
+        return try std.fmt.parseInt(i32, self.input[start..self.pos], 10);
+    }
+};
+
+pub fn calc(input: []const u8) !i32 {
+    var parser = Parser{ .input = input };
+
+    const value = try parser.parseExpression();
+
+    parser.skipSpaces();
+    if (parser.pos != parser.input.len) return error.TrailingCharacters;
+
+    return value;
+}
+
+test "basic precedence" {
+    try std.testing.expectEqual(14, try calc("2 + 3 * 4"));
+}
+
+test "whitespace and unary minus" {
+    try std.testing.expectEqual(30, try calc("    20 + 5 * 2 "));
+}
+
+test "division and modulo" {
+    try std.testing.expectEqual(5, try calc("17 % 5 + 6 / 2"));
+}
+
+test "no spaces" {
+    try std.testing.expectEqual(5, try calc("17%5+6/2"));
+}
+
+test "division" {
+    try std.testing.expectEqual(0, try calc("1/3"));
 }
 
 fn get(params: [][]const u8) !void {
