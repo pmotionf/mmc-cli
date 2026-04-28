@@ -816,26 +816,20 @@ fn set(params: [][]const u8) !void {
     if (std.ascii.isDigit(params[0][0])) return error.InvalidParameter;
     const name: []const u8 = params[0];
     const value: []const u8 = params[1];
-
-    for (params, 0..) |param, j| {
-        std.log.debug("param {d}: '{s}'", .{ j, param });
-    }
+    var result: []const u8 = undefined;
 
     if (value[0] == '=') {
         // Compute and assign
         var buf: [
             std.fmt.count("{d}", .{std.math.minInt(@TypeOf(try calc("1")))})
         ]u8 = undefined;
-        const res = try std.fmt.bufPrint(&buf, "{d}", .{try calc(value[1..])});
-        std.log.info("Variable '{s}': {s}", .{ name, res });
-        try variables.put(name, res);
-        return;
+        result = try std.fmt.bufPrint(&buf, "{d}", .{try calc(value[1..])});
     } else {
         // Simple assign
-        try variables.put(name, value);
-        std.log.info("Variable '{s}': {s}", .{ name, value });
-        return;
+        result = value;
     }
+    std.log.info("Variable '{s}': {s}\n", .{ name, result });
+    try variables.put(name, result);
 }
 
 const CalcError = error{
