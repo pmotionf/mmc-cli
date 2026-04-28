@@ -220,7 +220,8 @@ pub const Command = union(enum) {
             optional: bool = false,
             quotable: bool = true,
             resolve: bool = true,
-            /// The 'rest' parameter can only be used as the last parameter.
+            /// If ture, this parameter consumes all remaining input as a single
+            /// value. This parameter can only be used as the last parameter.
             rest: bool = false,
 
             fn resolveKind() type {
