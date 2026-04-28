@@ -852,6 +852,8 @@ const CalcParser = struct {
     input: []const u8,
     pos: usize = 0,
 
+    /// Returns a slice of the current character, or null when end of input is
+    /// reached. Does not advance to next character.
     fn peek(self: *CalcParser) ?u8 {
         if (self.pos >= self.input.len) return null;
         return self.input[self.pos];
@@ -862,6 +864,7 @@ const CalcParser = struct {
             std.ascii.isWhitespace(self.input[self.pos])) self.pos += 1;
     }
 
+    /// Consume `char` if appears.
     fn consume(self: *CalcParser, char: u8) bool {
         self.skipSpaces();
         if (self.pos < self.input.len and self.input[self.pos] == char) {
@@ -871,6 +874,7 @@ const CalcParser = struct {
         return false;
     }
 
+    /// Parse addition and substraction
     fn parseExpression(self: *CalcParser) CalcError!f32 {
         var lhs = try self.parseTerm();
 
@@ -890,6 +894,7 @@ const CalcParser = struct {
         return lhs;
     }
 
+    /// Parse multiplication and division
     fn parseTerm(self: *CalcParser) CalcError!f32 {
         var lhs = try self.parseFactor();
 
@@ -916,6 +921,7 @@ const CalcParser = struct {
         return lhs;
     }
 
+    /// Parse unary operation, parentheses, variables and numbers
     fn parseFactor(self: *CalcParser) CalcError!f32 {
         self.skipSpaces();
 
