@@ -675,7 +675,6 @@ fn parseAndRun(input: []const u8) !void {
     defer allocator.free(params);
 
     for (command.parameters, 0..) |param, i| {
-        std.log.debug("cmd parameters: {}, {d}", .{ param, i });
         const _token = token_iterator.peek();
         defer _ = token_iterator.next();
         if (_token == null) {
