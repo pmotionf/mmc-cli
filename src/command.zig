@@ -419,21 +419,18 @@ pub fn init() !void {
             .short_description = "Set a variable equal to a value.",
             .long_description =
             \\Create or update a variable name that resolves to the provided value
-            \\in all future commands. If no operator is provided, the variable is
-            \\set directly to value1. Optional if an operator is provided, the
-            \\result of the operation is assigned. Variable names are case sensitive
-            \\and shall not begin with digit.
+            \\in all future commands. If no `=` is provided, the variable is
+            \\set directly to value. Optional if an `=` symbol is provided, the
+            \\result of the expression is assigned. Variable names are case
+            \\sensitive and shall not begin with a digit.
             \\
             \\Example: Set variable 'var' to the value 5 and variable 'var2' to
             \\value 'line1'.
             \\SET var 5
             \\SET var2 line1
             \\
-            \\Example: Set variable 'var' to value of 'var2'.
-            \\SET var var2
-            \\
-            \\Example: Set variable 'var' to value of variable 'var2' plus 5.
-            \\SET var var2 + 5
+            \\Example: Set variable 'var' to value of variable 'var' plus 1.
+            \\SET var = var + 1
             \\
             \\Operators:
             \\* Addition +
