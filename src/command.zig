@@ -891,6 +891,12 @@ const CalcParser = struct {
         while (true) {
             self.skipSpaces();
             const op = self.peek() orelse break;
+
+            if (std.ascii.isAlphabetic(op) or op == '(') {
+                lhs *= try self.parseFactor();
+                continue;
+            }
+
             if (op != '*' and op != '/' and op != '%') break;
 
             self.pos += 1;
@@ -915,11 +921,8 @@ const CalcParser = struct {
     fn parseFactor(self: *CalcParser) CalcError!f32 {
         self.skipSpaces();
 
-        if (self.consume('+')) return self.parseFactor();
-        if (self.consume('-')) {
-            const value = try self.parseFactor();
-            return -value;
-        }
+        if (self.consume('+')) return try self.parseFactor();
+        if (self.consume('-')) return -try self.parseFactor();
 
         if (self.consume('(')) {
             const value = try self.parseExpression();
@@ -987,16 +990,17 @@ test "calc" {
     try std.testing.expectEqual(5, try calc("17%5+6/2"));
     try std.testing.expectEqual(1, try calc("1/3 + 1/3"));
     try std.testing.expectEqual(72, try calc("(2+2)*2*(3+3*2)"));
+    try std.testing.expectEqual(12, calc("2 + 2 (3 + 2)"));
+    try std.testing.expectEqual(24, calc("(1+1) (3 + 1)(2+ 3/3)"));
 
     try std.testing.expectError(error.DivisionByZero, calc("2/0"));
     try std.testing.expectError(error.DivisionByZero, calc("2%0"));
     try std.testing.expectError(error.ExpectedClosingParentheses, calc("(((2+1)*(((1+1))))*(((2-1)))"));
     try std.testing.expectError(error.ExpectedClosingParentheses, calc("2 +2*( 2-1"));
     try std.testing.expectError(error.ExpectedClosingParentheses, calc("(2 +2*( 2-1) + 2"));
-    try std.testing.expectError(error.TrailingCharacters, calc("2 + 2 abc")); //Todo: check if variable if yes multiply
+    try std.testing.expectError(error.TrailingCharacters, calc("2 + 2 5"));
+    try std.testing.expectError(error.TrailingCharacters, calc("(5+1)2"));
     try std.testing.expectError(error.TrailingCharacters, calc("2 + 2 )"));
-    try std.testing.expectError(error.TrailingCharacters, calc("2 + 2 (3 + 2)")); //Todo: this should be a multiplication
-    try std.testing.expectError(error.TrailingCharacters, calc("2 + 2(3 + 2)")); //Todo: this should be a multiplication
     try std.testing.expectError(error.TrailingCharacters, calc("2 + 2 @"));
     try std.testing.expectError(error.ExpectedNumber, calc("2+2+"));
     try std.testing.expectError(error.ExpectedNumber, calc("2+ @"));
