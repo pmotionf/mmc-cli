@@ -809,7 +809,8 @@ fn version(_: [][]const u8) !void {
 }
 
 fn set(params: [][]const u8) !void {
-    if (std.ascii.isDigit(params[0][0])) return error.InvalidParameter;
+    if (std.ascii.isDigit(params[0][0]) or !std.ascii.isAlphabetic(params[0][0]))
+        return error.InvalidParameter;
     const name: []const u8 = params[0];
     const value: []const u8 = params[1];
     var result: []const u8 = undefined;
