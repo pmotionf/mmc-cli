@@ -662,7 +662,19 @@ fn tokenIndexAtCursor(input: []const u8, cursor_raw: usize) usize {
 fn argIndexAtCursor(ctx: *const Prompt) ?usize {
     const ti = tokenIndexAtCursor(ctx.input, ctx.cursor.raw);
     if (ti == 0) return null;
-    return ti - 1;
+
+    const raw_arg_idx = ti - 1;
+    const cmd_ptr = command.registry.getPtr(ctx.selected_command) orelse
+        return raw_arg_idx;
+
+    // When the cursor reaches a `rest` parameter that same parameter index will
+    // be reported for all following tokens.
+    const params = cmd_ptr.parameters;
+    if (params.len != 0 and
+        params[params.len - 1].rest and
+        params.len <= raw_arg_idx) return params.len - 1;
+
+    return raw_arg_idx;
 }
 
 fn clearTwoLinesAndReturnToTop(w: *std.io.Writer) !void {
