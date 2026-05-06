@@ -823,7 +823,7 @@ fn set(params: [][]const u8) !void {
         result = try std.fmt.bufPrint(&buf, "{d}", .{try calc(value[1..])});
     } else {
         // Simple assign
-        result = value;
+        result = std.mem.trimEnd(u8, value, &std.ascii.whitespace);
     }
     std.log.info("Variable '{s}': {s}\n", .{ name, result });
     try variables.put(name, result);
