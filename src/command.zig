@@ -220,7 +220,7 @@ pub const Command = union(enum) {
             optional: bool = false,
             quotable: bool = true,
             resolve: bool = true,
-            /// If ture, this parameter consumes all remaining input as a single
+            /// If true, this parameter consumes all remaining input as a single
             /// value. This parameter can only be used as the last parameter.
             rest: bool = false,
 
