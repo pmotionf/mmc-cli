@@ -979,7 +979,7 @@ const CalcParser = struct {
         const name = self.input[start..self.pos];
         const value_string = variables.get(name) orelse
             return error.UndefinedVariable;
-        std.log.info("{s}: {s}", .{ name, value_string });
+        std.log.debug("{s}: {s}", .{ name, value_string });
 
         return std.fmt.parseFloat(f32, value_string) catch {
             return error.InvalidVariableValue;
