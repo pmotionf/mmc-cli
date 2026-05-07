@@ -1294,6 +1294,19 @@ pub fn init(c: Config) !void {
     errdefer command.registry.orderedRemove("SET_CARRIER_ID");
 }
 
+test init {
+    const dummy_config: Config = .{ .host = &.{}, .port = 0 };
+    try command.init();
+    try init(dummy_config);
+    defer command.deinit();
+    for (command.registry.values()) |executable| {
+        for (executable.parameters, 1..) |param, i| {
+            if (param.rest and i != executable.parameters.len) {
+                return error.FoundInvalidRestParameter;
+            }
+        }
+    }
+}
 pub fn deinit() void {
     commands.disconnect.impl(&.{}) catch {};
     parameter.deinit();

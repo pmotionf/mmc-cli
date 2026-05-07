@@ -588,6 +588,18 @@ pub fn init() !void {
     } });
 }
 
+test init {
+    try init();
+    defer deinit();
+    for (registry.values()) |executable| {
+        for (executable.parameters, 1..) |param, i| {
+            if (param.rest and i != executable.parameters.len) {
+                return error.FoundInvalidRestParameter;
+            }
+        }
+    }
+}
+
 pub fn deinit() void {
     deinitModules();
     stop.store(true, .monotonic);
