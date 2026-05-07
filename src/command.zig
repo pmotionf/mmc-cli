@@ -418,9 +418,10 @@ pub fn init() !void {
             .long_description =
             \\Create or update a variable name that resolves to the provided value
             \\in all future commands. If a variable name and a value is provided,
-            \\then the variable is set directly to the value. Optional if an `=`
-            \\symbol is provided, the result of the expression is assigned.
-            \\Variable names are case sensitive and have to begin with a letter.
+            \\then the variable is set directly to the value. If an `=` symbol
+            \\is provided as the first element of the value parameter, the result
+            \\of the expression is assigned. Variable names are case sensitive
+            \\and have to begin with a letter.
             \\
             \\Example: Set variable 'var' to the value 5 and variable 'var2' to
             \\value 'line1'.
@@ -430,7 +431,7 @@ pub fn init() !void {
             \\Example: Set variable 'var' to value of variable 'var' plus 1.
             \\SET var = var + 1
             \\
-            \\Operators:
+            \\Supported operators:
             \\* Addition +
             \\* Subtraction -
             \\* Multiplication *
