@@ -413,8 +413,6 @@ pub fn init() !void {
             .parameters = &[_]Command.Executable.Parameter{
                 .{ .name = "name", .resolve = false },
                 .{ .name = "value", .resolve = false, .rest = true },
-                // .{ .name = "expression", .resolve = true, .optional = true, .rest = true },
-                // .{ .name = "value2", .resolve = true, .optional = true },
             },
             .short_description = "Set a variable equal to a value.",
             .long_description =
