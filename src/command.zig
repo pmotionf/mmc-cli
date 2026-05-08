@@ -721,7 +721,7 @@ fn parseAndRun(input: []const u8) !void {
 
         if (param.rest) {
             params[i] = token_iterator.rest();
-            break;
+            while (token_iterator.next()) |_| {} else break;
         }
     }
 
