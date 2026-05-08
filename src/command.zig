@@ -828,9 +828,13 @@ fn set(params: [][]const u8) !void {
     if (value[0] == '=') {
         // Compute and assign
         var buf: [
-            std.fmt.count("{d}", .{std.math.minInt(@TypeOf(try calc("1")))})
+            std.fmt.float.bufferSize(.decimal, @TypeOf(try calc("1")))
         ]u8 = undefined;
-        result = try std.fmt.bufPrint(&buf, "{d}", .{try calc(value[1..])});
+        const res = try calc(value[1..]);
+        result = if (res == @round(res))
+            try std.fmt.bufPrint(&buf, "{d:.0}", .{res})
+        else
+            try std.fmt.bufPrint(&buf, "{d:.2}", .{res});
     } else {
         // Simple assign
         result = std.mem.trimEnd(u8, value, &std.ascii.whitespace);
@@ -945,8 +949,6 @@ const CalcParser = struct {
 
         const c = self.peek() orelse return error.ExpectedNumber;
         if (std.ascii.isAlphabetic(c)) return self.parseVariable();
-        if (std.ascii.isDigit(c)) return self.parseNumber();
-
         return self.parseNumber();
     }
 
@@ -955,12 +957,13 @@ const CalcParser = struct {
         const start = self.pos;
 
         while (self.pos < self.input.len and
-            std.ascii.isDigit(self.input[self.pos])) self.pos += 1;
+            (std.ascii.isDigit(self.input[self.pos]) or self.input[self.pos] == '.'))
+            self.pos += 1;
 
         if (self.pos == start) return error.ExpectedNumber;
 
         return std.fmt.parseFloat(f32, self.input[start..self.pos]) catch
-            return error.InvalidCharacter;
+            return error.ExpectedNumber;
     }
 
     fn parseVariable(self: *CalcParser) CalcError!f32 {
@@ -986,25 +989,34 @@ const CalcParser = struct {
     }
 };
 
-pub fn calc(input: []const u8) CalcError!i32 {
+pub fn calc(input: []const u8) CalcError!f32 {
     var parser = CalcParser{ .input = input };
 
     const value = try parser.parseExpression();
 
     parser.skipSpaces();
     if (parser.pos != parser.input.len) return error.TrailingCharacters;
-    return @as(i32, @intFromFloat(@round(value)));
+    return value;
 }
 
 test "calc" {
-    try std.testing.expectEqual(14, try calc("2 + 3 * 4"));
-    try std.testing.expectEqual(30, try calc("    20 + 5 * 2 "));
-    try std.testing.expectEqual(5, try calc("17 % 5 + 6 / 2"));
-    try std.testing.expectEqual(5, try calc("17%5+6/2"));
-    try std.testing.expectEqual(1, try calc("1/3 + 1/3"));
-    try std.testing.expectEqual(72, try calc("(2+2)*2*(3+3*2)"));
+    try std.testing.expectEqual(14, calc("2 + 3 * 4"));
+    try std.testing.expectEqual(30, calc("    20 + 5 * 2 "));
+    try std.testing.expectEqual(5, calc("17 % 5 + 6 / 2"));
+    try std.testing.expectEqual(5, calc("17%5+6/2"));
+    try std.testing.expectEqual(0.375, calc("1/8 + 2/8"));
+    try std.testing.expectEqual(72, calc("(2+2)*2*(3+3*2)"));
     try std.testing.expectEqual(12, calc("2 + 2 (3 + 2)"));
     try std.testing.expectEqual(24, calc("(1+1) (3 + 1)(2+ 3/3)"));
+    try std.testing.expectEqual(0.1, calc(".1"));
+    try std.testing.expectEqual(0.1, calc("0.1"));
+    try std.testing.expectEqual(1.25, calc("1.25"));
+    try std.testing.expectEqual(100.25, calc("100.25"));
+    try std.testing.expectEqual(1, calc("1."));
+    try std.testing.expectEqual(2.5, calc(".5 + 2"));
+    try std.testing.expectEqual(14, calc("2 - -3 * 4"));
+    try std.testing.expectEqual(14, calc("2 --3 * 4"));
+    try std.testing.expectEqual(14, calc("2 - (-3) * 4"));
 
     try std.testing.expectError(error.DivisionByZero, calc("2/0"));
     try std.testing.expectError(error.DivisionByZero, calc("2%0"));
@@ -1017,6 +1029,10 @@ test "calc" {
     try std.testing.expectError(error.TrailingCharacters, calc("2 + 2 @"));
     try std.testing.expectError(error.ExpectedNumber, calc("2+2+"));
     try std.testing.expectError(error.ExpectedNumber, calc("2+ @"));
+    try std.testing.expectError(error.ExpectedNumber, calc("."));
+    try std.testing.expectError(error.ExpectedNumber, calc(". + 1"));
+    try std.testing.expectError(error.ExpectedNumber, calc("1.."));
+    try std.testing.expectError(error.ExpectedNumber, calc("1.2.3"));
 }
 
 fn get(params: [][]const u8) !void {
