@@ -494,7 +494,10 @@ pub fn handler(ctx: *Prompt) void {
                                 );
                             // Parameter start at index 1 on command input
                             const param_idx = fragment_id - 1;
-                            if (param_idx >= selected_command.parameters.len) {
+                            const param_end: usize =
+                                if (selected_command.parameters.len > 0) selected_command.parameters.len - 1 else 0;
+                            const is_rest = if (param_end > 0) selected_command.parameters[param_end].rest else false;
+                            if (param_idx >= param_end and !is_rest) {
                                 io.style.set(&stdout.interface, .{
                                     .fg = .{ .named = .red },
                                 }) catch continue :main;
@@ -505,7 +508,9 @@ pub fn handler(ctx: *Prompt) void {
                                     continue :main;
                                 break :validation;
                             }
-                            const param =
+                            const param = if (param_idx >= param_end and is_rest)
+                                selected_command.parameters[param_end]
+                            else
                                 selected_command.parameters[param_idx];
                             if (param.isValid(fragment)) {
                                 stdout.interface.writeAll(fragment) catch
