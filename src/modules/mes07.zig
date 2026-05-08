@@ -59,6 +59,19 @@ pub fn init(_: Config) !void {
     } });
 }
 
+test init {
+    try command.init();
+    try init(.{});
+    defer command.deinit();
+    for (command.registry.values()) |executable| {
+        for (executable.parameters, 1..) |param, i| {
+            if (param.rest and i != executable.parameters.len) {
+                return error.FoundInvalidRestParameter;
+            }
+        }
+    }
+}
+
 pub fn deinit() void {
     if (connection.len > 0) {
         while (processing.load(.monotonic)) {

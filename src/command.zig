@@ -220,6 +220,9 @@ pub const Command = union(enum) {
             optional: bool = false,
             quotable: bool = true,
             resolve: bool = true,
+            /// If true, this parameter consumes all remaining input as a single
+            /// value. This parameter can only be used as the last parameter.
+            rest: bool = false,
 
             fn resolveKind() type {
                 // Calculate how many parameters are there that has parsing rule.
@@ -404,20 +407,40 @@ pub fn init() !void {
         .long_description = "Clear visible screen output.",
         .execute = &clear,
     } });
-    try registry.put(.{ .executable = .{
-        .name = "SET",
-        .parameters = &[_]Command.Executable.Parameter{
-            .{ .name = "variable", .resolve = false },
-            .{ .name = "value" },
+    try registry.put(.{
+        .executable = .{
+            .name = "SET",
+            .parameters = &[_]Command.Executable.Parameter{
+                .{ .name = "name", .resolve = false },
+                .{ .name = "value", .resolve = false, .rest = true },
+            },
+            .short_description = "Set a variable equal to a value.",
+            .long_description =
+            \\Create or update a variable name that resolves to the provided value
+            \\in all future commands. If a variable name and a value is provided,
+            \\then the variable is set directly to the value. If an `=` symbol
+            \\is provided as the first element of the value parameter, the result
+            \\of the expression is assigned. Variable names are case sensitive
+            \\and have to begin with a letter.
+            \\
+            \\Example: Set variable 'var' to the value 5 and variable 'var2' to
+            \\value 'line1'.
+            \\SET var 5
+            \\SET var2 line1
+            \\
+            \\Example: Set variable 'var' to value of variable 'var' plus 1.
+            \\SET var = var + 1
+            \\
+            \\Supported operators:
+            \\* Addition +
+            \\* Subtraction -
+            \\* Multiplication *
+            \\* Division /
+            \\* Modulo %
+            ,
+            .execute = &set,
         },
-        .short_description = "Set a variable equal to a value.",
-        .long_description =
-        \\Create or update a variable name that resolves to the provided value
-        \\in all future commands. Variable names are case sensitive and shall
-        \\not begin with digit.
-        ,
-        .execute = &set,
-    } });
+    });
     try registry.put(.{ .executable = .{
         .name = "GET",
         .parameters = &[_]Command.Executable.Parameter{
@@ -564,6 +587,18 @@ pub fn init() !void {
     } });
 }
 
+test init {
+    try init();
+    defer deinit();
+    for (registry.values()) |executable| {
+        for (executable.parameters, 1..) |param, i| {
+            if (param.rest and i != executable.parameters.len) {
+                return error.FoundInvalidRestParameter;
+            }
+        }
+    }
+}
+
 pub fn deinit() void {
     deinitModules();
     stop.store(true, .monotonic);
@@ -636,10 +671,7 @@ fn parseAndRun(input: []const u8) !void {
     var command: *Command.Executable = undefined;
     var command_buf: [256]u8 = undefined;
     if (token_iterator.next()) |token| {
-        if (registry.getPtr(std.ascii.upperString(
-            &command_buf,
-            token,
-        ))) |c| {
+        if (registry.getPtr(std.ascii.upperString(&command_buf, token))) |c| {
             command = c;
         } else return error.InvalidCommand;
     } else return;
@@ -685,11 +717,21 @@ fn parseAndRun(input: []const u8) !void {
                 }
                 params[i] = input[start_ind .. start_ind + len];
             } else params[i] = token;
-        } else {
-            params[i] = token;
+        } else params[i] = token;
+
+        if (param.rest) {
+            params[i] = token_iterator.rest();
+            while (token_iterator.next()) |_| {} else break;
         }
     }
-    if (token_iterator.peek() != null) return error.UnexpectedParameter;
+
+    const is_rest: bool =
+        command.parameters.len > 0 and
+        command.parameters[command.parameters.len - 1].rest;
+
+    if (!is_rest and token_iterator.peek() != null)
+        return error.UnexpectedParameter;
+
     try command.execute(params);
 }
 
@@ -778,13 +820,224 @@ fn version(_: [][]const u8) !void {
 }
 
 fn set(params: [][]const u8) !void {
-    if (std.ascii.isDigit(params[0][0])) return error.InvalidParameter;
-    try variables.put(params[0], params[1]);
+    if (!std.ascii.isAlphabetic(params[0][0])) return error.InvalidParameter;
+    const name: []const u8 = params[0];
+    const value: []const u8 = params[1];
+    var result: []const u8 = &.{};
+
+    if (value[0] == '=') {
+        // Compute and assign
+        var buf: [
+            std.fmt.float.bufferSize(.decimal, @TypeOf(try calc("1")))
+        ]u8 = undefined;
+        const res = try calc(value[1..]);
+        result = if (res == @round(res))
+            try std.fmt.bufPrint(&buf, "{d:.0}", .{res})
+        else
+            try std.fmt.bufPrint(&buf, "{d:.2}", .{res});
+    } else {
+        // Simple assign
+        result = std.mem.trimEnd(u8, value, &std.ascii.whitespace);
+        if (std.mem.indexOfScalar(u8, result, ' ') != null)
+            return error.InvalidParameter;
+    }
+    std.log.info("Variable '{s}': {s}\n", .{ name, result });
+    try variables.put(name, result);
+}
+
+const CalcError = error{
+    DivisionByZero,
+    ExpectedClosingParentheses,
+    TrailingCharacters,
+    InvalidCharacter,
+    ExpectedNumber,
+    UndefinedVariable,
+    InvalidVariableValue,
+};
+
+const CalcParser = struct {
+    input: []const u8,
+    pos: usize = 0,
+
+    /// Returns a slice of the current character, or null when end of input is
+    /// reached. Does not advance to next character.
+    fn peek(self: *CalcParser) ?u8 {
+        if (self.pos >= self.input.len) return null;
+        return self.input[self.pos];
+    }
+
+    fn skipSpaces(self: *CalcParser) void {
+        while (self.pos < self.input.len and
+            std.ascii.isWhitespace(self.input[self.pos])) self.pos += 1;
+    }
+
+    /// Consume `char` if appears.
+    fn consume(self: *CalcParser, char: u8) bool {
+        self.skipSpaces();
+        if (self.pos < self.input.len and self.input[self.pos] == char) {
+            self.pos += 1;
+            return true;
+        }
+        return false;
+    }
+
+    /// Parse addition and substraction
+    fn parseExpression(self: *CalcParser) CalcError!f32 {
+        var lhs = try self.parseTerm();
+
+        while (true) {
+            self.skipSpaces();
+            const op = self.peek() orelse break;
+            if (op != '+' and op != '-') break;
+
+            self.pos += 1;
+            const rhs = try self.parseTerm();
+            lhs = switch (op) {
+                '+' => lhs + rhs,
+                '-' => lhs - rhs,
+                else => unreachable,
+            };
+        }
+        return lhs;
+    }
+
+    /// Parse multiplication and division
+    fn parseTerm(self: *CalcParser) CalcError!f32 {
+        var lhs = try self.parseFactor();
+
+        while (true) {
+            self.skipSpaces();
+            const op = self.peek() orelse break;
+
+            if (std.ascii.isAlphabetic(op) or op == '(') {
+                lhs *= try self.parseFactor();
+                continue;
+            }
+
+            if (op != '*' and op != '/' and op != '%') break;
+
+            self.pos += 1;
+            const rhs = try self.parseFactor();
+            lhs = switch (op) {
+                '*' => lhs * rhs,
+                '/' => blk: {
+                    if (rhs == 0.0) return error.DivisionByZero;
+                    break :blk lhs / rhs;
+                },
+                '%' => blk: {
+                    if (rhs == 0.0) return error.DivisionByZero;
+                    break :blk @mod(lhs, rhs);
+                },
+                else => unreachable,
+            };
+        }
+        return lhs;
+    }
+
+    /// Parse unary operation, parentheses, variables and numbers
+    fn parseFactor(self: *CalcParser) CalcError!f32 {
+        self.skipSpaces();
+
+        if (self.consume('+')) return try self.parseFactor();
+        if (self.consume('-')) return -try self.parseFactor();
+
+        if (self.consume('(')) {
+            const value = try self.parseExpression();
+            if (!self.consume(')')) return error.ExpectedClosingParentheses;
+            return value;
+        }
+
+        const c = self.peek() orelse return error.ExpectedNumber;
+        if (std.ascii.isAlphabetic(c)) return self.parseVariable();
+        return self.parseNumber();
+    }
+
+    fn parseNumber(self: *CalcParser) CalcError!f32 {
+        self.skipSpaces();
+        const start = self.pos;
+
+        while (self.pos < self.input.len and
+            (std.ascii.isDigit(self.input[self.pos]) or self.input[self.pos] == '.'))
+            self.pos += 1;
+
+        if (self.pos == start) return error.ExpectedNumber;
+
+        return std.fmt.parseFloat(f32, self.input[start..self.pos]) catch
+            return error.ExpectedNumber;
+    }
+
+    fn parseVariable(self: *CalcParser) CalcError!f32 {
+        self.skipSpaces();
+        const start = self.pos;
+
+        if (self.pos >= self.input.len) return error.ExpectedNumber;
+        if (!std.ascii.isAlphabetic(self.input[self.pos]))
+            return error.InvalidCharacter;
+
+        while (self.pos < self.input.len and
+            (std.ascii.isAlphanumeric(self.input[self.pos]) or
+                '_' == self.input[self.pos])) self.pos += 1;
+
+        const name = self.input[start..self.pos];
+        const value_string = variables.get(name) orelse
+            return error.UndefinedVariable;
+        std.log.debug("{s}: {s}", .{ name, value_string });
+
+        return std.fmt.parseFloat(f32, value_string) catch {
+            return error.InvalidVariableValue;
+        };
+    }
+};
+
+pub fn calc(input: []const u8) CalcError!f32 {
+    var parser = CalcParser{ .input = input };
+
+    const value = try parser.parseExpression();
+
+    parser.skipSpaces();
+    if (parser.pos != parser.input.len) return error.TrailingCharacters;
+    return value;
+}
+
+test "calc" {
+    try std.testing.expectEqual(14, calc("2 + 3 * 4"));
+    try std.testing.expectEqual(30, calc("    20 + 5 * 2 "));
+    try std.testing.expectEqual(5, calc("17 % 5 + 6 / 2"));
+    try std.testing.expectEqual(5, calc("17%5+6/2"));
+    try std.testing.expectEqual(0.375, calc("1/8 + 2/8"));
+    try std.testing.expectEqual(72, calc("(2+2)*2*(3+3*2)"));
+    try std.testing.expectEqual(12, calc("2 + 2 (3 + 2)"));
+    try std.testing.expectEqual(24, calc("(1+1) (3 + 1)(2+ 3/3)"));
+    try std.testing.expectEqual(0.1, calc(".1"));
+    try std.testing.expectEqual(0.1, calc("0.1"));
+    try std.testing.expectEqual(1.25, calc("1.25"));
+    try std.testing.expectEqual(100.25, calc("100.25"));
+    try std.testing.expectEqual(1, calc("1."));
+    try std.testing.expectEqual(2.5, calc(".5 + 2"));
+    try std.testing.expectEqual(14, calc("2 - -3 * 4"));
+    try std.testing.expectEqual(14, calc("2 --3 * 4"));
+    try std.testing.expectEqual(14, calc("2 - (-3) * 4"));
+
+    try std.testing.expectError(error.DivisionByZero, calc("2/0"));
+    try std.testing.expectError(error.DivisionByZero, calc("2%0"));
+    try std.testing.expectError(error.ExpectedClosingParentheses, calc("(((2+1)*(((1+1))))*(((2-1)))"));
+    try std.testing.expectError(error.ExpectedClosingParentheses, calc("2 +2*( 2-1"));
+    try std.testing.expectError(error.ExpectedClosingParentheses, calc("(2 +2*( 2-1) + 2"));
+    try std.testing.expectError(error.TrailingCharacters, calc("2 + 2 5"));
+    try std.testing.expectError(error.TrailingCharacters, calc("(5+1)2"));
+    try std.testing.expectError(error.TrailingCharacters, calc("2 + 2 )"));
+    try std.testing.expectError(error.TrailingCharacters, calc("2 + 2 @"));
+    try std.testing.expectError(error.ExpectedNumber, calc("2+2+"));
+    try std.testing.expectError(error.ExpectedNumber, calc("2+ @"));
+    try std.testing.expectError(error.ExpectedNumber, calc("."));
+    try std.testing.expectError(error.ExpectedNumber, calc(". + 1"));
+    try std.testing.expectError(error.ExpectedNumber, calc("1.."));
+    try std.testing.expectError(error.ExpectedNumber, calc("1.2.3"));
 }
 
 fn get(params: [][]const u8) !void {
     if (variables.get(params[0])) |value| {
-        std.log.info("Variable \"{s}\": {s}\n", .{
+        std.log.info("Variable '{s}': {s}\n", .{
             params[0],
             value,
         });
@@ -795,7 +1048,7 @@ fn remove(params: [][]const u8) !void {
     if (std.ascii.isDigit(params[0][0])) {
         return error.InvalidParameter;
     } else if (variables.get(params[0])) |value| {
-        std.log.info("Remove variable \"{s}\": {s}\n", .{
+        std.log.info("Remove variable '{s}': {s}\n", .{
             params[0],
             value,
         });
