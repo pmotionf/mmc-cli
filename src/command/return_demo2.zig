@@ -9,7 +9,7 @@ const Command = command.Command;
 pub const Config = struct {};
 
 var arena: std.heap.ArenaAllocator = undefined;
-var allocator: std.mem.Allocator = undefined;
+var gpa: std.mem.Allocator = undefined;
 
 var clients_lock: std.Thread.RwLock = .{};
 // All commands will be broadcasted to every client.
@@ -47,10 +47,10 @@ const Client = struct {
 
 pub fn init(_: Config) !void {
     arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    allocator = arena.allocator();
+    gpa = arena.gpa();
     server_stop.store(false, .monotonic);
     clients_lock.lock();
-    clients = std.ArrayList(Client).init(allocator);
+    clients = std.ArrayList(Client).init(gpa);
     clients_lock.unlock();
     try network.init();
 

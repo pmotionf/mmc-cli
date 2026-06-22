@@ -8,28 +8,23 @@ parsed: std.json.Parsed(Parse),
 
 pub const Module = enum {
     mcl,
-    return_demo2,
 };
 
 const ModuleConfig = union(Module) {
     mcl: MclConfig,
-    return_demo2: ReturnDemo2Config,
 };
 
 const Parse = struct {
     modules: []ModuleConfig,
 };
 
-pub fn parse(allocator: std.mem.Allocator, f: std.fs.File) !Config {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const a = arena.allocator();
-    const f_reader = f.reader();
-    var json_reader = std.json.reader(a, f_reader);
-
+pub fn parse(io: std.Io, gpa: std.mem.Allocator, f: std.Io.File) !Config {
+    var file_reader = f.reader(io, &.{});
+    var json_reader: std.json.Reader = .init(gpa, &file_reader.interface);
+    defer json_reader.deinit();
     const _result = try std.json.parseFromTokenSource(
         Parse,
-        allocator,
+        gpa,
         &json_reader,
         .{},
     );

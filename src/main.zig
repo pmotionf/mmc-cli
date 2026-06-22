@@ -1,18 +1,17 @@
 const builtin = @import("builtin");
 const std = @import("std");
-const network = @import("network");
 const command = @import("command.zig");
 
 pub const std_options: std.Options = .{
     .logFn = command.logFn,
 };
 
-fn nextLine(reader: anytype, buffer: []u8) !?[]const u8 {
-    const line = (try reader.readUntilDelimiterOrEof(
-        buffer,
-        '\n',
-    )) orelse return null;
-    const result = std.mem.trimRight(u8, line, "\r");
+fn nextLine(reader: *std.Io.Reader) !?[]const u8 {
+    const line = reader.takeDelimiterExclusive('\n') catch |e| switch (e) {
+        error.EndOfStream => return null,
+        else => return e,
+    };
+    const result = std.mem.trimEnd(u8, line, "\r");
     return result;
 }
 
@@ -26,7 +25,7 @@ fn stopCommand(
     return 1;
 }
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
     if (builtin.os.tag == .windows) {
         const windows = std.os.windows;
         try windows.SetConsoleCtrlHandler(&stopCommand, true);
@@ -41,12 +40,17 @@ pub fn main() !void {
         }
     }
 
-    try command.init();
-    defer command.deinit();
+    const gpa = init.gpa;
+    // const arena = init.arena;
+    const io = init.io;
 
-    const stdin = std.io.getStdIn();
-    var buffered_reader = std.io.bufferedReader(stdin.reader());
-    const reader = buffered_reader.reader();
+    try command.init(io, gpa);
+    defer command.deinit(gpa);
+
+    const stdin = std.Io.File.stdin();
+    var stdin_buf: [1024]u8 = undefined;
+    var file_reader = stdin.reader(io, &stdin_buf);
+    const reader = &file_reader.interface;
 
     command_loop: while (true) {
         if (command.stop.load(.monotonic)) {
@@ -54,14 +58,13 @@ pub fn main() !void {
             command.stop.store(false, .monotonic);
         }
         if (command.queueEmpty()) {
-            var input_buffer: [1024]u8 = .{0} ** 1024;
             std.log.info("Please enter a command (HELP for info): ", .{});
 
-            if (try nextLine(reader, &input_buffer)) |line| {
-                try command.enqueue(line);
+            if (try nextLine(reader)) |line| {
+                try command.enqueue(gpa, line);
             } else continue :command_loop;
         }
-        command.execute() catch |e| {
+        command.execute(io, gpa) catch |e| {
             std.log.err("{s}", .{@errorName(e)});
             std.log.debug("{any}", .{@errorReturnTrace()});
             command.queueClear();

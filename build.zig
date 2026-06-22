@@ -18,7 +18,6 @@ pub fn build(b: *std.Build) !void {
         "Enable building a mock version of the MELSEC data link library.",
     ) orelse (target.result.os.tag != .windows);
 
-    const network = b.dependency("network", .{});
     const chrono = b.dependency("chrono", .{});
     const build_zig_zon = b.createModule(.{
         .root_source_file = b.path("build.zig.zon"),
@@ -29,12 +28,11 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
         .mdfunc = mdfunc_lib_path,
-        .mock = mdfunc_mock_build,
+        .mdfunc_mock = mdfunc_mock_build,
     });
     const imports: []const std.Build.Module.Import = &.{
         .{ .name = "build.zig.zon", .module = build_zig_zon },
         .{ .name = "chrono", .module = chrono.module("chrono") },
-        .{ .name = "network", .module = network.module("network") },
     };
 
     const mod = b.createModule(.{
@@ -70,7 +68,7 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
         .mdfunc = mdfunc_lib_path,
-        .mock = true,
+        .mdfunc_mock = true,
     });
     const unit_tests = b.addTest(.{ .root_module = mod });
     unit_tests.root_module.addImport("mcl", mmc_api_mock.module("mcl"));
