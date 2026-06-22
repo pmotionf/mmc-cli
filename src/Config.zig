@@ -47,3 +47,7 @@ pub fn modules(self: *Config) []const ModuleConfig {
 pub fn deinit(self: *Config) void {
     self.parsed.deinit();
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

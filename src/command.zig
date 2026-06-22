@@ -595,3 +595,7 @@ fn clear(_: [][]const u8) !void {
 fn exit(_: [][]const u8) !void {
     std.process.exit(1);
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

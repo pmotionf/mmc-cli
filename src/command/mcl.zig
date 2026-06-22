@@ -429,7 +429,7 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Wait until recovery of slider is complete.",
         .long_description =
-        \\Wait until slider recovery is complete and a slider is recognized. 
+        \\Wait until slider recovery is complete and a slider is recognized.
         \\If an optional result variable name is provided, then store the
         \\recognized slider ID in the variable.
         ,
@@ -476,7 +476,7 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Move slider by a distance.",
         .long_description =
-        \\Move given slider by a provided distance. The slider ID must be 
+        \\Move given slider by a provided distance. The slider ID must be
         \\currently recognized within the motion system, and the distance must
         \\be provided in millimeters as a whole or decimal number. The distance
         \\may be negative for backward movement.
@@ -526,7 +526,7 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Move slider by a distance.",
         .long_description =
-        \\Move given slider by a provided distance. The slider ID must be 
+        \\Move given slider by a provided distance. The slider ID must be
         \\currently recognized within the motion system, and the distance must
         \\be provided in millimeters as a whole or decimal number. The distance
         \\may be negative for backward movement. This command moves the slider
@@ -2495,4 +2495,8 @@ fn sendCommand(station: Station) !void {
         .SliderAlreadyExists => error.SliderAlreadyExists,
         .InvalidAxis => error.InvalidAxis,
     };
+}
+
+test {
+    std.testing.refAllDecls(@This());
 }

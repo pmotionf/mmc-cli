@@ -360,3 +360,7 @@ fn beltMoveEnd(_: [][]const u8) !void {
         }
     } else return error.ReturnSystemDisconnected;
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

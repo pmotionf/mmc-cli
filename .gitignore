@@ -19,3 +19,4 @@ zig-out/**
 zig-cache/**
 .zig-cache/**
 vendor/**
+zig-pkg/**
