@@ -32,8 +32,9 @@ var command_queue: std.ArrayList(CommandString) = .empty;
 var timer: std.Io.Timestamp = .zero;
 var clock: std.Io.Clock = .real;
 var log_file: ?std.Io.File = null;
+var file_writer: ?std.Io.File.Writer = null;
 var io_command: std.Io = undefined;
-var io_buf: [4096]u8 = undefined;
+var file_buf: [4096]u8 = undefined;
 
 const CommandString = struct {
     buffer: [1024]u8,
@@ -66,16 +67,18 @@ pub fn logFn(
     comptime format: []const u8,
     args: anytype,
 ) void {
+    if (file_writer) |*f| {
+        var writer = &f.interface;
+        writer.writeAll(level.asText()) catch {};
+        if (scope != .default) writer.print("({t})", .{scope}) catch {};
+        writer.writeAll(": ") catch {};
+        writer.print(format ++ "\n", args) catch {};
+        std.debug.print("buf: {s}", .{writer.buffer[0..writer.end]});
+        writer.flush() catch return;
+    }
     const io = std.Options.debug_io;
     const prev = io.swapCancelProtection(.blocked);
     defer _ = io.swapCancelProtection(prev);
-    if (log_file) |f| {
-        const file_writer = f.writer(io_command, &io_buf);
-        var writer = file_writer.interface;
-        writer.print("{s}({t}):", .{ level.asText(), scope }) catch {};
-        writer.print(format ++ "\n", args) catch {};
-        writer.flush() catch return;
-    }
     var buffer: [64]u8 = undefined;
     const stderr = std.debug.lockStderr(&buffer).terminal();
     defer std.debug.unlockStderr();
@@ -561,15 +564,19 @@ fn setLog(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     } else if (std.ascii.eqlIgnoreCase("append", mode_str)) {
         if (log_file) |f| {
             f.close(io);
+            file_writer = null;
         }
         log_file = try std.Io.Dir.cwd().createFile(io, file_path, .{
             .truncate = false,
         });
+        file_writer = log_file.?.writer(io, &file_buf);
     } else if (std.ascii.eqlIgnoreCase("replace", mode_str)) {
         if (log_file) |f| {
             f.close(io);
+            file_writer = null;
         }
         log_file = try std.Io.Dir.cwd().createFile(io, file_path, .{});
+        file_writer = log_file.?.writer(io, &file_buf);
     } else {
         return error.InvalidSaveOutputMode;
     }
