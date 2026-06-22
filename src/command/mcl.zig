@@ -784,7 +784,7 @@ fn mclStationX(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const station_index: Station.Index = @intCast(axis / 3);
     try line.stations[station_index].pollX();
 
-    std.log.info("{}", .{line.stations[station_index].x});
+    std.log.info("{f}", .{line.stations[station_index].x});
 }
 
 fn mclStationY(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
@@ -803,7 +803,7 @@ fn mclStationY(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const station_index: Station.Index = @intCast(axis / 3);
     try line.stations[station_index].pollY();
 
-    std.log.info("{}", .{line.stations[station_index].y});
+    std.log.info("{f}", .{line.stations[station_index].y});
 }
 
 fn mclStationWr(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
@@ -822,7 +822,7 @@ fn mclStationWr(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const station_index: Station.Index = @intCast(axis / 3);
     try line.stations[station_index].pollWr();
 
-    std.log.info("{}", .{line.stations[station_index].wr});
+    std.log.info("{f}", .{line.stations[station_index].wr});
 }
 
 fn mclStationWw(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
@@ -841,7 +841,7 @@ fn mclStationWw(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const station_index: Station.Index = @intCast(axis / 3);
     try line.stations[station_index].pollWw();
 
-    std.log.info("{}", .{line.stations[station_index].ww});
+    std.log.info("{f}", .{line.stations[station_index].ww});
 }
 
 fn mclAxisSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
