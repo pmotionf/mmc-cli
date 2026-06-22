@@ -452,8 +452,9 @@ fn timerRead(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
 }
 
 fn file(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
+    var file_buffer: [4096]u8 = undefined;
     var f = try std.Io.Dir.cwd().openFile(io, params[0], .{});
-    var file_reader = f.reader(io, &.{});
+    var file_reader = f.reader(io, &file_buffer);
     const reader = &file_reader.interface;
     const current_len: usize = command_queue.items.len;
     var new_line: CommandString = .{ .buffer = undefined, .len = 0 };

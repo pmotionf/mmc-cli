@@ -19,7 +19,8 @@ const Parse = struct {
 };
 
 pub fn parse(io: std.Io, gpa: std.mem.Allocator, f: std.Io.File) !Config {
-    var file_reader = f.reader(io, &.{});
+    var file_buffer: [4096]u8 = undefined;
+    var file_reader = f.reader(io, &file_buffer);
     var json_reader: std.json.Reader = .init(gpa, &file_reader.interface);
     defer json_reader.deinit();
     const _result = try std.json.parseFromTokenSource(

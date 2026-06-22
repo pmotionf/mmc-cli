@@ -7,10 +7,7 @@ pub const std_options: std.Options = .{
 };
 
 fn nextLine(reader: *std.Io.Reader) !?[]const u8 {
-    const line = reader.takeDelimiterExclusive('\n') catch |e| switch (e) {
-        error.EndOfStream => return null,
-        else => return e,
-    };
+    const line = try reader.takeDelimiter('\n') orelse return null;
     const result = std.mem.trimEnd(u8, line, "\r");
     return result;
 }

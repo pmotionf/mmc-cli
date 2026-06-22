@@ -17,6 +17,7 @@ pub fn build(b: *std.Build) !void {
         "mdfunc_mock",
         "Enable building a mock version of the MELSEC data link library.",
     ) orelse (target.result.os.tag != .windows);
+    std.log.info("mock: {}", .{mdfunc_mock_build});
 
     const chrono = b.dependency("chrono", .{});
     const build_zig_zon = b.createModule(.{
