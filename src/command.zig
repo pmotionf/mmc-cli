@@ -459,11 +459,8 @@ fn file(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const current_len: usize = command_queue.items.len;
     var new_line: CommandString = .{ .buffer = undefined, .len = 0 };
     while (true) {
-        const _line = reader.takeDelimiterExclusive('\n') catch |e| switch (e) {
-            error.EndOfStream => return,
-            error.ReadFailed => return file_reader.err.?,
-            else => return e,
-        };
+        try checkCommandInterrupt();
+        const _line = try reader.takeDelimiter('\n') orelse return;
         const line = std.mem.trimEnd(u8, _line, "\r");
         @memcpy(new_line.buffer[0..line.len], line);
         new_line.len = line.len;
