@@ -17,7 +17,6 @@ pub fn build(b: *std.Build) !void {
         "mdfunc_mock",
         "Enable building a mock version of the MELSEC data link library.",
     ) orelse (target.result.os.tag != .windows);
-    std.log.info("mock: {}", .{mdfunc_mock_build});
 
     const chrono = b.dependency("chrono", .{});
     const build_zig_zon = b.createModule(.{
@@ -25,12 +24,14 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
+
     const mmc_api = b.dependency("mmc_api", .{
         .target = target,
         .optimize = optimize,
         .mdfunc = mdfunc_lib_path,
         .mdfunc_mock = mdfunc_mock_build,
     });
+
     const imports: []const std.Build.Module.Import = &.{
         .{ .name = "build.zig.zon", .module = build_zig_zon },
         .{ .name = "chrono", .module = chrono.module("chrono") },
@@ -71,7 +72,16 @@ pub fn build(b: *std.Build) !void {
         .mdfunc = mdfunc_lib_path,
         .mdfunc_mock = true,
     });
-    const unit_tests = b.addTest(.{ .root_module = mod });
+
+    const test_mod = b.createModule(.{
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = imports,
+        .error_tracing = true,
+    });
+
+    const unit_tests = b.addTest(.{ .root_module = test_mod });
     unit_tests.root_module.addImport("mcl", mmc_api_mock.module("mcl"));
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
