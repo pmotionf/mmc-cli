@@ -17,27 +17,21 @@ fn nextLine(reader: *std.Io.Reader) !?[]const u8 {
 
 fn stopCommand(
     dwCtrlType: std.os.windows.DWORD,
-) callconv(std.os.windows.WINAPI) std.os.windows.BOOL {
-    if (dwCtrlType == std.os.windows.CTRL_C_EVENT) {
+) callconv(.winapi) std.os.windows.BOOL {
+    if (dwCtrlType == kernel32.CTRL_C_EVENT) {
         command.stop.store(true, .monotonic);
-        std.io.getStdIn().sync() catch {};
     }
-    return 1;
+    return .fromBool(true);
 }
 
 pub fn main(init: std.process.Init) !void {
     if (builtin.os.tag == .windows) {
-        const windows = std.os.windows;
-        try windows.SetConsoleCtrlHandler(&stopCommand, true);
-        const handle = try windows.GetStdHandle(windows.STD_OUTPUT_HANDLE);
-        var mode: windows.DWORD = 0;
-        if (windows.kernel32.GetConsoleMode(handle, &mode) != windows.TRUE) {
-            return error.WindowsConsoleModeRetrievalFailure;
-        }
-        mode |= windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-        if (windows.kernel32.SetConsoleMode(handle, mode) != windows.TRUE) {
-            return error.WindowsConsoleModeSetFailure;
-        }
+        const success = kernel32.SetConsoleCtrlHandler(
+            &stopCommand,
+            .fromBool(true),
+        );
+        if (success.toBool() == false)
+            return error.FailingSetConsoleCtrlHandler;
     }
 
     const gpa = init.gpa;
@@ -72,6 +66,22 @@ pub fn main(init: std.process.Init) !void {
         };
     }
 }
+
+/// Windows kernel32 functions. This struct is introduced here since zig 0.16.0
+/// removes support for kernel32. Only used functions and variables are
+/// introduced in this struct.
+const kernel32 = struct {
+    pub extern "kernel32" fn SetConsoleCtrlHandler(
+        HandlerRoutine: ?HANDLER_ROUTINE,
+        add: std.os.windows.BOOL,
+    ) callconv(.winapi) std.os.windows.BOOL;
+
+    pub const HANDLER_ROUTINE = *const fn (
+        dwCtrlType: std.os.windows.DWORD,
+    ) callconv(.winapi) std.os.windows.BOOL;
+
+    pub const CTRL_C_EVENT: std.os.windows.DWORD = 0;
+};
 
 test {
     std.testing.refAllDecls(@This());
