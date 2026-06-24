@@ -1184,26 +1184,37 @@ fn mclSliderAxis(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
 
 fn mclHallStatus(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
+    const axis_id: ?mcl.Axis.Id.Line = if (params[1].len > 0)
+        try std.fmt.parseInt(mcl.Axis.Id.Line, params[1], 0)
+    else
+        null;
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
+    if (axis_id) |id| {
+        if (id == 0 or id > line.axes.len) {
+            return error.InvalidAxis;
+        }
+    }
 
     try line.pollX();
-
-    var axis: mcl.Axis.Id.Line = 1;
-    for (line.stations) |station| {
-        for (0..3) |_local_axis| {
-            const local_axis: mcl.Axis.Index.Station = @intCast(_local_axis);
-            const alarms = station.x.hall_alarm.axis(local_axis);
-
+    if (axis_id) |id| {
+        const axis = line.axes[id - 1];
+        const alarms = axis.station.x.hall_alarm.axis(axis.index.station);
+        if (alarms.back) {
+            std.log.info("Axis {} Hall Sensor: BACK - ON", .{axis.id.line});
+        }
+        if (alarms.front) {
+            std.log.info("Axis {} Hall Sensor: FRONT - ON", .{axis.id.line});
+        }
+    } else for (line.stations) |station| {
+        for (station.axes) |axis| {
+            const alarms = axis.station.x.hall_alarm.axis(axis.index.station);
             if (alarms.back) {
-                std.log.info("Axis {} Hall Sensor: BACK - ON", .{axis});
+                std.log.info("Axis {} Hall Sensor: BACK - ON", .{axis.id.line});
             }
             if (alarms.front) {
-                std.log.info("Axis {} Hall Sensor: FRONT - ON", .{axis});
+                std.log.info("Axis {} Hall Sensor: FRONT - ON", .{axis.id.line});
             }
-
-            axis += 1;
-            if (axis > line.axes.len) break;
         }
     }
 }
