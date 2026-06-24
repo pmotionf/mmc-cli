@@ -73,7 +73,6 @@ pub fn logFn(
         if (scope != .default) writer.print("({t})", .{scope}) catch {};
         writer.writeAll(": ") catch {};
         writer.print(format ++ "\n", args) catch {};
-        std.debug.print("buf: {s}", .{writer.buffer[0..writer.end]});
         writer.flush() catch return;
     }
     const io = std.Options.debug_io;

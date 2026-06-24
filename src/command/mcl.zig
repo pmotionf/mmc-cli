@@ -587,6 +587,7 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "axis" },
             .{ .name = "slider" },
+            .{ .name = "location" },
         },
         .short_description = "Pull incoming slider forward at axis.",
         .long_description =
@@ -603,6 +604,7 @@ pub fn init(c: Config) !void {
             .{ .name = "line name" },
             .{ .name = "axis" },
             .{ .name = "slider" },
+            .{ .name = "location" },
         },
         .short_description = "Pull incoming slider backward at axis.",
         .long_description =
@@ -1755,8 +1757,13 @@ fn mclSliderPullForward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !
     const line_name = params[0];
     const axis = try std.fmt.parseInt(u16, params[1], 0);
     const slider_id = try std.fmt.parseInt(u16, params[2], 0);
+    const location_float = try std.fmt.parseFloat(f32, params[3]);
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
+    const location: Distance = .{
+        .mm = @intFromFloat(location_float),
+        .um = @intFromFloat((location_float - @trunc(location_float)) * 1000),
+    };
 
     if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
 
@@ -1767,6 +1774,7 @@ fn mclSliderPullForward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !
     try waitCommandReady(station);
     station.ww.* = .{
         .command_code = .PullAxisSliderForward,
+        .location_distance = location,
         .command_slider_number = slider_id,
         .target_axis_number = local_axis + 1,
         .speed_percentage = line_speeds[line_idx],
@@ -1779,8 +1787,13 @@ fn mclSliderPullBackward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) 
     const line_name = params[0];
     const axis = try std.fmt.parseInt(u16, params[1], 0);
     const slider_id = try std.fmt.parseInt(u16, params[2], 0);
+    const location_float = try std.fmt.parseFloat(f32, params[3]);
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
+    const location: Distance = .{
+        .mm = @intFromFloat(location_float),
+        .um = @intFromFloat((location_float - @trunc(location_float)) * 1000),
+    };
 
     if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
 
@@ -1791,6 +1804,7 @@ fn mclSliderPullBackward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) 
     try waitCommandReady(station);
     station.ww.* = .{
         .command_code = .PullAxisSliderBackward,
+        .location_distance = location,
         .command_slider_number = slider_id,
         .target_axis_number = local_axis + 1,
         .speed_percentage = line_speeds[line_idx],
