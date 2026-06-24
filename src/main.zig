@@ -57,7 +57,9 @@ pub fn main(init: std.process.Init) !void {
         }
         command.execute(io, gpa) catch |e| {
             std.log.err("{s}", .{@errorName(e)});
-            std.log.debug("{any}", .{@errorReturnTrace()});
+            if (@errorReturnTrace()) |error_trace| {
+                std.debug.dumpErrorReturnTrace(error_trace);
+            }
             command.queueClear();
             continue :command_loop;
         };
