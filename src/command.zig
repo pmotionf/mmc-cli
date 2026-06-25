@@ -448,9 +448,9 @@ fn timerStart(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
 fn timerRead(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     const duration = timer.untilNow(io, clock);
     var timer_value: f64 = @floatFromInt(duration.toMicroseconds());
-    timer_value = timer_value / std.time.ns_per_s;
+    timer_value = timer_value / std.time.us_per_s;
     // Only print to microsecond precision.
-    std.log.info("Timer: {d:.6}\n", .{timer_value});
+    std.log.info("Elapsed time in seconds: {d:.6}\n", .{timer_value});
 }
 
 fn file(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
