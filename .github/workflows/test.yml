@@ -5,10 +5,12 @@ on:
     branches:
       - main
       - chain_commands
+      - CTO_firmware
   pull_request:
     branches:
       - main
       - chain_commands
+      - CTO_firmware
   workflow_dispatch:
 
 jobs:
