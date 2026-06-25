@@ -1,6 +1,7 @@
 const std = @import("std");
 const command = @import("../command.zig");
 const mcl = @import("mcl");
+const mmc_api = @import("mmc_api");
 
 var arena: std.heap.ArenaAllocator = undefined;
 var gpa: std.mem.Allocator = undefined;
@@ -42,10 +43,10 @@ pub fn init(c: Config) !void {
 
     try command.registry.put(gpa, "MCL_VERSION", .{
         .name = "MCL_VERSION",
-        .short_description = "Display the version of MCL.",
+        .short_description = "Display the CC-Link version.",
         .long_description =
-        \\Print the currently linked version of the PMF Motion Control Library
-        \\in Semantic Version format.
+        \\Print the currently linked version of the CC-Link in Semantic Version
+        \\format.
         ,
         .execute = &mclVersion,
     });
@@ -743,7 +744,7 @@ pub fn deinit() void {
 }
 
 fn mclVersion(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
-    std.log.info("MCL Version: {d}.{d}.{d}\n", .{
+    std.log.info("CC-Link Version: {d}.{d}.{d}\n", .{
         mcl.version.major,
         mcl.version.minor,
         mcl.version.patch,
