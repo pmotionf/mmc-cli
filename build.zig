@@ -35,7 +35,6 @@ pub fn build(b: *std.Build) !void {
     const imports: []const std.Build.Module.Import = &.{
         .{ .name = "build.zig.zon", .module = build_zig_zon },
         .{ .name = "chrono", .module = chrono.module("chrono") },
-        .{ .name = "mmc_api", .module = mmc_api.module("mmc-api") },
     };
 
     const mod = b.createModule(.{
