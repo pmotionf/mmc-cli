@@ -1202,12 +1202,14 @@ fn mclHallStatus(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     if (axis_id) |id| {
         const axis = line.axes[id - 1];
         const alarms = axis.station.x.hall_alarm.axis(axis.index.station);
-        if (alarms.back) {
-            std.log.info("Axis {} Hall Sensor: BACK - ON", .{axis.id.line});
-        }
-        if (alarms.front) {
-            std.log.info("Axis {} Hall Sensor: FRONT - ON", .{axis.id.line});
-        }
+        std.log.info("Axis {} Hall Sensor: BACK - {s}", .{
+            axis.id.line,
+            if (alarms.back) "ON" else "OFF",
+        });
+        std.log.info("Axis {} Hall Sensor: FRONT - {s}", .{
+            axis.id.line,
+            if (alarms.front) "ON" else "OFF",
+        });
     } else for (line.stations) |station| {
         for (station.axes) |axis| {
             const alarms = axis.station.x.hall_alarm.axis(axis.index.station);
