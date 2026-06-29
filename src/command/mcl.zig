@@ -897,9 +897,9 @@ fn mclAxisReleaseServo(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !v
 
     station.ww.target_axis_number = local_axis_index + 1;
     try station.sendWw();
-    try station.setY(0x5);
+    try station.setY(0x6);
     // Reset on error as well as on success.
-    defer station.resetY(0x5) catch {};
+    defer station.resetY(0x6) catch {};
     while (true) {
         try command.checkCommandInterrupt();
         try station.pollX();
