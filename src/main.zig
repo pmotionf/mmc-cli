@@ -1,52 +1,47 @@
 const builtin = @import("builtin");
 const std = @import("std");
-const network = @import("network");
 const command = @import("command.zig");
 
 pub const std_options: std.Options = .{
     .logFn = command.logFn,
 };
 
-fn nextLine(reader: anytype, buffer: []u8) !?[]const u8 {
-    const line = (try reader.readUntilDelimiterOrEof(
-        buffer,
-        '\n',
-    )) orelse return null;
-    const result = std.mem.trimRight(u8, line, "\r");
+fn nextLine(reader: *std.Io.Reader) !?[]const u8 {
+    const line = try reader.takeDelimiter('\n') orelse return null;
+    const result = std.mem.trimEnd(u8, line, "\r");
     return result;
 }
 
 fn stopCommand(
     dwCtrlType: std.os.windows.DWORD,
-) callconv(std.os.windows.WINAPI) std.os.windows.BOOL {
-    if (dwCtrlType == std.os.windows.CTRL_C_EVENT) {
+) callconv(.winapi) std.os.windows.BOOL {
+    if (dwCtrlType == kernel32.CTRL_C_EVENT) {
         command.stop.store(true, .monotonic);
-        std.io.getStdIn().sync() catch {};
     }
-    return 1;
+    return .fromBool(true);
 }
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
     if (builtin.os.tag == .windows) {
-        const windows = std.os.windows;
-        try windows.SetConsoleCtrlHandler(&stopCommand, true);
-        const handle = try windows.GetStdHandle(windows.STD_OUTPUT_HANDLE);
-        var mode: windows.DWORD = 0;
-        if (windows.kernel32.GetConsoleMode(handle, &mode) != windows.TRUE) {
-            return error.WindowsConsoleModeRetrievalFailure;
-        }
-        mode |= windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-        if (windows.kernel32.SetConsoleMode(handle, mode) != windows.TRUE) {
-            return error.WindowsConsoleModeSetFailure;
-        }
+        const success = kernel32.SetConsoleCtrlHandler(
+            &stopCommand,
+            .fromBool(true),
+        );
+        if (success.toBool() == false)
+            return error.FailingSetConsoleCtrlHandler;
     }
 
-    try command.init();
-    defer command.deinit();
+    const gpa = init.gpa;
+    // const arena = init.arena;
+    const io = init.io;
 
-    const stdin = std.io.getStdIn();
-    var buffered_reader = std.io.bufferedReader(stdin.reader());
-    const reader = buffered_reader.reader();
+    try command.init(io, gpa);
+    defer command.deinit(gpa);
+
+    const stdin = std.Io.File.stdin();
+    var stdin_buf: [1024]u8 = undefined;
+    var file_reader = stdin.reader(io, &stdin_buf);
+    const reader = &file_reader.interface;
 
     command_loop: while (true) {
         if (command.stop.load(.monotonic)) {
@@ -54,22 +49,39 @@ pub fn main() !void {
             command.stop.store(false, .monotonic);
         }
         if (command.queueEmpty()) {
-            var input_buffer: [1024]u8 = .{0} ** 1024;
             std.log.info("Please enter a command (HELP for info): ", .{});
 
-            if (try nextLine(reader, &input_buffer)) |line| {
-                try command.enqueue(line);
+            if (try nextLine(reader)) |line| {
+                try command.enqueue(gpa, line);
             } else continue :command_loop;
         }
-        command.execute() catch |e| {
+        command.execute(io, gpa) catch |e| {
             std.log.err("{s}", .{@errorName(e)});
-            std.log.debug("{any}", .{@errorReturnTrace()});
+            if (@errorReturnTrace()) |error_trace| {
+                std.debug.dumpErrorReturnTrace(error_trace);
+            }
             command.queueClear();
             continue :command_loop;
         };
     }
 }
 
+/// Windows kernel32 functions. This struct is introduced here since zig 0.16.0
+/// removes support for kernel32. Only used functions and variables are
+/// introduced in this struct.
+const kernel32 = struct {
+    pub extern "kernel32" fn SetConsoleCtrlHandler(
+        HandlerRoutine: ?HANDLER_ROUTINE,
+        add: std.os.windows.BOOL,
+    ) callconv(.winapi) std.os.windows.BOOL;
+
+    pub const HANDLER_ROUTINE = *const fn (
+        dwCtrlType: std.os.windows.DWORD,
+    ) callconv(.winapi) std.os.windows.BOOL;
+
+    pub const CTRL_C_EVENT: std.os.windows.DWORD = 0;
+};
+
 test {
-    std.testing.refAllDeclsRecursive(@This());
+    std.testing.refAllDecls(@This());
 }

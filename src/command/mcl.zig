@@ -1,9 +1,10 @@
 const std = @import("std");
 const command = @import("../command.zig");
 const mcl = @import("mcl");
+const mmc_api = @import("mmc_api");
 
 var arena: std.heap.ArenaAllocator = undefined;
-var allocator: std.mem.Allocator = undefined;
+var gpa: std.mem.Allocator = undefined;
 var line_names: [][]u8 = undefined;
 var line_speeds: []u7 = undefined;
 var line_accelerations: []u7 = undefined;
@@ -26,31 +27,31 @@ pub fn init(c: Config) !void {
 
     arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     errdefer arena.deinit();
-    allocator = arena.allocator();
+    gpa = arena.allocator();
 
-    try mcl.init(allocator, .{ .lines = c.lines });
+    try mcl.init(gpa, .{ .lines = c.lines });
 
-    line_names = try allocator.alloc([]u8, c.line_names.len);
-    line_speeds = try allocator.alloc(u7, c.lines.len);
-    line_accelerations = try allocator.alloc(u7, c.lines.len);
+    line_names = try gpa.alloc([]u8, c.line_names.len);
+    line_speeds = try gpa.alloc(u7, c.lines.len);
+    line_accelerations = try gpa.alloc(u7, c.lines.len);
     for (0..c.lines.len) |i| {
-        line_names[i] = try allocator.alloc(u8, c.line_names[i].len);
+        line_names[i] = try gpa.alloc(u8, c.line_names[i].len);
         @memcpy(line_names[i], c.line_names[i]);
         line_speeds[i] = 40;
         line_accelerations[i] = 40;
     }
 
-    try command.registry.put("MCL_VERSION", .{
+    try command.registry.put(gpa, "MCL_VERSION", .{
         .name = "MCL_VERSION",
-        .short_description = "Display the version of MCL.",
+        .short_description = "Display the CC-Link version.",
         .long_description =
-        \\Print the currently linked version of the PMF Motion Control Library
-        \\in Semantic Version format.
+        \\Print the currently linked version of the CC-Link in Semantic Version
+        \\format.
         ,
         .execute = &mclVersion,
     });
     errdefer _ = command.registry.orderedRemove("MCL_VERSION");
-    try command.registry.put("CONNECT", .{
+    try command.registry.put(gpa, "CONNECT", .{
         .name = "CONNECT",
         .short_description = "Connect MCL with motion system.",
         .long_description =
@@ -61,7 +62,7 @@ pub fn init(c: Config) !void {
         .execute = &mclConnect,
     });
     errdefer _ = command.registry.orderedRemove("CONNECT");
-    try command.registry.put("DISCONNECT", .{
+    try command.registry.put(gpa, "DISCONNECT", .{
         .name = "DISCONNECT",
         .short_description = "Disconnect MCL from motion system.",
         .long_description =
@@ -71,7 +72,7 @@ pub fn init(c: Config) !void {
         .execute = &mclDisconnect,
     });
     errdefer _ = command.registry.orderedRemove("DISCONNECT");
-    try command.registry.put("SET_SPEED", .{
+    try command.registry.put(gpa, "SET_SPEED", .{
         .name = "SET_SPEED",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -86,7 +87,7 @@ pub fn init(c: Config) !void {
         .execute = &mclSetSpeed,
     });
     errdefer _ = command.registry.orderedRemove("SET_SPEED");
-    try command.registry.put("SET_ACCELERATION", .{
+    try command.registry.put(gpa, "SET_ACCELERATION", .{
         .name = "SET_ACCELERATION",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -101,7 +102,7 @@ pub fn init(c: Config) !void {
         .execute = &mclSetAcceleration,
     });
     errdefer _ = command.registry.orderedRemove("SET_ACCELERATION");
-    try command.registry.put("GET_SPEED", .{
+    try command.registry.put(gpa, "GET_SPEED", .{
         .name = "GET_SPEED",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -115,7 +116,7 @@ pub fn init(c: Config) !void {
         .execute = &mclGetSpeed,
     });
     errdefer _ = command.registry.orderedRemove("GET_SPEED");
-    try command.registry.put("GET_ACCELERATION", .{
+    try command.registry.put(gpa, "GET_ACCELERATION", .{
         .name = "GET_ACCELERATION",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -129,7 +130,7 @@ pub fn init(c: Config) !void {
         .execute = &mclGetAcceleration,
     });
     errdefer _ = command.registry.orderedRemove("GET_ACCELERATION");
-    try command.registry.put("PRINT_X", .{
+    try command.registry.put(gpa, "PRINT_X", .{
         .name = "PRINT_X",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -143,7 +144,7 @@ pub fn init(c: Config) !void {
         .execute = &mclStationX,
     });
     errdefer _ = command.registry.orderedRemove("PRINT_X");
-    try command.registry.put("PRINT_Y", .{
+    try command.registry.put(gpa, "PRINT_Y", .{
         .name = "PRINT_Y",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -157,7 +158,7 @@ pub fn init(c: Config) !void {
         .execute = &mclStationY,
     });
     errdefer _ = command.registry.orderedRemove("PRINT_Y");
-    try command.registry.put("PRINT_WR", .{
+    try command.registry.put(gpa, "PRINT_WR", .{
         .name = "PRINT_WR",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -171,7 +172,7 @@ pub fn init(c: Config) !void {
         .execute = &mclStationWr,
     });
     errdefer _ = command.registry.orderedRemove("PRINT_WR");
-    try command.registry.put("PRINT_WW", .{
+    try command.registry.put(gpa, "PRINT_WW", .{
         .name = "PRINT_WW",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -185,7 +186,7 @@ pub fn init(c: Config) !void {
         .execute = &mclStationWw,
     });
     errdefer _ = command.registry.orderedRemove("PRINT_WW");
-    try command.registry.put("AXIS_SLIDER", .{
+    try command.registry.put(gpa, "AXIS_SLIDER", .{
         .name = "AXIS_SLIDER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -201,7 +202,7 @@ pub fn init(c: Config) !void {
         .execute = &mclAxisSlider,
     });
     errdefer _ = command.registry.orderedRemove("AXIS_SLIDER");
-    try command.registry.put("SLIDER_LOCATION", .{
+    try command.registry.put(gpa, "SLIDER_LOCATION", .{
         .name = "SLIDER_LOCATION",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -217,7 +218,7 @@ pub fn init(c: Config) !void {
         .execute = &mclSliderLocation,
     });
     errdefer _ = command.registry.orderedRemove("SLIDER_LOCATION");
-    try command.registry.put("SLIDER_AXIS", .{
+    try command.registry.put(gpa, "SLIDER_AXIS", .{
         .name = "SLIDER_AXIS",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -232,7 +233,7 @@ pub fn init(c: Config) !void {
         .execute = &mclSliderAxis,
     });
     errdefer _ = command.registry.orderedRemove("SLIDER_AXIS");
-    try command.registry.put("HALL_STATUS", .{
+    try command.registry.put(gpa, "HALL_STATUS", .{
         .name = "HALL_STATUS",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -247,7 +248,7 @@ pub fn init(c: Config) !void {
         .execute = &mclHallStatus,
     });
     errdefer _ = command.registry.orderedRemove("HALL_STATUS");
-    try command.registry.put("ASSERT_HALL", .{
+    try command.registry.put(gpa, "ASSERT_HALL", .{
         .name = "ASSERT_HALL",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -265,7 +266,7 @@ pub fn init(c: Config) !void {
         .execute = &mclAssertHall,
     });
     errdefer _ = command.registry.orderedRemove("ASSERT_HALL");
-    try command.registry.put("CLEAR_ERRORS", .{
+    try command.registry.put(gpa, "CLEAR_ERRORS", .{
         .name = "CLEAR_ERRORS",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -278,7 +279,7 @@ pub fn init(c: Config) !void {
         .execute = &mclClearErrors,
     });
     errdefer _ = command.registry.orderedRemove("CLEAR_ERRORS");
-    try command.registry.put("CLEAR_SLIDER_INFO", .{
+    try command.registry.put(gpa, "CLEAR_SLIDER_INFO", .{
         .name = "CLEAR_SLIDER_INFO",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -291,7 +292,7 @@ pub fn init(c: Config) !void {
         .execute = &mclClearSliderInfo,
     });
     errdefer _ = command.registry.orderedRemove("CLEAR_SLIDER_INFO");
-    try command.registry.put("RELEASE_AXIS_SERVO", .{
+    try command.registry.put(gpa, "RELEASE_AXIS_SERVO", .{
         .name = "RELEASE_AXIS_SERVO",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -306,7 +307,7 @@ pub fn init(c: Config) !void {
         .execute = &mclAxisReleaseServo,
     });
     errdefer _ = command.registry.orderedRemove("RELEASE_AXIS_SERVO");
-    try command.registry.put("STOP_TRAFFIC", .{
+    try command.registry.put(gpa, "STOP_TRAFFIC", .{
         .name = "STOP_TRAFFIC",
         .parameters = &.{
             .{ .name = "line name" },
@@ -322,7 +323,7 @@ pub fn init(c: Config) !void {
         .execute = &mclTrafficStop,
     });
     errdefer _ = command.registry.orderedRemove("STOP_TRAFFIC");
-    try command.registry.put("ALLOW_TRAFFIC", .{
+    try command.registry.put(gpa, "ALLOW_TRAFFIC", .{
         .name = "ALLOW_TRAFFIC",
         .parameters = &.{
             .{ .name = "line name" },
@@ -338,7 +339,7 @@ pub fn init(c: Config) !void {
         .execute = &mclTrafficAllow,
     });
     errdefer _ = command.registry.orderedRemove("ALLOW_TRAFFIC");
-    try command.registry.put("CALIBRATE", .{
+    try command.registry.put(gpa, "CALIBRATE", .{
         .name = "CALIBRATE",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -352,7 +353,7 @@ pub fn init(c: Config) !void {
         .execute = &mclCalibrate,
     });
     errdefer _ = command.registry.orderedRemove("CALIBRATE");
-    try command.registry.put("HOME_SLIDER", .{
+    try command.registry.put(gpa, "HOME_SLIDER", .{
         .name = "HOME_SLIDER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -365,7 +366,7 @@ pub fn init(c: Config) !void {
         .execute = &mclHomeSlider,
     });
     errdefer _ = command.registry.orderedRemove("HOME_SLIDER");
-    try command.registry.put("WAIT_HOME_SLIDER", .{
+    try command.registry.put(gpa, "WAIT_HOME_SLIDER", .{
         .name = "WAIT_HOME_SLIDER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -380,7 +381,7 @@ pub fn init(c: Config) !void {
         .execute = &mclWaitHomeSlider,
     });
     errdefer _ = command.registry.orderedRemove("WAIT_HOME_SLIDER");
-    try command.registry.put("ISOLATE", .{
+    try command.registry.put(gpa, "ISOLATE", .{
         .name = "ISOLATE",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -401,7 +402,7 @@ pub fn init(c: Config) !void {
         .execute = &mclIsolate,
     });
     errdefer _ = command.registry.orderedRemove("ISOLATE");
-    try command.registry.put("RECOVER_SLIDER", .{
+    try command.registry.put(gpa, "RECOVER_SLIDER", .{
         .name = "RECOVER_SLIDER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -420,7 +421,7 @@ pub fn init(c: Config) !void {
         .execute = &mclRecoverSlider,
     });
     errdefer _ = command.registry.orderedRemove("RECOVER_SLIDER");
-    try command.registry.put("WAIT_RECOVER_SLIDER", .{
+    try command.registry.put(gpa, "WAIT_RECOVER_SLIDER", .{
         .name = "WAIT_RECOVER_SLIDER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -429,14 +430,14 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Wait until recovery of slider is complete.",
         .long_description =
-        \\Wait until slider recovery is complete and a slider is recognized. 
+        \\Wait until slider recovery is complete and a slider is recognized.
         \\If an optional result variable name is provided, then store the
         \\recognized slider ID in the variable.
         ,
         .execute = &mclWaitRecoverSlider,
     });
     errdefer _ = command.registry.orderedRemove("WAIT_RECOVER_SLIDER");
-    try command.registry.put("MOVE_SLIDER_AXIS", .{
+    try command.registry.put(gpa, "MOVE_SLIDER_AXIS", .{
         .name = "MOVE_SLIDER_AXIS",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -451,7 +452,7 @@ pub fn init(c: Config) !void {
         .execute = &mclSliderPosMoveAxis,
     });
     errdefer _ = command.registry.orderedRemove("MOVE_SLIDER_AXIS");
-    try command.registry.put("MOVE_SLIDER_LOCATION", .{
+    try command.registry.put(gpa, "MOVE_SLIDER_LOCATION", .{
         .name = "MOVE_SLIDER_LOCATION",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -467,7 +468,7 @@ pub fn init(c: Config) !void {
         .execute = &mclSliderPosMoveLocation,
     });
     errdefer _ = command.registry.orderedRemove("MOVE_SLIDER_LOCATION");
-    try command.registry.put("MOVE_SLIDER_DISTANCE", .{
+    try command.registry.put(gpa, "MOVE_SLIDER_DISTANCE", .{
         .name = "MOVE_SLIDER_DISTANCE",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -476,7 +477,7 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Move slider by a distance.",
         .long_description =
-        \\Move given slider by a provided distance. The slider ID must be 
+        \\Move given slider by a provided distance. The slider ID must be
         \\currently recognized within the motion system, and the distance must
         \\be provided in millimeters as a whole or decimal number. The distance
         \\may be negative for backward movement.
@@ -484,7 +485,7 @@ pub fn init(c: Config) !void {
         .execute = &mclSliderPosMoveDistance,
     });
     errdefer _ = command.registry.orderedRemove("MOVE_SLIDER_DISTANCE");
-    try command.registry.put("SPD_MOVE_SLIDER_AXIS", .{
+    try command.registry.put(gpa, "SPD_MOVE_SLIDER_AXIS", .{
         .name = "SPD_MOVE_SLIDER_AXIS",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -500,7 +501,7 @@ pub fn init(c: Config) !void {
         .execute = &mclSliderSpdMoveAxis,
     });
     errdefer _ = command.registry.orderedRemove("SPD_MOVE_SLIDER_AXIS");
-    try command.registry.put("SPD_MOVE_SLIDER_LOCATION", .{
+    try command.registry.put(gpa, "SPD_MOVE_SLIDER_LOCATION", .{
         .name = "SPD_MOVE_SLIDER_LOCATION",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -517,7 +518,7 @@ pub fn init(c: Config) !void {
         .execute = &mclSliderSpdMoveLocation,
     });
     errdefer _ = command.registry.orderedRemove("SPD_MOVE_SLIDER_LOCATION");
-    try command.registry.put("SPD_MOVE_SLIDER_DISTANCE", .{
+    try command.registry.put(gpa, "SPD_MOVE_SLIDER_DISTANCE", .{
         .name = "SPD_MOVE_SLIDER_DISTANCE",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -526,7 +527,7 @@ pub fn init(c: Config) !void {
         },
         .short_description = "Move slider by a distance.",
         .long_description =
-        \\Move given slider by a provided distance. The slider ID must be 
+        \\Move given slider by a provided distance. The slider ID must be
         \\currently recognized within the motion system, and the distance must
         \\be provided in millimeters as a whole or decimal number. The distance
         \\may be negative for backward movement. This command moves the slider
@@ -535,7 +536,7 @@ pub fn init(c: Config) !void {
         .execute = &mclSliderSpdMoveDistance,
     });
     errdefer _ = command.registry.orderedRemove("SPD_MOVE_SLIDER_DISTANCE");
-    try command.registry.put("WAIT_MOVE_SLIDER", .{
+    try command.registry.put(gpa, "WAIT_MOVE_SLIDER", .{
         .name = "WAIT_MOVE_SLIDER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -549,7 +550,7 @@ pub fn init(c: Config) !void {
         .execute = &mclWaitMoveSlider,
     });
     errdefer _ = command.registry.orderedRemove("WAIT_MOVE_SLIDER");
-    try command.registry.put("PUSH_SLIDER_FORWARD", .{
+    try command.registry.put(gpa, "PUSH_SLIDER_FORWARD", .{
         .name = "PUSH_SLIDER_FORWARD",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -565,7 +566,7 @@ pub fn init(c: Config) !void {
         .execute = &mclSliderPushForward,
     });
     errdefer _ = command.registry.orderedRemove("PUSH_SLIDER_FORWARD");
-    try command.registry.put("PUSH_SLIDER_BACKWARD", .{
+    try command.registry.put(gpa, "PUSH_SLIDER_BACKWARD", .{
         .name = "PUSH_SLIDER_BACKWARD",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -581,12 +582,13 @@ pub fn init(c: Config) !void {
         .execute = &mclSliderPushBackward,
     });
     errdefer _ = command.registry.orderedRemove("PUSH_SLIDER_BACKWARD");
-    try command.registry.put("PULL_SLIDER_FORWARD", .{
+    try command.registry.put(gpa, "PULL_SLIDER_FORWARD", .{
         .name = "PULL_SLIDER_FORWARD",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
             .{ .name = "axis" },
             .{ .name = "slider" },
+            .{ .name = "location" },
         },
         .short_description = "Pull incoming slider forward at axis.",
         .long_description =
@@ -597,12 +599,13 @@ pub fn init(c: Config) !void {
         .execute = &mclSliderPullForward,
     });
     errdefer _ = command.registry.orderedRemove("PULL_SLIDER_FORWARD");
-    try command.registry.put("PULL_SLIDER_BACKWARD", .{
+    try command.registry.put(gpa, "PULL_SLIDER_BACKWARD", .{
         .name = "PULL_SLIDER_BACKWARD",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
             .{ .name = "axis" },
             .{ .name = "slider" },
+            .{ .name = "location" },
         },
         .short_description = "Pull incoming slider backward at axis.",
         .long_description =
@@ -613,7 +616,7 @@ pub fn init(c: Config) !void {
         .execute = &mclSliderPullBackward,
     });
     errdefer _ = command.registry.orderedRemove("PULL_SLIDER_BACKWARD");
-    try command.registry.put("WAIT_PULL_SLIDER", .{
+    try command.registry.put(gpa, "WAIT_PULL_SLIDER", .{
         .name = "WAIT_PULL_SLIDER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -626,7 +629,7 @@ pub fn init(c: Config) !void {
         ,
         .execute = &mclSliderWaitPull,
     });
-    try command.registry.put("STOP_PULL_SLIDER", .{
+    try command.registry.put(gpa, "STOP_PULL_SLIDER", .{
         .name = "STOP_PULL_SLIDER",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -639,7 +642,7 @@ pub fn init(c: Config) !void {
         .execute = &mclSliderStopPull,
     });
     errdefer _ = command.registry.orderedRemove("STOP_PULL_SLIDER");
-    try command.registry.put("SLIDER_CHAIN_LINK", .{
+    try command.registry.put(gpa, "SLIDER_CHAIN_LINK", .{
         .name = "SLIDER_CHAIN_LINK",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -653,7 +656,7 @@ pub fn init(c: Config) !void {
         .execute = &mclSliderChainLink,
     });
     errdefer _ = command.registry.orderedRemove("SLIDER_CHAIN_LINK");
-    try command.registry.put("SLIDER_CHAIN_UNLINK", .{
+    try command.registry.put(gpa, "SLIDER_CHAIN_UNLINK", .{
         .name = "SLIDER_CHAIN_UNLINK",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -667,7 +670,7 @@ pub fn init(c: Config) !void {
         .execute = &mclSliderChainUnlink,
     });
     errdefer _ = command.registry.orderedRemove("SLIDER_CHAIN_UNLINK");
-    try command.registry.put("SET_LEFT_CHAIN_ON", .{
+    try command.registry.put(gpa, "SET_LEFT_CHAIN_ON", .{
         .name = "SET_LEFT_CHAIN_ON",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -680,7 +683,7 @@ pub fn init(c: Config) !void {
         .execute = &mclSetLeftChainOn,
     });
     errdefer _ = command.registry.orderedRemove("SET_LEFT_CHAIN_ON");
-    try command.registry.put("SET_RIGHT_CHAIN_ON", .{
+    try command.registry.put(gpa, "SET_RIGHT_CHAIN_ON", .{
         .name = "SET_RIGHT_CHAIN_ON",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -693,7 +696,7 @@ pub fn init(c: Config) !void {
         .execute = &mclSetRightChainOn,
     });
     errdefer _ = command.registry.orderedRemove("SET_RIGHT_CHAIN_ON");
-    try command.registry.put("SET_LEFT_CHAIN_OFF", .{
+    try command.registry.put(gpa, "SET_LEFT_CHAIN_OFF", .{
         .name = "SET_LEFT_CHAIN_OFF",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -706,7 +709,7 @@ pub fn init(c: Config) !void {
         .execute = &mclSetLeftChainOff,
     });
     errdefer _ = command.registry.orderedRemove("SET_LEFT_CHAIN_OFF");
-    try command.registry.put("SET_RIGHT_CHAIN_OFF", .{
+    try command.registry.put(gpa, "SET_RIGHT_CHAIN_OFF", .{
         .name = "SET_RIGHT_CHAIN_OFF",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -719,7 +722,7 @@ pub fn init(c: Config) !void {
         .execute = &mclSetRightChainOff,
     });
     errdefer _ = command.registry.orderedRemove("SET_RIGHT_CHAIN_OFF");
-    try command.registry.put("MOVE_SLIDER_CHAIN", .{
+    try command.registry.put(gpa, "MOVE_SLIDER_CHAIN", .{
         .name = "MOVE_SLIDER_CHAIN",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
@@ -740,15 +743,15 @@ pub fn deinit() void {
     line_names = undefined;
 }
 
-fn mclVersion(_: [][]const u8) !void {
-    std.log.info("MCL Version: {d}.{d}.{d}\n", .{
+fn mclVersion(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
+    std.log.info("CC-Link Version: {d}.{d}.{d}\n", .{
         mcl.version.major,
         mcl.version.minor,
         mcl.version.patch,
     });
 }
 
-fn mclConnect(_: [][]const u8) !void {
+fn mclConnect(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     try mcl.open();
     for (mcl.lines) |line| {
         for (line.stations) |station| {
@@ -758,7 +761,7 @@ fn mclConnect(_: [][]const u8) !void {
     }
 }
 
-fn mclDisconnect(_: [][]const u8) !void {
+fn mclDisconnect(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     for (mcl.lines) |line| {
         for (line.stations) |station| {
             station.y.cc_link_enable = false;
@@ -768,7 +771,7 @@ fn mclDisconnect(_: [][]const u8) !void {
     try mcl.close();
 }
 
-fn mclStationX(params: [][]const u8) !void {
+fn mclStationX(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(i16, params[1], 0);
 
@@ -784,10 +787,10 @@ fn mclStationX(params: [][]const u8) !void {
     const station_index: Station.Index = @intCast(axis / 3);
     try line.stations[station_index].pollX();
 
-    std.log.info("{}", .{line.stations[station_index].x});
+    std.log.info("{f}", .{line.stations[station_index].x});
 }
 
-fn mclStationY(params: [][]const u8) !void {
+fn mclStationY(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(i16, params[1], 0);
 
@@ -803,10 +806,10 @@ fn mclStationY(params: [][]const u8) !void {
     const station_index: Station.Index = @intCast(axis / 3);
     try line.stations[station_index].pollY();
 
-    std.log.info("{}", .{line.stations[station_index].y});
+    std.log.info("{f}", .{line.stations[station_index].y});
 }
 
-fn mclStationWr(params: [][]const u8) !void {
+fn mclStationWr(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(i16, params[1], 0);
 
@@ -822,10 +825,10 @@ fn mclStationWr(params: [][]const u8) !void {
     const station_index: Station.Index = @intCast(axis / 3);
     try line.stations[station_index].pollWr();
 
-    std.log.info("{}", .{line.stations[station_index].wr});
+    std.log.info("{f}", .{line.stations[station_index].wr});
 }
 
-fn mclStationWw(params: [][]const u8) !void {
+fn mclStationWw(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(i16, params[1], 0);
 
@@ -841,10 +844,10 @@ fn mclStationWw(params: [][]const u8) !void {
     const station_index: Station.Index = @intCast(axis / 3);
     try line.stations[station_index].pollWw();
 
-    std.log.info("{}", .{line.stations[station_index].ww});
+    std.log.info("{f}", .{line.stations[station_index].ww});
 }
 
-fn mclAxisSlider(params: [][]const u8) !void {
+fn mclAxisSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id = try std.fmt.parseInt(i16, params[1], 0);
     const result_var: []const u8 = params[2];
@@ -879,7 +882,7 @@ fn mclAxisSlider(params: [][]const u8) !void {
     }
 }
 
-fn mclAxisReleaseServo(params: [][]const u8) !void {
+fn mclAxisReleaseServo(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
 
@@ -893,11 +896,10 @@ fn mclAxisReleaseServo(params: [][]const u8) !void {
     const local_axis_index: mcl.Axis.Index.Station = @intCast(axis_index % 3);
     const station = line.stations[axis_index / 3];
 
-    station.ww.target_axis_number = local_axis_index + 1;
     try station.sendWw();
-    try station.setY(0x5);
+    try station.setY(0x6);
     // Reset on error as well as on success.
-    defer station.resetY(0x5) catch {};
+    defer station.resetY(0x6) catch {};
     while (true) {
         try command.checkCommandInterrupt();
         try station.pollX();
@@ -905,7 +907,7 @@ fn mclAxisReleaseServo(params: [][]const u8) !void {
     }
 }
 
-fn mclClearErrors(params: [][]const u8) !void {
+fn mclClearErrors(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
 
@@ -931,7 +933,7 @@ fn mclClearErrors(params: [][]const u8) !void {
     }
 }
 
-fn mclClearSliderInfo(params: [][]const u8) !void {
+fn mclClearSliderInfo(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
 
@@ -958,7 +960,7 @@ fn mclClearSliderInfo(params: [][]const u8) !void {
     }
 }
 
-fn mclCalibrate(params: [][]const u8) !void {
+fn mclCalibrate(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
@@ -970,7 +972,7 @@ fn mclCalibrate(params: [][]const u8) !void {
     try sendCommand(station);
 }
 
-fn mclHomeSlider(params: [][]const u8) !void {
+fn mclHomeSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
@@ -982,7 +984,7 @@ fn mclHomeSlider(params: [][]const u8) !void {
     try sendCommand(station);
 }
 
-fn mclWaitHomeSlider(params: [][]const u8) !void {
+fn mclWaitHomeSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const result_var: []const u8 = params[1];
 
@@ -1012,7 +1014,7 @@ fn mclWaitHomeSlider(params: [][]const u8) !void {
     }
 }
 
-fn mclIsolate(params: [][]const u8) !void {
+fn mclIsolate(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
 
@@ -1088,7 +1090,7 @@ fn mclIsolate(params: [][]const u8) !void {
     try sendCommand(station);
 }
 
-fn mclSetSpeed(params: [][]const u8) !void {
+fn mclSetSpeed(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const slider_speed = try std.fmt.parseUnsigned(u8, params[1], 0);
     if (slider_speed < 1 or slider_speed > 100) return error.InvalidSpeed;
@@ -1097,7 +1099,7 @@ fn mclSetSpeed(params: [][]const u8) !void {
     line_speeds[line_idx] = @intCast(slider_speed);
 }
 
-fn mclSetAcceleration(params: [][]const u8) !void {
+fn mclSetAcceleration(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const slider_acceleration = try std.fmt.parseUnsigned(u8, params[1], 0);
     if (slider_acceleration < 1 or slider_acceleration > 100)
@@ -1107,14 +1109,14 @@ fn mclSetAcceleration(params: [][]const u8) !void {
     line_accelerations[line_idx] = @intCast(slider_acceleration);
 }
 
-fn mclGetSpeed(params: [][]const u8) !void {
+fn mclGetSpeed(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
 
     const line_idx: usize = try matchLine(line_names, line_name);
     std.log.info("Line {s} speed: {d}%", .{ line_name, line_speeds[line_idx] });
 }
 
-fn mclGetAcceleration(params: [][]const u8) !void {
+fn mclGetAcceleration(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
 
     const line_idx: usize = try matchLine(line_names, line_name);
@@ -1124,7 +1126,7 @@ fn mclGetAcceleration(params: [][]const u8) !void {
     );
 }
 
-fn mclSliderLocation(params: [][]const u8) !void {
+fn mclSliderLocation(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const slider_id = try std.fmt.parseInt(u16, params[1], 0);
     if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
@@ -1156,7 +1158,7 @@ fn mclSliderLocation(params: [][]const u8) !void {
     }
 }
 
-fn mclSliderAxis(params: [][]const u8) !void {
+fn mclSliderAxis(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const slider_id = try std.fmt.parseInt(u16, params[1], 0);
     if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
@@ -1182,41 +1184,52 @@ fn mclSliderAxis(params: [][]const u8) !void {
     }
 }
 
-fn mclHallStatus(params: [][]const u8) !void {
+fn mclHallStatus(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
+    const axis_id: ?mcl.Axis.Id.Line = if (params[1].len > 0)
+        try std.fmt.parseInt(mcl.Axis.Id.Line, params[1], 0)
+    else
+        null;
     const line_idx: usize = try matchLine(line_names, line_name);
     const line: mcl.Line = mcl.lines[line_idx];
+    if (axis_id) |id| {
+        if (id == 0 or id > line.axes.len) {
+            return error.InvalidAxis;
+        }
+    }
 
     try line.pollX();
-
-    var axis: mcl.Axis.Id.Line = 1;
-    for (line.stations) |station| {
-        for (0..3) |_local_axis| {
-            const local_axis: mcl.Axis.Index.Station = @intCast(_local_axis);
-            const alarms = station.x.hall_alarm.axis(local_axis);
-
+    if (axis_id) |id| {
+        const axis = line.axes[id - 1];
+        const alarms = axis.station.x.hall_alarm.axis(axis.index.station);
+        if (alarms.back) {
+            std.log.info("Axis {} Hall Sensor: BACK - ON", .{axis.id.line});
+        }
+        if (alarms.front) {
+            std.log.info("Axis {} Hall Sensor: FRONT - ON", .{axis.id.line});
+        }
+    } else for (line.stations) |station| {
+        for (station.axes) |axis| {
+            const alarms = axis.station.x.hall_alarm.axis(axis.index.station);
             if (alarms.back) {
-                std.log.info("Axis {} Hall Sensor: BACK - ON", .{axis});
+                std.log.info("Axis {} Hall Sensor: BACK - ON", .{axis.id.line});
             }
             if (alarms.front) {
-                std.log.info("Axis {} Hall Sensor: FRONT - ON", .{axis});
+                std.log.info("Axis {} Hall Sensor: FRONT - ON", .{axis.id.line});
             }
-
-            axis += 1;
-            if (axis > line.axes.len) break;
         }
     }
 }
 
-fn mclAssertHall(params: [][]const u8) !void {
+fn mclAssertHall(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis = try std.fmt.parseInt(mcl.Axis.Id.Line, params[2], 0);
+    const axis = try std.fmt.parseInt(mcl.Axis.Id.Line, params[1], 0);
     const side: mcl.Direction =
-        if (std.ascii.eqlIgnoreCase("back", params[3]) or
-        std.ascii.eqlIgnoreCase("left", params[3]))
+        if (std.ascii.eqlIgnoreCase("back", params[2]) or
+        std.ascii.eqlIgnoreCase("left", params[2]))
             .backward
-        else if (std.ascii.eqlIgnoreCase("front", params[3]) or
-        std.ascii.eqlIgnoreCase("right", params[3]))
+        else if (std.ascii.eqlIgnoreCase("front", params[2]) or
+        std.ascii.eqlIgnoreCase("right", params[2]))
             .forward
         else
             return error.InvalidHallAlarmSide;
@@ -1227,10 +1240,10 @@ fn mclAssertHall(params: [][]const u8) !void {
     }
 
     var alarm_on: bool = true;
-    if (params[4].len > 0) {
-        if (std.ascii.eqlIgnoreCase("off", params[4])) {
+    if (params[3].len > 0) {
+        if (std.ascii.eqlIgnoreCase("off", params[3])) {
             alarm_on = false;
-        } else if (std.ascii.eqlIgnoreCase("on", params[4])) {
+        } else if (std.ascii.eqlIgnoreCase("on", params[3])) {
             alarm_on = true;
         } else return error.InvalidHallAlarmState;
     }
@@ -1255,7 +1268,7 @@ fn mclAssertHall(params: [][]const u8) !void {
     }
 }
 
-fn mclSliderPosMoveAxis(params: [][]const u8) !void {
+fn mclSliderPosMoveAxis(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
     const axis_id: u16 = try std.fmt.parseInt(u16, params[2], 0);
@@ -1313,7 +1326,7 @@ fn mclSliderPosMoveAxis(params: [][]const u8) !void {
     try sendCommand(station);
 }
 
-fn mclSliderPosMoveLocation(params: [][]const u8) !void {
+fn mclSliderPosMoveLocation(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
     const location_float: f32 = try std.fmt.parseFloat(f32, params[2]);
@@ -1376,7 +1389,7 @@ fn mclSliderPosMoveLocation(params: [][]const u8) !void {
     try sendCommand(station);
 }
 
-fn mclSliderPosMoveDistance(params: [][]const u8) !void {
+fn mclSliderPosMoveDistance(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name = params[0];
     const slider_id = try std.fmt.parseInt(u16, params[1], 0);
     const distance_float = try std.fmt.parseFloat(f32, params[2]);
@@ -1445,7 +1458,7 @@ fn mclSliderPosMoveDistance(params: [][]const u8) !void {
     try sendCommand(station);
 }
 
-fn mclSliderSpdMoveAxis(params: [][]const u8) !void {
+fn mclSliderSpdMoveAxis(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
     const axis_id: u16 = try std.fmt.parseInt(u16, params[2], 0);
@@ -1503,7 +1516,7 @@ fn mclSliderSpdMoveAxis(params: [][]const u8) !void {
     try sendCommand(station);
 }
 
-fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
+fn mclSliderSpdMoveLocation(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
     const location_float: f32 = try std.fmt.parseFloat(f32, params[2]);
@@ -1566,7 +1579,7 @@ fn mclSliderSpdMoveLocation(params: [][]const u8) !void {
     try sendCommand(station);
 }
 
-fn mclSliderSpdMoveDistance(params: [][]const u8) !void {
+fn mclSliderSpdMoveDistance(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name = params[0];
     const slider_id = try std.fmt.parseInt(u16, params[1], 0);
     const distance_float = try std.fmt.parseFloat(f32, params[2]);
@@ -1635,7 +1648,7 @@ fn mclSliderSpdMoveDistance(params: [][]const u8) !void {
     try sendCommand(station);
 }
 
-fn mclSliderPushForward(params: [][]const u8) !void {
+fn mclSliderPushForward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name = params[0];
     const slider_id = try std.fmt.parseInt(u16, params[1], 0);
     if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
@@ -1687,7 +1700,7 @@ fn mclSliderPushForward(params: [][]const u8) !void {
     try sendCommand(station);
 }
 
-fn mclSliderPushBackward(params: [][]const u8) !void {
+fn mclSliderPushBackward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name = params[0];
     const slider_id = try std.fmt.parseInt(u16, params[1], 0);
     if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
@@ -1740,12 +1753,17 @@ fn mclSliderPushBackward(params: [][]const u8) !void {
     try sendCommand(station);
 }
 
-fn mclSliderPullForward(params: [][]const u8) !void {
+fn mclSliderPullForward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name = params[0];
     const axis = try std.fmt.parseInt(u16, params[1], 0);
     const slider_id = try std.fmt.parseInt(u16, params[2], 0);
+    const location_float = try std.fmt.parseFloat(f32, params[3]);
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
+    const location: Distance = .{
+        .mm = @intFromFloat(location_float),
+        .um = @intFromFloat((location_float - @trunc(location_float)) * 1000),
+    };
 
     if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
 
@@ -1756,6 +1774,7 @@ fn mclSliderPullForward(params: [][]const u8) !void {
     try waitCommandReady(station);
     station.ww.* = .{
         .command_code = .PullAxisSliderForward,
+        .location_distance = location,
         .command_slider_number = slider_id,
         .target_axis_number = local_axis + 1,
         .speed_percentage = line_speeds[line_idx],
@@ -1764,12 +1783,17 @@ fn mclSliderPullForward(params: [][]const u8) !void {
     try sendCommand(station);
 }
 
-fn mclSliderPullBackward(params: [][]const u8) !void {
+fn mclSliderPullBackward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name = params[0];
     const axis = try std.fmt.parseInt(u16, params[1], 0);
     const slider_id = try std.fmt.parseInt(u16, params[2], 0);
+    const location_float = try std.fmt.parseFloat(f32, params[3]);
     const line_idx: usize = try matchLine(line_names, line_name);
     const line = mcl.lines[line_idx];
+    const location: Distance = .{
+        .mm = @intFromFloat(location_float),
+        .um = @intFromFloat((location_float - @trunc(location_float)) * 1000),
+    };
 
     if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
 
@@ -1780,6 +1804,7 @@ fn mclSliderPullBackward(params: [][]const u8) !void {
     try waitCommandReady(station);
     station.ww.* = .{
         .command_code = .PullAxisSliderBackward,
+        .location_distance = location,
         .command_slider_number = slider_id,
         .target_axis_number = local_axis + 1,
         .speed_percentage = line_speeds[line_idx],
@@ -1788,7 +1813,7 @@ fn mclSliderPullBackward(params: [][]const u8) !void {
     try sendCommand(station);
 }
 
-fn mclSliderWaitPull(params: [][]const u8) !void {
+fn mclSliderWaitPull(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name = params[0];
     const axis = try std.fmt.parseInt(i16, params[1], 0);
     const line_idx: usize = try matchLine(line_names, line_name);
@@ -1813,7 +1838,7 @@ fn mclSliderWaitPull(params: [][]const u8) !void {
     }
 }
 
-fn mclSliderStopPull(params: [][]const u8) !void {
+fn mclSliderStopPull(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name = params[0];
     const axis = try std.fmt.parseInt(i16, params[1], 0);
     const line_idx: usize = try matchLine(line_names, line_name);
@@ -1835,7 +1860,7 @@ fn mclSliderStopPull(params: [][]const u8) !void {
     }
 }
 
-fn mclWaitMoveSlider(params: [][]const u8) !void {
+fn mclWaitMoveSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const slider_id = try std.fmt.parseInt(u16, params[1], 0);
     if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
@@ -1884,7 +1909,7 @@ fn mclWaitMoveSlider(params: [][]const u8) !void {
     }
 }
 
-fn mclRecoverSlider(params: [][]const u8) !void {
+fn mclRecoverSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis: u16 = try std.fmt.parseUnsigned(u16, params[1], 0);
     const new_slider_id: u16 = try std.fmt.parseUnsigned(u16, params[2], 0);
@@ -1946,7 +1971,7 @@ fn mclRecoverSlider(params: [][]const u8) !void {
     try sendCommand(station);
 }
 
-fn mclTrafficStop(params: [][]const u8) !void {
+fn mclTrafficStop(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis = try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[1], 0);
 
@@ -1980,7 +2005,7 @@ fn mclTrafficStop(params: [][]const u8) !void {
     }
 }
 
-fn mclTrafficAllow(params: [][]const u8) !void {
+fn mclTrafficAllow(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis = try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[1], 0);
 
@@ -2014,7 +2039,7 @@ fn mclTrafficAllow(params: [][]const u8) !void {
     }
 }
 
-fn mclWaitRecoverSlider(params: [][]const u8) !void {
+fn mclWaitRecoverSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis: u16 = try std.fmt.parseUnsigned(u16, params[1], 0);
     const result_var: []const u8 = params[2];
@@ -2053,7 +2078,7 @@ fn mclWaitRecoverSlider(params: [][]const u8) !void {
     }
 }
 
-fn mclSliderChainLink(params: [][]const u8) !void {
+fn mclSliderChainLink(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const first_axis: mcl.Axis.Id.Line =
         try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[1], 0);
@@ -2131,7 +2156,7 @@ fn mclSliderChainLink(params: [][]const u8) !void {
     }
 }
 
-fn mclSliderChainUnlink(params: [][]const u8) !void {
+fn mclSliderChainUnlink(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const first_axis: mcl.Axis.Id.Line =
         try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[1], 0);
@@ -2209,7 +2234,7 @@ fn mclSliderChainUnlink(params: [][]const u8) !void {
     }
 }
 
-fn mclSetLeftChainOn(params: [][]const u8) !void {
+fn mclSetLeftChainOn(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id: mcl.Axis.Id.Line =
         try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[1], 0);
@@ -2252,7 +2277,7 @@ fn mclSetLeftChainOn(params: [][]const u8) !void {
     }
 }
 
-fn mclSetRightChainOn(params: [][]const u8) !void {
+fn mclSetRightChainOn(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id: mcl.Axis.Id.Line =
         try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[1], 0);
@@ -2295,7 +2320,7 @@ fn mclSetRightChainOn(params: [][]const u8) !void {
     }
 }
 
-fn mclSetLeftChainOff(params: [][]const u8) !void {
+fn mclSetLeftChainOff(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id: mcl.Axis.Id.Line =
         try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[1], 0);
@@ -2338,7 +2363,7 @@ fn mclSetLeftChainOff(params: [][]const u8) !void {
     }
 }
 
-fn mclSetRightChainOff(params: [][]const u8) !void {
+fn mclSetRightChainOff(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id: mcl.Axis.Id.Line =
         try std.fmt.parseUnsigned(mcl.Axis.Id.Line, params[1], 0);
@@ -2381,7 +2406,7 @@ fn mclSetRightChainOff(params: [][]const u8) !void {
     }
 }
 
-fn mclMoveSliderChain(params: [][]const u8) !void {
+fn mclMoveSliderChain(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
     const axis_id: u16 = try std.fmt.parseInt(u16, params[2], 0);
@@ -2495,4 +2520,8 @@ fn sendCommand(station: Station) !void {
         .SliderAlreadyExists => error.SliderAlreadyExists,
         .InvalidAxis => error.InvalidAxis,
     };
+}
+
+test {
+    std.testing.refAllDecls(@This());
 }
