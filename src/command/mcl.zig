@@ -895,7 +895,6 @@ fn mclAxisReleaseServo(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !v
     const local_axis_index: mcl.Axis.Index.Station = @intCast(axis_index % 3);
     const station = line.stations[axis_index / 3];
 
-    station.ww.target_axis_number = local_axis_index + 1;
     try station.sendWw();
     try station.setY(0x6);
     // Reset on error as well as on success.
