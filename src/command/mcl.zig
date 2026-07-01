@@ -736,6 +736,45 @@ pub fn init(c: Config) !void {
         .execute = &mclMoveSliderChain,
     });
     errdefer _ = command.registry.orderedRemove("MOVE_SLIDER_CHAIN");
+    try command.registry.put(gpa, "STOP", .{
+        .name = "STOP",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name", .optional = true },
+        },
+        .short_description = "Stop all processes.",
+        .long_description = std.fmt.comptimePrint(
+            \\Stop all running processes on LMS.
+            \\Optional: Stop all running processes only on specified Line.
+        , .{}),
+        .execute = &mclStop,
+    });
+    errdefer _ = command.registry.orderedRemove("STOP");
+    try command.registry.put(gpa, "PAUSE", .{
+        .name = "PAUSE",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name", .optional = true },
+        },
+        .short_description = "Pause all processes.",
+        .long_description = std.fmt.comptimePrint(
+            \\Pause all running processes on LMS.
+            \\Optional: Pause all running processes only on specified Line.
+        , .{}),
+        .execute = &mclPause,
+    });
+    errdefer _ = command.registry.orderedRemove("PAUSE");
+    try command.registry.put(gpa, "RESUME", .{
+        .name = "RESUME",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name", .optional = true },
+        },
+        .short_description = "Resume all processes.",
+        .long_description = std.fmt.comptimePrint(
+            \\Resume all running processes on LMS.
+            \\Optional: Resume all running processes only on specified Line.
+        , .{}),
+        .execute = &mclResume,
+    });
+    errdefer _ = command.registry.orderedRemove("RESUME");
 }
 
 pub fn deinit() void {
@@ -2462,6 +2501,127 @@ fn mclMoveSliderChain(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !vo
         .acceleration_percentage = line_accelerations[line_idx],
     };
     try sendCommand(station);
+}
+
+fn mclStop(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+    if (params[0].len != 0) {
+        const line_name: []const u8 = params[0];
+        const line_idx: usize = try matchLine(line_names, line_name);
+        const line: mcl.Line = mcl.lines[line_idx];
+        // Enable emergency stop for all drivers on the line
+        for (line.stations) |station| {
+            try station.setY(0x7);
+        }
+        // Wait until all drivers is stopped
+        wait_stop: while (true) {
+            try command.checkCommandInterrupt();
+            for (line.stations) |station| {
+                try station.pollX();
+                if (!station.x.emergency_stop_enabled) continue :wait_stop;
+            }
+            return;
+        }
+    } else {
+        // Enable emergency stop for all drivers
+        for (mcl.lines) |line| {
+            for (line.stations) |station| {
+                try station.setY(0x7);
+            }
+        }
+        // Wait until all drivers is stopped
+        wait_stop: while (true) {
+            try command.checkCommandInterrupt();
+            for (mcl.lines) |line| {
+                for (line.stations) |station| {
+                    try station.pollX();
+                    if (!station.x.emergency_stop_enabled) continue :wait_stop;
+                }
+            }
+            return;
+        }
+    }
+}
+
+fn mclPause(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+    if (params[0].len != 0) {
+        const line_name: []const u8 = params[0];
+        const line_idx: usize = try matchLine(line_names, line_name);
+        const line: mcl.Line = mcl.lines[line_idx];
+        // Enable temporary pause for all drivers on the line
+        for (line.stations) |station| {
+            try station.setY(0x8);
+        }
+        // Wait until all drivers is paused
+        wait_stop: while (true) {
+            try command.checkCommandInterrupt();
+            for (line.stations) |station| {
+                try station.pollX();
+                if (!station.x.paused) continue :wait_stop;
+            }
+            return;
+        }
+    } else {
+        // Enable temporary pause for all drivers
+        for (mcl.lines) |line| {
+            for (line.stations) |station| {
+                try station.setY(0x8);
+            }
+        }
+        // Wait until all drivers is paused
+        wait_stop: while (true) {
+            try command.checkCommandInterrupt();
+            for (mcl.lines) |line| {
+                for (line.stations) |station| {
+                    try station.pollX();
+                    if (!station.x.paused) continue :wait_stop;
+                }
+            }
+            return;
+        }
+    }
+}
+
+fn mclResume(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+    if (params[0].len != 0) {
+        const line_name: []const u8 = params[0];
+        const line_idx: usize = try matchLine(line_names, line_name);
+        const line: mcl.Line = mcl.lines[line_idx];
+        // Disable emergency stop and pause for all drivers on the line
+        for (line.stations) |station| {
+            try station.resetY(0x7);
+            try station.resetY(0x8);
+        }
+        // Wait until all drivers is resumed
+        wait_stop: while (true) {
+            try command.checkCommandInterrupt();
+            for (line.stations) |station| {
+                try station.pollX();
+                if (station.x.emergency_stop_enabled or station.x.paused)
+                    continue :wait_stop;
+            }
+            return;
+        }
+    } else {
+        // Disable emergency stop and pause for all drivers
+        for (mcl.lines) |line| {
+            for (line.stations) |station| {
+                try station.resetY(0x7);
+                try station.resetY(0x8);
+            }
+        }
+        // Wait until all drivers is resumed
+        wait_stop: while (true) {
+            try command.checkCommandInterrupt();
+            for (mcl.lines) |line| {
+                for (line.stations) |station| {
+                    try station.pollX();
+                    if (station.x.emergency_stop_enabled or station.x.paused)
+                        continue :wait_stop;
+                }
+            }
+            return;
+        }
+    }
 }
 
 fn matchLine(names: []const []const u8, name: []const u8) !usize {
