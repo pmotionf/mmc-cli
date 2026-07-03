@@ -1209,6 +1209,8 @@ fn loadConfig(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
                 const f_type = @typeInfo(@field(@This(), fields[i].name));
                 if (comptime f_type != .void) {
                     try @field(@This(), fields[i].name).init(
+                        gpa,
+                        io,
                         @field(module, fields[i].name),
                     );
                     initialized_modules.set(
