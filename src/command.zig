@@ -747,7 +747,7 @@ fn help(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         for (registry.values()) |c| {
             var params_buffer: [512]u8 = .{0} ** 512;
             var params_len: usize = 0;
-            for (c.parameters) |param| {
+            for (c.executable.parameters) |param| {
                 params_len += (try std.fmt.bufPrint(
                     params_buffer[params_len..],
                     " {s}{s}{s}",
@@ -759,9 +759,9 @@ fn help(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
                 )).len;
             }
             std.log.info("{s}{s}:\n\t{s}\n", .{
-                c.name,
+                c.executable.name,
                 params_buffer[0..params_len],
-                c.short_description,
+                c.executable.short_description,
             });
         }
     }
