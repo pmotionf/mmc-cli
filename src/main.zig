@@ -17,10 +17,15 @@ var prompt: Prompt = .{};
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
     const gpa = init.gpa;
+    const map = init.environ_map;
     try terminal.init();
     defer terminal.deinit();
 
-    var prompter = try std.Thread.spawn(.{}, Prompt.handler, .{ io, &prompt });
+    var prompter = try std.Thread.spawn(
+        .{},
+        Prompt.handler,
+        .{ io, &prompt },
+    );
     prompter.detach();
     defer prompt.close.store(true, .monotonic);
 
@@ -48,8 +53,8 @@ pub fn main(init: std.process.Init) !void {
         else => @compileError("UnsupportedOs"),
     }
 
-    try command.init();
-    defer command.deinit();
+    try command.init(map);
+    defer command.deinit(io, gpa);
 
     command_loop: while (!exit.load(.monotonic)) {
         command.checkCommandInterrupt(io) catch |e| std.log.err("{t}", .{e});

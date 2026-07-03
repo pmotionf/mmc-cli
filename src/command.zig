@@ -152,6 +152,8 @@ var log_file: ?std.Io.File = null;
 var file_writer: ?std.Io.File.Writer = null;
 var file_buf: [4096]u8 = undefined;
 
+var environ_map: *std.process.Environ.Map = undefined;
+
 const CommandString = struct {
     str: []u8,
     node: std.DoublyLinkedList.Node,
@@ -293,7 +295,7 @@ pub fn logFn(
     ) catch {};
 }
 
-pub fn init() !void {
+pub fn init(map: *std.process.Environ.Map) !void {
     // TODO: Make every module as a type. It does not make sense to use arena here because it makes deinitialize a module impossible.
     arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     allocator = arena.allocator();
@@ -302,6 +304,7 @@ pub fn init() !void {
     variables = std.BufMap.init(allocator);
     table = Table.init(std.heap.smp_allocator);
     stop.store(false, .monotonic);
+    environ_map = map;
 
     try registry.put(allocator, "HELP", .{ .executable = .{
         .name = "HELP",
@@ -549,14 +552,15 @@ test init {
     }
 }
 
-pub fn deinit(io: std.Io) void {
+pub fn deinit(io: std.Io, gpa: std.mem.Allocator) void {
     deinitModules();
+    environ_map = undefined;
     stop.store(true, .monotonic);
     defer stop.store(false, .monotonic);
     variables.deinit();
     queueClear(io) catch {};
     command_queue_lock = undefined;
-    registry.deinit();
+    registry.deinit(gpa);
     arena.deinit();
 }
 
@@ -1132,45 +1136,61 @@ fn loadConfig(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         } catch config_local: {
             var config_dir = switch (comptime builtin.os.tag) {
                 .windows => b: {
-                    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-                    var fba = std.heap.FixedBufferAllocator.init(&path_buf);
-                    const fba_alloc = fba.allocator();
-                    const home_path = try std.process.getEnvVarOwned(
-                        fba_alloc,
-                        "USERPROFILE",
-                    );
+                    const home_path = environ_map.get("USERPROFILE");
 
-                    var home_dir = try std.Io.Dir.cwd().openDir(io, home_path, .{});
-                    defer home_dir.close();
-                    var config_root = try home_dir.openDir(".config", .{});
-                    defer config_root.close();
-                    break :b try config_root.openDir("mmc-cli", .{});
+                    var home_dir = try std.Io.Dir.cwd().openDir(
+                        io,
+                        home_path,
+                        .{},
+                    );
+                    defer home_dir.close(io);
+                    var config_root = try home_dir.openDir(
+                        io,
+                        ".config",
+                        .{},
+                    );
+                    defer config_root.close(io);
+                    break :b try config_root.openDir(
+                        io,
+                        "mmc-cli",
+                        .{},
+                    );
                 },
                 .linux => b: {
-                    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-                    var fba = std.heap.FixedBufferAllocator.init(&path_buf);
-                    const fba_alloc = fba.allocator();
-                    const config_path = std.process.getEnvVarOwned(
-                        fba_alloc,
-                        "XDG_CONFIG_HOME",
-                    ) catch "";
+                    const config_path =
+                        environ_map.get("XDG_CONFIG_HOME") orelse "";
                     if (config_path.len > 0) {
-                        break :b try std.Io.Dir.cwd().openDir(io, config_path, .{});
+                        break :b try std.Io.Dir.cwd().openDir(
+                            io,
+                            config_path,
+                            .{},
+                        );
                     }
-                    const home_path = try std.process.getEnvVarOwned(
-                        fba_alloc,
-                        "HOME",
+                    const home_path = environ_map.get("HOME") orelse
+                        return error.EnvironmentVariableNotFound;
+                    var home_dir = try std.Io.Dir.cwd().openDir(
+                        io,
+                        home_path,
+                        .{},
                     );
-                    var home_dir = try std.Io.Dir.cwd().openDir(io, home_path, .{});
-                    defer home_dir.close();
-                    var config_root = try home_dir.openDir(".config", .{});
-                    defer config_root.close();
-                    break :b try config_root.openDir("mmc-cli", .{});
+                    defer home_dir.close(io);
+                    var config_root = try home_dir.openDir(
+                        io,
+                        ".config",
+                        .{},
+                    );
+                    defer config_root.close(io);
+                    break :b try config_root.openDir(
+                        io,
+                        "mmc-cli",
+                        .{},
+                    );
                 },
                 else => return error.UnsupportedOs,
             };
 
             break :config_local try config_dir.openFile(
+                io,
                 "config.json5",
                 .{},
             );
