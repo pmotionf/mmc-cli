@@ -4,22 +4,20 @@
 const builtin = @import("builtin");
 const std = @import("std");
 
-const c = @cImport({
-    @cInclude("soem/ethercat.h");
-});
+const c = @import("soem");
 
 const command = @import("../command.zig");
 const Command = command.Command;
 
 pub const Config = struct {};
 
-var connection_buf: [128]u8 = .{0} ** 128;
-var connection: []u8 = connection_buf[0..0];
 var io_map: [4096]u8 = .{0} ** 4096;
 
 var output_bytes: u32 = 0;
 var input_bytes: u32 = 0;
 var expected_WKC: u16 = 0;
+
+var soem_ctx: *c.ecx_contextt = undefined;
 
 /// Used by main thread to signal process thread to stop.
 var stop_processing = std.atomic.Value(bool).init(false);
@@ -32,7 +30,10 @@ var laser_value = std.atomic.Value(i32).init(0);
 /// process thread has unexpectedly quit.
 var read_laser_value = std.atomic.Value(bool).init(false);
 
-pub fn init(gpa: std.mem.Allocator, _: std.Io, _: Config) !void {
+pub fn init(gpa: std.mem.Allocator, io: std.Io, _: Config) !void {
+    soem_ctx = try gpa.create(c.ecx_contextt);
+    soem_ctx.* = std.mem.zeroInit(c.ecx_contextt, .{});
+    errdefer deinit(gpa, io);
     // TODO: Make every module as a type. It does not make sense to use arena here because it makes deinitialize a module impossible.
     try command.registry.put(gpa, "MES07_CONNECT", .{ .executable = .{
         .name = "MES07_CONNECT",
@@ -73,18 +74,9 @@ test init {
     }
 }
 
-pub fn deinit(_: std.mem.Allocator, _: std.Io) void {
-    if (connection.len > 0) {
-        while (processing.load(.monotonic)) {
-            stop_processing.store(true, .monotonic);
-        } else {
-            stop_processing.store(false, .monotonic);
-        }
-
-        c.ec_close();
-
-        connection = &.{};
-    }
+pub fn deinit(gpa: std.mem.Allocator, io: std.Io) void {
+    defer gpa.destroy(soem_ctx);
+    disconnect(io, gpa, &.{}) catch {};
 }
 
 fn connect(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
@@ -97,12 +89,8 @@ fn connect(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         adapter_buf[params[0].len] = 0;
         @memcpy(adapter, params[0]);
 
-        if (c.ec_init(adapter.ptr) <= 0) {
+        if (c.ecx_init(soem_ctx, adapter.ptr) <= 0) {
             return error.InvalidAdapterName;
-        } else {
-            connection_buf[adapter.len] = 0;
-            connection = connection_buf[0..adapter.len];
-            @memcpy(connection, adapter);
         }
     } else {
         var current_opt: ?*c.ec_adaptert = null;
@@ -125,12 +113,7 @@ fn connect(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
                 if (std.mem.eql(u8, "lo", name)) continue;
             }
 
-            if (c.ec_init(name.ptr) > 0) {
-                connection_buf[name.len] = 0;
-                connection = connection_buf[0..name.len];
-                @memcpy(connection, name);
-                break;
-            }
+            if (c.ecx_init(soem_ctx, name.ptr) > 0) break;
         } else {
             return error.NoConnectedAdaptersFound;
         }
@@ -138,55 +121,42 @@ fn connect(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
 
     io_map = .{0} ** 4096;
 
-    if (c.ec_config_init(0) <= 0) return error.NoEtherCatSlavesFound;
+    if (c.ecx_config_init(soem_ctx) <= 0) return error.NoEtherCatSlavesFound;
 
-    _ = c.ec_config_map(&io_map);
-    _ = c.ec_configdc();
+    _ = c.ecx_config_map_group(soem_ctx, &io_map, 0);
+    _ = c.ecx_configdc(soem_ctx);
 
     while (true) {
         try command.checkCommandInterrupt(io);
-        if (c.ec_statecheck(
-            0,
-            c.EC_STATE_SAFE_OP,
-            c.EC_TIMEOUTSTATE,
-        ) == c.EC_STATE_SAFE_OP) {
-            break;
-        }
+        if (c.ecx_readstate(soem_ctx) == c.EC_STATE_SAFE_OP) break;
     }
-
-    output_bytes = c.ec_slave[0].Obytes;
-    if ((output_bytes == 0) and (c.ec_slave[0].Obits > 0)) output_bytes = 1;
+    output_bytes = soem_ctx.slavelist[0].Obytes;
+    if ((output_bytes == 0) and (soem_ctx.slavelist[0].Obits > 0)) output_bytes = 1;
     if (output_bytes > 8) output_bytes = 8;
-    input_bytes = c.ec_slave[0].Ibytes;
-    if ((input_bytes == 0) and (c.ec_slave[0].Ibits > 0)) input_bytes = 1;
+    input_bytes = soem_ctx.slavelist[0].Ibytes;
+    if ((input_bytes == 0) and (soem_ctx.slavelist[0].Ibits > 0)) input_bytes = 1;
     if (input_bytes > 8) input_bytes = 8;
 
-    expected_WKC = (c.ec_group[0].outputsWKC * 2) + c.ec_group[0].inputsWKC;
+    expected_WKC = (soem_ctx.grouplist[0].outputsWKC * 2) + soem_ctx.grouplist[0].inputsWKC;
 
-    c.ec_slave[0].state = c.EC_STATE_OPERATIONAL;
+    soem_ctx.slavelist[0].state = c.EC_STATE_OPERATIONAL;
 
     // send one valid process data to make outputs in slaves happy
-    _ = c.ec_send_processdata();
-    _ = c.ec_receive_processdata(c.EC_TIMEOUTRET);
+    _ = c.ecx_send_processdata(soem_ctx);
+    _ = c.ecx_receive_processdata(soem_ctx, c.EC_TIMEOUTRET);
     // request OP state for all slaves
-    _ = c.ec_writestate(0);
+    _ = c.ecx_writestate(soem_ctx, 0);
     // wait for all slaves to reach OP state
 
     errdefer {
-        c.ec_slave[0].state = c.EC_STATE_INIT;
-        _ = c.ec_writestate(0);
+        soem_ctx.slavelist[0].state = c.EC_STATE_INIT;
+        _ = c.ecx_writestate(soem_ctx, 0);
     }
     while (true) {
         try command.checkCommandInterrupt(io);
-        _ = c.ec_send_processdata();
-        _ = c.ec_receive_processdata(c.EC_TIMEOUTRET);
-        if (c.ec_statecheck(
-            0,
-            c.EC_STATE_OPERATIONAL,
-            c.EC_TIMEOUTSTATE,
-        ) == c.EC_STATE_OPERATIONAL) {
-            break;
-        }
+        _ = c.ecx_send_processdata(soem_ctx);
+        _ = c.ecx_receive_processdata(soem_ctx, c.EC_TIMEOUTRET);
+        if (c.ecx_readstate(soem_ctx) == c.EC_STATE_OPERATIONAL) break;
     }
 
     while (processing.load(.monotonic)) {
@@ -195,45 +165,41 @@ fn connect(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         stop_processing.store(false, .monotonic);
     }
     read_laser_value.store(false, .monotonic);
-    const process_thread = try std.Thread.spawn(.{}, process, .{});
+    const process_thread = try std.Thread.spawn(.{}, process, .{io});
     process_thread.detach();
 }
 
 fn disconnect(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
-    if (connection.len > 0) {
-        while (processing.load(.monotonic)) {
-            stop_processing.store(true, .monotonic);
-        } else {
-            stop_processing.store(false, .monotonic);
-        }
-
-        c.ec_close();
-
-        connection = &.{};
+    while (processing.load(.monotonic)) {
+        stop_processing.store(true, .monotonic);
+    } else {
+        stop_processing.store(false, .monotonic);
     }
+
+    c.ecx_close(soem_ctx);
 }
 
-fn process() void {
+fn process(io: std.Io) void {
     defer {
         processing.store(false, .monotonic);
     }
     var wkc: i32 = 0;
     while (!stop_processing.load(.monotonic)) {
         processing.store(true, .monotonic);
-        _ = c.ec_send_processdata();
-        wkc = c.ec_receive_processdata(c.EC_TIMEOUTRET);
+        _ = c.ecx_send_processdata(soem_ctx);
+        wkc = c.ecx_receive_processdata(soem_ctx, c.EC_TIMEOUTRET);
         while (wkc < expected_WKC) {
-            std.Thread.sleep(std.time.ns_per_us * 10);
-            _ = c.ec_send_processdata();
-            wkc = c.ec_receive_processdata(c.EC_TIMEOUTRET);
+            io.sleep(.fromMicroseconds(10), .real) catch {};
+            _ = c.ecx_send_processdata(soem_ctx);
+            wkc = c.ecx_receive_processdata(soem_ctx, c.EC_TIMEOUTRET);
         }
         var bytes: [4]u8 align(4) = undefined;
         var discard: [4]u8 = undefined;
         for (0..input_bytes) |i| {
             if (i < 4) {
-                bytes[i] = c.ec_slave[0].inputs[i];
+                bytes[i] = soem_ctx.slavelist[0].inputs[i];
             } else {
-                discard[i - 4] = c.ec_slave[0].inputs[i];
+                discard[i - 4] = soem_ctx.slavelist[0].inputs[i];
             }
         }
 
@@ -242,7 +208,7 @@ fn process() void {
         const reading_fixed: i32 = result_fixed_ptr.*;
         laser_value.store(reading_fixed, .monotonic);
         read_laser_value.store(false, .monotonic);
-        std.Thread.sleep(std.time.ns_per_us * 10);
+        io.sleep(.fromMicroseconds(10), .real) catch {};
     }
 }
 

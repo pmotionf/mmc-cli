@@ -1,4 +1,5 @@
 const std = @import("std");
+const Translator = @import("translate_c").Translator;
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -184,10 +185,32 @@ fn setupModule(
                 .target = options.target,
                 .optimize = options.optimize,
             });
-            if (soem) |dep| {
-                mod.linkLibrary(dep.artifact("soem"));
-                mod.addIncludePath(dep.path("include"));
+
+            if (soem) |soem_dep| {
+                const translate_c = b.dependency("translate_c", .{
+                    .target = options.target,
+                    .optimize = options.optimize,
+                });
+
+                const trans_soem: Translator = .init(translate_c, .{
+                    .c_source_file = b.addWriteFiles().add("c.h",
+                        \\#include <soem/soem.h>
+                    ),
+                    .target = options.target,
+                    .optimize = options.optimize,
+                });
+
+                trans_soem.linkLibrary(soem_dep.artifact("soem"));
+                mod.addImport("soem", trans_soem.mod);
             }
+            // const soem = b.lazyDependency("soem", .{
+            //     .target = options.target,
+            //     .optimize = options.optimize,
+            // });
+            // if (soem) |dep| {
+            //     mod.linkLibrary(dep.artifact("soem"));
+            //     mod.addIncludePath(dep.path("include"));
+            // }
         },
         else => {
             return error.UnsupportedOs;
