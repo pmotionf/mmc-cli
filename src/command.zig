@@ -238,44 +238,37 @@ pub const Command = union(enum) {
                         parameters += @typeInfo(Kind).@"enum".fields.len;
                     }
                 }
-                var result: std.builtin.Type.Enum = .{
-                    .fields = &.{},
-                    .decls = &.{},
-                    .is_exhaustive = true,
-                    .tag_type = std.math.IntFittingRange(0, parameters),
-                };
-                var tag_value = 0;
-                result.fields = result.fields ++ .{
-                    std.builtin.Type.EnumField{
-                        .value = tag_value,
-                        .name = "none",
-                    },
-                };
-                tag_value += 1;
+                const TagInt = std.math.IntFittingRange(0, parameters);
+                comptime var field_names: []const []const u8 = &.{};
+                field_names = field_names ++ .{"none"};
+                // command.zig command parameter validation.
                 if (@hasDecl(This, "Parameter")) {
                     const ti = @typeInfo(This.Parameter.Kind).@"enum";
                     inline for (ti.fields) |field| {
-                        result.fields = result.fields ++ .{std.builtin.Type.EnumField{
-                            .value = tag_value,
-                            .name = field.name,
-                        }};
-                        tag_value += 1;
+                        field_names = field_names ++ .{field.name};
                     }
                 }
                 inline for (@typeInfo(Config.Module).@"enum".fields) |field| {
                     const module: type = comptime @field(This, field.name);
-                    if (@typeInfo(module) == .@"struct" and @hasDecl(module, "Parameter")) {
+                    if (@typeInfo(module) == .@"struct" and
+                        @hasDecl(module, "Parameter"))
+                    {
                         const ti = @typeInfo(module.Parameter.Kind).@"enum";
                         inline for (ti.fields) |kind_field| {
-                            result.fields = result.fields ++ .{std.builtin.Type.EnumField{
-                                .value = tag_value,
-                                .name = field.name ++ "_" ++ kind_field.name,
-                            }};
-                            tag_value += 1;
+                            field_names = field_names ++
+                                .{std.fmt.comptimePrint(
+                                    "{s}_{s}",
+                                    .{ field.name, kind_field.name },
+                                )};
                         }
                     }
                 }
-                return @Type(.{ .@"enum" = result });
+                comptime var field_values: [field_names.len]TagInt =
+                    undefined;
+                for (field_names, 0..) |_, tag_value| {
+                    field_values[tag_value] = tag_value;
+                }
+                return @Enum(TagInt, .exhaustive, field_names, &field_values);
             }
 
             pub fn isValid(self: @This(), input: []const u8) bool {
