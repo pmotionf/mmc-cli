@@ -127,7 +127,7 @@ pub const Table = struct {
 };
 
 // Global registry of all commands, including from other command modules.
-pub var registry: std.array_hash_map.String(Command.Executable) = undefined;
+pub var registry: std.array_hash_map.String(Command) = undefined;
 
 /// Global "stop" flag to interrupt command execution. Command modules should
 /// not use this atomic flag directly, but instead prefer to use the
@@ -173,7 +173,11 @@ pub const Command = union(enum) {
         short_description: []const u8,
         /// Long description of command.
         long_description: []const u8,
-        execute: *const fn ([][]const u8) anyerror!void,
+        execute: *const fn (
+            std.Io,
+            std.mem.Allocator,
+            [][]const u8,
+        ) anyerror!void,
 
         pub const Parameter = struct {
             name: []const u8,
@@ -299,7 +303,7 @@ pub fn init() !void {
     table = Table.init(std.heap.smp_allocator);
     stop.store(false, .monotonic);
 
-    try registry.put(allocator, .{ .executable = .{
+    try registry.put(allocator, "HELP", .{ .executable = .{
         .name = "HELP",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "command", .optional = true, .resolve = false },
@@ -312,7 +316,7 @@ pub fn init() !void {
         ,
         .execute = &help,
     } });
-    try registry.put(allocator, .{ .executable = .{
+    try registry.put(allocator, "VERSION", .{ .executable = .{
         .name = "VERSION",
         .short_description = "Display the version of the MMC CLI.",
         .long_description =
@@ -321,7 +325,7 @@ pub fn init() !void {
         ,
         .execute = &version,
     } });
-    try registry.put(allocator, .{ .executable = .{
+    try registry.put(allocator, "LOAD_CONFIG", .{ .executable = .{
         .name = "LOAD_CONFIG",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "file path", .optional = true },
@@ -334,7 +338,7 @@ pub fn init() !void {
         ,
         .execute = &loadConfig,
     } });
-    try registry.put(allocator, .{ .executable = .{
+    try registry.put(allocator, "WAIT", .{ .executable = .{
         .name = "WAIT",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "duration", .resolve = true },
@@ -346,14 +350,14 @@ pub fn init() !void {
         ,
         .execute = &wait,
     } });
-    try registry.put(allocator, .{ .executable = .{
+    try registry.put(allocator, "CLEAR", .{ .executable = .{
         .name = "CLEAR",
         .parameters = &.{},
         .short_description = "Clear visible screen output.",
         .long_description = "Clear visible screen output.",
         .execute = &clear,
     } });
-    try registry.put(allocator, .{
+    try registry.put(allocator, "SET", .{
         .executable = .{
             .name = "SET",
             .parameters = &[_]Command.Executable.Parameter{
@@ -387,7 +391,7 @@ pub fn init() !void {
             .execute = &set,
         },
     });
-    try registry.put(allocator, .{ .executable = .{
+    try registry.put(allocator, "GET", .{ .executable = .{
         .name = "GET",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "variable", .resolve = false },
@@ -399,7 +403,7 @@ pub fn init() !void {
         ,
         .execute = &get,
     } });
-    try registry.put(allocator, .{ .executable = .{
+    try registry.put(allocator, "REMOVE", .{ .executable = .{
         .name = "REMOVE",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "variable", .resolve = false },
@@ -411,7 +415,7 @@ pub fn init() !void {
         ,
         .execute = &remove,
     } });
-    try registry.put(allocator, .{ .executable = .{
+    try registry.put(allocator, "VARIABLES", .{ .executable = .{
         .name = "VARIABLES",
         .short_description = "Display all variables with their values.",
         .long_description =
@@ -419,7 +423,7 @@ pub fn init() !void {
         ,
         .execute = &printVariables,
     } });
-    try registry.put(allocator, .{ .executable = .{
+    try registry.put(allocator, "TABLE_RESET", .{ .executable = .{
         .name = "TABLE_RESET",
         .short_description = "Fully reset global table to be empty.",
         .long_description =
@@ -429,7 +433,7 @@ pub fn init() !void {
         ,
         .execute = &tableReset,
     } });
-    try registry.put(allocator, .{ .executable = .{
+    try registry.put(allocator, "TABLE_SET_COLUMNS", .{ .executable = .{
         .name = "TABLE_SET_COLUMNS",
         .parameters = &.{
             .{
@@ -447,7 +451,7 @@ pub fn init() !void {
         ,
         .execute = &tableSetColumns,
     } });
-    try registry.put(allocator, .{ .executable = .{
+    try registry.put(allocator, "TABLE_ADD_ROW", .{ .executable = .{
         .name = "TABLE_ADD_ROW",
         .short_description = "Add row of current variable values to table.",
         .long_description =
@@ -455,7 +459,7 @@ pub fn init() !void {
         ,
         .execute = &tableAddRow,
     } });
-    try registry.put(allocator, .{ .executable = .{
+    try registry.put(allocator, "TABLE_SAVE", .{ .executable = .{
         .name = "TABLE_SAVE",
         .parameters = &.{
             .{ .name = "file path" },
@@ -466,7 +470,7 @@ pub fn init() !void {
         ,
         .execute = &tableSave,
     } });
-    try registry.put(allocator, .{ .executable = .{
+    try registry.put(allocator, "TIMER_START", .{ .executable = .{
         .name = "TIMER_START",
         .short_description = "Start a monotonic system timer.",
         .long_description =
@@ -476,7 +480,7 @@ pub fn init() !void {
         ,
         .execute = &timerStart,
     } });
-    try registry.put(allocator, .{ .executable = .{
+    try registry.put(allocator, "TIMER_READ", .{ .executable = .{
         .name = "TIMER_READ",
         .short_description = "Read elapsed time from the system timer.",
         .long_description =
@@ -486,7 +490,7 @@ pub fn init() !void {
         ,
         .execute = &timerRead,
     } });
-    try registry.put(allocator, .{ .executable = .{
+    try registry.put(allocator, "FILE", .{ .executable = .{
         .name = "FILE",
         .parameters = &[_]Command.Executable.Parameter{.{ .name = "path" }},
         .short_description = "Queue commands listed in the provided file.",
@@ -501,7 +505,7 @@ pub fn init() !void {
         ,
         .execute = &file,
     } });
-    try registry.put(allocator, .{ .executable = .{
+    try registry.put(allocator, "SAVE_OUTPUT", .{ .executable = .{
         .name = "SAVE_OUTPUT",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "mode" },
@@ -522,7 +526,7 @@ pub fn init() !void {
         ,
         .execute = &setLog,
     } });
-    try registry.put(allocator, .{ .executable = .{
+    try registry.put(allocator, "EXIT", .{ .executable = .{
         .name = "EXIT",
         .short_description = "Exit the MMC command line utility.",
         .long_description =
@@ -545,26 +549,26 @@ test init {
     }
 }
 
-pub fn deinit() void {
+pub fn deinit(io: std.Io) void {
     deinitModules();
     stop.store(true, .monotonic);
     defer stop.store(false, .monotonic);
     variables.deinit();
-    queueClear();
+    queueClear(io) catch {};
     command_queue_lock = undefined;
     registry.deinit();
     arena.deinit();
 }
 
-pub fn queueEmpty() bool {
-    command_queue_lock.lockShared();
-    defer command_queue_lock.unlockShared();
+pub fn queueEmpty(io: std.Io) error{Canceled}!bool {
+    try command_queue_lock.lockShared(io);
+    defer command_queue_lock.unlockShared(io);
     return command_queue.first == null and command_queue.last == null;
 }
 
-pub fn queueClear() void {
-    command_queue_lock.lock();
-    defer command_queue_lock.unlock();
+pub fn queueClear(io: std.Io) error{Canceled}!void {
+    try command_queue_lock.lock(io);
+    defer command_queue_lock.unlock(io);
     while (command_queue.popFirst()) |node| {
         const command_str: *CommandString = @fieldParentPtr("node", node);
         std.heap.smp_allocator.free(command_str.str);
@@ -574,40 +578,40 @@ pub fn queueClear() void {
 
 /// Checks if the `stop` flag is set, and if so returns an error and clear
 /// command queue.
-pub fn checkCommandInterrupt() error{CommandStopped}!void {
+pub fn checkCommandInterrupt(io: std.Io) error{CommandStopped}!void {
     if (stop.load(.monotonic)) {
         defer stop.store(false, .monotonic);
-        queueClear();
+        queueClear(io) catch {};
         return error.CommandStopped;
     }
 }
 
-pub fn enqueue(input: []const u8) !void {
+pub fn enqueue(io: std.Io, input: []const u8) !void {
     const str = try std.heap.smp_allocator.dupe(u8, input);
     errdefer std.heap.smp_allocator.free(str);
     const new_node: *CommandString =
         try std.heap.smp_allocator.create(CommandString);
     new_node.str = str;
-    command_queue_lock.lock();
-    defer command_queue_lock.unlock();
+    try command_queue_lock.lock(io);
+    defer command_queue_lock.unlock(io);
     command_queue.append(&new_node.node);
 }
 
-pub fn execute() !void {
-    command_queue_lock.lock();
+pub fn execute(io: std.Io) !void {
+    try command_queue_lock.lock(io);
     const node_opt = command_queue.popFirst();
-    command_queue_lock.unlock();
+    command_queue_lock.unlock(io);
     if (node_opt) |node| {
         const command_str: *CommandString = @fieldParentPtr("node", node);
         defer {
             std.heap.smp_allocator.free(command_str.str);
             std.heap.smp_allocator.destroy(command_str);
         }
-        try parseAndRun(command_str.str);
+        try parseAndRun(io, command_str.str);
     }
 }
 
-fn parseAndRun(input: []const u8) !void {
+fn parseAndRun(io: std.Io, input: []const u8) !void {
     const trimmed = std.mem.trimLeft(u8, input, "\n\t \r");
     std.log.info("Running command: {s}\n", .{trimmed});
     if (trimmed.len == 0 or trimmed[0] == '#') {
@@ -678,7 +682,7 @@ fn parseAndRun(input: []const u8) !void {
     if (!is_rest and token_iterator.peek() != null)
         return error.UnexpectedParameter;
 
-    try command.execute(params);
+    try command.execute(io, params);
 }
 
 var arena: std.heap.ArenaAllocator = undefined;
@@ -695,7 +699,10 @@ fn help(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
             &command_buf,
             params[0],
         ))) |c| {
-            command = c;
+            command = switch (c.*) {
+                .alias => c.alias.command,
+                .executable => &c.executable,
+            };
         } else return error.InvalidCommand;
 
         var params_buffer: [512]u8 = .{0} ** 512;
@@ -1064,13 +1071,13 @@ fn timerRead(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     std.log.info("Elapsed time in seconds: {d:.6}\n", .{timer_value});
 }
 
-fn file(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+fn file(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     var f = try std.fs.cwd().openFile(params[0], .{});
     defer f.close();
     var reader_buf: [std.fs.max_path_bytes + 512]u8 = undefined;
     var reader = f.reader(&reader_buf);
     while (true) {
-        try checkCommandInterrupt();
+        try checkCommandInterrupt(io);
         const _line = reader.interface.takeDelimiter('\n') catch |e| {
             switch (e) {
                 error.StreamTooLong => break,
@@ -1202,7 +1209,7 @@ fn wait(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const duration = try std.fmt.parseInt(i64, params[0], 0);
     const timestamp: std.Io.Timestamp = .now(io, .real);
     while (timestamp.untilNow(io, .real).toMilliseconds() < duration) {
-        try checkCommandInterrupt();
+        try checkCommandInterrupt(io);
     }
 }
 

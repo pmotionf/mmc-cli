@@ -105,7 +105,7 @@ pub fn axisEmpty(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const lines: std.ArrayList(u32) = .fromOwnedSlice(&line_array);
     const timestamp: std.Io.Timestamp = .now(io, .real);
     while (true) {
-        try command.checkCommandInterrupt();
+        try command.checkCommandInterrupt(io);
         if (timeout != 0 and
             timestamp.durationTo(.now(io, .real))
                 .toMilliseconds() > timeout)
@@ -176,7 +176,7 @@ fn waitCarrierState(
     var ids = [1]u32{id};
     const timestamp: std.Io.Timestamp = .now(io, .real);
     while (true) {
-        try command.checkCommandInterrupt();
+        try command.checkCommandInterrupt(io);
         if (timeout != 0 and
             timestamp.durationTo(.now(io, .real))
                 .toMilliseconds() > timeout)

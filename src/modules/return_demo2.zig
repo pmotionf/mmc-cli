@@ -161,16 +161,16 @@ pub fn deinit() void {
     arena.deinit();
 }
 
-fn home(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
+fn home(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     clients_lock.lockShared();
     defer clients_lock.unlockShared();
     if (clients.items.len > 0) {
         var buffer: [8]u8 = undefined;
         for (clients.items) |client| {
-            try command.checkCommandInterrupt();
+            try command.checkCommandInterrupt(io);
             try client.conn.writer().writeAll("101");
             while (true) {
-                try command.checkCommandInterrupt();
+                try command.checkCommandInterrupt(io);
                 if (try client.conn.peek(&buffer) == 4) {
                     // Clear the receive stream.
                     defer _ = client.conn.receive(&buffer) catch {
@@ -183,7 +183,7 @@ fn home(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
             }
             try client.conn.writer().writeAll("104");
             while (true) {
-                try command.checkCommandInterrupt();
+                try command.checkCommandInterrupt(io);
                 if (try client.conn.peek(&buffer) == 4) {
                     // Clear the receive stream.
                     defer _ = client.conn.receive(&buffer) catch {
@@ -196,7 +196,7 @@ fn home(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
             }
             try client.conn.writer().writeAll("106");
             while (true) {
-                try command.checkCommandInterrupt();
+                try command.checkCommandInterrupt(io);
                 if (try client.conn.peek(&buffer) == 4) {
                     // Clear the receive stream.
                     defer _ = client.conn.receive(&buffer) catch {
@@ -211,16 +211,16 @@ fn home(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     } else return error.ReturnSystemDisconnected;
 }
 
-fn raiseStartAxis(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
+fn raiseStartAxis(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     clients_lock.lockShared();
     defer clients_lock.unlockShared();
     if (clients.items.len > 0) {
         var buffer: [8]u8 = undefined;
         for (clients.items) |client| {
-            try command.checkCommandInterrupt();
+            try command.checkCommandInterrupt(io);
             try client.conn.writer().writeAll("104");
             while (true) {
-                try command.checkCommandInterrupt();
+                try command.checkCommandInterrupt(io);
                 if (try client.conn.peek(&buffer) == 4) {
                     // Clear the receive stream.
                     defer _ = client.conn.receive(&buffer) catch {
@@ -236,16 +236,16 @@ fn raiseStartAxis(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     } else return error.ReturnSystemDisconnected;
 }
 
-fn lowerStartAxis(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
+fn lowerStartAxis(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     clients_lock.lockShared();
     defer clients_lock.unlockShared();
     if (clients.items.len > 0) {
         var buffer: [8]u8 = undefined;
         for (clients.items) |client| {
-            try command.checkCommandInterrupt();
+            try command.checkCommandInterrupt(io);
             try client.conn.writer().writeAll("105");
             while (true) {
-                try command.checkCommandInterrupt();
+                try command.checkCommandInterrupt(io);
                 if (try client.conn.peek(&buffer) == 4) {
                     // Clear the receive stream.
                     defer _ = client.conn.receive(&buffer) catch {
@@ -261,16 +261,16 @@ fn lowerStartAxis(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     } else return error.ReturnSystemDisconnected;
 }
 
-fn raiseEndAxis(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
+fn raiseEndAxis(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     clients_lock.lockShared();
     defer clients_lock.unlockShared();
     if (clients.items.len > 0) {
         var buffer: [8]u8 = undefined;
         for (clients.items) |client| {
-            try command.checkCommandInterrupt();
+            try command.checkCommandInterrupt(io);
             try client.conn.writer().writeAll("106");
             while (true) {
-                try command.checkCommandInterrupt();
+                try command.checkCommandInterrupt(io);
                 if (try client.conn.peek(&buffer) == 4) {
                     // Clear the receive stream.
                     defer _ = client.conn.receive(&buffer) catch {
@@ -286,16 +286,16 @@ fn raiseEndAxis(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     } else return error.ReturnSystemDisconnected;
 }
 
-fn lowerEndAxis(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
+fn lowerEndAxis(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     clients_lock.lockShared();
     defer clients_lock.unlockShared();
     if (clients.items.len > 0) {
         var buffer: [8]u8 = undefined;
         for (clients.items) |client| {
-            try command.checkCommandInterrupt();
+            try command.checkCommandInterrupt(io);
             try client.conn.writer().writeAll("107");
             while (true) {
-                try command.checkCommandInterrupt();
+                try command.checkCommandInterrupt(io);
                 if (try client.conn.peek(&buffer) == 4) {
                     // Clear the receive stream.
                     defer _ = client.conn.receive(&buffer) catch {
@@ -311,16 +311,16 @@ fn lowerEndAxis(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     } else return error.ReturnSystemDisconnected;
 }
 
-fn beltMoveStart(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
+fn beltMoveStart(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     clients_lock.lockShared();
     defer clients_lock.unlockShared();
     if (clients.items.len > 0) {
         var buffer: [8]u8 = undefined;
         for (clients.items) |client| {
-            try command.checkCommandInterrupt();
+            try command.checkCommandInterrupt(io);
             try client.conn.writer().writeAll("102");
             while (true) {
-                try command.checkCommandInterrupt();
+                try command.checkCommandInterrupt(io);
                 if (try client.conn.peek(&buffer) == 4) {
                     // Clear the receive stream.
                     defer _ = client.conn.receive(&buffer) catch {
@@ -336,16 +336,16 @@ fn beltMoveStart(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     } else return error.ReturnSystemDisconnected;
 }
 
-fn beltMoveEnd(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
+fn beltMoveEnd(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     clients_lock.lockShared();
     defer clients_lock.unlockShared();
     if (clients.items.len > 0) {
         var buffer: [8]u8 = undefined;
         for (clients.items) |client| {
-            try command.checkCommandInterrupt();
+            try command.checkCommandInterrupt(io);
             try client.conn.writer().writeAll("103");
             while (true) {
-                try command.checkCommandInterrupt();
+                try command.checkCommandInterrupt(io);
                 if (try client.conn.peek(&buffer) == 4) {
                     // Clear the receive stream.
                     defer _ = client.conn.receive(&buffer) catch {

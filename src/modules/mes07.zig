@@ -92,7 +92,7 @@ pub fn deinit() void {
     }
 }
 
-fn connect(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+fn connect(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     var adapter_buf: [128]u8 = .{0} ** 128;
     var adapter: []u8 = &.{};
     if (params[0].len > 127) {
@@ -116,7 +116,7 @@ fn connect(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         current_opt = head;
 
         while (current_opt) |current| {
-            try command.checkCommandInterrupt();
+            try command.checkCommandInterrupt(io);
             defer current_opt = current.next;
 
             var name: []const u8 = &.{};
@@ -149,7 +149,7 @@ fn connect(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     _ = c.ec_configdc();
 
     while (true) {
-        try command.checkCommandInterrupt();
+        try command.checkCommandInterrupt(io);
         if (c.ec_statecheck(
             0,
             c.EC_STATE_SAFE_OP,
@@ -182,7 +182,7 @@ fn connect(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         _ = c.ec_writestate(0);
     }
     while (true) {
-        try command.checkCommandInterrupt();
+        try command.checkCommandInterrupt(io);
         _ = c.ec_send_processdata();
         _ = c.ec_receive_processdata(c.EC_TIMEOUTRET);
         if (c.ec_statecheck(

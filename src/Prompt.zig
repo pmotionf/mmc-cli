@@ -183,7 +183,7 @@ pub fn handler(io: std.Io, ctx: *Prompt) !void {
                                     stdout.interface.flush() catch
                                         continue :main;
 
-                                    command.enqueue(ctx.input) catch
+                                    command.enqueue(io, ctx.input) catch
                                         continue :main;
                                     ctx.history.append(ctx.input);
                                     ctx.history.selection = null;

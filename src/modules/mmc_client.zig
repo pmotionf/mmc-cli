@@ -1325,7 +1325,7 @@ pub fn matchLine(name: []const u8) !usize {
 
 /// Track a command until it executed completely followed by removing that
 /// command from the server.
-pub fn waitCommandCompleted(gpa: std.mem.Allocator, net: zignet.Socket) !void {
+pub fn waitCommandCompleted(io: std.Io, gpa: std.mem.Allocator, net: zignet.Socket) !void {
     const command_id = command_id: {
         // If command is cancelled while fetching the command ID, client has to
         // keep waiting until command ID response is arrived. Client forces
@@ -1337,7 +1337,7 @@ pub fn waitCommandCompleted(gpa: std.mem.Allocator, net: zignet.Socket) !void {
         const cancel_thread: std.Thread = try .spawn(
             .{},
             checkInterrupt,
-            .{ finish, &cancel },
+            .{ io, finish, &cancel },
         );
         var decoded = getResponse(gpa, net) catch |err| {
             // It is impossible to remove command from the server if the
@@ -1376,7 +1376,7 @@ pub fn waitCommandCompleted(gpa: std.mem.Allocator, net: zignet.Socket) !void {
     };
     defer removeCommand(command_id) catch {};
     while (true) {
-        try command.checkCommandInterrupt();
+        try command.checkCommandInterrupt(io);
 
         const request: api.protobuf.mmc.Request = .{
             .body = .{
@@ -1603,13 +1603,14 @@ pub fn nestedWrite(
 
 /// Looping to check command interrupt. Returned if other task is finished.
 fn checkInterrupt(
+    io: std.Io,
     /// Flag to check if task on other thread is finished.
     finish: std.atomic.Value(bool),
     /// Flag to let the caller know that interrupt is detected.
     cancel: *std.atomic.Value(bool),
 ) void {
     while (finish.load(.monotonic)) {
-        command.checkCommandInterrupt() catch {
+        command.checkCommandInterrupt(io) catch {
             cancel.store(true, .monotonic);
             return;
         };

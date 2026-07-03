@@ -4,7 +4,7 @@ const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn impl(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+pub fn impl(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "set_line_zero");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
@@ -22,5 +22,5 @@ pub fn impl(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         },
     };
     try client.sendRequest(client.allocator, net, request);
-    try client.waitCommandCompleted(client.allocator, net);
+    try client.waitCommandCompleted(io, client.allocator, net);
 }

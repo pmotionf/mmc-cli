@@ -52,18 +52,18 @@ pub fn main(init: std.process.Init) !void {
     defer command.deinit();
 
     command_loop: while (!exit.load(.monotonic)) {
-        command.checkCommandInterrupt() catch |e| std.log.err("{t}", .{e});
-        if (command.queueEmpty()) {
+        command.checkCommandInterrupt(io) catch |e| std.log.err("{t}", .{e});
+        if (try command.queueEmpty(io)) {
             prompt.disable.store(false, .monotonic);
             continue :command_loop;
         } else {
             prompt.disable.store(true, .monotonic);
         }
 
-        command.execute() catch |e| {
+        command.execute(io) catch |e| {
             std.log.err("{t}", .{e});
             std.log.debug("{?f}", .{@errorReturnTrace()});
-            command.queueClear();
+            try command.queueClear(io);
             continue :command_loop;
         };
     }
