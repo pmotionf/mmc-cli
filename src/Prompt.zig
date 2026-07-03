@@ -473,8 +473,8 @@ pub fn handler(io: std.Io, ctx: *Prompt) !void {
                                     continue :main;
                                 break :validation;
                             }
-                            const selected_command =
-                                command.registry.getPtr(ctx.selected_command) orelse {
+                            const selected_command = executable: {
+                                const command_ptr = command.registry.getPtr(ctx.selected_command) orelse {
                                     terminal.style.set(&stdout.interface, .{
                                         .fg = .{ .named = .red },
                                     }) catch continue :main;
@@ -485,6 +485,12 @@ pub fn handler(io: std.Io, ctx: *Prompt) !void {
                                         continue :main;
                                     break :validation;
                                 };
+                                break :executable switch (command_ptr.*) {
+                                    .alias => command_ptr.alias.command,
+                                    .executable => &command_ptr.executable,
+                                };
+                            };
+
                             // Index of current fragment
                             const fragment_id =
                                 std.mem.count(
@@ -669,8 +675,14 @@ fn argIndexAtCursor(ctx: *const Prompt) ?usize {
     if (ti == 0) return null;
 
     const raw_arg_idx = ti - 1;
-    const cmd_ptr = command.registry.getPtr(ctx.selected_command) orelse
-        return raw_arg_idx;
+    const cmd_ptr = executable: {
+        const ptr = command.registry.getPtr(ctx.selected_command) orelse
+            return raw_arg_idx;
+        break :executable switch (ptr.*) {
+            .alias => ptr.alias.command,
+            .executable => &ptr.executable,
+        };
+    };
 
     // When the cursor reaches a `rest` parameter that same parameter index will
     // be reported for all following tokens.
@@ -693,7 +705,14 @@ fn clearTwoLinesAndReturnToTop(w: *std.Io.Writer) !void {
 fn renderArgHintLine(ctx: *const Prompt, w: *std.Io.Writer) !void {
     if (ctx.selected_command.len == 0) return;
 
-    const cmd_ptr = command.registry.getPtr(ctx.selected_command) orelse return;
+    const cmd_ptr = executable: {
+        const ptr = command.registry.getPtr(ctx.selected_command) orelse
+            return;
+        break :executable switch (ptr.*) {
+            .alias => ptr.alias.command,
+            .executable => &ptr.executable,
+        };
+    };
     const cmd = cmd_ptr.*;
 
     const ai_cursor = argIndexAtCursor(ctx) orelse return;
