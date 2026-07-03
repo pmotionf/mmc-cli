@@ -147,7 +147,7 @@ var initialized_modules: std.EnumArray(Config.Module, bool) = undefined;
 var command_queue_lock: std.Io.RwLock = .init;
 var command_queue: std.DoublyLinkedList = .{};
 
-var timer: ?std.time.Timer = null;
+var timer: std.Io.Timestamp = .zero;
 var log_file: ?std.Io.File = null;
 var file_writer: ?std.Io.File.Writer = null;
 var file_buf: [4096]u8 = undefined;
@@ -298,7 +298,6 @@ pub fn init() !void {
     variables = std.BufMap.init(allocator);
     table = Table.init(std.heap.smp_allocator);
     stop.store(false, .monotonic);
-    timer = try std.time.Timer.start();
 
     try registry.put(allocator, .{ .executable = .{
         .name = "HELP",
@@ -1053,23 +1052,16 @@ fn tableSave(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     }
 }
 
-fn timerStart(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
-    if (timer) |*t| {
-        t.reset();
-    } else {
-        return error.SystemTimerFailure;
-    }
+fn timerStart(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
+    timer = .now(io, .real);
 }
 
-fn timerRead(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
-    if (timer) |*t| {
-        var timer_value: f64 = @floatFromInt(t.read());
-        timer_value = timer_value / std.time.ns_per_s;
-        // Only print to microsecond precision.
-        std.log.info("Timer: {d:.6}\n", .{timer_value});
-    } else {
-        return error.SystemTimerFailure;
-    }
+fn timerRead(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
+    const duration = timer.untilNow(io, .real);
+    var timer_value: f64 = @floatFromInt(duration.toMicroseconds());
+    timer_value = timer_value / std.time.us_per_s;
+    // Only print to microsecond precision.
+    std.log.info("Elapsed time in seconds: {d:.6}\n", .{timer_value});
 }
 
 fn file(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
@@ -1206,10 +1198,10 @@ fn loadConfig(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     m_arena.deinit();
 }
 
-fn wait(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
-    const duration: u64 = try std.fmt.parseInt(u64, params[0], 0);
-    var wait_timer = try std.time.Timer.start();
-    while (wait_timer.read() < duration * std.time.ns_per_ms) {
+fn wait(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+    const duration = try std.fmt.parseInt(i64, params[0], 0);
+    const timestamp: std.Io.Timestamp = .now(io, .real);
+    while (timestamp.untilNow(io, .real).toMilliseconds() < duration) {
         try checkCommandInterrupt();
     }
 }

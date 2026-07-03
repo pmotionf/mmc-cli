@@ -25,7 +25,7 @@ pub fn isolate(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         } else break :b input;
     }, 0);
     const timeout = if (params[2].len > 0)
-        try std.fmt.parseInt(u64, params[2], 0)
+        try std.fmt.parseInt(i64, params[2], 0)
     else
         0;
     const line_idx = try client.matchLine(line_name);
@@ -60,7 +60,7 @@ pub fn moveCarrier(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void 
         } else break :b input;
     }, 0);
     const timeout = if (params[2].len > 0)
-        try std.fmt.parseInt(u64, params[2], 0)
+        try std.fmt.parseInt(i64, params[2], 0)
     else
         0;
 
@@ -75,7 +75,7 @@ pub fn moveCarrier(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void 
     );
 }
 
-pub fn axisEmpty(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+pub fn axisEmpty(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_axis_empty");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
@@ -96,18 +96,19 @@ pub fn axisEmpty(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         } else break :buf input;
     }, 0);
     const timeout = if (params[2].len > 0)
-        try std.fmt.parseInt(u64, params[2], 0)
+        try std.fmt.parseInt(i64, params[2], 0)
     else
         0;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     var line_array: [1]u32 = .{line.id};
     const lines: std.ArrayList(u32) = .fromOwnedSlice(&line_array);
-    var wait_timer = try std.time.Timer.start();
+    const timestamp: std.Io.Timestamp = .now(io, .real);
     while (true) {
         try command.checkCommandInterrupt();
         if (timeout != 0 and
-            wait_timer.read() > timeout * std.time.ns_per_ms)
+            timestamp.durationTo(.now(io, .real))
+                .toMilliseconds() > timeout)
             return error.WaitTimeout;
         const request: api.protobuf.mmc.Request = .{
             .body = .{
@@ -165,18 +166,20 @@ pub fn axisEmpty(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
 }
 
 fn waitCarrierState(
+    io: std.Io,
     net: client.zignet.Socket,
     line: u32,
     id: std.math.IntFittingRange(1, 1023),
     state: api.protobuf.mmc.info.Response.Line.Carrier.State.State,
-    timeout: u64,
+    timeout: i64,
 ) !void {
     var ids = [1]u32{id};
-    var wait_timer = try std.time.Timer.start();
+    const timestamp: std.Io.Timestamp = .now(io, .real);
     while (true) {
         try command.checkCommandInterrupt();
         if (timeout != 0 and
-            wait_timer.read() > timeout * std.time.ns_per_ms)
+            timestamp.durationTo(.now(io, .real))
+                .toMilliseconds() > timeout)
             return error.WaitTimeout;
         var line_array: [1]u32 = .{line};
         const lines: std.ArrayList(u32) = .fromOwnedSlice(&line_array);
