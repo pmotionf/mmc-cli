@@ -4,7 +4,7 @@ const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn isolate(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+pub fn isolate(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_isolate");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
@@ -31,6 +31,8 @@ pub fn isolate(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     try waitCarrierState(
+        gpa,
+        io,
         net,
         line.id,
         carrier_id,
@@ -39,7 +41,7 @@ pub fn isolate(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     );
 }
 
-pub fn moveCarrier(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+pub fn moveCarrier(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_move_carrier");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
@@ -67,6 +69,8 @@ pub fn moveCarrier(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void 
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     try waitCarrierState(
+        gpa,
+        io,
         net,
         line.id,
         carrier_id,
@@ -75,7 +79,7 @@ pub fn moveCarrier(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void 
     );
 }
 
-pub fn axisEmpty(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+pub fn axisEmpty(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_axis_empty");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
@@ -128,9 +132,9 @@ pub fn axisEmpty(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
                 },
             },
         };
-        try client.sendRequest(client.allocator, net, request);
-        var decoded = try client.getResponse(client.allocator, net);
-        defer decoded.deinit(client.allocator);
+        try client.sendRequest(io, gpa, net, request);
+        var decoded = try client.getResponse(gpa, net);
+        defer decoded.deinit(gpa);
         const track = switch (decoded.body orelse return error.InvalidResponse) {
             .info => |info_resp| switch (info_resp.body orelse
                 return error.InvalidResponse) {
@@ -166,6 +170,7 @@ pub fn axisEmpty(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
 }
 
 fn waitCarrierState(
+    gpa: std.mem.Allocator,
     io: std.Io,
     net: client.zignet.Socket,
     line: u32,
@@ -198,9 +203,9 @@ fn waitCarrierState(
                 },
             },
         };
-        try client.sendRequest(client.allocator, net, request);
-        var decoded = try client.getResponse(client.allocator, net);
-        defer decoded.deinit(client.allocator);
+        try client.sendRequest(io, gpa, net, request);
+        var decoded = try client.getResponse(gpa, net);
+        defer decoded.deinit(gpa);
         const track = switch (decoded.body orelse return error.InvalidResponse) {
             .info => |info_resp| switch (info_resp.body orelse
                 return error.InvalidResponse) {

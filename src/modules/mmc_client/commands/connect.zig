@@ -5,10 +5,10 @@ const disconnect = @import("disconnect.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn impl(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "connect");
     defer tracy_zone.end();
-    if (client.sock) |_| disconnect.impl(&.{}) catch unreachable;
+    if (client.sock) |_| disconnect.impl(io, gpa, &.{}) catch unreachable;
     const endpoint: client.Config =
         if (params[0].len != 0) endpoint: {
             const last_delimiter_idx =
@@ -35,7 +35,7 @@ pub fn impl(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
                         params[0][last_delimiter_idx + 1 ..],
                         0,
                     ) catch return error.InvalidEndpoint,
-                    .host = try client.allocator.dupe(
+                    .host = try gpa.dupe(
                         u8,
                         params[0][1 .. last_delimiter_idx - 1],
                     ),
@@ -48,31 +48,31 @@ pub fn impl(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
                     params[0][last_delimiter_idx + 1 ..],
                     0,
                 ) catch return error.InvalidEndpoint,
-                .host = try client.allocator.dupe(
+                .host = try gpa.dupe(
                     u8,
                     params[0][0..last_delimiter_idx],
                 ),
             };
         } else if (client.endpoint == null) .{
-            .host = try client.allocator.dupe(u8, client.config.host),
+            .host = try gpa.dupe(u8, client.config.host),
             .port = client.config.port,
         } else .{
             .host = switch (client.endpoint.?.addr) {
                 .ipv4 => |ipv4| try std.fmt.allocPrint(
-                    client.allocator,
+                    gpa,
                     "{f}",
                     .{ipv4},
                 ),
                 .ipv6 => |ipv6| ipv6: {
                     const format = try std.fmt.allocPrint(
-                        client.allocator,
+                        gpa,
                         "{f}",
                         .{ipv6},
                     );
-                    defer client.allocator.free(format);
+                    defer gpa.free(format);
                     // Remove the square bracket from ipv6
                     break :ipv6 try std.fmt.allocPrint(
-                        client.allocator,
+                        gpa,
                         "{s}",
                         .{format[1 .. format.len - 1]},
                     );
@@ -80,13 +80,13 @@ pub fn impl(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
             },
             .port = client.endpoint.?.port,
         };
-    defer client.allocator.free(endpoint.host);
+    defer gpa.free(endpoint.host);
     std.log.info(
         "Trying to connect to {s}:{d}",
         .{ endpoint.host, endpoint.port },
     );
     const net = try client.zignet.Socket.connectToHost(
-        client.allocator,
+        gpa,
         endpoint.host,
         endpoint.port,
         &command.checkCommandInterrupt,
@@ -96,9 +96,9 @@ pub fn impl(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     client.sock = net;
     errdefer {
         for (client.lines) |*line| {
-            line.deinit(client.allocator);
+            line.deinit(gpa);
         }
-        client.allocator.free(client.lines);
+        gpa.free(client.lines);
         client.sock = null;
         net.close();
     }
@@ -108,9 +108,9 @@ pub fn impl(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
             .core = .{ .kind = .CORE_REQUEST_KIND_SERVER_INFO },
         },
     };
-    try client.sendRequest(client.allocator, net, server_request);
-    var server_decoded = try client.getResponse(client.allocator, net);
-    defer server_decoded.deinit(client.allocator);
+    try client.sendRequest(io, gpa, net, server_request);
+    var server_decoded = try client.getResponse(gpa, net);
+    defer server_decoded.deinit(gpa);
     const server = switch (server_decoded.body orelse
         return error.InvalidResponse) {
         .core => |core_resp| switch (core_resp.body orelse
@@ -149,9 +149,9 @@ pub fn impl(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
             .core = .{ .kind = .CORE_REQUEST_KIND_TRACK_CONFIG },
         },
     };
-    try client.sendRequest(client.allocator, net, track_request);
-    var track_decoded = try client.getResponse(client.allocator, net);
-    defer track_decoded.deinit(client.allocator);
+    try client.sendRequest(io, gpa, net, track_request);
+    var track_decoded = try client.getResponse(gpa, net);
+    defer track_decoded.deinit(gpa);
     const track_config = switch (track_decoded.body orelse
         return error.InvalidResponse) {
         .core => |core_resp| switch (core_resp.body orelse
@@ -167,15 +167,15 @@ pub fn impl(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         },
         else => return error.InvalidResponse,
     };
-    client.lines = try client.allocator.alloc(
+    client.lines = try gpa.alloc(
         client.Line,
         track_config.lines.items.len,
     );
     errdefer {
         for (client.lines) |*line| {
-            line.deinit(client.allocator);
+            line.deinit(gpa);
         }
-        client.allocator.free(client.lines);
+        gpa.free(client.lines);
     }
     for (
         track_config.lines.items,
@@ -183,7 +183,7 @@ pub fn impl(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         0..,
     ) |config, *line, idx| {
         line.* = try client.Line.init(
-            client.allocator,
+            gpa,
             @intCast(idx),
             config,
         );
@@ -191,8 +191,8 @@ pub fn impl(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     }
     // Initialize memory for logging configuration
     client.log_config =
-        try client.log.Config.init(client.allocator, client.lines);
-    errdefer client.log_config.deinit(client.allocator);
+        try client.log.Config.init(gpa, client.lines);
+    errdefer client.log_config.deinit(gpa);
     // Displaying track configuration
     std.log.info("Track configuration for {s}:", .{server.name});
     var stdout = std.Io.File.stdout().writer(io, &.{});

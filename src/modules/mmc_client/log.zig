@@ -263,6 +263,7 @@ const Stream = struct {
 
     fn init(
         gpa: std.mem.Allocator,
+        io: std.Io,
         logging_size: usize,
         config: log.Config,
         lines: []client.Line,
@@ -344,9 +345,9 @@ const Stream = struct {
                         },
                     },
                 };
-                try client.sendRequest(gpa, stream.socket, request);
+                try client.sendRequest(io, gpa, stream.socket, request);
                 var decoded = try client.getResponse(gpa, stream.socket);
-                defer decoded.deinit(client.allocator);
+                defer decoded.deinit(gpa);
                 const track = switch (decoded.body orelse
                     return error.InvalidResponse) {
                     .info => |info_resp| switch (info_resp.body orelse
@@ -435,6 +436,7 @@ const Stream = struct {
     fn get(
         stream: *Stream,
         gpa: std.mem.Allocator,
+        io: std.Io,
         timestamp: f64,
     ) !void {
         const tail = (stream.head + stream.count) % stream.data.len;
@@ -475,9 +477,9 @@ const Stream = struct {
                     },
                 },
             };
-            try client.sendRequest(gpa, stream.socket, request);
+            try client.sendRequest(io, gpa, stream.socket, request);
             var decoded = try client.getResponse(gpa, stream.socket);
-            defer decoded.deinit(client.allocator);
+            defer decoded.deinit(gpa);
             const track = switch (decoded.body orelse
                 return error.InvalidResponse) {
                 .info => |info_resp| switch (info_resp.body orelse
@@ -594,8 +596,13 @@ pub var cancel = std.atomic.Value(bool).init(false);
 var file_reader_buf: [4096]u8 = undefined;
 var file_writer_buf: [4096]u8 = undefined;
 
-pub fn runner(io: std.Io, duration: f64, file_path: []const u8) !void {
-    defer client.allocator.free(file_path);
+pub fn runner(
+    gpa: std.mem.Allocator,
+    io: std.Io,
+    duration: f64,
+    file_path: []const u8,
+) !void {
+    defer gpa.free(file_path);
     // Validation steps
     if (client.log_config.isInitialized() == false)
         return error.LoggingNotConfigured;
@@ -612,13 +619,13 @@ pub fn runner(io: std.Io, duration: f64, file_path: []const u8) !void {
     // Stream setup.
     if (client.sock == null) return error.SocketNotConnected;
     var stream: Stream = try .init(
-        client.allocator,
+        gpa,
         @as(usize, @intFromFloat(logging_size_float)),
         client.log_config,
         client.lines,
         client.endpoint orelse return error.MissingEndpoint,
     );
-    defer stream.deinit(client.allocator);
+    defer stream.deinit(gpa);
     // Logging file setup.
     const log_file = try std.Io.Dir.cwd().createFile(io, file_path, .{});
     defer {
@@ -642,7 +649,7 @@ pub fn runner(io: std.Io, duration: f64, file_path: []const u8) !void {
             f64,
             @floatFromInt(std.time.microTimestamp() - log_time_start),
         ) / std.time.us_per_s;
-        stream.get(client.allocator, timestamp) catch |e| {
+        stream.get(gpa, timestamp) catch |e| {
             std.log.err("{t}", .{e});
             if (@errorReturnTrace()) |error_trace| {
                 std.debug.dumpErrorReturnTrace(error_trace);

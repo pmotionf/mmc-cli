@@ -4,7 +4,7 @@ const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn impl(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
+pub fn impl(io: std.Io, gpa: std.mem.Allocator, _: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "server_version");
     defer tracy_zone.end();
     const net = client.sock orelse return error.ServerNotConnected;
@@ -13,9 +13,9 @@ pub fn impl(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
             .core = .{ .kind = .CORE_REQUEST_KIND_SERVER_INFO },
         },
     };
-    try client.sendRequest(client.allocator, net, request);
-    var decoded = try client.getResponse(client.allocator, net);
-    defer decoded.deinit(client.allocator);
+    try client.sendRequest(io, gpa, net, request);
+    var decoded = try client.getResponse(gpa, net);
+    defer decoded.deinit(gpa);
     const server = switch (decoded.body orelse
         return error.InvalidResponse) {
         .core => |core_resp| switch (core_resp.body orelse

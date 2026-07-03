@@ -1364,11 +1364,11 @@ pub fn waitCommandCompleted(
             else => return error.InvalidResponse,
         };
         if (cancel.load(.monotonic)) {
-            try removeCommand(gpa, id);
+            try removeCommand(gpa, io, id);
             return error.CommandStopped;
         } else break :command_id id;
     };
-    defer removeCommand(gpa, command_id) catch {};
+    defer removeCommand(gpa, io, command_id) catch {};
     while (true) {
         try command.checkCommandInterrupt(io);
 
@@ -1381,7 +1381,7 @@ pub fn waitCommandCompleted(
                 },
             },
         };
-        try sendRequest(gpa, net, request);
+        try sendRequest(io, gpa, net, request);
         var decoded = try getResponse(gpa, net);
         defer decoded.deinit(gpa);
         var commands_resp = switch (decoded.body orelse
@@ -1472,7 +1472,7 @@ pub fn getResponse(
     return try .decode(&proto_reader, gpa);
 }
 
-fn removeCommand(gpa: std.mem.Allocator, id: u32) !void {
+fn removeCommand(gpa: std.mem.Allocator, io: std.Io, id: u32) !void {
     const net = if (sock) |net| net else return error.ServerNotConnected;
     const request: api.protobuf.mmc.Request = .{
         .body = .{
@@ -1483,7 +1483,7 @@ fn removeCommand(gpa: std.mem.Allocator, id: u32) !void {
             },
         },
     };
-    try sendRequest(gpa, net, request);
+    try sendRequest(io, gpa, net, request);
     var decoded = try getResponse(gpa, net);
     defer decoded.deinit(gpa);
     const removed_id = switch (decoded.body orelse

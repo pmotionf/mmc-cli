@@ -4,7 +4,7 @@ const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn impl(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
+pub fn impl(io: std.Io, gpa: std.mem.Allocator, _: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "reset_system");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
@@ -21,8 +21,8 @@ pub fn impl(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
                     },
                 },
             };
-            try client.sendRequest(client.allocator, net, request);
-            try client.waitCommandCompleted(io, client.allocator, net);
+            try client.sendRequest(io, gpa, net, request);
+            try client.waitCommandCompleted(io, gpa, net);
         }
         // Send clear errors command
         {
@@ -35,8 +35,8 @@ pub fn impl(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
                     },
                 },
             };
-            try client.sendRequest(client.allocator, net, request);
-            try client.waitCommandCompleted(io, client.allocator, net);
+            try client.sendRequest(io, gpa, net, request);
+            try client.waitCommandCompleted(io, gpa, net);
         }
         // Send stop push command
         {
@@ -49,8 +49,8 @@ pub fn impl(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
                     },
                 },
             };
-            try client.sendRequest(client.allocator, net, request);
-            try client.waitCommandCompleted(io, client.allocator, net);
+            try client.sendRequest(io, gpa, net, request);
+            try client.waitCommandCompleted(io, gpa, net);
         }
         // Send stop pull command
         {
@@ -63,8 +63,8 @@ pub fn impl(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
                     },
                 },
             };
-            try client.sendRequest(client.allocator, net, request);
-            try client.waitCommandCompleted(io, client.allocator, net);
+            try client.sendRequest(io, gpa, net, request);
+            try client.waitCommandCompleted(io, gpa, net);
         }
     }
 }

@@ -7,7 +7,7 @@ const api = @import("mmc-api");
 
 const Kind = enum { all, axis, driver };
 
-pub fn add(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+pub fn add(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "add_log");
     defer tracy_zone.end();
     const net = client.sock orelse return error.ServerNotConnected;
@@ -56,10 +56,10 @@ pub fn add(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     // logging configuration even if there is an error when trying to toggle
     // the driver flag for logging.
     defer client.log_config.status() catch {};
-    try modify(net, line, kind, range, true);
+    try modify(gpa, io, net, line, kind, range, true);
 }
 
-pub fn start(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+pub fn start(_: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "start_log");
     defer tracy_zone.end();
     if (client.log.executing.load(.monotonic) == true)
@@ -69,8 +69,8 @@ pub fn start(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const file_path = if (path.len > 0) p: {
         // Check if the specified path is ended in csv.
         if (std.mem.eql(u8, path[path.len - 4 .. path.len], ".csv"))
-            break :p try client.allocator.dupe(u8, path);
-        break :p try std.fmt.allocPrint(client.allocator, "{s}.csv", .{path});
+            break :p try gpa.dupe(u8, path);
+        break :p try std.fmt.allocPrint(gpa, "{s}.csv", .{path});
     } else p: {
         var timestamp: u64 = @intCast(std.time.timestamp());
         timestamp += std.time.s_per_hour * 9;
@@ -83,7 +83,7 @@ pub fn start(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
             0,
         );
         break :p try std.fmt.allocPrint(
-            client.allocator,
+            gpa,
             "mmc-logging-{}.{:0>2}.{:0>2}-{:0>2}.{:0>2}.{:0>2}.csv",
             .{
                 ymd.year,
@@ -95,22 +95,22 @@ pub fn start(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
             },
         );
     };
-    defer client.allocator.free(file_path);
+    defer gpa.free(file_path);
     const log_thread = try std.Thread.spawn(
         .{},
         client.log.runner,
-        .{ duration, try client.allocator.dupe(u8, file_path) },
+        .{ duration, try gpa.dupe(u8, file_path) },
     );
     log_thread.detach();
 }
 
-pub fn status(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
+pub fn status(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "status_log");
     defer tracy_zone.end();
-    try client.log_config.status();
+    try client.log_config.status(io);
 }
 
-pub fn remove(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+pub fn remove(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "remove_log");
     defer tracy_zone.end();
     const net = client.sock orelse return error.ServerNotConnected;
@@ -159,7 +159,7 @@ pub fn remove(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     // logging configuration even if there is an error when trying to toggle
     // the driver flag for logging.
     defer client.log_config.status() catch {};
-    try modify(net, line, kind, range, false);
+    try modify(gpa, io, net, line, kind, range, false);
 }
 
 pub fn stop(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
@@ -181,6 +181,8 @@ pub fn cancel(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
 }
 
 fn modify(
+    gpa: std.mem.Allocator,
+    io: std.Io,
     net: client.zignet.Socket,
     line: client.Line,
     kind: Kind,
@@ -213,9 +215,9 @@ fn modify(
                     },
                 },
             };
-            try client.sendRequest(client.allocator, net, request);
-            var decoded = try client.getResponse(client.allocator, net);
-            defer decoded.deinit(client.allocator);
+            try client.sendRequest(io, gpa, net, request);
+            var decoded = try client.getResponse(gpa, net);
+            defer decoded.deinit(gpa);
             const track = switch (decoded.body orelse return error.InvalidResponse) {
                 .info => |info_resp| switch (info_resp.body orelse
                     return error.InvalidResponse) {

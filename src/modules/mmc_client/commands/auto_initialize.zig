@@ -5,7 +5,7 @@ const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn impl(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "auto_initialize");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
@@ -13,7 +13,7 @@ pub fn impl(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     var init_lines: std.ArrayList(
         api.protobuf.mmc.command.Request.AutoInitialize.Line,
     ) = .empty;
-    defer init_lines.deinit(client.allocator);
+    defer init_lines.deinit(gpa);
     if (params[0].len != 0) {
         var iterator = std.mem.tokenizeSequence(
             u8,
@@ -26,7 +26,7 @@ pub fn impl(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
             const line: api.protobuf.mmc.command.Request.AutoInitialize.Line = .{
                 .line = _line.id,
             };
-            try init_lines.append(client.allocator, line);
+            try init_lines.append(gpa, line);
         }
     }
     const request: api.protobuf.mmc.Request = .{
@@ -40,6 +40,6 @@ pub fn impl(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
             },
         },
     };
-    try client.sendRequest(client.allocator, net, request);
-    try client.waitCommandCompleted(io, client.allocator, net);
+    try client.sendRequest(io, gpa, net, request);
+    try client.waitCommandCompleted(io, gpa, net);
 }
