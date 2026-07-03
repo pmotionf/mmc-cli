@@ -620,6 +620,7 @@ pub fn runner(
     if (client.sock == null) return error.SocketNotConnected;
     var stream: Stream = try .init(
         gpa,
+        io,
         @as(usize, @intFromFloat(logging_size_float)),
         client.log_config,
         client.lines,

@@ -59,7 +59,7 @@ pub fn add(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     try modify(gpa, io, net, line, kind, range, true);
 }
 
-pub fn start(_: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
+pub fn start(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "start_log");
     defer tracy_zone.end();
     if (client.log.executing.load(.monotonic) == true)
@@ -72,7 +72,7 @@ pub fn start(_: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
             break :p try gpa.dupe(u8, path);
         break :p try std.fmt.allocPrint(gpa, "{s}.csv", .{path});
     } else p: {
-        var timestamp: u64 = @intCast(std.time.timestamp());
+        var timestamp: u64 = @intCast(std.Io.Clock.now(.real, io).toSeconds());
         timestamp += std.time.s_per_hour * 9;
         const days_since_epoch: i32 = @intCast(timestamp / std.time.s_per_day);
         const ymd =
@@ -99,7 +99,7 @@ pub fn start(_: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const log_thread = try std.Thread.spawn(
         .{},
         client.log.runner,
-        .{ duration, try gpa.dupe(u8, file_path) },
+        .{ gpa, io, duration, try gpa.dupe(u8, file_path) },
     );
     log_thread.detach();
 }

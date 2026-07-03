@@ -1240,7 +1240,6 @@ fn setLog(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const file_path = if (path.len > 0) path else p: {
         var timestamp: i64 =
             std.Io.Timestamp.now(io, std.Io.Clock.real).toSeconds();
-        // var timestamp: u64 = @intCast(std.time.timestamp());
         timestamp += std.time.s_per_hour * 9;
         const days_since_epoch: i32 = @intCast(@divFloor(timestamp, std.time.s_per_day));
         const ymd =
