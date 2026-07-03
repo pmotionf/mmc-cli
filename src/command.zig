@@ -1041,21 +1041,23 @@ fn tableAddRow(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
 fn tableSave(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const path = params[0];
 
+    var buf: [4096]u8 = undefined;
     var f = try std.Io.Dir.cwd().createFile(io, path, .{ .truncate = true });
-    defer f.close();
+    var writer = f.writer(io, &buf);
+    defer f.close(io);
 
     for (table.header) |col| {
-        try f.writeAll(col);
-        try f.writeAll(",");
+        try writer.interface.writeAll(col);
+        try writer.interface.writeAll(",");
     }
-    try f.writeAll("\n");
+    try writer.interface.writeAll("\n");
 
     for (table.rows.items) |row| {
         for (row) |val| {
-            try f.writeAll(val);
-            try f.writeAll(",");
+            try writer.interface.writeAll(val);
+            try writer.interface.writeAll(",");
         }
-        try f.writeAll("\n");
+        try writer.interface.writeAll("\n");
     }
 }
 
