@@ -144,8 +144,8 @@ pub var table: Table = undefined;
 // initialized will be deinitialized.
 var initialized_modules: std.EnumArray(Config.Module, bool) = undefined;
 
-var command_queue_lock: std.Thread.RwLock = undefined;
-var command_queue: std.DoublyLinkedList = undefined;
+var command_queue_lock: std.Io.RwLock = .init;
+var command_queue: std.DoublyLinkedList = .{};
 
 var timer: ?std.time.Timer = null;
 var log_file: ?std.Io.File = null;
@@ -297,8 +297,6 @@ pub fn init() !void {
     initialized_modules = std.EnumArray(Config.Module, bool).initFill(false);
     variables = std.BufMap.init(allocator);
     table = Table.init(std.heap.smp_allocator);
-    command_queue = .{ .first = null, .last = null };
-    command_queue_lock = .{};
     stop.store(false, .monotonic);
     timer = try std.time.Timer.start();
 
