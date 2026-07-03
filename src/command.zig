@@ -1198,7 +1198,7 @@ fn loadConfig(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
             );
         };
 
-    var conf = try Config.parse(gpa, config_file);
+    var conf = try Config.parse(gpa, io, config_file);
     defer conf.deinit();
 
     // Initialize only the modules specified in config file.
