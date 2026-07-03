@@ -644,7 +644,9 @@ pub fn runner(io: std.Io, duration: f64, file_path: []const u8) !void {
         ) / std.time.us_per_s;
         stream.get(client.allocator, timestamp) catch |e| {
             std.log.err("{t}", .{e});
-            std.log.debug("{?f}", .{@errorReturnTrace()});
+            if (@errorReturnTrace()) |error_trace| {
+                std.debug.dumpErrorReturnTrace(error_trace);
+            }
             break;
         };
         // Wait to match the update rate.
