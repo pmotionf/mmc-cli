@@ -66,10 +66,10 @@ pub const Config = struct {
         return false;
     }
 
-    pub fn status(self: Config) !void {
+    pub fn status(self: Config, io: std.Io) !void {
         std.log.info("Logging configuration:", .{});
         var stdout_buf: [4096]u8 = undefined;
-        var stdout = std.fs.File.stdout().writer(&stdout_buf);
+        var stdout = std.Io.File.stdout().writer(io, &stdout_buf);
         defer stdout.interface.flush() catch {};
         for (self.lines) |line| {
             if (line.isInitialized() == false) continue;
@@ -594,7 +594,7 @@ pub var cancel = std.atomic.Value(bool).init(false);
 var file_reader_buf: [4096]u8 = undefined;
 var file_writer_buf: [4096]u8 = undefined;
 
-pub fn runner(duration: f64, file_path: []const u8) !void {
+pub fn runner(io: std.Io, duration: f64, file_path: []const u8) !void {
     defer client.allocator.free(file_path);
     // Validation steps
     if (client.log_config.isInitialized() == false)
@@ -653,7 +653,7 @@ pub fn runner(duration: f64, file_path: []const u8) !void {
     }
     std.log.info("Logging is stopped.", .{});
     stop.store(false, .monotonic);
-    var log_writer = log_file.writer(&.{});
+    var log_writer = log_file.writer(io, &.{});
     // Write the headers of the data to the logging file.
     try log_writer.interface.print("timestamp,", .{});
     for (client.log_config.lines) |line_config| {

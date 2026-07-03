@@ -1430,13 +1430,14 @@ pub fn waitCommandCompleted(gpa: std.mem.Allocator, net: zignet.Socket) !void {
 
 /// Send request to server.
 pub fn sendRequest(
+    io: std.Io,
     ///  Internally used by zig-protobuf.
     gpa: std.mem.Allocator,
     net: zignet.Socket,
     request: api.protobuf.mmc.Request,
 ) !void {
     var writer_buf: [4096]u8 = undefined;
-    var net_writer = net.writer(&writer_buf);
+    var net_writer = net.writer(io, &writer_buf);
     try request.encode(&net_writer.interface, gpa);
     net_writer.interface.flush() catch {
         if (net_writer.error_state) |err| {

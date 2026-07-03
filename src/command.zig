@@ -729,7 +729,7 @@ fn parseAndRun(input: []const u8) !void {
 var arena: std.heap.ArenaAllocator = undefined;
 var allocator: std.mem.Allocator = undefined;
 
-fn help(params: [][]const u8) !void {
+fn help(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     if (params[0].len > 0) {
         var command: *Command.Executable = undefined;
         var command_buf: [32]u8 = undefined;
@@ -805,12 +805,12 @@ fn help(params: [][]const u8) !void {
     }
 }
 
-fn version(_: [][]const u8) !void {
+fn version(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     // TODO: Figure out better way to get version from `build.zig.zon`.
     std.log.info("CLI Version: {s}\n", .{build.version});
 }
 
-fn set(params: [][]const u8) !void {
+fn set(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     if (!std.ascii.isAlphabetic(params[0][0])) return error.InvalidParameter;
     const name: []const u8 = params[0];
     const value: []const u8 = params[1];
@@ -1026,7 +1026,7 @@ test "calc" {
     try std.testing.expectError(error.ExpectedNumber, calc("1.2.3"));
 }
 
-fn get(params: [][]const u8) !void {
+fn get(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     if (variables.get(params[0])) |value| {
         std.log.info("Variable '{s}': {s}\n", .{
             params[0],
@@ -1035,7 +1035,7 @@ fn get(params: [][]const u8) !void {
     } else return error.UndefinedVariable;
 }
 
-fn remove(params: [][]const u8) !void {
+fn remove(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     if (std.ascii.isDigit(params[0][0])) {
         return error.InvalidParameter;
     } else if (variables.get(params[0])) |value| {
@@ -1047,20 +1047,20 @@ fn remove(params: [][]const u8) !void {
     variables.remove(params[0]);
 }
 
-fn printVariables(_: [][]const u8) !void {
+fn printVariables(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     var variables_it = variables.iterator();
     while (variables_it.next()) |entry| {
         std.log.info("\t{s}: {s}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
     }
 }
 
-fn tableReset(_: [][]const u8) !void {
+fn tableReset(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     table.clearRows();
     // Should be impossible to fail with an empty header.
     table.setHeader(&.{}) catch unreachable;
 }
 
-fn tableSetColumns(params: [][]const u8) !void {
+fn tableSetColumns(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const all_variables = params[0];
     var names = std.mem.splitScalar(u8, all_variables, ',');
     var names_count: usize = 0;
@@ -1072,11 +1072,11 @@ fn tableSetColumns(params: [][]const u8) !void {
     try table.setHeader(names_buf[0..names_count]);
 }
 
-fn tableAddRow(_: [][]const u8) !void {
+fn tableAddRow(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     try table.addRow();
 }
 
-fn tableSave(params: [][]const u8) !void {
+fn tableSave(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const path = params[0];
 
     var f = try std.fs.cwd().createFile(path, .{ .truncate = true });
@@ -1097,7 +1097,7 @@ fn tableSave(params: [][]const u8) !void {
     }
 }
 
-fn timerStart(_: [][]const u8) !void {
+fn timerStart(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     if (timer) |*t| {
         t.reset();
     } else {
@@ -1105,7 +1105,7 @@ fn timerStart(_: [][]const u8) !void {
     }
 }
 
-fn timerRead(_: [][]const u8) !void {
+fn timerRead(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     if (timer) |*t| {
         var timer_value: f64 = @floatFromInt(t.read());
         timer_value = timer_value / std.time.ns_per_s;
@@ -1116,7 +1116,7 @@ fn timerRead(_: [][]const u8) !void {
     }
 }
 
-fn file(params: [][]const u8) !void {
+fn file(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     var f = try std.fs.cwd().openFile(params[0], .{});
     defer f.close();
     var reader_buf: [std.fs.max_path_bytes + 512]u8 = undefined;
@@ -1160,7 +1160,7 @@ fn deinitModules() void {
     }
 }
 
-fn loadConfig(params: [][]const u8) !void {
+fn loadConfig(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     // De-initialize any previously initialized modules.
     deinitModules();
 
@@ -1250,7 +1250,7 @@ fn loadConfig(params: [][]const u8) !void {
     m_arena.deinit();
 }
 
-fn wait(params: [][]const u8) !void {
+fn wait(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const duration: u64 = try std.fmt.parseInt(u64, params[0], 0);
     var wait_timer = try std.time.Timer.start();
     while (wait_timer.read() < duration * std.time.ns_per_ms) {
@@ -1314,11 +1314,11 @@ fn setLog(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     }
 }
 
-fn clear(_: [][]const u8) !void {
-    var stdout = std.fs.File.stdout().writer(&.{});
+fn clear(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
+    var stdout = std.Io.File.stdout().writer(io, &.{});
     try stdout.interface.writeAll("\x1bc");
 }
 
-fn exit(_: [][]const u8) !void {
+fn exit(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     main.exit.store(true, .monotonic);
 }

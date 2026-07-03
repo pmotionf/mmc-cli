@@ -86,7 +86,7 @@ pub fn deinit() void {
     }
 }
 
-fn connect(params: [][]const u8) !void {
+fn connect(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     var adapter_buf: [128]u8 = .{0} ** 128;
     var adapter: []u8 = &.{};
     if (params[0].len > 127) {
@@ -198,7 +198,7 @@ fn connect(params: [][]const u8) !void {
     process_thread.detach();
 }
 
-fn disconnect(_: [][]const u8) !void {
+fn disconnect(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     if (connection.len > 0) {
         while (processing.load(.monotonic)) {
             stop_processing.store(true, .monotonic);
@@ -245,7 +245,7 @@ fn process() void {
     }
 }
 
-fn read(params: [][]const u8) !void {
+fn read(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const save_var = params[0];
     if (save_var.len > 0 and std.ascii.isDigit(save_var[0]))
         return error.InvalidParameter;

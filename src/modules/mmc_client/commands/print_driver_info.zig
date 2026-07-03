@@ -4,7 +4,7 @@ const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn impl(params: [][]const u8) !void {
+pub fn impl(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "print_driver_info");
     defer tracy_zone.end();
     const net = client.sock orelse return error.ServerNotConnected;
@@ -57,7 +57,7 @@ pub fn impl(params: [][]const u8) !void {
     const driver_errors = track_line.driver_errors;
     if (driver_state.items.len != driver_errors.items.len)
         return error.InvalidResponse;
-    var stdout = std.fs.File.stdout().writer(&.{});
+    var stdout = std.Io.File.stdout().writer(io, &.{});
     const writer = &stdout.interface;
     for (driver_state.items, driver_errors.items) |info, err| {
         _ = try client.nestedWrite(

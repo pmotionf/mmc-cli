@@ -4,7 +4,7 @@ const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn isolate(params: [][]const u8) !void {
+pub fn isolate(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_isolate");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
@@ -39,7 +39,7 @@ pub fn isolate(params: [][]const u8) !void {
     );
 }
 
-pub fn moveCarrier(params: [][]const u8) !void {
+pub fn moveCarrier(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_move_carrier");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
@@ -75,7 +75,7 @@ pub fn moveCarrier(params: [][]const u8) !void {
     );
 }
 
-pub fn axisEmpty(params: [][]const u8) !void {
+pub fn axisEmpty(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_axis_empty");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);

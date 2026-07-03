@@ -7,7 +7,7 @@ const api = @import("mmc-api");
 
 const Kind = enum { all, axis, driver };
 
-pub fn add(params: [][]const u8) !void {
+pub fn add(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "add_log");
     defer tracy_zone.end();
     const net = client.sock orelse return error.ServerNotConnected;
@@ -59,7 +59,7 @@ pub fn add(params: [][]const u8) !void {
     try modify(net, line, kind, range, true);
 }
 
-pub fn start(params: [][]const u8) !void {
+pub fn start(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "start_log");
     defer tracy_zone.end();
     if (client.log.executing.load(.monotonic) == true)
@@ -104,13 +104,13 @@ pub fn start(params: [][]const u8) !void {
     log_thread.detach();
 }
 
-pub fn status(_: [][]const u8) !void {
+pub fn status(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "status_log");
     defer tracy_zone.end();
     try client.log_config.status();
 }
 
-pub fn remove(params: [][]const u8) !void {
+pub fn remove(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "remove_log");
     defer tracy_zone.end();
     const net = client.sock orelse return error.ServerNotConnected;
@@ -162,7 +162,7 @@ pub fn remove(params: [][]const u8) !void {
     try modify(net, line, kind, range, false);
 }
 
-pub fn stop(_: [][]const u8) !void {
+pub fn stop(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "stop_log");
     defer tracy_zone.end();
     if (client.log.executing.load(.monotonic))
@@ -171,7 +171,7 @@ pub fn stop(_: [][]const u8) !void {
         return error.NoRunningLogging;
 }
 
-pub fn cancel(_: [][]const u8) !void {
+pub fn cancel(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "cancel_log");
     defer tracy_zone.end();
     if (client.log.executing.load(.monotonic))

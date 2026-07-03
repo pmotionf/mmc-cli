@@ -32,7 +32,7 @@ const Parse = struct {
     modules: []ModuleConfig,
 };
 
-pub fn parse(gpa: std.mem.Allocator, f: std.fs.File) !Config {
+pub fn parse(gpa: std.mem.Allocator, f: std.Io.File) !Config {
     var arena_allocator = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena_allocator.deinit();
     const arena = arena_allocator.allocator();

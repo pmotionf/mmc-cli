@@ -10,7 +10,7 @@ var original_canonical_context: OriginalCanonicalContext = undefined;
 pub fn init() !void {
     switch (comptime builtin.os.tag) {
         .linux => {
-            const stdin = std.fs.File.stdin().handle;
+            const stdin = std.Io.File.stdin().handle;
             var attr = try std.posix.tcgetattr(stdin);
             original_canonical_context = attr;
 
@@ -30,7 +30,7 @@ pub fn init() !void {
             try std.posix.tcsetattr(stdin, .NOW, attr);
         },
         .windows => {
-            const stdin = std.fs.File.stdin().handle;
+            const stdin = std.Io.File.stdin().handle;
 
             if (IsValidCodePage(65001) == 0) {
                 return error.Utf8CodePageNotInstalled;
@@ -77,7 +77,7 @@ pub fn init() !void {
 pub fn deinit() void {
     switch (comptime builtin.os.tag) {
         .linux => {
-            const stdin = std.fs.File.stdin().handle;
+            const stdin = std.Io.File.stdin().handle;
             std.posix.tcsetattr(
                 stdin,
                 .NOW,
@@ -85,7 +85,7 @@ pub fn deinit() void {
             ) catch {};
         },
         .windows => {
-            const stdin = std.fs.File.stdin().handle;
+            const stdin = std.Io.File.stdin().handle;
             _ = SetConsoleMode(stdin, original_canonical_context);
         },
         else => @compileError("unsupported OS"),
@@ -316,7 +316,7 @@ pub const event = struct {
         switch (comptime builtin.os.tag) {
             .linux => {
                 var fds: [1]std.posix.pollfd = .{.{
-                    .fd = std.fs.File.stdin().handle,
+                    .fd = std.Io.File.stdin().handle,
                     .events = std.posix.POLL.IN,
                     .revents = undefined,
                 }};
@@ -325,7 +325,7 @@ pub const event = struct {
             .windows => {
                 var num_events: u32 = undefined;
                 if (GetNumberOfConsoleInputEvents(
-                    std.fs.File.stdin().handle,
+                    std.Io.File.stdin().handle,
                     &num_events,
                 ) == 0) {
                     return std.os.windows.unexpectedError(
@@ -342,14 +342,14 @@ pub const event = struct {
         switch (comptime builtin.os.tag) {
             .linux => {
                 var stdin_buf: [1]u8 = undefined;
-                var stdin = std.fs.File.stdin().reader(&stdin_buf);
+                var stdin = std.Io.File.stdin().reader(&stdin_buf);
                 return stdin.interface.takeByte();
             },
             .windows => {
                 var buf: [1]u8 = undefined;
                 var chars_read: u32 = 0;
                 if (ReadConsoleA(
-                    std.fs.File.stdin().handle,
+                    std.Io.File.stdin().handle,
                     &buf,
                     1,
                     &chars_read,
@@ -370,14 +370,14 @@ pub const event = struct {
         switch (comptime builtin.target.os.tag) {
             .linux => {
                 var fds: [1]std.posix.pollfd = .{.{
-                    .fd = std.fs.File.stdin().handle,
+                    .fd = std.Io.File.stdin().handle,
                     .events = std.posix.POLL.IN,
                     .revents = undefined,
                 }};
                 return try std.posix.poll(&fds, 0) > 0;
             },
             .windows => {
-                const stdin_handle = std.fs.File.stdin().handle;
+                const stdin_handle = std.Io.File.stdin().handle;
                 std.os.windows.WaitForSingleObject(
                     stdin_handle,
                     0,

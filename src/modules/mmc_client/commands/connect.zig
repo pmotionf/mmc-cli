@@ -5,7 +5,7 @@ const disconnect = @import("disconnect.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn impl(params: [][]const u8) !void {
+pub fn impl(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "connect");
     defer tracy_zone.end();
     if (client.sock) |_| disconnect.impl(&.{}) catch unreachable;
@@ -195,7 +195,7 @@ pub fn impl(params: [][]const u8) !void {
     errdefer client.log_config.deinit(client.allocator);
     // Displaying track configuration
     std.log.info("Track configuration for {s}:", .{server.name});
-    var stdout = std.fs.File.stdout().writer(&.{});
+    var stdout = std.Io.File.stdout().writer(io, &.{});
     for (client.lines) |line| {
         try stdout.interface.print(
             "\t {s} ({}) - {} {s} | {} {s}\n",
