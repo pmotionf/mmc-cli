@@ -338,11 +338,11 @@ pub const event = struct {
         }
     }
 
-    fn readByte() !u8 {
+    fn readByte(io: std.Io) !u8 {
         switch (comptime builtin.os.tag) {
             .linux => {
                 var stdin_buf: [1]u8 = undefined;
-                var stdin = std.Io.File.stdin().reader(&stdin_buf);
+                var stdin = std.Io.File.stdin().reader(io, &stdin_buf);
                 return stdin.interface.takeByte();
             },
             .windows => {
@@ -395,20 +395,20 @@ pub const event = struct {
     }
 
     /// Read event from terminal input buffer.
-    pub fn read(options: struct {
-        /// Nanosecond timeout between bytes in a sequence. Null is instant
+    pub fn read(io: std.Io, options: struct {
+        /// Millisecond timeout between bytes in a sequence. Null is instant
         /// timeout (no waiting), 0 is infinite timeout.
-        sequence_timeout: ?u64 = std.time.ns_per_ms * 10,
-        /// Nanosecond timeout to detect whether an escape key is pressed,
+        sequence_timeout: ?i64 = 10,
+        /// Millisecond timeout to detect whether an escape key is pressed,
         /// versus whether it is the start of an escape sequence. 0 is instant
         /// timeout (no waiting).
-        escape_timeout: u64 = std.time.ns_per_ms * 10,
+        escape_timeout: i64 = 10,
     }) !Event {
-        const byte = try readByte();
+        const byte = try readByte(io);
         const utf8_seq_len = std.unicode.utf8ByteSequenceLength(byte) catch 0;
         var result: Event = .{ .key = undefined };
 
-        var timer = std.time.Timer.start() catch unreachable;
+        var timer: std.Io.Timestamp = .now(io, .real);
 
         // Handle UTF-8 codepoint sequence.
         if (utf8_seq_len > 1) {
@@ -422,22 +422,22 @@ pub const event = struct {
                 if (comptime builtin.os.tag == .windows) {
                     result.key.value.codepoint.buffer[
                         result.key.value.codepoint.len
-                    ] = try readByte();
+                    ] = try readByte(io);
                     result.key.value.codepoint.len += 1;
                 } else {
                     if (options.sequence_timeout) |seq_timeout| {
                         if (seq_timeout == 0) {
                             result.key.value.codepoint.buffer[
                                 result.key.value.codepoint.len
-                            ] = try readByte();
+                            ] = try readByte(io);
                             result.key.value.codepoint.len += 1;
                         } else {
-                            timer.reset();
-                            while (timer.read() < seq_timeout) {
+                            timer = .now(io, .real);
+                            while (timer.untilNow(io, .real).toMilliseconds() < seq_timeout) {
                                 if (try pollByte()) {
                                     result.key.value.codepoint.buffer[
                                         result.key.value.codepoint.len
-                                    ] = try readByte();
+                                    ] = try readByte(io);
                                     result.key.value.codepoint.len += 1;
                                     break;
                                 }
@@ -449,7 +449,7 @@ pub const event = struct {
                         if (try pollByte()) {
                             result.key.value.codepoint.buffer[
                                 result.key.value.codepoint.len
-                            ] = try readByte();
+                            ] = try readByte(io);
                             result.key.value.codepoint.len += 1;
                         } else {
                             return error.IncompleteCodepoint;
@@ -464,8 +464,8 @@ pub const event = struct {
             // Potentially escape sequence, or just Escape.
             '\x1B' => {
                 if (options.escape_timeout > 0) {
-                    timer.reset();
-                    while (timer.read() < options.escape_timeout) {
+                    timer = .now(io, .real);
+                    while (timer.untilNow(io, .real).toMilliseconds() < options.escape_timeout) {
                         if (try pollByte()) break;
                     } else {
                         result = .initKeyControl(.escape);
@@ -477,7 +477,7 @@ pub const event = struct {
                 }
 
                 // Check for '[' after escape byte
-                const next = try readByte();
+                const next = try readByte(io);
                 if (next == '[') continue :parse '\x9B';
 
                 var seq_buf: [escape_sequences.max_len]u8 = undefined;
@@ -491,7 +491,7 @@ pub const event = struct {
                 if (options.sequence_timeout) |seq_timeout| {
                     if (seq_timeout == 0) {
                         while (seq.len < seq_buf.len) {
-                            seq_buf[seq.len] = try readByte();
+                            seq_buf[seq.len] = try readByte(io);
                             seq.len += 1;
                             // Eager match sequence
                             if (escape_sequences.get(seq)) |ev| {
@@ -507,15 +507,15 @@ pub const event = struct {
                         }
                     } else {
                         while (seq.len < seq_buf.len) {
-                            timer.reset();
-                            while (timer.read() < seq_timeout) {
+                            timer = .now(io, .real);
+                            while (timer.untilNow(io, .real).toMilliseconds() < seq_timeout) {
                                 if (try pollByte()) {
                                     break;
                                 }
                             } else {
                                 return error.IncompleteEscapeSequence;
                             }
-                            seq_buf[seq.len] = try readByte();
+                            seq_buf[seq.len] = try readByte(io);
                             seq.len += 1;
                             // Eager match sequence
                             if (escape_sequences.get(seq)) |ev| {
@@ -535,7 +535,7 @@ pub const event = struct {
                         if (!(try pollByte())) {
                             return error.IncompleteEscapeSequence;
                         }
-                        seq_buf[seq.len] = try readByte();
+                        seq_buf[seq.len] = try readByte(io);
                         seq.len += 1;
                         // Eager match sequence
                         if (escape_sequences.get(seq)) |ev| {
@@ -558,7 +558,7 @@ pub const event = struct {
                 if (options.sequence_timeout) |seq_timeout| {
                     if (seq_timeout == 0) {
                         while (seq.len < seq_buf.len) {
-                            seq_buf[seq.len] = try readByte();
+                            seq_buf[seq.len] = try readByte(io);
                             seq.len += 1;
                             // Eager match sequence
                             if (csi_sequences.get(seq)) |ev| {
@@ -574,15 +574,15 @@ pub const event = struct {
                         }
                     } else {
                         while (seq.len < seq_buf.len) {
-                            timer.reset();
-                            while (timer.read() < seq_timeout) {
+                            timer = .now(io, .real);
+                            while (timer.untilNow(io, .real).toMilliseconds() < seq_timeout) {
                                 if (try pollByte()) {
                                     break;
                                 }
                             } else {
                                 return error.IncompleteCsiSequence;
                             }
-                            seq_buf[seq.len] = try readByte();
+                            seq_buf[seq.len] = try readByte(io);
                             seq.len += 1;
                             // Eager match sequence
                             if (csi_sequences.get(seq)) |ev| {
@@ -602,7 +602,7 @@ pub const event = struct {
                         if (!(try pollByte())) {
                             return error.IncompleteCsiSequence;
                         }
-                        seq_buf[seq.len] = try readByte();
+                        seq_buf[seq.len] = try readByte(io);
                         seq.len += 1;
                         // Eager match sequence
                         if (csi_sequences.get(seq)) |ev| {

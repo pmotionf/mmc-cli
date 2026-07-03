@@ -76,7 +76,7 @@ pub fn handler(io: std.Io, ctx: *Prompt) !void {
         // keep the completion selection.
         var keep_complete_selection: bool = false;
 
-        const event = terminal.event.read(.{}) catch continue :main;
+        const event = terminal.event.read(io, .{}) catch continue :main;
         parse: switch (event) {
             .key => |key_event| {
                 switch (key_event.value) {
