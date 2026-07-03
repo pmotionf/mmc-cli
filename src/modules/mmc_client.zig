@@ -189,7 +189,7 @@ pub fn init(c: Config) !void {
     parameter = .init(allocator);
     errdefer parameter.deinit();
 
-    try command.registry.put(.{ .executable = .{
+    try command.registry.put(allocator, .{ .executable = .{
         .name = "SERVER_VERSION",
         .short_description = "Display the connected MMC server version.",
         .long_description =
@@ -199,7 +199,7 @@ pub fn init(c: Config) !void {
         .execute = &commands.server_version.impl,
     } });
     errdefer command.registry.orderedRemove("SERVER_VERSION");
-    try command.registry.put(.{ .executable = .{
+    try command.registry.put(allocator, .{ .executable = .{
         .name = "CONNECT",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "endpoint", .optional = true },
@@ -220,7 +220,7 @@ pub fn init(c: Config) !void {
         .execute = &commands.connect.impl,
     } });
     errdefer command.registry.orderedRemove("CONNECT");
-    try command.registry.put(.{ .executable = .{
+    try command.registry.put(allocator, .{ .executable = .{
         .name = "DISCONNECT",
         .short_description = "End connection with MMC server.",
         .long_description = std.fmt.comptimePrint(
@@ -229,7 +229,7 @@ pub fn init(c: Config) !void {
         .execute = &commands.disconnect.impl,
     } });
     errdefer command.registry.orderedRemove("DISCONNECT");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "SET_SPEED",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -253,7 +253,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("SET_SPEED");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "SET_ACCELERATION",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -277,7 +277,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("SET_ACCELERATION");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "GET_SPEED",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -294,7 +294,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("GET_SPEED");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "GET_ACCELERATION",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -311,7 +311,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("GET_ACCELERATION");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "PRINT_AXIS_INFO",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -334,7 +334,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("PRINT_AXIS_INFO");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "PRINT_DRIVER_INFO",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -357,7 +357,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("PRINT_DRIVER_INFO");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "PRINT_CARRIER_INFO",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -388,7 +388,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("PRINT_CARRIER_INFO");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "AXIS_CARRIER",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -422,7 +422,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer _ = command.registry.orderedRemove("AXIS_CARRIER");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "CARRIER_ID",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -453,7 +453,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("CARRIER_ID");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "ASSERT_CARRIER_LOCATION",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -487,7 +487,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("ASSERT_CARRIER_LOCATION");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "CARRIER_LOCATION",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -513,7 +513,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("CARRIER_LOCATION");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "CARRIER_AXIS",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -531,7 +531,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("CARRIER_AXIS");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "HALL_STATUS",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -562,7 +562,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("HALL_STATUS");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "ASSERT_HALL",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -599,7 +599,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("ASSERT_HALL");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "CLEAR_ERRORS",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -629,7 +629,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("CLEAR_ERRORS");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "DEINITIALIZE",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -663,7 +663,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("DEINITIALIZE");
-    try command.registry.put(.{ .executable = .{
+    try command.registry.put(allocator, .{ .executable = .{
         .name = "RESET_SYSTEM",
         .short_description = "Reset system state.",
         .long_description = std.fmt.comptimePrint(
@@ -675,7 +675,7 @@ pub fn init(c: Config) !void {
         .execute = &commands.reset_system.impl,
     } });
     errdefer command.registry.orderedRemove("RESET_SYSTEM");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "RELEASE_CARRIER",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -710,7 +710,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("RELEASE_CARRIER");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "AUTO_INITIALIZE",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -742,7 +742,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("AUTO_INITIALIZE");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "CALIBRATE",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -760,7 +760,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("CALIBRATE");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "SET_ZERO",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -778,7 +778,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("SET_ZERO");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "INITIALIZE",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -820,7 +820,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("INITIALIZE");
-    try command.registry.put(.{ .executable = .{
+    try command.registry.put(allocator, .{ .executable = .{
         .name = "WAIT_INITIALIZE",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "Line", .kind = .mmc_client_line },
@@ -846,7 +846,7 @@ pub fn init(c: Config) !void {
         .execute = &commands.wait.isolate,
     } });
     errdefer command.registry.orderedRemove("WAIT_INITIALIZE");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "WAIT_MOVE_CARRIER",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -874,7 +874,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("WAIT_MOVE_CARRIER");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "MOVE_CARRIER",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -925,7 +925,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("MOVE_CARRIER");
-    try command.registry.put(.{ .executable = .{
+    try command.registry.put(allocator, .{ .executable = .{
         .name = "PUSH_CARRIER",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "Line", .kind = .mmc_client_line },
@@ -961,7 +961,7 @@ pub fn init(c: Config) !void {
         .execute = &commands.push.impl,
     } });
     errdefer command.registry.orderedRemove("PUSH_CARRIER");
-    try command.registry.put(.{ .executable = .{
+    try command.registry.put(allocator, .{ .executable = .{
         .name = "PULL_CARRIER",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "Line", .kind = .mmc_client_line },
@@ -1012,7 +1012,7 @@ pub fn init(c: Config) !void {
         .execute = &commands.pull.impl,
     } });
     errdefer command.registry.orderedRemove("PULL_CARRIER");
-    try command.registry.put(.{ .executable = .{
+    try command.registry.put(allocator, .{ .executable = .{
         .name = "STOP_PULL_CARRIER",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "Line", .kind = .mmc_client_line },
@@ -1036,7 +1036,7 @@ pub fn init(c: Config) !void {
         .execute = &commands.stop_pull.impl,
     } });
     errdefer command.registry.orderedRemove("STOP_PULL_CARRIER");
-    try command.registry.put(.{ .executable = .{
+    try command.registry.put(allocator, .{ .executable = .{
         .name = "STOP_PUSH_CARRIER",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "Line", .kind = .mmc_client_line },
@@ -1061,7 +1061,7 @@ pub fn init(c: Config) !void {
         .execute = &commands.stop_push.impl,
     } });
     errdefer command.registry.orderedRemove("STOP_PUSH_CARRIER");
-    try command.registry.put(.{ .executable = .{
+    try command.registry.put(allocator, .{ .executable = .{
         .name = "WAIT_AXIS_EMPTY",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "Line", .kind = .mmc_client_line },
@@ -1089,7 +1089,7 @@ pub fn init(c: Config) !void {
         .execute = &commands.wait.axisEmpty,
     } });
     errdefer command.registry.orderedRemove("WAIT_AXIS_EMPTY");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "ADD_LOG_INFO",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -1119,7 +1119,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("ADD_LOG_INFO");
-    try command.registry.put(.{ .executable = .{
+    try command.registry.put(allocator, .{ .executable = .{
         .name = "START_LOG_INFO",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "duration" },
@@ -1146,7 +1146,7 @@ pub fn init(c: Config) !void {
         .execute = &commands.log.start,
     } });
     errdefer command.registry.orderedRemove("START_LOG_INFO");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "REMOVE_LOG_INFO",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -1178,7 +1178,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("REMOVE_LOG_INFO");
-    try command.registry.put(.{ .executable = .{
+    try command.registry.put(allocator, .{ .executable = .{
         .name = "STATUS_LOG_INFO",
         .short_description = "Show logging configuration.",
         .long_description = std.fmt.comptimePrint(
@@ -1187,7 +1187,7 @@ pub fn init(c: Config) !void {
         .execute = &commands.log.status,
     } });
     errdefer command.registry.orderedRemove("STATUS_LOG_INFO");
-    try command.registry.put(.{ .executable = .{
+    try command.registry.put(allocator, .{ .executable = .{
         .name = "STOP_LOG_INFO",
         .short_description = "Stop MMC logging.",
         .long_description = std.fmt.comptimePrint(
@@ -1196,7 +1196,7 @@ pub fn init(c: Config) !void {
         .execute = &commands.log.stop,
     } });
     errdefer command.registry.orderedRemove("STOP_LOG_INFO");
-    try command.registry.put(.{ .executable = .{
+    try command.registry.put(allocator, .{ .executable = .{
         .name = "CANCEL_LOG_INFO",
         .short_description = "Cancel MMC logging process.",
         .long_description = std.fmt.comptimePrint(
@@ -1205,7 +1205,7 @@ pub fn init(c: Config) !void {
         .execute = &commands.log.cancel,
     } });
     errdefer command.registry.orderedRemove("CANCEL_LOG_INFO");
-    try command.registry.put(.{ .executable = .{
+    try command.registry.put(allocator, .{ .executable = .{
         .name = "PRINT_ERRORS",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "Line", .kind = .mmc_client_line },
@@ -1229,7 +1229,7 @@ pub fn init(c: Config) !void {
         .execute = &commands.show_errors.impl,
     } });
     errdefer command.registry.orderedRemove("PRINT_ERRORS");
-    try command.registry.put(.{ .executable = .{
+    try command.registry.put(allocator, .{ .executable = .{
         .name = "STOP",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "Line", .kind = .mmc_client_line, .optional = true },
@@ -1242,7 +1242,7 @@ pub fn init(c: Config) !void {
         .execute = &commands.stop.impl,
     } });
     errdefer command.registry.orderedRemove("STOP");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "PAUSE",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -1257,7 +1257,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("PAUSE");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "RESUME",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -1272,7 +1272,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer command.registry.orderedRemove("RESUME");
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .executable = .{
             .name = "SET_CARRIER_ID",
             .parameters = &[_]command.Command.Executable.Parameter{

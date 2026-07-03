@@ -21,47 +21,6 @@ const mes07 = if (config.mes07) @import("modules/mes07.zig") else void;
 
 const Config = @import("Config.zig");
 
-pub const Registry = struct {
-    mapping: std.StringArrayHashMap(Command.Executable),
-
-    pub fn init(gpa: std.mem.Allocator) Registry {
-        return .{
-            .mapping = std.StringArrayHashMap(Command.Executable).init(gpa),
-        };
-    }
-
-    pub fn deinit(self: *Registry) void {
-        self.mapping.deinit();
-    }
-
-    pub fn values(self: *Registry) []Command.Executable {
-        return self.mapping.values();
-    }
-
-    pub fn keys(self: *Registry) [][]const u8 {
-        return self.mapping.keys();
-    }
-
-    pub fn put(self: *Registry, command: Command) !void {
-        switch (command) {
-            .alias => |alias| {
-                try self.mapping.put(alias.name, alias.command.*);
-            },
-            .executable => |executable| {
-                try self.mapping.put(executable.name, executable);
-            },
-        }
-    }
-
-    pub fn getPtr(self: *Registry, key: []const u8) ?*Command.Executable {
-        return self.mapping.getPtr(key);
-    }
-
-    pub fn orderedRemove(self: *Registry, key: []const u8) void {
-        _ = self.mapping.orderedRemove(key);
-    }
-};
-
 pub const Table = struct {
     gpa: std.mem.Allocator,
 
@@ -168,7 +127,7 @@ pub const Table = struct {
 };
 
 // Global registry of all commands, including from other command modules.
-pub var registry: Registry = undefined;
+pub var registry: std.array_hash_map.String(Command.Executable) = undefined;
 
 /// Global "stop" flag to interrupt command execution. Command modules should
 /// not use this atomic flag directly, but instead prefer to use the
@@ -336,7 +295,6 @@ pub fn init() !void {
     allocator = arena.allocator();
 
     initialized_modules = std.EnumArray(Config.Module, bool).initFill(false);
-    registry = Registry.init(allocator);
     variables = std.BufMap.init(allocator);
     table = Table.init(std.heap.smp_allocator);
     command_queue = .{ .first = null, .last = null };
@@ -344,7 +302,7 @@ pub fn init() !void {
     stop.store(false, .monotonic);
     timer = try std.time.Timer.start();
 
-    try registry.put(.{ .executable = .{
+    try registry.put(allocator, .{ .executable = .{
         .name = "HELP",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "command", .optional = true, .resolve = false },
@@ -357,7 +315,7 @@ pub fn init() !void {
         ,
         .execute = &help,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(allocator, .{ .executable = .{
         .name = "VERSION",
         .short_description = "Display the version of the MMC CLI.",
         .long_description =
@@ -366,7 +324,7 @@ pub fn init() !void {
         ,
         .execute = &version,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(allocator, .{ .executable = .{
         .name = "LOAD_CONFIG",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "file path", .optional = true },
@@ -379,7 +337,7 @@ pub fn init() !void {
         ,
         .execute = &loadConfig,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(allocator, .{ .executable = .{
         .name = "WAIT",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "duration", .resolve = true },
@@ -391,14 +349,14 @@ pub fn init() !void {
         ,
         .execute = &wait,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(allocator, .{ .executable = .{
         .name = "CLEAR",
         .parameters = &.{},
         .short_description = "Clear visible screen output.",
         .long_description = "Clear visible screen output.",
         .execute = &clear,
     } });
-    try registry.put(.{
+    try registry.put(allocator, .{
         .executable = .{
             .name = "SET",
             .parameters = &[_]Command.Executable.Parameter{
@@ -432,7 +390,7 @@ pub fn init() !void {
             .execute = &set,
         },
     });
-    try registry.put(.{ .executable = .{
+    try registry.put(allocator, .{ .executable = .{
         .name = "GET",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "variable", .resolve = false },
@@ -444,7 +402,7 @@ pub fn init() !void {
         ,
         .execute = &get,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(allocator, .{ .executable = .{
         .name = "REMOVE",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "variable", .resolve = false },
@@ -456,7 +414,7 @@ pub fn init() !void {
         ,
         .execute = &remove,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(allocator, .{ .executable = .{
         .name = "VARIABLES",
         .short_description = "Display all variables with their values.",
         .long_description =
@@ -464,7 +422,7 @@ pub fn init() !void {
         ,
         .execute = &printVariables,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(allocator, .{ .executable = .{
         .name = "TABLE_RESET",
         .short_description = "Fully reset global table to be empty.",
         .long_description =
@@ -474,7 +432,7 @@ pub fn init() !void {
         ,
         .execute = &tableReset,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(allocator, .{ .executable = .{
         .name = "TABLE_SET_COLUMNS",
         .parameters = &.{
             .{
@@ -492,7 +450,7 @@ pub fn init() !void {
         ,
         .execute = &tableSetColumns,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(allocator, .{ .executable = .{
         .name = "TABLE_ADD_ROW",
         .short_description = "Add row of current variable values to table.",
         .long_description =
@@ -500,7 +458,7 @@ pub fn init() !void {
         ,
         .execute = &tableAddRow,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(allocator, .{ .executable = .{
         .name = "TABLE_SAVE",
         .parameters = &.{
             .{ .name = "file path" },
@@ -511,7 +469,7 @@ pub fn init() !void {
         ,
         .execute = &tableSave,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(allocator, .{ .executable = .{
         .name = "TIMER_START",
         .short_description = "Start a monotonic system timer.",
         .long_description =
@@ -521,7 +479,7 @@ pub fn init() !void {
         ,
         .execute = &timerStart,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(allocator, .{ .executable = .{
         .name = "TIMER_READ",
         .short_description = "Read elapsed time from the system timer.",
         .long_description =
@@ -531,7 +489,7 @@ pub fn init() !void {
         ,
         .execute = &timerRead,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(allocator, .{ .executable = .{
         .name = "FILE",
         .parameters = &[_]Command.Executable.Parameter{.{ .name = "path" }},
         .short_description = "Queue commands listed in the provided file.",
@@ -546,7 +504,7 @@ pub fn init() !void {
         ,
         .execute = &file,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(allocator, .{ .executable = .{
         .name = "SAVE_OUTPUT",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "mode" },
@@ -567,7 +525,7 @@ pub fn init() !void {
         ,
         .execute = &setLog,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(allocator, .{ .executable = .{
         .name = "EXIT",
         .short_description = "Exit the MMC command line utility.",
         .long_description =

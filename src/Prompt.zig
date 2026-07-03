@@ -36,7 +36,7 @@ selected_command: []const u8 = &.{},
 /// Prompt handler thread callback. Input must be set to non-canonical mode
 /// prior to spawning this thread. Only one prompt handler thread may be
 /// running at a time.
-pub fn handler(io: std.Io, ctx: *Prompt) void {
+pub fn handler(io: std.Io, ctx: *Prompt) !void {
     ctx.history.clear();
     ctx.clear();
 
@@ -53,7 +53,7 @@ pub fn handler(io: std.Io, ctx: *Prompt) void {
 
         // Print prompt once on enable.
         if (prev_disable) {
-            std.Thread.sleep(std.time.ns_per_ms * 10);
+            try io.sleep(.fromMicroseconds(10), .awake);
             stdout.interface.writeAll(
                 "Enter command (HELP for usage):\n",
             ) catch continue :main;

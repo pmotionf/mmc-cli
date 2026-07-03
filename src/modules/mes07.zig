@@ -32,8 +32,14 @@ var laser_value = std.atomic.Value(i32).init(0);
 /// process thread has unexpectedly quit.
 var read_laser_value = std.atomic.Value(bool).init(false);
 
+var arena: std.heap.ArenaAllocator = undefined;
+var allocator: std.mem.Allocator = undefined;
+
 pub fn init(_: Config) !void {
-    try command.registry.put(.{ .executable = .{
+    // TODO: Make every module as a type. It does not make sense to use arena here because it makes deinitialize a module impossible.
+    arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    allocator = arena.allocator();
+    try command.registry.put(allocator, .{ .executable = .{
         .name = "MES07_CONNECT",
         .parameters = &.{
             .{ .name = "adapter", .optional = true },
@@ -45,7 +51,7 @@ pub fn init(_: Config) !void {
         .execute = &connect,
     } });
 
-    try command.registry.put(.{ .executable = .{
+    try command.registry.put(allocator, .{ .executable = .{
         .name = "MES07_READ",
         .parameters = &.{
             .{ .name = "variable", .optional = true, .resolve = false },

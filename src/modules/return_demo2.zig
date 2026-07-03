@@ -75,7 +75,7 @@ pub fn init(_: Config) !void {
         server_stop.store(false, .monotonic);
     }
 
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .name = "HOME_RETURN_SYSTEM",
         .short_description = "Home the return system.",
         .long_description =
@@ -86,7 +86,7 @@ pub fn init(_: Config) !void {
         ,
         .execute = &home,
     });
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .name = "RAISE_START_AXIS",
         .short_description = "Raise start Axis to upper motion system.",
         .long_description =
@@ -96,7 +96,7 @@ pub fn init(_: Config) !void {
         ,
         .execute = &raiseStartAxis,
     });
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .name = "LOWER_START_AXIS",
         .short_description = "Lower start Axis to return system.",
         .long_description =
@@ -106,7 +106,7 @@ pub fn init(_: Config) !void {
         ,
         .execute = &lowerStartAxis,
     });
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .name = "RAISE_END_AXIS",
         .short_description = "Raise end Axis to upper motion system.",
         .long_description =
@@ -116,7 +116,7 @@ pub fn init(_: Config) !void {
         ,
         .execute = &raiseEndAxis,
     });
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .name = "LOWER_END_AXIS",
         .short_description = "Lower end Axis to return system.",
         .long_description =
@@ -126,7 +126,7 @@ pub fn init(_: Config) !void {
         ,
         .execute = &lowerEndAxis,
     });
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .name = "BELT_MOVE_START",
         .short_description = "Move the return system belt to the start Axis.",
         .long_description =
@@ -136,7 +136,7 @@ pub fn init(_: Config) !void {
         ,
         .execute = &beltMoveStart,
     });
-    try command.registry.put(.{
+    try command.registry.put(allocator, .{
         .name = "BELT_MOVE_END",
         .short_description = "Move the return system belt to the end Axis.",
         .long_description =
