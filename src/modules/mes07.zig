@@ -34,7 +34,7 @@ var read_laser_value = std.atomic.Value(bool).init(false);
 
 pub fn init(gpa: std.mem.Allocator, _: std.Io, _: Config) !void {
     // TODO: Make every module as a type. It does not make sense to use arena here because it makes deinitialize a module impossible.
-    try command.registry.put(gpa, .{ .executable = .{
+    try command.registry.put(gpa, "MES07_CONNECT", .{ .executable = .{
         .name = "MES07_CONNECT",
         .parameters = &.{
             .{ .name = "adapter", .optional = true },
@@ -46,7 +46,7 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, _: Config) !void {
         .execute = &connect,
     } });
 
-    try command.registry.put(gpa, .{ .executable = .{
+    try command.registry.put(gpa, "MES07_READ", .{ .executable = .{
         .name = "MES07_READ",
         .parameters = &.{
             .{ .name = "variable", .optional = true, .resolve = false },

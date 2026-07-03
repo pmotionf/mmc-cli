@@ -70,7 +70,7 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io, _: Config) !void {
         server_stop.store(false, .monotonic);
     }
 
-    try command.registry.put(gpa, .{
+    try command.registry.put(gpa, "HOME_RETURN_SYSTEM", .{
         .name = "HOME_RETURN_SYSTEM",
         .short_description = "Home the return system.",
         .long_description =
@@ -81,7 +81,7 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io, _: Config) !void {
         ,
         .execute = &home,
     });
-    try command.registry.put(gpa, .{
+    try command.registry.put(gpa, "RAISE_START_AXIS", .{
         .name = "RAISE_START_AXIS",
         .short_description = "Raise start Axis to upper motion system.",
         .long_description =
@@ -91,7 +91,7 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io, _: Config) !void {
         ,
         .execute = &raiseStartAxis,
     });
-    try command.registry.put(gpa, .{
+    try command.registry.put(gpa, "LOWER_START_AXIS", .{
         .name = "LOWER_START_AXIS",
         .short_description = "Lower start Axis to return system.",
         .long_description =
@@ -101,7 +101,7 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io, _: Config) !void {
         ,
         .execute = &lowerStartAxis,
     });
-    try command.registry.put(gpa, .{
+    try command.registry.put(gpa, "RAISE_END_AXIS", .{
         .name = "RAISE_END_AXIS",
         .short_description = "Raise end Axis to upper motion system.",
         .long_description =
@@ -111,7 +111,7 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io, _: Config) !void {
         ,
         .execute = &raiseEndAxis,
     });
-    try command.registry.put(gpa, .{
+    try command.registry.put(gpa, "LOWER_END_AXIS", .{
         .name = "LOWER_END_AXIS",
         .short_description = "Lower end Axis to return system.",
         .long_description =
@@ -121,7 +121,7 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io, _: Config) !void {
         ,
         .execute = &lowerEndAxis,
     });
-    try command.registry.put(gpa, .{
+    try command.registry.put(gpa, "BELT_MOVE_START", .{
         .name = "BELT_MOVE_START",
         .short_description = "Move the return system belt to the start Axis.",
         .long_description =
@@ -131,7 +131,7 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io, _: Config) !void {
         ,
         .execute = &beltMoveStart,
     });
-    try command.registry.put(gpa, .{
+    try command.registry.put(gpa, "BELT_MOVE_END", .{
         .name = "BELT_MOVE_END",
         .short_description = "Move the return system belt to the end Axis.",
         .long_description =
