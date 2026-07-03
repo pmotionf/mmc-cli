@@ -32,14 +32,9 @@ var laser_value = std.atomic.Value(i32).init(0);
 /// process thread has unexpectedly quit.
 var read_laser_value = std.atomic.Value(bool).init(false);
 
-var arena: std.heap.ArenaAllocator = undefined;
-var allocator: std.mem.Allocator = undefined;
-
-pub fn init(_: Config) !void {
+pub fn init(gpa: std.mem.Allocator, _: std.Io, _: Config) !void {
     // TODO: Make every module as a type. It does not make sense to use arena here because it makes deinitialize a module impossible.
-    arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    allocator = arena.allocator();
-    try command.registry.put(allocator, .{ .executable = .{
+    try command.registry.put(gpa, .{ .executable = .{
         .name = "MES07_CONNECT",
         .parameters = &.{
             .{ .name = "adapter", .optional = true },
@@ -51,7 +46,7 @@ pub fn init(_: Config) !void {
         .execute = &connect,
     } });
 
-    try command.registry.put(allocator, .{ .executable = .{
+    try command.registry.put(gpa, .{ .executable = .{
         .name = "MES07_READ",
         .parameters = &.{
             .{ .name = "variable", .optional = true, .resolve = false },
@@ -78,7 +73,7 @@ test init {
     }
 }
 
-pub fn deinit() void {
+pub fn deinit(_: std.mem.Allocator, _: std.Io) void {
     if (connection.len > 0) {
         while (processing.load(.monotonic)) {
             stop_processing.store(true, .monotonic);

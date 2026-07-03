@@ -40,7 +40,7 @@ pub const Table = struct {
     pub fn deinit(self: *Table) void {
         if (self.header.len > 0) {
             for (self.header) |*header| {
-                self.allocator.free(header.*);
+                self.gpa.free(header.*);
             }
             self.gpa.free(self.header);
         }
@@ -295,18 +295,17 @@ pub fn logFn(
     ) catch {};
 }
 
-pub fn init(map: *std.process.Environ.Map) !void {
-    // TODO: Make every module as a type. It does not make sense to use arena here because it makes deinitialize a module impossible.
-    arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    allocator = arena.allocator();
-
+pub fn init(
+    gpa: std.mem.Allocator,
+    map: *std.process.Environ.Map,
+) !void {
     initialized_modules = std.EnumArray(Config.Module, bool).initFill(false);
-    variables = std.BufMap.init(allocator);
+    variables = std.BufMap.init(gpa);
     table = Table.init(std.heap.smp_allocator);
     stop.store(false, .monotonic);
     environ_map = map;
 
-    try registry.put(allocator, "HELP", .{ .executable = .{
+    try registry.put(gpa, "HELP", .{ .executable = .{
         .name = "HELP",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "command", .optional = true, .resolve = false },
@@ -319,7 +318,7 @@ pub fn init(map: *std.process.Environ.Map) !void {
         ,
         .execute = &help,
     } });
-    try registry.put(allocator, "VERSION", .{ .executable = .{
+    try registry.put(gpa, "VERSION", .{ .executable = .{
         .name = "VERSION",
         .short_description = "Display the version of the MMC CLI.",
         .long_description =
@@ -328,7 +327,7 @@ pub fn init(map: *std.process.Environ.Map) !void {
         ,
         .execute = &version,
     } });
-    try registry.put(allocator, "LOAD_CONFIG", .{ .executable = .{
+    try registry.put(gpa, "LOAD_CONFIG", .{ .executable = .{
         .name = "LOAD_CONFIG",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "file path", .optional = true },
@@ -341,7 +340,7 @@ pub fn init(map: *std.process.Environ.Map) !void {
         ,
         .execute = &loadConfig,
     } });
-    try registry.put(allocator, "WAIT", .{ .executable = .{
+    try registry.put(gpa, "WAIT", .{ .executable = .{
         .name = "WAIT",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "duration", .resolve = true },
@@ -353,14 +352,14 @@ pub fn init(map: *std.process.Environ.Map) !void {
         ,
         .execute = &wait,
     } });
-    try registry.put(allocator, "CLEAR", .{ .executable = .{
+    try registry.put(gpa, "CLEAR", .{ .executable = .{
         .name = "CLEAR",
         .parameters = &.{},
         .short_description = "Clear visible screen output.",
         .long_description = "Clear visible screen output.",
         .execute = &clear,
     } });
-    try registry.put(allocator, "SET", .{
+    try registry.put(gpa, "SET", .{
         .executable = .{
             .name = "SET",
             .parameters = &[_]Command.Executable.Parameter{
@@ -394,7 +393,7 @@ pub fn init(map: *std.process.Environ.Map) !void {
             .execute = &set,
         },
     });
-    try registry.put(allocator, "GET", .{ .executable = .{
+    try registry.put(gpa, "GET", .{ .executable = .{
         .name = "GET",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "variable", .resolve = false },
@@ -406,7 +405,7 @@ pub fn init(map: *std.process.Environ.Map) !void {
         ,
         .execute = &get,
     } });
-    try registry.put(allocator, "REMOVE", .{ .executable = .{
+    try registry.put(gpa, "REMOVE", .{ .executable = .{
         .name = "REMOVE",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "variable", .resolve = false },
@@ -418,7 +417,7 @@ pub fn init(map: *std.process.Environ.Map) !void {
         ,
         .execute = &remove,
     } });
-    try registry.put(allocator, "VARIABLES", .{ .executable = .{
+    try registry.put(gpa, "VARIABLES", .{ .executable = .{
         .name = "VARIABLES",
         .short_description = "Display all variables with their values.",
         .long_description =
@@ -426,7 +425,7 @@ pub fn init(map: *std.process.Environ.Map) !void {
         ,
         .execute = &printVariables,
     } });
-    try registry.put(allocator, "TABLE_RESET", .{ .executable = .{
+    try registry.put(gpa, "TABLE_RESET", .{ .executable = .{
         .name = "TABLE_RESET",
         .short_description = "Fully reset global table to be empty.",
         .long_description =
@@ -436,7 +435,7 @@ pub fn init(map: *std.process.Environ.Map) !void {
         ,
         .execute = &tableReset,
     } });
-    try registry.put(allocator, "TABLE_SET_COLUMNS", .{ .executable = .{
+    try registry.put(gpa, "TABLE_SET_COLUMNS", .{ .executable = .{
         .name = "TABLE_SET_COLUMNS",
         .parameters = &.{
             .{
@@ -454,7 +453,7 @@ pub fn init(map: *std.process.Environ.Map) !void {
         ,
         .execute = &tableSetColumns,
     } });
-    try registry.put(allocator, "TABLE_ADD_ROW", .{ .executable = .{
+    try registry.put(gpa, "TABLE_ADD_ROW", .{ .executable = .{
         .name = "TABLE_ADD_ROW",
         .short_description = "Add row of current variable values to table.",
         .long_description =
@@ -462,7 +461,7 @@ pub fn init(map: *std.process.Environ.Map) !void {
         ,
         .execute = &tableAddRow,
     } });
-    try registry.put(allocator, "TABLE_SAVE", .{ .executable = .{
+    try registry.put(gpa, "TABLE_SAVE", .{ .executable = .{
         .name = "TABLE_SAVE",
         .parameters = &.{
             .{ .name = "file path" },
@@ -473,7 +472,7 @@ pub fn init(map: *std.process.Environ.Map) !void {
         ,
         .execute = &tableSave,
     } });
-    try registry.put(allocator, "TIMER_START", .{ .executable = .{
+    try registry.put(gpa, "TIMER_START", .{ .executable = .{
         .name = "TIMER_START",
         .short_description = "Start a monotonic system timer.",
         .long_description =
@@ -483,7 +482,7 @@ pub fn init(map: *std.process.Environ.Map) !void {
         ,
         .execute = &timerStart,
     } });
-    try registry.put(allocator, "TIMER_READ", .{ .executable = .{
+    try registry.put(gpa, "TIMER_READ", .{ .executable = .{
         .name = "TIMER_READ",
         .short_description = "Read elapsed time from the system timer.",
         .long_description =
@@ -493,7 +492,7 @@ pub fn init(map: *std.process.Environ.Map) !void {
         ,
         .execute = &timerRead,
     } });
-    try registry.put(allocator, "FILE", .{ .executable = .{
+    try registry.put(gpa, "FILE", .{ .executable = .{
         .name = "FILE",
         .parameters = &[_]Command.Executable.Parameter{.{ .name = "path" }},
         .short_description = "Queue commands listed in the provided file.",
@@ -508,7 +507,7 @@ pub fn init(map: *std.process.Environ.Map) !void {
         ,
         .execute = &file,
     } });
-    try registry.put(allocator, "SAVE_OUTPUT", .{ .executable = .{
+    try registry.put(gpa, "SAVE_OUTPUT", .{ .executable = .{
         .name = "SAVE_OUTPUT",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "mode" },
@@ -529,7 +528,7 @@ pub fn init(map: *std.process.Environ.Map) !void {
         ,
         .execute = &setLog,
     } });
-    try registry.put(allocator, "EXIT", .{ .executable = .{
+    try registry.put(gpa, "EXIT", .{ .executable = .{
         .name = "EXIT",
         .short_description = "Exit the MMC command line utility.",
         .long_description =
@@ -552,16 +551,15 @@ test init {
     }
 }
 
-pub fn deinit(io: std.Io, gpa: std.mem.Allocator) void {
-    deinitModules();
+pub fn deinit(gpa: std.mem.Allocator, io: std.Io) void {
+    deinitModules(gpa, io);
+    queueClear(io) catch {};
     environ_map = undefined;
     stop.store(true, .monotonic);
     defer stop.store(false, .monotonic);
     variables.deinit();
-    queueClear(io) catch {};
     command_queue_lock = undefined;
     registry.deinit(gpa);
-    arena.deinit();
 }
 
 pub fn queueEmpty(io: std.Io) error{Canceled}!bool {
@@ -601,7 +599,7 @@ pub fn enqueue(io: std.Io, input: []const u8) !void {
     command_queue.append(&new_node.node);
 }
 
-pub fn execute(io: std.Io) !void {
+pub fn execute(gpa: std.mem.Allocator, io: std.Io) !void {
     try command_queue_lock.lock(io);
     const node_opt = command_queue.popFirst();
     command_queue_lock.unlock(io);
@@ -611,12 +609,16 @@ pub fn execute(io: std.Io) !void {
             std.heap.smp_allocator.free(command_str.str);
             std.heap.smp_allocator.destroy(command_str);
         }
-        try parseAndRun(io, command_str.str);
+        try parseAndRun(gpa, io, command_str.str);
     }
 }
 
-fn parseAndRun(io: std.Io, input: []const u8) !void {
-    const trimmed = std.mem.trimLeft(u8, input, "\n\t \r");
+fn parseAndRun(
+    gpa: std.mem.Allocator,
+    io: std.Io,
+    input: []const u8,
+) !void {
+    const trimmed = std.mem.trimStart(u8, input, "\n\t \r");
     std.log.info("Running command: {s}\n", .{trimmed});
     if (trimmed.len == 0 or trimmed[0] == '#') {
         return;
@@ -626,15 +628,18 @@ fn parseAndRun(io: std.Io, input: []const u8) !void {
     var command_buf: [256]u8 = undefined;
     if (token_iterator.next()) |token| {
         if (registry.getPtr(std.ascii.upperString(&command_buf, token))) |c| {
-            command = c;
+            command = switch (c.*) {
+                .alias => c.alias.command,
+                .executable => &c.executable,
+            };
         } else return error.InvalidCommand;
     } else return;
 
-    var params: [][]const u8 = try allocator.alloc(
+    var params: [][]const u8 = try gpa.alloc(
         []const u8,
         command.parameters.len,
     );
-    defer allocator.free(params);
+    defer gpa.free(params);
 
     for (command.parameters, 0..) |param, i| {
         const _token = token_iterator.peek();
@@ -686,11 +691,8 @@ fn parseAndRun(io: std.Io, input: []const u8) !void {
     if (!is_rest and token_iterator.peek() != null)
         return error.UnexpectedParameter;
 
-    try command.execute(io, params);
+    try command.execute(io, gpa, params);
 }
-
-var arena: std.heap.ArenaAllocator = undefined;
-var allocator: std.mem.Allocator = undefined;
 
 fn help(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     if (params[0].len > 0) {
@@ -1096,7 +1098,7 @@ fn file(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     }
 }
 
-fn deinitModules() void {
+fn deinitModules(gpa: std.mem.Allocator, io: std.Io) void {
     var mod_it = initialized_modules.iterator();
     const fields = @typeInfo(Config.Module).@"enum".fields;
     while (mod_it.next()) |e| {
@@ -1105,7 +1107,7 @@ fn deinitModules() void {
                 inline 0...fields.len - 1 => |i| {
                     const f_type = @typeInfo(@field(@This(), fields[i].name));
                     if (comptime f_type != .void) {
-                        @field(@This(), fields[i].name).deinit();
+                        @field(@This(), fields[i].name).deinit(gpa, io);
                         const module = @field(Config.Module, fields[i].name);
                         initialized_modules.set(module, false);
                     }
@@ -1116,9 +1118,9 @@ fn deinitModules() void {
     }
 }
 
-fn loadConfig(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+fn loadConfig(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     // De-initialize any previously initialized modules.
-    deinitModules();
+    deinitModules(gpa, io);
 
     // Load config file.
     const config_file = if (params[0].len > 0)
@@ -1195,9 +1197,9 @@ fn loadConfig(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
                 .{},
             );
         };
-    var m_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    const m_allocator = m_arena.allocator();
-    var conf = try Config.parse(m_allocator, config_file);
+
+    var conf = try Config.parse(gpa, config_file);
+    defer conf.deinit();
 
     // Initialize only the modules specified in config file.
     const fields = @typeInfo(Config.Module).@"enum".fields;
@@ -1218,8 +1220,6 @@ fn loadConfig(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
             else => unreachable,
         }
     }
-    conf.deinit();
-    m_arena.deinit();
 }
 
 fn wait(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {

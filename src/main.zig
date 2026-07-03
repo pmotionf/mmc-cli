@@ -53,8 +53,8 @@ pub fn main(init: std.process.Init) !void {
         else => @compileError("UnsupportedOs"),
     }
 
-    try command.init(map);
-    defer command.deinit(io, gpa);
+    try command.init(gpa, map);
+    defer command.deinit(gpa, io);
 
     command_loop: while (!exit.load(.monotonic)) {
         command.checkCommandInterrupt(io) catch |e| std.log.err("{t}", .{e});
@@ -65,7 +65,7 @@ pub fn main(init: std.process.Init) !void {
             prompt.disable.store(true, .monotonic);
         }
 
-        command.execute(io) catch |e| {
+        command.execute(gpa, io) catch |e| {
             std.log.err("{t}", .{e});
             if (@errorReturnTrace()) |error_trace| {
                 std.debug.dumpErrorReturnTrace(error_trace);

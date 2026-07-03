@@ -8,10 +8,7 @@ const Command = command.Command;
 
 pub const Config = struct {};
 
-var arena: std.heap.ArenaAllocator = undefined;
-var allocator: std.mem.Allocator = undefined;
-
-var clients_lock: std.Thread.RwLock = .{};
+var clients_lock: std.Io.RwLock = .init;
 // All commands will be broadcasted to every client.
 var clients: std.ArrayList(Client) = undefined;
 
@@ -21,7 +18,7 @@ var server_thread: std.Thread = undefined;
 // Flag to stop server connection thread. Use `command.stop` for commands.
 var server_stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false);
 
-fn acceptClients() !void {
+fn acceptClients(io: std.Io) !void {
     try server.listen();
     while (!server_stop.load(.monotonic)) {
         var new_connection: network.Socket = server.accept() catch |e| {
@@ -31,9 +28,9 @@ fn acceptClients() !void {
             );
             continue;
         };
-        clients_lock.lock();
+        clients_lock.lock(io);
         try clients.append(.{ .conn = new_connection });
-        clients_lock.unlock();
+        clients_lock.unlock(io);
         std.log.info(
             "Client connected from {}",
             .{try new_connection.getRemoteEndPoint()},
@@ -45,13 +42,11 @@ const Client = struct {
     conn: network.Socket,
 };
 
-pub fn init(_: Config) !void {
-    arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    allocator = arena.allocator();
+pub fn init(gpa: std.mem.Allocator, io: std.Io, _: Config) !void {
     server_stop.store(false, .monotonic);
-    clients_lock.lock();
-    clients = std.ArrayList(Client).init(allocator);
-    clients_lock.unlock();
+    clients_lock.lock(io);
+    clients = std.ArrayList(Client).init(gpa);
+    clients_lock.unlock(io);
     try network.init();
 
     server = try network.Socket.create(.ipv4, .tcp);
@@ -75,7 +70,7 @@ pub fn init(_: Config) !void {
         server_stop.store(false, .monotonic);
     }
 
-    try command.registry.put(allocator, .{
+    try command.registry.put(gpa, .{
         .name = "HOME_RETURN_SYSTEM",
         .short_description = "Home the return system.",
         .long_description =
@@ -86,7 +81,7 @@ pub fn init(_: Config) !void {
         ,
         .execute = &home,
     });
-    try command.registry.put(allocator, .{
+    try command.registry.put(gpa, .{
         .name = "RAISE_START_AXIS",
         .short_description = "Raise start Axis to upper motion system.",
         .long_description =
@@ -96,7 +91,7 @@ pub fn init(_: Config) !void {
         ,
         .execute = &raiseStartAxis,
     });
-    try command.registry.put(allocator, .{
+    try command.registry.put(gpa, .{
         .name = "LOWER_START_AXIS",
         .short_description = "Lower start Axis to return system.",
         .long_description =
@@ -106,7 +101,7 @@ pub fn init(_: Config) !void {
         ,
         .execute = &lowerStartAxis,
     });
-    try command.registry.put(allocator, .{
+    try command.registry.put(gpa, .{
         .name = "RAISE_END_AXIS",
         .short_description = "Raise end Axis to upper motion system.",
         .long_description =
@@ -116,7 +111,7 @@ pub fn init(_: Config) !void {
         ,
         .execute = &raiseEndAxis,
     });
-    try command.registry.put(allocator, .{
+    try command.registry.put(gpa, .{
         .name = "LOWER_END_AXIS",
         .short_description = "Lower end Axis to return system.",
         .long_description =
@@ -126,7 +121,7 @@ pub fn init(_: Config) !void {
         ,
         .execute = &lowerEndAxis,
     });
-    try command.registry.put(allocator, .{
+    try command.registry.put(gpa, .{
         .name = "BELT_MOVE_START",
         .short_description = "Move the return system belt to the start Axis.",
         .long_description =
@@ -136,7 +131,7 @@ pub fn init(_: Config) !void {
         ,
         .execute = &beltMoveStart,
     });
-    try command.registry.put(allocator, .{
+    try command.registry.put(gpa, .{
         .name = "BELT_MOVE_END",
         .short_description = "Move the return system belt to the end Axis.",
         .long_description =
@@ -148,17 +143,16 @@ pub fn init(_: Config) !void {
     });
 }
 
-pub fn deinit() void {
+pub fn deinit(gpa: std.mem.Allocator, io: std.Io) void {
     server_stop.store(true, .monotonic);
     server.close();
     server_thread.join();
     server_stop.store(false, .monotonic);
 
     network.deinit();
-    clients_lock.lock();
-    clients.deinit();
-    clients_lock.unlock();
-    arena.deinit();
+    clients_lock.lock(io);
+    clients.deinit(gpa);
+    clients_lock.unlock(io);
 }
 
 fn home(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
