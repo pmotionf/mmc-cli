@@ -620,11 +620,11 @@ pub fn runner(io: std.Io, duration: f64, file_path: []const u8) !void {
     );
     defer stream.deinit(client.allocator);
     // Logging file setup.
-    const log_file = try std.fs.cwd().createFile(file_path, .{});
+    const log_file = try std.Io.Dir.cwd().createFile(io, file_path, .{});
     defer {
         log_file.close();
         if (cancel.load(.monotonic))
-            std.fs.cwd().deleteFile(file_path) catch {};
+            std.Io.Dir.cwd().deleteFile(io, file_path) catch {};
     }
     std.log.info("The registers will be logged to {s}.", .{file_path});
     const log_time_start = std.time.microTimestamp();

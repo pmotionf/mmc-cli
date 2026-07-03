@@ -1038,10 +1038,10 @@ fn tableAddRow(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     try table.addRow();
 }
 
-fn tableSave(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+fn tableSave(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const path = params[0];
 
-    var f = try std.fs.cwd().createFile(path, .{ .truncate = true });
+    var f = try std.Io.Dir.cwd().createFile(io, path, .{ .truncate = true });
     defer f.close();
 
     for (table.header) |col| {
@@ -1072,7 +1072,7 @@ fn timerRead(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
 }
 
 fn file(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
-    var f = try std.fs.cwd().openFile(params[0], .{});
+    var f = try std.Io.Dir.cwd().openFile(io, params[0], .{});
     defer f.close();
     var reader_buf: [std.fs.max_path_bytes + 512]u8 = undefined;
     var reader = f.reader(&reader_buf);
@@ -1115,23 +1115,23 @@ fn deinitModules() void {
     }
 }
 
-fn loadConfig(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+fn loadConfig(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     // De-initialize any previously initialized modules.
     deinitModules();
 
     // Load config file.
     const config_file = if (params[0].len > 0)
-        std.fs.cwd().openFile(params[0], .{}) catch
-            try std.fs.openFileAbsolute(params[0], .{})
+        std.Io.Dir.cwd().openFile(io, params[0], .{}) catch
+            try std.Io.Dir.openFileAbsolute(io, params[0], .{})
     else
-        std.fs.cwd().openFile("config.json5", .{}) catch exe_local: {
+        std.Io.Dir.cwd().openFile(io, "config.json5", .{}) catch exe_local: {
             var exe_dir_buf: [std.fs.max_path_bytes]u8 = undefined;
-            const exe_dir_path = std.fs.selfExeDirPath(&exe_dir_buf) catch
+            const path_len = std.process.executableDirPath(io, &exe_dir_buf) catch
                 break :exe_local error.FileNotFound;
-            var exe_dir = std.fs.cwd().openDir(exe_dir_path, .{}) catch
+            var exe_dir = std.Io.Dir.cwd().openDir(io, exe_dir_buf[0..path_len], .{}) catch
                 break :exe_local error.FileNotFound;
-            defer exe_dir.close();
-            break :exe_local exe_dir.openFile("config.json5", .{});
+            defer exe_dir.close(io);
+            break :exe_local exe_dir.openFile(io, "config.json5", .{});
         } catch config_local: {
             var config_dir = switch (comptime builtin.os.tag) {
                 .windows => b: {
@@ -1143,7 +1143,7 @@ fn loadConfig(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
                         "USERPROFILE",
                     );
 
-                    var home_dir = try std.fs.cwd().openDir(home_path, .{});
+                    var home_dir = try std.Io.Dir.cwd().openDir(io, home_path, .{});
                     defer home_dir.close();
                     var config_root = try home_dir.openDir(".config", .{});
                     defer config_root.close();
@@ -1158,13 +1158,13 @@ fn loadConfig(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
                         "XDG_CONFIG_HOME",
                     ) catch "";
                     if (config_path.len > 0) {
-                        break :b try std.fs.cwd().openDir(config_path, .{});
+                        break :b try std.Io.Dir.cwd().openDir(io, config_path, .{});
                     }
                     const home_path = try std.process.getEnvVarOwned(
                         fba_alloc,
                         "HOME",
                     );
-                    var home_dir = try std.fs.cwd().openDir(home_path, .{});
+                    var home_dir = try std.Io.Dir.cwd().openDir(io, home_path, .{});
                     defer home_dir.close();
                     var config_root = try home_dir.openDir(".config", .{});
                     defer config_root.close();
