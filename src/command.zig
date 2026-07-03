@@ -189,7 +189,9 @@ var command_queue_lock: std.Thread.RwLock = undefined;
 var command_queue: std.DoublyLinkedList = undefined;
 
 var timer: ?std.time.Timer = null;
-var log_file: ?std.fs.File = null;
+var log_file: ?std.Io.File = null;
+var file_writer: ?std.Io.File.Writer = null;
+var file_buf: [4096]u8 = undefined;
 
 const CommandString = struct {
     str: []u8,
@@ -300,36 +302,32 @@ pub const Command = union(enum) {
 };
 
 pub fn logFn(
-    comptime message_level: std.log.Level,
-    comptime scope: @TypeOf(.EnumLiteral),
+    comptime level: std.log.Level,
+    comptime scope: @EnumLiteral(),
     comptime format: []const u8,
     args: anytype,
 ) void {
-    const level_txt = comptime message_level.asText();
-    const prefix2 = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
-
-    if (log_file) |f| {
-        var writer_buf: [4096]u8 = undefined;
-        var writer = f.writer(&writer_buf);
-        writer.interface.print(
-            level_txt ++ prefix2 ++ format ++ "\n",
-            args,
-        ) catch return;
-        writer.interface.flush() catch return;
+    if (file_writer) |*f| {
+        var writer = &f.interface;
+        writer.writeAll(level.asText()) catch {};
+        if (scope != .default) writer.print("({t})", .{scope}) catch {};
+        writer.writeAll(": ") catch {};
+        writer.print(format ++ "\n", args) catch {};
+        writer.flush() catch return;
     }
-
-    var stderr_buf: [4096]u8 = undefined;
-    var stderr = std.fs.File.stderr().writer(&stderr_buf);
-
-    std.debug.lockStdErr();
-    defer std.debug.unlockStdErr();
-    nosuspend {
-        stderr.interface.print(
-            level_txt ++ prefix2 ++ format ++ "\n",
-            args,
-        ) catch return;
-        stderr.interface.flush() catch return;
-    }
+    const io = std.Options.debug_io;
+    const prev = io.swapCancelProtection(.blocked);
+    defer _ = io.swapCancelProtection(prev);
+    var buffer: [64]u8 = undefined;
+    const stderr = std.debug.lockStderr(&buffer).terminal();
+    defer std.debug.unlockStderr();
+    return std.log.defaultLogFileTerminal(
+        level,
+        scope,
+        format,
+        args,
+        stderr,
+    ) catch {};
 }
 
 pub fn init() !void {
@@ -1260,19 +1258,21 @@ fn wait(params: [][]const u8) !void {
     }
 }
 
-fn setLog(params: [][]const u8) !void {
+fn setLog(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const mode_str = params[0];
     const path = params[1];
 
     var buf: [512]u8 = undefined;
     const file_path = if (path.len > 0) path else p: {
-        var timestamp: u64 = @intCast(std.time.timestamp());
+        var timestamp: i64 =
+            std.Io.Timestamp.now(io, std.Io.Clock.real).toSeconds();
+        // var timestamp: u64 = @intCast(std.time.timestamp());
         timestamp += std.time.s_per_hour * 9;
-        const days_since_epoch: i32 = @intCast(timestamp / std.time.s_per_day);
+        const days_since_epoch: i32 = @intCast(@divFloor(timestamp, std.time.s_per_day));
         const ymd =
             chrono.date.YearMonthDay.fromDaysSinceUnixEpoch(days_since_epoch);
-        const time_day: u32 = @intCast(timestamp % std.time.s_per_day);
-        const time = try chrono.Time.fromNumSecondsFromMidnight(time_day, 0);
+        const time_day: u32 = @intCast(@rem(timestamp, std.time.s_per_day));
+        const time = chrono.Time.fromNumSecondsFromMidnight(time_day, 0) catch return;
 
         break :p try std.fmt.bufPrint(
             &buf,
@@ -1290,22 +1290,25 @@ fn setLog(params: [][]const u8) !void {
 
     if (std.ascii.eqlIgnoreCase("stop", mode_str)) {
         if (log_file) |f| {
-            f.close();
+            f.close(io);
         }
         log_file = null;
     } else if (std.ascii.eqlIgnoreCase("append", mode_str)) {
         if (log_file) |f| {
-            f.close();
+            f.close(io);
+            file_writer = null;
         }
-
-        log_file = try std.fs.cwd().createFile(file_path, .{
+        log_file = try std.Io.Dir.cwd().createFile(io, file_path, .{
             .truncate = false,
         });
+        file_writer = log_file.?.writer(io, &file_buf);
     } else if (std.ascii.eqlIgnoreCase("replace", mode_str)) {
         if (log_file) |f| {
-            f.close();
+            f.close(io);
+            file_writer = null;
         }
-        log_file = try std.fs.cwd().createFile(file_path, .{});
+        log_file = try std.Io.Dir.cwd().createFile(io, file_path, .{});
+        file_writer = log_file.?.writer(io, &file_buf);
     } else {
         return error.InvalidSaveOutputMode;
     }
