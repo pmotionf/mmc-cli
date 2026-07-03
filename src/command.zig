@@ -1074,26 +1074,21 @@ fn timerRead(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
 }
 
 fn file(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+    var file_buffer: [4096]u8 = undefined;
     var f = try std.Io.Dir.cwd().openFile(io, params[0], .{});
-    defer f.close();
-    var reader_buf: [std.fs.max_path_bytes + 512]u8 = undefined;
-    var reader = f.reader(&reader_buf);
+    var file_reader = f.reader(io, &file_buffer);
+    const reader = &file_reader.interface;
     while (true) {
         try checkCommandInterrupt(io);
-        const _line = reader.interface.takeDelimiter('\n') catch |e| {
-            switch (e) {
-                error.StreamTooLong => break,
-                else => return e,
-            }
-        } orelse break;
-        const line = std.mem.trimLeft(
+        const _line = try reader.takeDelimiter('\n') orelse return;
+        const line = std.mem.trimStart(
             u8,
-            std.mem.trimRight(u8, _line, "\r"),
+            std.mem.trimEnd(u8, _line, "\r"),
             "\n\t ",
         );
         if (line.len == 0 or line[0] == '#') continue;
         std.log.info("Queueing command: {s}", .{line});
-        try enqueue(line);
+        try enqueue(io, line);
     }
 }
 
