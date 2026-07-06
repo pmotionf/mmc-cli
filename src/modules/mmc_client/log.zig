@@ -790,3 +790,7 @@ fn writeValues(
         }
     }
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

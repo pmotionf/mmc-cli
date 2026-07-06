@@ -1376,3 +1376,7 @@ const csi_sequences: std.StaticStringMap(Event) = .initComptime(.{
         .modifiers = .{ .ctrl = true, .shift = true },
     } } },
 });
+
+test {
+    std.testing.refAllDecls(@This());
+}

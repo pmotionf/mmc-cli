@@ -55,3 +55,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     try client.sendRequest(io, gpa, net, request);
     try client.waitCommandCompleted(io, gpa, net);
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

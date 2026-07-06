@@ -50,3 +50,7 @@ pub fn deinit(self: *Line, gpa: std.mem.Allocator) void {
     gpa.free(self.name);
     self.name = &.{};
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

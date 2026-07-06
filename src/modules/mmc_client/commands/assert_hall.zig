@@ -112,3 +112,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
         else => return error.UnexpectedResponse,
     }
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

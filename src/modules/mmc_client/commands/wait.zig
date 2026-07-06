@@ -235,3 +235,7 @@ fn waitCarrierState(
         if (carrier.state == state) return;
     }
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

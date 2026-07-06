@@ -78,3 +78,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
             std.log.info("Carrier {d} Axis: {}", .{ carrier.id, aux });
     }
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

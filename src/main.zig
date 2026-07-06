@@ -106,5 +106,5 @@ const kernel32 = struct {
 };
 
 test {
-    std.testing.refAllDeclsRecursive(@This());
+    std.testing.refAllDecls(@This());
 }

@@ -23,3 +23,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, _: [][]const u8) error{ServerNot
     client.lines = &.{};
     std.log.info("Disconnected from {f}", .{client.endpoint.?});
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

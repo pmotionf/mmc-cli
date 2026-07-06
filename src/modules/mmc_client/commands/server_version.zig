@@ -38,3 +38,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, _: [][]const u8) !void {
         .{ name, version.major, version.minor, version.patch },
     );
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

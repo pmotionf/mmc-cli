@@ -197,3 +197,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     }
     std.log.info("Connected to {f}", .{net.socket.address});
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

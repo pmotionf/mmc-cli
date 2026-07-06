@@ -233,3 +233,7 @@ fn read(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         try command.variables.put(save_var, print_str);
     }
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

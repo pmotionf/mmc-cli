@@ -104,3 +104,7 @@ fn lengthPrioritizedLessThan(
 
     return std.mem.lessThan(u8, lhs, rhs);
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

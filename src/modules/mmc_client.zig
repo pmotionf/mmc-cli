@@ -1600,3 +1600,7 @@ fn checkInterrupt(
         };
     }
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

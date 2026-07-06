@@ -163,3 +163,7 @@ test parseTarget {
     );
     try std.testing.expectError(error.InvalidTarget, parseTarget("1.0axi"));
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

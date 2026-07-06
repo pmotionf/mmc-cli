@@ -406,3 +406,7 @@ test isValid {
     try std.testing.expect(res.isValid(.log_kind, "all"));
     try std.testing.expect(res.isValid(.log_kind, "d") == false);
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

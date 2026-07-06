@@ -19,3 +19,7 @@ pub fn impl(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         client.standard.acceleration.unit,
     });
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

@@ -84,3 +84,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
         }
     }
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

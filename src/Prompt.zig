@@ -1177,3 +1177,7 @@ fn utfDisplayWidth(cp: []const u8) u3 {
             (ucs >= 0x20000 and ucs <= 0x2fffd) or
             (ucs >= 0x30000 and ucs <= 0x3fffd))));
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

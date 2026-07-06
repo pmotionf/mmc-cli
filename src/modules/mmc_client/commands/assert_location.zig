@@ -87,3 +87,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
         location > expected_location + location_thr)
         return error.UnexpectedCarrierLocation;
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

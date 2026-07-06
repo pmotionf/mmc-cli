@@ -354,3 +354,7 @@ fn beltMoveEnd(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
         }
     } else return error.ReturnSystemDisconnected;
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

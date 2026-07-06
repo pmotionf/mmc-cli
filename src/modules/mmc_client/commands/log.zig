@@ -246,3 +246,7 @@ fn modify(
         }
     }
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

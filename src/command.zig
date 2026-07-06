@@ -1287,3 +1287,7 @@ fn clear(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
 fn exit(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     main.exit.store(true, .monotonic);
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

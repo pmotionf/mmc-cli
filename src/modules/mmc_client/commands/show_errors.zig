@@ -97,3 +97,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
         try writer.flush();
     }
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}
