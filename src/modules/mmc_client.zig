@@ -1290,7 +1290,6 @@ pub fn deinit(gpa: std.mem.Allocator, io: std.Io) void {
     commands.disconnect.impl(io, gpa, &.{}) catch {};
     parameter.deinit();
     gpa.free(config.host);
-    if (builtin.os.tag == .windows) std.os.windows.WSACleanup() catch return;
 }
 
 pub fn matchLine(name: []const u8) !usize {
