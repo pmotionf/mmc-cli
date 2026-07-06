@@ -1148,7 +1148,7 @@ fn loadConfig(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
         } catch config_local: {
             var config_dir = switch (comptime builtin.os.tag) {
                 .windows => b: {
-                    const home_path = environ_map.get("USERPROFILE");
+                    const home_path = environ_map.get("USERPROFILE") orelse "";
 
                     var home_dir = try std.Io.Dir.cwd().openDir(
                         io,

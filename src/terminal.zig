@@ -32,23 +32,23 @@ pub fn init() !void {
         .windows => {
             const stdin = std.Io.File.stdin().handle;
 
-            if (IsValidCodePage(65001) == 0) {
+            if (IsValidCodePage(65001).toBool() == false) {
                 return error.Utf8CodePageNotInstalled;
             }
             // Set input/output codepages to UTF-8
-            if (SetConsoleOutputCP(65001) == 0) {
+            if (SetConsoleOutputCP(65001).toBool() == false) {
                 return std.os.windows.unexpectedError(
                     std.os.windows.GetLastError(),
                 );
             }
-            if (SetConsoleCP(65001) == 0) {
+            if (SetConsoleCP(65001).toBool() == false) {
                 return std.os.windows.unexpectedError(
                     std.os.windows.GetLastError(),
                 );
             }
 
             var mode: CONSOLE_MODE = undefined;
-            if (GetConsoleMode(stdin, &mode) == 0) {
+            if (GetConsoleMode(stdin, &mode).toBool() == false) {
                 return std.os.windows.unexpectedError(
                     std.os.windows.GetLastError(),
                 );
@@ -62,7 +62,7 @@ pub fn init() !void {
             mode.ENABLE_WINDOW_INPUT = false;
             // Necessary to have terminal handle Ctrl-C.
             mode.ENABLE_PROCESSED_INPUT = true;
-            if (SetConsoleMode(stdin, mode) == 0) {
+            if (SetConsoleMode(stdin, mode).toBool() == false) {
                 return std.os.windows.unexpectedError(
                     std.os.windows.GetLastError(),
                 );
@@ -276,11 +276,11 @@ pub const clipboard = struct {
     pub fn get(buffer: []u8) ![]u8 {
         switch (comptime builtin.os.tag) {
             .windows => {
-                if (OpenClipboard(null) != 0) {
+                if (OpenClipboard(null).toBool() == true) {
                     defer _ = CloseClipboard();
                     if (IsClipboardFormatAvailable(
                         @intFromEnum(CLIPBOARD_FORMATS.UNICODETEXT),
-                    ) != 0) {
+                    ).toBool() == true) {
                         const cp_handle = GetClipboardData(
                             @intFromEnum(CLIPBOARD_FORMATS.UNICODETEXT),
                         );
@@ -327,7 +327,7 @@ pub const event = struct {
                 if (GetNumberOfConsoleInputEvents(
                     std.Io.File.stdin().handle,
                     &num_events,
-                ) == 0) {
+                ).toBool() == false) {
                     return std.os.windows.unexpectedError(
                         std.os.windows.GetLastError(),
                     );
@@ -354,7 +354,7 @@ pub const event = struct {
                     1,
                     &chars_read,
                     null,
-                ) == 0) {
+                ).toBool() == false) {
                     return std.os.windows.unexpectedError(
                         std.os.windows.GetLastError(),
                     );
@@ -378,15 +378,11 @@ pub const event = struct {
             },
             .windows => {
                 const stdin_handle = std.Io.File.stdin().handle;
-                std.os.windows.WaitForSingleObject(
-                    stdin_handle,
-                    0,
-                ) catch |e| switch (e) {
+                WaitForSingleObject(stdin_handle, 0) catch |e| switch (e) {
                     error.Unexpected => return std.os.windows.unexpectedError(
                         std.os.windows.GetLastError(),
                     ),
                     error.WaitAbandoned, error.WaitTimeOut => return false,
-                    else => return e,
                 };
                 return true;
             },
@@ -876,6 +872,34 @@ extern "user32" fn IsClipboardFormatAvailable(
 extern "user32" fn GetClipboardData(
     uFormat: std.os.windows.UINT,
 ) callconv(.winapi) ?std.os.windows.HANDLE;
+extern "kernel32" fn WaitForSingleObjectEx(
+    hHandle: std.os.windows.HANDLE,
+    dwMilliseconds: std.os.windows.DWORD,
+    bAlertable: std.os.windows.BOOL,
+) callconv(.winapi) std.os.windows.DWORD;
+
+fn WaitForSingleObject(handle: std.os.windows.HANDLE, milliseconds: std.os.windows.DWORD) WaitForSingleObjectError!void {
+    switch (WaitForSingleObjectEx(handle, milliseconds, .fromBool(false))) {
+        WAIT_ABANDONED => return error.WaitAbandoned,
+        WAIT_OBJECT_0 => return,
+        WAIT_TIMEOUT => return error.WaitTimeOut,
+        WAIT_FAILED => switch (std.os.windows.GetLastError()) {
+            else => |err| return std.os.windows.unexpectedError(err),
+        },
+        else => return error.Unexpected,
+    }
+}
+
+const WAIT_ABANDONED = 0x00000080;
+const WAIT_OBJECT_0 = 0x00000000;
+const WAIT_TIMEOUT = 0x00000102;
+const WAIT_FAILED = 0xFFFFFFFF;
+
+const WaitForSingleObjectError = error{
+    WaitAbandoned,
+    WaitTimeOut,
+    Unexpected,
+};
 
 const CONSOLE_MODE = packed struct(std.os.windows.DWORD) {
     ENABLE_PROCESSED_INPUT: bool,
