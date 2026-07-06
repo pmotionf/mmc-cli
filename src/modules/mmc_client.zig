@@ -1286,9 +1286,6 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
     errdefer _ = command.registry.orderedRemove("SET_CARRIER_ID");
 }
 
-test "rest parameter" {
-    // TODO: Test rest parameter properly
-}
 pub fn deinit(gpa: std.mem.Allocator, io: std.Io) void {
     commands.disconnect.impl(io, gpa, &.{}) catch {};
     parameter.deinit();

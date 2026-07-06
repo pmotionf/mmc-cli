@@ -127,7 +127,7 @@ pub const Table = struct {
 };
 
 // Global registry of all commands, including from other command modules.
-pub var registry: std.array_hash_map.String(Command) = undefined;
+pub var registry: std.array_hash_map.String(Command) = .empty;
 
 /// Global "stop" flag to interrupt command execution. Command modules should
 /// not use this atomic flag directly, but instead prefer to use the
@@ -540,7 +540,25 @@ pub fn init(
 }
 
 test "rest parameter" {
-    // TODO: Test rest parameter properly
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    const env = std.testing.environ;
+    var env_map = try env.createMap(gpa);
+    defer env_map.deinit();
+    try init(gpa, &env_map);
+    defer deinit(gpa, io);
+    for (registry.values()) |command| {
+        switch (command) {
+            .alias => {},
+            .executable => |executable| {
+                for (executable.parameters, 1..) |param, i| {
+                    if (param.rest and i != executable.parameters.len) {
+                        return error.FoundInvalidRestParameter;
+                    }
+                }
+            },
+        }
+    }
 }
 
 pub fn deinit(gpa: std.mem.Allocator, io: std.Io) void {

@@ -61,10 +61,6 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io, _: Config) !void {
     } });
 }
 
-test "rest parameter" {
-    // TODO: Test rest parameter properly
-}
-
 pub fn deinit(gpa: std.mem.Allocator, io: std.Io) void {
     defer gpa.destroy(soem_ctx);
     disconnect(io, gpa, &.{}) catch {};
