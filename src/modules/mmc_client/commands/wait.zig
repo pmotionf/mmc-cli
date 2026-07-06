@@ -133,7 +133,7 @@ pub fn axisEmpty(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void
             },
         };
         try client.sendRequest(io, gpa, net, request);
-        var decoded = try client.getResponse(gpa, net);
+        var decoded = try client.getResponse(gpa, io, net);
         defer decoded.deinit(gpa);
         const track = switch (decoded.body orelse return error.InvalidResponse) {
             .info => |info_resp| switch (info_resp.body orelse
@@ -172,7 +172,7 @@ pub fn axisEmpty(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void
 fn waitCarrierState(
     gpa: std.mem.Allocator,
     io: std.Io,
-    net: client.zignet.Socket,
+    net: std.Io.net.Stream,
     line: u32,
     id: std.math.IntFittingRange(1, 1023),
     state: api.protobuf.mmc.info.Response.Line.Carrier.State.State,
@@ -204,7 +204,7 @@ fn waitCarrierState(
             },
         };
         try client.sendRequest(io, gpa, net, request);
-        var decoded = try client.getResponse(gpa, net);
+        var decoded = try client.getResponse(gpa, io, net);
         defer decoded.deinit(gpa);
         const track = switch (decoded.body orelse return error.InvalidResponse) {
             .info => |info_resp| switch (info_resp.body orelse

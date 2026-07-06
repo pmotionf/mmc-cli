@@ -9,11 +9,16 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "connect");
     defer tracy_zone.end();
     if (client.sock) |_| disconnect.impl(io, gpa, &.{}) catch unreachable;
-    const endpoint: client.Config =
-        if (params[0].len != 0) endpoint: {
+    const net: std.Io.net.Stream = stream: {
+        if (params[0].len != 0) {
             const last_delimiter_idx =
                 std.mem.lastIndexOf(u8, params[0], ":") orelse
                 return error.MissingPort;
+            const port: u16 = std.fmt.parseInt(
+                u16,
+                params[0][last_delimiter_idx + 1 ..],
+                0,
+            ) catch return error.InvalidPort;
             // IPv6 address shall be provided with square brackets. In addition,
             // Ipv6 address has at least 2 ":" characters, with the port
             // separator makes it 3 characters.
@@ -25,74 +30,54 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
                     params[0][last_delimiter_idx - 1 .. last_delimiter_idx],
                 ))
             {
-                // IPv6 address shall be provided with scope id. Required for
-                // local connection.
-                if (std.mem.count(u8, params[0], "%") == 0)
-                    return error.MissingScopeId;
-                break :endpoint .{
-                    .port = std.fmt.parseInt(
-                        u16,
-                        params[0][last_delimiter_idx + 1 ..],
-                        0,
-                    ) catch return error.InvalidEndpoint,
-                    .host = try gpa.dupe(
-                        u8,
-                        params[0][1 .. last_delimiter_idx - 1],
-                    ),
-                };
+                const address: std.Io.net.IpAddress = try .resolveIp6(
+                    io,
+                    params[0][1 .. last_delimiter_idx - 1],
+                    port,
+                );
+                std.log.info("Trying to connect to {f}", .{address});
+                break :stream try address.connect(
+                    io,
+                    .{
+                        .mode = .stream,
+                        .protocol = .tcp,
+                    },
+                );
             }
-            // IPv4 address or hostname logic.
-            break :endpoint .{
-                .port = std.fmt.parseInt(
-                    u16,
-                    params[0][last_delimiter_idx + 1 ..],
-                    0,
-                ) catch return error.InvalidEndpoint,
-                .host = try gpa.dupe(
-                    u8,
-                    params[0][0..last_delimiter_idx],
-                ),
-            };
-        } else if (client.endpoint == null) .{
-            .host = try gpa.dupe(u8, client.config.host),
-            .port = client.config.port,
-        } else .{
-            .host = switch (client.endpoint.?.addr) {
-                .ipv4 => |ipv4| try std.fmt.allocPrint(
-                    gpa,
-                    "{f}",
-                    .{ipv4},
-                ),
-                .ipv6 => |ipv6| ipv6: {
-                    const format = try std.fmt.allocPrint(
-                        gpa,
-                        "{f}",
-                        .{ipv6},
-                    );
-                    defer gpa.free(format);
-                    // Remove the square bracket from ipv6
-                    break :ipv6 try std.fmt.allocPrint(
-                        gpa,
-                        "{s}",
-                        .{format[1 .. format.len - 1]},
-                    );
-                },
-            },
-            .port = client.endpoint.?.port,
-        };
-    defer gpa.free(endpoint.host);
-    std.log.info(
-        "Trying to connect to {s}:{d}",
-        .{ endpoint.host, endpoint.port },
-    );
-    const net = try client.zignet.Socket.connectToHost(
-        gpa,
-        endpoint.host,
-        endpoint.port,
-        &command.checkCommandInterrupt,
-        3000,
-    );
-    client.endpoint = try net.getRemoteEndPoint();
+            const hostname: std.Io.net.HostName = try .init(
+                params[0][0..last_delimiter_idx],
+            );
+            std.log.info(
+                "Trying to connect to {s}:{d}",
+                .{ hostname.bytes, port },
+            );
+            break :stream try hostname.connect(
+                io,
+                port,
+                .{ .mode = .stream, .protocol = .tcp },
+            );
+        } else if (client.endpoint == null) {
+            // TODO: Support IPv6 on config file
+            const hostname: std.Io.net.HostName = try .init(client.config.host);
+            std.log.info(
+                "Trying to connect to {s}:{d}",
+                .{ hostname.bytes, client.config.port },
+            );
+            break :stream try hostname.connect(
+                io,
+                client.config.port,
+                .{ .mode = .stream, .protocol = .tcp },
+            );
+        } else {
+            const address = client.endpoint.?;
+            std.log.info("Trying to connect to {f}", .{address});
+            break :stream try address.connect(
+                io,
+                .{ .mode = .stream, .protocol = .tcp },
+            );
+        }
+    };
+    client.endpoint = net.socket.address;
     client.sock = net;
     errdefer {
         for (client.lines) |*line| {
@@ -100,7 +85,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
         }
         gpa.free(client.lines);
         client.sock = null;
-        net.close();
+        net.close(io);
     }
     // Request server information, for matching API and getting server name.
     const server_request: api.protobuf.mmc.Request = .{
@@ -109,7 +94,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
         },
     };
     try client.sendRequest(io, gpa, net, server_request);
-    var server_decoded = try client.getResponse(gpa, net);
+    var server_decoded = try client.getResponse(gpa, io, net);
     defer server_decoded.deinit(gpa);
     const server = switch (server_decoded.body orelse
         return error.InvalidResponse) {
@@ -150,7 +135,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
         },
     };
     try client.sendRequest(io, gpa, net, track_request);
-    var track_decoded = try client.getResponse(gpa, net);
+    var track_decoded = try client.getResponse(gpa, io, net);
     defer track_decoded.deinit(gpa);
     const track_config = switch (track_decoded.body orelse
         return error.InvalidResponse) {
@@ -210,5 +195,5 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
         );
         try stdout.interface.flush();
     }
-    std.log.info("Connected to {f}", .{try net.getRemoteEndPoint()});
+    std.log.info("Connected to {f}", .{net.socket.address});
 }

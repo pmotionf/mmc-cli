@@ -34,7 +34,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
         },
     };
     try client.sendRequest(io, gpa, net, request);
-    var decoded = try client.getResponse(gpa, net);
+    var decoded = try client.getResponse(gpa, io, net);
     defer decoded.deinit(gpa);
     const track = switch (decoded.body orelse return error.InvalidResponse) {
         .info => |info_resp| switch (info_resp.body orelse

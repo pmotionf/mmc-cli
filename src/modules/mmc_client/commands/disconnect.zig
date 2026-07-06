@@ -5,7 +5,7 @@ const tracy = @import("tracy");
 
 /// Free all memory EXCEPT the endpoint, so that the client can reconnect to the
 /// latest server
-pub fn impl(_: std.Io, gpa: std.mem.Allocator, _: [][]const u8) error{ServerNotConnected}!void {
+pub fn impl(io: std.Io, gpa: std.mem.Allocator, _: [][]const u8) error{ServerNotConnected}!void {
     const tracy_zone = tracy.traceNamed(@src(), "disconnect");
     defer tracy_zone.end();
     const net = client.sock orelse return error.ServerNotConnected;
@@ -14,15 +14,12 @@ pub fn impl(_: std.Io, gpa: std.mem.Allocator, _: [][]const u8) error{ServerNotC
     while (client.log.executing.load(.monotonic)) {}
     client.parameter.reset();
     client.log_config.deinit(gpa);
-    net.close();
+    net.close(io);
     client.sock = null;
     for (client.lines) |*line| {
         line.deinit(gpa);
     }
     gpa.free(client.lines);
     client.lines = &.{};
-    std.log.info(
-        "Disconnected from {f}:{}",
-        .{ client.endpoint.?.addr, client.endpoint.?.port },
-    );
+    std.log.info("Disconnected from {f}", .{client.endpoint.?});
 }

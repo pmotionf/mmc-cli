@@ -8,7 +8,6 @@ const commands = @import("mmc_client/commands.zig");
 pub const Parameter = @import("mmc_client/Parameter.zig");
 pub const Line = @import("mmc_client/Line.zig");
 pub const log = @import("mmc_client/log.zig");
-pub const zignet = @import("zignet");
 pub const api = @import("mmc-api");
 
 pub const Config = struct {
@@ -165,10 +164,10 @@ pub var lines: []Line = &.{};
 /// deinitialized if the client is disconnected.
 pub var log_config: log.Config = undefined;
 /// Currently connected socket. Nulled when disconnect.
-pub var sock: ?zignet.Socket = null;
+pub var sock: ?std.Io.net.Stream = null;
 /// Currently saved endpoint. The endpoint will be overwritten if the client
 /// is connected to a different server. Stays null before connected to a socket.
-pub var endpoint: ?zignet.Endpoint = null;
+pub var endpoint: ?std.Io.net.IpAddress = null;
 
 /// Store the configuration.
 pub var config: Config = undefined;
@@ -1318,7 +1317,7 @@ pub fn matchLine(name: []const u8) !usize {
 pub fn waitCommandCompleted(
     io: std.Io,
     gpa: std.mem.Allocator,
-    net: zignet.Socket,
+    net: std.Io.net.Stream,
 ) !void {
     const command_id = command_id: {
         // If command is cancelled while fetching the command ID, client has to
@@ -1333,7 +1332,7 @@ pub fn waitCommandCompleted(
             checkInterrupt,
             .{ io, finish, &cancel },
         );
-        var decoded = getResponse(gpa, net) catch |err| {
+        var decoded = getResponse(gpa, io, net) catch |err| {
             // It is impossible to remove command from the server if the
             // connection is suddenly closed during reading this response.
             //
@@ -1382,7 +1381,7 @@ pub fn waitCommandCompleted(
             },
         };
         try sendRequest(io, gpa, net, request);
-        var decoded = try getResponse(gpa, net);
+        var decoded = try getResponse(gpa, io, net);
         defer decoded.deinit(gpa);
         var commands_resp = switch (decoded.body orelse
             return error.InvalidResponse) {
@@ -1427,15 +1426,15 @@ pub fn sendRequest(
     io: std.Io,
     ///  Internally used by zig-protobuf.
     gpa: std.mem.Allocator,
-    net: zignet.Socket,
+    net: std.Io.net.Stream,
     request: api.protobuf.mmc.Request,
 ) !void {
     var writer_buf: [4096]u8 = undefined;
     var net_writer = net.writer(io, &writer_buf);
     try request.encode(&net_writer.interface, gpa);
     net_writer.interface.flush() catch {
-        if (net_writer.error_state) |err| {
-            commands.disconnect.impl(&.{}) catch {};
+        if (net_writer.err) |err| {
+            commands.disconnect.impl(io, gpa, &.{}) catch {};
             return err;
         }
     };
@@ -1447,10 +1446,11 @@ pub fn sendRequest(
 /// is cancellable is only command that require to remove command from server.
 pub fn getResponse(
     gpa: std.mem.Allocator,
-    net: zignet.Socket,
+    io: std.Io,
+    net: std.Io.net.Stream,
 ) !api.protobuf.mmc.Response {
     var reader_buf: [4096]u8 = undefined;
-    var net_reader = net.reader(&reader_buf);
+    var net_reader = net.reader(io, &reader_buf);
     while (true) {
         if (net_reader.interface.peekByte()) |_| {
             break;
@@ -1458,9 +1458,9 @@ pub fn getResponse(
             switch (e) {
                 std.Io.Reader.Error.EndOfStream => continue,
                 std.Io.Reader.Error.ReadFailed => {
-                    switch (net_reader.error_state orelse error.Unexpected) {
+                    switch (net_reader.err orelse error.Unexpected) {
                         else => |err| {
-                            commands.disconnect.impl(&.{}) catch {};
+                            commands.disconnect.impl(io, gpa, &.{}) catch {};
                             return err;
                         },
                     }
@@ -1484,7 +1484,7 @@ fn removeCommand(gpa: std.mem.Allocator, io: std.Io, id: u32) !void {
         },
     };
     try sendRequest(io, gpa, net, request);
-    var decoded = try getResponse(gpa, net);
+    var decoded = try getResponse(gpa, io, net);
     defer decoded.deinit(gpa);
     const removed_id = switch (decoded.body orelse
         return error.InvalidResponse) {

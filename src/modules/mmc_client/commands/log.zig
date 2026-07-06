@@ -55,7 +55,7 @@ pub fn add(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     // the only thing that can be done from this point is to always show the
     // logging configuration even if there is an error when trying to toggle
     // the driver flag for logging.
-    defer client.log_config.status() catch {};
+    defer client.log_config.status(io) catch {};
     try modify(gpa, io, net, line, kind, range, true);
 }
 
@@ -158,7 +158,7 @@ pub fn remove(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     // the only thing that can be shown from this point is to always show the
     // logging configuration even if there is an error when trying to toggle
     // the driver flag for logging.
-    defer client.log_config.status() catch {};
+    defer client.log_config.status(io) catch {};
     try modify(gpa, io, net, line, kind, range, false);
 }
 
@@ -183,7 +183,7 @@ pub fn cancel(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
 fn modify(
     gpa: std.mem.Allocator,
     io: std.Io,
-    net: client.zignet.Socket,
+    net: std.Io.net.Stream,
     line: client.Line,
     kind: Kind,
     range: client.log.Range,
@@ -216,7 +216,7 @@ fn modify(
                 },
             };
             try client.sendRequest(io, gpa, net, request);
-            var decoded = try client.getResponse(gpa, net);
+            var decoded = try client.getResponse(gpa, io, net);
             defer decoded.deinit(gpa);
             const track = switch (decoded.body orelse return error.InvalidResponse) {
                 .info => |info_resp| switch (info_resp.body orelse

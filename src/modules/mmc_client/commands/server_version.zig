@@ -14,7 +14,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, _: [][]const u8) !void {
         },
     };
     try client.sendRequest(io, gpa, net, request);
-    var decoded = try client.getResponse(gpa, net);
+    var decoded = try client.getResponse(gpa, io, net);
     defer decoded.deinit(gpa);
     const server = switch (decoded.body orelse
         return error.InvalidResponse) {

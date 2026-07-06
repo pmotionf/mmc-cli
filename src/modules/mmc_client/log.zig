@@ -2,7 +2,6 @@ const log = @This();
 
 const std = @import("std");
 const api = @import("mmc-api");
-const zignet = @import("zignet");
 
 const client = @import("../mmc_client.zig");
 const command = @import("../../command.zig");
@@ -185,7 +184,7 @@ const Stream = struct {
     count: usize,
     /// Optimized logging configuration for requesting data.
     config: Stream.Config,
-    socket: zignet.Socket,
+    socket: std.Io.net.Stream,
 
     /// Store one iteration of data.
     const Data = struct {
@@ -267,7 +266,7 @@ const Stream = struct {
         logging_size: usize,
         config: log.Config,
         lines: []client.Line,
-        endpoint: zignet.Endpoint,
+        endpoint: std.Io.net.IpAddress,
     ) !Stream {
         var stream: Stream = undefined;
         stream.data = try gpa.alloc(Stream.Data, logging_size);
@@ -303,12 +302,8 @@ const Stream = struct {
         }
         stream.head = 0;
         stream.count = 0;
-        stream.socket = try zignet.Socket.connect(
-            endpoint,
-            &command.checkCommandInterrupt,
-            3000,
-        );
-        errdefer stream.socket.close();
+        stream.socket = try endpoint.connect(io, .{ .mode = .stream });
+        errdefer stream.socket.close(io);
         stream.config.lines = .empty;
         errdefer stream.config.lines.deinit(gpa);
         for (config.lines) |line| {
@@ -346,7 +341,7 @@ const Stream = struct {
                     },
                 };
                 try client.sendRequest(io, gpa, stream.socket, request);
-                var decoded = try client.getResponse(gpa, stream.socket);
+                var decoded = try client.getResponse(gpa, io, stream.socket);
                 defer decoded.deinit(gpa);
                 const track = switch (decoded.body orelse
                     return error.InvalidResponse) {
@@ -419,7 +414,7 @@ const Stream = struct {
         return stream;
     }
 
-    fn deinit(stream: *Stream, gpa: std.mem.Allocator) void {
+    fn deinit(stream: *Stream, io: std.Io, gpa: std.mem.Allocator) void {
         for (stream.data) |*data| {
             for (data.lines) |*line| {
                 gpa.free(line.axes);
@@ -429,7 +424,7 @@ const Stream = struct {
         }
         gpa.free(stream.data);
         stream.config.lines.deinit(gpa);
-        stream.socket.close();
+        stream.socket.close(io);
     }
 
     /// Get the data from the server based on the stream config.
@@ -478,7 +473,7 @@ const Stream = struct {
                 },
             };
             try client.sendRequest(io, gpa, stream.socket, request);
-            var decoded = try client.getResponse(gpa, stream.socket);
+            var decoded = try client.getResponse(gpa, io, stream.socket);
             defer decoded.deinit(gpa);
             const track = switch (decoded.body orelse
                 return error.InvalidResponse) {
@@ -626,17 +621,17 @@ pub fn runner(
         client.lines,
         client.endpoint orelse return error.MissingEndpoint,
     );
-    defer stream.deinit(gpa);
+    defer stream.deinit(io, gpa);
     // Logging file setup.
     const log_file = try std.Io.Dir.cwd().createFile(io, file_path, .{});
     defer {
-        log_file.close();
+        log_file.close(io);
         if (cancel.load(.monotonic))
             std.Io.Dir.cwd().deleteFile(io, file_path) catch {};
     }
     std.log.info("The registers will be logged to {s}.", .{file_path});
-    const log_time_start = std.time.microTimestamp();
-    var timer = try std.time.Timer.start();
+    const log_time_start = std.Io.Timestamp.now(io, .real);
+    var timer = std.Io.Timestamp.now(io, .real);
     var timestamp: f64 = 0;
     // Reset the stop and cancel bit before starting to log.
     stop.store(false, .monotonic);
@@ -648,9 +643,9 @@ pub fn runner(
         }
         timestamp = @as(
             f64,
-            @floatFromInt(std.time.microTimestamp() - log_time_start),
+            @floatFromInt(log_time_start.untilNow(io, .real).toMicroseconds()),
         ) / std.time.us_per_s;
-        stream.get(gpa, timestamp) catch |e| {
+        stream.get(gpa, io, timestamp) catch |e| {
             std.log.err("{t}", .{e});
             if (@errorReturnTrace()) |error_trace| {
                 std.debug.dumpErrorReturnTrace(error_trace);
@@ -658,8 +653,8 @@ pub fn runner(
             break;
         };
         // Wait to match the update rate.
-        while (timer.read() < update_rate * std.time.ns_per_ms) {}
-        timer.reset();
+        while (timer.untilNow(io, .real).toMilliseconds() < update_rate) {}
+        timer = .now(io, .real);
     }
     std.log.info("Logging is stopped.", .{});
     stop.store(false, .monotonic);
