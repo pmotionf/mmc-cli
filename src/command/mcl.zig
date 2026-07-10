@@ -3,11 +3,9 @@ const command = @import("../command.zig");
 const mcl = @import("mcl");
 const mmc_api = @import("mmc_api");
 
-var arena: std.heap.ArenaAllocator = undefined;
-var gpa: std.mem.Allocator = undefined;
-var line_names: [][]u8 = undefined;
-var line_speeds: []u7 = undefined;
-var line_accelerations: []u7 = undefined;
+var line_names: [][]u8 = &.{};
+var line_speeds: []u7 = &.{};
+var line_accelerations: []u7 = &.{};
 
 const Direction = mcl.Direction;
 const Distance = mcl.Distance;
@@ -18,17 +16,11 @@ pub const Config = struct {
     lines: []mcl.Config.Line,
 };
 
-pub fn init(c: Config) !void {
+pub fn init(gpa: std.mem.Allocator, c: Config) !void {
     if (c.lines.len != c.line_names.len) {
         return error.ConfigLineNumberOfLineNamesDoesNotMatch;
     }
-
     try mcl.Config.validate(.{ .lines = c.lines });
-
-    arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    errdefer arena.deinit();
-    gpa = arena.allocator();
-
     try mcl.init(gpa, .{ .lines = c.lines });
 
     line_names = try gpa.alloc([]u8, c.line_names.len);
@@ -790,9 +782,14 @@ pub fn init(c: Config) !void {
     errdefer _ = command.registry.orderedRemove("PAUSE_OFF");
 }
 
-pub fn deinit() void {
-    arena.deinit();
-    line_names = undefined;
+pub fn deinit(gpa: std.mem.Allocator) void {
+    mcl.deinit();
+    gpa.free(line_names);
+    gpa.free(line_speeds);
+    gpa.free(line_accelerations);
+    line_names = &.{};
+    line_speeds = &.{};
+    line_accelerations = &.{};
 }
 
 fn mclVersion(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
