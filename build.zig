@@ -18,6 +18,10 @@ pub fn build(b: *std.Build) !void {
         "Enable building a mock version of the MELSEC data link library.",
     ) orelse (target.result.os.tag != .windows);
 
+    const board_if = b.dependency("board_IF", .{
+        .target = target,
+        .optimize = optimize,
+    });
     const chrono = b.dependency("chrono", .{});
     const build_zig_zon = b.createModule(.{
         .root_source_file = b.path("build.zig.zon"),
@@ -33,6 +37,7 @@ pub fn build(b: *std.Build) !void {
     });
 
     const imports: []const std.Build.Module.Import = &.{
+        .{ .name = "board-IF", .module = board_if.module("board-IF") },
         .{ .name = "build.zig.zon", .module = build_zig_zon },
         .{ .name = "chrono", .module = chrono.module("chrono") },
     };
