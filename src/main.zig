@@ -12,7 +12,11 @@ fn nextLine(reader: *std.Io.Reader) !?[]const u8 {
     return result;
 }
 
-fn stopCommand(
+fn stopCommandLinux(_: std.os.linux.SIG) callconv(.c) void {
+    command.stop.store(true, .monotonic);
+}
+
+fn stopCommandWindows(
     dwCtrlType: std.os.windows.DWORD,
 ) callconv(.winapi) std.os.windows.BOOL {
     if (dwCtrlType == kernel32.CTRL_C_EVENT) {
@@ -22,13 +26,28 @@ fn stopCommand(
 }
 
 pub fn main(init: std.process.Init) !void {
-    if (builtin.os.tag == .windows) {
-        const success = kernel32.SetConsoleCtrlHandler(
-            &stopCommand,
-            .fromBool(true),
-        );
-        if (success.toBool() == false)
-            return error.FailingSetConsoleCtrlHandler;
+    switch (builtin.os.tag) {
+        .windows => {
+            const success = kernel32.SetConsoleCtrlHandler(
+                &stopCommandWindows,
+                .fromBool(true),
+            );
+            if (success.toBool() == false)
+                return error.FailingSetConsoleCtrlHandler;
+        },
+        .linux => {
+            const linux = std.os.linux;
+            const action: linux.Sigaction = .{
+                .handler = .{ .handler = @alignCast(&stopCommandLinux) },
+                .mask = linux.sigemptyset(),
+                .flags = 0,
+            };
+
+            if (linux.sigaction(linux.SIG.INT, &action, null) != 0) {
+                return error.LinuxSignalHandlerSetFailure;
+            }
+        },
+        else => @compileError("UnsupportedOS"),
     }
 
     const gpa = init.gpa;
