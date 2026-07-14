@@ -250,12 +250,12 @@ pub fn init(io: std.Io, gpa: std.mem.Allocator) !void {
     });
 }
 
-pub fn deinit(gpa: std.mem.Allocator) void {
+pub fn deinit(gpa: std.mem.Allocator, io: std.Io) void {
     stop.store(true, .monotonic);
     defer stop.store(false, .monotonic);
     variables.deinit();
     command_queue.deinit(gpa);
-    deinitModules(gpa);
+    deinitModules(gpa, io);
     registry.deinit(gpa);
 }
 
@@ -471,14 +471,14 @@ fn file(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     }
 }
 
-fn deinitModules(gpa: std.mem.Allocator) void {
+fn deinitModules(gpa: std.mem.Allocator, io: std.Io) void {
     var mod_it = initialized_modules.iterator();
     const fields = @typeInfo(Config.Module).@"enum".fields;
     while (mod_it.next()) |e| {
         if (e.value.*) {
             switch (@intFromEnum(e.key)) {
                 inline 0...fields.len - 1 => |i| {
-                    @field(@This(), fields[i].name).deinit(gpa);
+                    @field(@This(), fields[i].name).deinit(gpa, io);
                 },
             }
         }
@@ -487,7 +487,7 @@ fn deinitModules(gpa: std.mem.Allocator) void {
 
 fn loadConfig(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     // De-initialize any previously initialized modules.
-    deinitModules(gpa);
+    deinitModules(gpa, io);
 
     // Load config file.
     const file_path = if (params[0].len > 0) params[0] else "config.json";
@@ -587,7 +587,8 @@ fn clear(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     try stdout.interface.writeAll("\x1bc");
 }
 
-fn exit(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
+fn exit(io: std.Io, gpa: std.mem.Allocator, _: [][]const u8) !void {
+    deinitModules(gpa, io);
     std.process.exit(1);
 }
 

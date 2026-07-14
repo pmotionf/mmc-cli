@@ -55,7 +55,7 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
 
     try command.init(io, gpa);
-    defer command.deinit(gpa);
+    defer command.deinit(gpa, io);
 
     const stdin = std.Io.File.stdin();
     var stdin_buf: [1024]u8 = undefined;

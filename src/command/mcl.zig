@@ -35,7 +35,7 @@ const Ethercat = struct {
                 @intCast(line_idx),
                 line_config.axes,
                 res.board_if.ctx,
-                &res.board_if.lock,
+                res.board_if.lock,
                 &station_count,
             );
         }
@@ -1173,12 +1173,15 @@ pub fn init(gpa: std.mem.Allocator, c: Config) !void {
     errdefer _ = command.registry.orderedRemove("PAUSE_OFF");
 }
 
-pub fn deinit(gpa: std.mem.Allocator) void {
+pub fn deinit(gpa: std.mem.Allocator, io: std.Io) void {
     mcl.deinit();
     gpa.free(line_names);
     gpa.free(line_speeds);
     gpa.free(line_accelerations);
     if (ethercat) |*eth| {
+        if (eth.board_if.ctx.slavelist[0].state != 0) {
+            eth.board_if.close(io) catch {};
+        }
         eth.deinit(gpa);
     }
 }
@@ -1193,8 +1196,8 @@ fn mclVersion(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
 
 fn mclConnect(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     if (ethercat) |*eth| {
-        try eth.board_if.open();
-        errdefer eth.board_if.close();
+        try eth.board_if.open(io);
+        errdefer eth.board_if.close(io) catch {};
         ethercat_future = try io.concurrent(
             Board.process,
             .{ io, &eth.board_if },
@@ -1202,11 +1205,6 @@ fn mclConnect(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
         while (eth.board_if.ctx.slavelist[0].state != soem.EC_STATE_OPERATIONAL) {
             _ = soem.ecx_readstate(eth.board_if.ctx);
             try command.checkCommandInterrupt();
-        }
-        for (eth.lines) |line| {
-            for (line.stations) |station| {
-                std.log.debug("station {} state {}", .{ station.id, station.slave.state });
-            }
         }
         for (eth.lines) |line| {
             for (line.stations) |station| {
@@ -1233,7 +1231,7 @@ fn mclDisconnect(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
                 try station.send(io);
             }
         }
-        eth.board_if.close();
+        try eth.board_if.close(io);
         return;
     }
     for (mcl.lines) |line| {
