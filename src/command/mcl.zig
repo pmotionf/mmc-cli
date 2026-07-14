@@ -73,7 +73,8 @@ const Ethercat = struct {
             result.id = line_index + 1;
             result.axes = try gpa.alloc(Axis, axes);
             errdefer gpa.free(result.axes);
-            result.stations = try gpa.alloc(Station, (axes - 1) / 3 + 1);
+            const stations = (axes - 1) / Axis.max.station + 1;
+            result.stations = try gpa.alloc(Station, stations);
             errdefer gpa.free(result.stations);
             result.x = try gpa.alloc(Station.X, result.stations.len);
             errdefer gpa.free(result.x);
@@ -90,8 +91,6 @@ const Ethercat = struct {
             @memset(result.ww, std.mem.zeroes(Station.Ww));
 
             var num_axes: usize = 0;
-            const stations: usize = @divFloor(axes, Axis.max.station);
-
             for (0..stations) |station_i| {
                 station_count.* += 1;
                 const start_num_axes = num_axes;
@@ -245,11 +244,11 @@ const Ethercat = struct {
                 return error.SlaveNotOperational;
             }
             try self.lock.lock(io);
+            defer self.lock.unlock(io);
             @memcpy(
                 self.slave.outputs[0..@sizeOf(Station.Y)],
                 std.mem.asBytes(self.y),
             );
-            self.lock.unlock(io);
         }
 
         fn sendWw(self: Station, io: std.Io) !void {
