@@ -28,6 +28,7 @@ const Ethercat = struct {
         errdefer res.deinit(gpa);
         res.board_if = try .init(gpa, config.protocol.ethercat);
         res.lines = try gpa.alloc(Line, config.lines.len);
+        var station_count: usize = 0;
         for (res.lines, config.lines, 0..) |*line, line_config, line_idx| {
             try line.init(
                 gpa,
@@ -35,6 +36,7 @@ const Ethercat = struct {
                 line_config.axes,
                 res.board_if.ctx,
                 &res.board_if.lock,
+                &station_count,
             );
         }
         return res;
@@ -65,6 +67,7 @@ const Ethercat = struct {
             axes: Axis.Id.OnLine,
             soem_ctx: *soem.ecx_contextt,
             lock: *std.Io.RwLock,
+            station_count: *usize,
         ) !void {
             result.index = line_index;
             result.id = line_index + 1;
@@ -90,6 +93,7 @@ const Ethercat = struct {
             const stations: usize = @divFloor(axes, Axis.max.station);
 
             for (0..stations) |station_i| {
+                station_count.* += 1;
                 const start_num_axes = num_axes;
                 for (0..3) |axis_i| {
                     if (num_axes >= result.axes.len) break;
@@ -115,7 +119,7 @@ const Ethercat = struct {
                     .wr = &result.wr[station_i],
                     .ww = &result.ww[station_i],
                     .axes = result.axes[start_num_axes..num_axes],
-                    .slave = &soem_ctx.slavelist[@intCast(station_i + 1)],
+                    .slave = &soem_ctx.slavelist[station_count.*],
                     .lock = lock,
                 };
             }
