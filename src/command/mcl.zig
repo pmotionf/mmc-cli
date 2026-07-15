@@ -14,19 +14,17 @@ const Distance = mcl.Distance;
 
 const Ethercat = struct {
     board_if: Board,
-    ifname: []u8,
     lines: []Line,
 
     /// Initialize ethercat connection and allocate required memories to store
     /// process data from ethercat.
-    fn init(gpa: std.mem.Allocator, config: Config) !Ethercat {
+    fn init(gpa: std.mem.Allocator, io: std.Io, config: Config) !Ethercat {
         var res: Ethercat = .{
             .board_if = undefined,
-            .ifname = &.{},
             .lines = &.{},
         };
+        res.board_if = try .init(gpa, io);
         errdefer res.deinit(gpa);
-        res.board_if = try .init(gpa, config.protocol.ethercat);
         res.lines = try gpa.alloc(Line, config.lines.len);
         var station_count: usize = 0;
         for (res.lines, config.lines, 0..) |*line, line_config, line_idx| {
@@ -390,29 +388,26 @@ var ethercat_future: ?std.Io.Future(@typeInfo(@TypeOf(Board.process)).@"fn".retu
 var ethercat: ?Ethercat = null;
 
 pub const Config = struct {
-    protocol: union(enum) {
-        cclink: void,
-        ethercat: []u8,
-    } = .{ .cclink = {} },
+    protocol: enum { cclink, ethercat } = .cclink,
     line_names: [][]const u8,
     lines: []mcl.Config.Line,
 };
 
-pub fn init(gpa: std.mem.Allocator, c: Config) !void {
+pub fn init(gpa: std.mem.Allocator, io: std.Io, c: Config) !void {
     if (c.lines.len != c.line_names.len) {
         return error.ConfigLineNumberOfLineNamesDoesNotMatch;
     }
     try mcl.Config.validate(.{ .lines = c.lines });
     if (c.protocol == .ethercat) {
-        ethercat = try .init(gpa, c);
+        ethercat = try .init(gpa, io, c);
+    } else {
+        try mcl.init(gpa, .{ .lines = c.lines });
     }
     errdefer {
         if (ethercat) |*eth| {
             eth.deinit(gpa);
         }
     }
-
-    try mcl.init(gpa, .{ .lines = c.lines });
 
     line_names = try gpa.alloc([]u8, c.line_names.len);
     line_speeds = try gpa.alloc(u7, c.lines.len);
@@ -1174,7 +1169,6 @@ pub fn init(gpa: std.mem.Allocator, c: Config) !void {
 }
 
 pub fn deinit(gpa: std.mem.Allocator, io: std.Io) void {
-    mcl.deinit();
     gpa.free(line_names);
     gpa.free(line_speeds);
     gpa.free(line_accelerations);
@@ -1183,6 +1177,8 @@ pub fn deinit(gpa: std.mem.Allocator, io: std.Io) void {
             eth.board_if.close(io) catch {};
         }
         eth.deinit(gpa);
+    } else {
+        mcl.deinit();
     }
 }
 
@@ -1231,7 +1227,7 @@ fn mclDisconnect(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
                 try station.send(io);
             }
         }
-        try eth.board_if.close(io);
+        try eth.board_if.switchState(io, soem.EC_STATE_INIT);
         return;
     }
     for (mcl.lines) |line| {

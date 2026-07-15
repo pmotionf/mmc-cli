@@ -503,6 +503,7 @@ fn loadConfig(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
             inline 0...fields.len - 1 => |i| {
                 try @field(@This(), fields[i].name).init(
                     gpa,
+                    io,
                     @field(module, fields[i].name),
                 );
                 initialized_modules.set(
