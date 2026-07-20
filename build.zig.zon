@@ -13,8 +13,8 @@
             .hash = "chrono-0.1.0-uVd76BPDAwAyXqy0OAP1MvUyfk72pvv7e6bU7s2TqV0h",
         },
         .board_IF = .{
-            .url = "git+https://github.com/pmotionf/board-IF.git#2c4f5da291955b11b570fa979b483ae656da8a80",
-            .hash = "board_IF-0.1.0-8yRtfl9ZAABgLO5mBVA2tM8zSksK129KGTA0C0cXew2U",
+            .url = "git+https://github.com/pmotionf/board-IF.git#58796c331d1f0a15c913b57fb8f09c4c2d8f4f15",
+            .hash = "board_IF-0.1.0-8yRtfsxYAAAI-iN2R1A9Mc0yIvKHJqisltF-yHtDW7S8",
         },
     },
     .paths = .{""},

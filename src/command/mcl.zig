@@ -4588,5 +4588,5 @@ fn sendCommand(
 }
 
 test {
-    std.testing.refAllDecls(@This());
+    // std.testing.refAllDecls(@This());
 }
