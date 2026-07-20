@@ -40,4 +40,5 @@ jobs:
         run: zig fmt --check .
 
       - name: Run tests
-        run: zig build test -Dmdfunc_mock -freference-trace --summary all
+        run: zig build test -Dmdfunc_mock -freference-trace --summary all \
+          -Dwpcap_lib_dir=$WPCAP_LIB_DIR
