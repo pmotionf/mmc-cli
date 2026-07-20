@@ -4,15 +4,6 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const wpcap_lib_dir = b.option(
-        []const u8,
-        "wpcap_lib_dir",
-        "Specify the dir to the wpcap static library artifact.",
-    ) orelse if (target.result.cpu.arch == .x86_64)
-        "vendor/wpcap/Lib/x64"
-    else
-        "vendor/wpcap/Lib";
-
     const mdfunc_lib_path = b.option(
         []const u8,
         "mdfunc",
@@ -29,7 +20,6 @@ pub fn build(b: *std.Build) !void {
     const board_if = b.dependency("board_IF", .{
         .target = target,
         .optimize = optimize,
-        .wpcap_lib_dir = wpcap_lib_dir,
     });
     const chrono = b.dependency("chrono", .{});
     const build_zig_zon = b.createModule(.{

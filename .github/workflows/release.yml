@@ -62,8 +62,7 @@ jobs:
         run: |
           zig build \
             -Doptimize=ReleaseSafe \
-            -Dtarget=x86_64-windows-msvc \
-            -Dwpcap_lib_dir=$WPCAP_LIB_DIR
+            -Dtarget=x86_64-windows-msvc
           zip -j "windows-${NAME}-${VERSION}.zip" \
             "./zig-out/bin/${NAME}.exe" \
             "./zig-out/bin/${NAME}.pdb"
