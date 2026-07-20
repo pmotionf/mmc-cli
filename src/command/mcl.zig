@@ -1,16 +1,17 @@
 const std = @import("std");
-const command = @import("../command.zig");
-const mcl = @import("mcl");
-const mmc_api = @import("mmc_api");
+
 const Board = @import("board-IF");
 const soem = Board.soem;
+const mcl = @import("mcl");
+const Direction = mcl.Direction;
+const Distance = mcl.Distance;
+const mmc_api = @import("mmc_api");
+
+const command = @import("../command.zig");
 
 var line_names: [][]u8 = undefined;
 var line_speeds: []u7 = undefined;
 var line_accelerations: []u7 = undefined;
-
-const Direction = mcl.Direction;
-const Distance = mcl.Distance;
 
 const Ethercat = struct {
     board_if: Board,
