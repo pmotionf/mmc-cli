@@ -1320,7 +1320,8 @@ fn mclAssertHall(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
 fn mclSliderPosMoveAxis(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
-    const axis_id: u16 = try std.fmt.parseInt(u16, params[2], 0);
+    const axis_id: u16 = std.fmt.parseInt(u16, params[2], 0) catch
+        return error.InvalidAxis;
     if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
 
     const line_idx: usize = try matchLine(line_names, line_name);
@@ -1510,7 +1511,8 @@ fn mclSliderPosMoveDistance(_: std.Io, _: std.mem.Allocator, params: [][]const u
 fn mclSliderSpdMoveAxis(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
-    const axis_id: u16 = try std.fmt.parseInt(u16, params[2], 0);
+    const axis_id: u16 = std.fmt.parseInt(u16, params[2], 0) catch
+        return error.InvalidAxis;
     if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
 
     const line_idx: usize = try matchLine(line_names, line_name);
@@ -2687,7 +2689,7 @@ fn waitCommandReady(station: Station) !void {
 }
 
 fn sendCommand(station: Station) !void {
-    std.log.debug("Sending command...", .{});
+    std.log.debug("Sending command on station {}", .{station.id});
     try station.sendWw();
     try station.setY(0x2);
     errdefer station.resetY(0x2) catch {};
@@ -2714,6 +2716,7 @@ fn sendCommand(station: Station) !void {
             break;
         }
     }
+    std.log.debug("command code: {t}", .{command_response});
     try command_response.throwError();
 }
 
