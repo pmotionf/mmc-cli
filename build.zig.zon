@@ -5,8 +5,8 @@
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .mmc_api = .{
-            .url = "https://github.com/pmotionf/mmc-api/archive/cb73baec9ea92354aa6e247b9db35b0ffea99cf3.tar.gz",
-            .hash = "mmc_api-0.0.0-P5raR_NJMwAIumuXTxwzRyOaeqkFXuL60e2en602-N8N",
+            .url = "https://github.com/pmotionf/mmc-api/archive/ea45a3c0e5d6237e008d761f285b76d62d1104da.tar.gz",
+            .hash = "mmc_api-0.0.0-P5raR39KMwAeZ01VlS8sff_JsgGiupsJG7zfLfIsYfD3",
         },
         .chrono = .{
             .url = "https://github.com/aaumar25/chrono/archive/adfc771.tar.gz",
