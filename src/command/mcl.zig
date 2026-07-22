@@ -2714,17 +2714,7 @@ fn sendCommand(station: Station) !void {
             break;
         }
     }
-
-    return switch (command_response) {
-        .NoError => {},
-        .InvalidCommand => error.InvalidCommand,
-        .SliderNotFound => error.SliderNotFound,
-        .HomingFailed => error.HomingFailed,
-        .InvalidParameter => error.InvalidParameter,
-        .InvalidSystemState => error.InvalidSystemState,
-        .SliderAlreadyExists => error.SliderAlreadyExists,
-        .InvalidAxis => error.InvalidAxis,
-    };
+    try command_response.throwError();
 }
 
 test {
