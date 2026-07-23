@@ -9,10 +9,6 @@ pub const Axis = @import("Axis.zig");
 pub const Station = @import("Station.zig");
 pub const Line = @import("Line.zig");
 
-pub const version: std.SemanticVersion =
-    std.SemanticVersion.parse("2.0.1") catch
-        @compileError("InvalidVersionMCL");
-
 pub var lines: []const Line = &.{};
 
 // Identical slice of lines as above without the const modifier, allowing the

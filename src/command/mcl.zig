@@ -33,16 +33,6 @@ pub fn init(gpa: std.mem.Allocator, c: Config) !void {
         line_accelerations[i] = 40;
     }
 
-    try command.registry.put(gpa, "MCL_VERSION", .{
-        .name = "MCL_VERSION",
-        .short_description = "Display the CC-Link version.",
-        .long_description =
-        \\Print the currently linked version of the CC-Link in Semantic Version
-        \\format.
-        ,
-        .execute = &mclVersion,
-    });
-    errdefer _ = command.registry.orderedRemove("MCL_VERSION");
     try command.registry.put(gpa, "CONNECT", .{
         .name = "CONNECT",
         .short_description = "Connect MCL with motion system.",
@@ -790,14 +780,6 @@ pub fn deinit(gpa: std.mem.Allocator) void {
     line_names = &.{};
     line_speeds = &.{};
     line_accelerations = &.{};
-}
-
-fn mclVersion(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
-    std.log.info("CC-Link Version: {d}.{d}.{d}\n", .{
-        mcl.version.major,
-        mcl.version.minor,
-        mcl.version.patch,
-    });
 }
 
 fn mclConnect(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
