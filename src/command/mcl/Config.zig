@@ -1,25 +1,39 @@
 const Config = @This();
 
 const std = @import("std");
-const cclink = @import("cclink.zig");
-const mcl = @import("mcl.zig");
+const mcl = @import("Mcl.zig");
 
 lines: []Line,
 
 pub const Line = struct {
+    /// Line name
+    name: []const u8,
     /// Total number of axes in line.
     axes: mcl.Axis.Id.Line,
-
     /// CC-Link Station ranges.
     ranges: []Range,
+    axis: AxisConfig,
+    carrier: CarrierConfig,
 
     pub const Range = struct {
         /// CC-Link Channel.
-        channel: cclink.Channel,
+        channel: mcl.cclink.Channel,
         /// CC-Link Station ID. Start of range, inclusive.
-        start: cclink.Id,
+        start: mcl.cclink.Id,
         /// CC-Link Station ID. End of range, inclusive.
-        end: cclink.Id,
+        end: mcl.cclink.Id,
+    };
+
+    pub const AxisConfig = struct {
+        /// Axis length, in millimeters.
+        length: f32,
+    };
+
+    pub const CarrierConfig = struct {
+        /// Carrier dimension parallel to carrier movement, in millimeters.
+        length: f32,
+        /// Carrier dimension perpendicular to carrier movement, in millimeters.
+        width: f32,
     };
 };
 

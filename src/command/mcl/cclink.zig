@@ -1,6 +1,6 @@
 const std = @import("std");
 const mdfunc = @import("mdfunc");
-const registers = @import("mcl.zig").registers;
+const registers = @import("Mcl.zig").registers;
 
 pub const Index = std.math.IntFittingRange(0, 63);
 pub const Id = std.math.IntFittingRange(1, 64);

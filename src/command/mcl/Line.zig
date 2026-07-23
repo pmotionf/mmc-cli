@@ -12,6 +12,9 @@ const Config = @import("Config.zig");
 pub const Index = Station.Index;
 pub const Id = Station.Id;
 
+name: []const u8,
+speed: u7,
+acceleration: u7,
 index: Index,
 id: Id,
 
@@ -29,45 +32,43 @@ ww: []Station.Ww,
 
 connection: []Range,
 
-allocator: std.mem.Allocator,
-
 const Range = struct {
     channel: cclink.Channel,
     range: cclink.Range,
 };
 
 pub fn init(
-    allocator: std.mem.Allocator,
-    result: *Line,
+    self: *Line,
+    gpa: std.mem.Allocator,
     line_index: Index,
     config: Config.Line,
 ) !void {
-    result.index = line_index;
-    result.id = line_index + 1;
-    result.connection = try allocator.alloc(Range, config.ranges.len);
-    errdefer allocator.free(result.connection);
-    result.axes = try allocator.alloc(Axis, config.axes);
-    errdefer allocator.free(result.axes);
-    result.stations = try allocator.alloc(Station, (config.axes - 1) / 3 + 1);
-    errdefer allocator.free(result.stations);
-    result.x = try allocator.alloc(Station.X, result.stations.len);
-    errdefer allocator.free(result.x);
-    result.y = try allocator.alloc(Station.Y, result.stations.len);
-    errdefer allocator.free(result.y);
-    result.wr = try allocator.alloc(Station.Wr, result.stations.len);
-    errdefer allocator.free(result.wr);
-    result.ww = try allocator.alloc(Station.Ww, result.stations.len);
-    errdefer allocator.free(result.ww);
+    self.index = line_index;
+    self.id = line_index + 1;
+    self.connection = try gpa.alloc(Range, config.ranges.len);
+    errdefer gpa.free(self.connection);
+    self.axes = try gpa.alloc(Axis, config.axes);
+    errdefer gpa.free(self.axes);
+    self.stations = try gpa.alloc(Station, (config.axes - 1) / 3 + 1);
+    errdefer gpa.free(self.stations);
+    self.x = try gpa.alloc(Station.X, self.stations.len);
+    errdefer gpa.free(self.x);
+    self.y = try gpa.alloc(Station.Y, self.stations.len);
+    errdefer gpa.free(self.y);
+    self.wr = try gpa.alloc(Station.Wr, self.stations.len);
+    errdefer gpa.free(self.wr);
+    self.ww = try gpa.alloc(Station.Ww, self.stations.len);
+    errdefer gpa.free(self.ww);
 
-    @memset(result.x, std.mem.zeroes(Station.X));
-    @memset(result.y, std.mem.zeroes(Station.Y));
-    @memset(result.wr, std.mem.zeroes(Station.Wr));
-    @memset(result.ww, std.mem.zeroes(Station.Ww));
+    @memset(self.x, std.mem.zeroes(Station.X));
+    @memset(self.y, std.mem.zeroes(Station.Y));
+    @memset(self.wr, std.mem.zeroes(Station.Wr));
+    @memset(self.ww, std.mem.zeroes(Station.Ww));
 
     var num_axes: usize = 0;
 
     for (config.ranges, 0..) |range, range_i| {
-        result.connection[range_i] = .{
+        self.connection[range_i] = .{
             .channel = range.channel,
             .range = .{
                 .start = @intCast(range.start - 1),
@@ -77,9 +78,9 @@ pub fn init(
         for (0..range.end - range.start + 1) |station_i| {
             const start_num_axes = num_axes;
             for (0..3) |axis_i| {
-                if (num_axes >= result.axes.len) break;
-                result.axes[num_axes] = .{
-                    .station = &result.stations[station_i],
+                if (num_axes >= self.axes.len) break;
+                self.axes[num_axes] = .{
+                    .station = &self.stations[station_i],
                     .index = .{
                         .station = @intCast(axis_i),
                         .line = @intCast(num_axes),
@@ -91,15 +92,15 @@ pub fn init(
                 };
                 num_axes += 1;
             }
-            result.stations[station_i] = .{
-                .line = result,
+            self.stations[station_i] = .{
+                .line = self,
                 .index = @intCast(station_i),
                 .id = @intCast(station_i + 1),
-                .x = &result.x[station_i],
-                .y = &result.y[station_i],
-                .wr = &result.wr[station_i],
-                .ww = &result.ww[station_i],
-                .axes = result.axes[start_num_axes..num_axes],
+                .x = &self.x[station_i],
+                .y = &self.y[station_i],
+                .wr = &self.wr[station_i],
+                .ww = &self.ww[station_i],
+                .axes = self.axes[start_num_axes..num_axes],
                 .connection = .{
                     .channel = range.channel,
                     .index = @intCast(range.start - 1 + station_i),
@@ -107,18 +108,16 @@ pub fn init(
             };
         }
     }
-    result.allocator = allocator;
 }
 
-pub fn deinit(self: *Line) void {
-    self.allocator.free(self.axes);
-    self.allocator.free(self.stations);
-    self.allocator.free(self.x);
-    self.allocator.free(self.y);
-    self.allocator.free(self.wr);
-    self.allocator.free(self.ww);
-    self.allocator.free(self.connection);
-    self.* = undefined;
+pub fn deinit(self: Line, gpa: std.mem.Allocator) void {
+    gpa.free(self.axes);
+    gpa.free(self.stations);
+    gpa.free(self.x);
+    gpa.free(self.y);
+    gpa.free(self.wr);
+    gpa.free(self.ww);
+    gpa.free(self.connection);
 }
 
 pub fn poll(line: Line) !void {
