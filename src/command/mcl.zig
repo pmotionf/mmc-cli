@@ -780,7 +780,9 @@ fn mclDisconnect(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
 
 fn mclStationX(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id = try std.fmt.parseInt(i16, params[1], 0);
+    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
 
     const line = try mcl.getLine(line_name);
 
@@ -788,17 +790,18 @@ fn mclStationX(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         return error.InvalidAxis;
     }
 
-    const axis: Mcl.Axis.Index.Line = @intCast(axis_id - 1);
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station.*;
+    try station.pollX();
 
-    const station_index: Station.Index = @intCast(axis / 3);
-    try line.stations[station_index].pollX();
-
-    std.log.info("{f}", .{line.stations[station_index].x});
+    std.log.info("{f}", .{station.x});
 }
 
 fn mclStationY(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id = try std.fmt.parseInt(i16, params[1], 0);
+    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
 
     const line = try mcl.getLine(line_name);
 
@@ -806,17 +809,18 @@ fn mclStationY(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         return error.InvalidAxis;
     }
 
-    const axis: Mcl.Axis.Index.Line = @intCast(axis_id - 1);
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station.*;
+    try station.pollY();
 
-    const station_index: Station.Index = @intCast(axis / 3);
-    try line.stations[station_index].pollY();
-
-    std.log.info("{f}", .{line.stations[station_index].y});
+    std.log.info("{f}", .{station.y});
 }
 
 fn mclStationWr(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id = try std.fmt.parseInt(i16, params[1], 0);
+    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
 
     const line = try mcl.getLine(line_name);
 
@@ -824,17 +828,18 @@ fn mclStationWr(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         return error.InvalidAxis;
     }
 
-    const axis: Mcl.Axis.Index.Line = @intCast(axis_id - 1);
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station.*;
+    try station.pollWr();
 
-    const station_index: Station.Index = @intCast(axis / 3);
-    try line.stations[station_index].pollWr();
-
-    std.log.info("{f}", .{line.stations[station_index].wr});
+    std.log.info("{f}", .{station.wr});
 }
 
 fn mclStationWw(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id = try std.fmt.parseInt(i16, params[1], 0);
+    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
 
     const line = try mcl.getLine(line_name);
 
@@ -842,17 +847,18 @@ fn mclStationWw(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         return error.InvalidAxis;
     }
 
-    const axis: Mcl.Axis.Index.Line = @intCast(axis_id - 1);
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station.*;
+    try station.pollWw();
 
-    const station_index: Station.Index = @intCast(axis / 3);
-    try line.stations[station_index].pollWw();
-
-    std.log.info("{f}", .{line.stations[station_index].ww});
+    std.log.info("{f}", .{station.ww});
 }
 
 fn mclAxisSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id = try std.fmt.parseInt(i16, params[1], 0);
+    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
     const result_var: []const u8 = params[2];
 
     const line = try mcl.getLine(line_name);
@@ -861,14 +867,11 @@ fn mclAxisSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         return error.InvalidAxis;
     }
 
-    const axis_index: Mcl.Axis.Index.Line = @intCast(axis_id - 1);
-    const station_index: Mcl.Station.Index = @intCast(axis_index / 3);
-    const local_axis_index: Mcl.Axis.Index.Station = @intCast(axis_index % 3);
-
-    const station = line.stations[station_index];
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station.*;
     try station.pollWr();
 
-    const slider_id = station.wr.slider_number.axis(local_axis_index);
+    const slider_id = station.wr.slider_number.axis(axis.index.station);
 
     if (slider_id != 0) {
         std.log.info("Slider {d} on axis {d}.\n", .{ slider_id, axis_id });
@@ -886,16 +889,17 @@ fn mclAxisSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
 
 fn mclAxisReleaseServo(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
+    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
 
     const line = try mcl.getLine(line_name);
     if (axis_id < 1 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
 
-    const axis_index: Mcl.Axis.Index.Line = @intCast(axis_id - 1);
-    const local_axis_index: Mcl.Axis.Index.Station = @intCast(axis_index % 3);
-    const station = line.stations[axis_index / 3];
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station.*;
 
     try station.sendWw();
     try station.setY(0x6);
@@ -904,24 +908,25 @@ fn mclAxisReleaseServo(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !v
     while (true) {
         try command.checkCommandInterrupt();
         try station.pollX();
-        if (!station.x.servo_active.axis(local_axis_index)) break;
+        if (!station.x.servo_active.axis(axis.index.station)) break;
     }
 }
 
 fn mclClearErrors(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
+    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
 
     const line = try mcl.getLine(line_name);
     if (axis_id < 1 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
 
-    const axis_index: Mcl.Axis.Index.Line = @intCast(axis_id - 1);
-    const local_axis_index: Mcl.Axis.Index.Station = @intCast(axis_index % 3);
-    const station = line.stations[axis_index / 3];
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station.*;
 
-    station.ww.target_axis_number = local_axis_index + 1;
+    station.ww.target_axis_number = axis.id.station;
     try station.sendWw();
     try station.setY(0xB);
     // Reset on error as well as on success.
@@ -935,18 +940,19 @@ fn mclClearErrors(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
 
 fn mclClearSliderInfo(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id: i16 = try std.fmt.parseInt(i16, params[1], 0);
+    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
 
     const line = try mcl.getLine(line_name);
     if (axis_id < 1 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
 
-    const axis_index: Mcl.Axis.Index.Line = @intCast(axis_id - 1);
-    const station = line.stations[axis_index / 3];
-    const local_axis_index: Mcl.Axis.Index.Station = @intCast(axis_index % 3);
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station.*;
 
-    station.ww.target_axis_number = local_axis_index + 1;
+    station.ww.target_axis_number = axis.id.station;
     try station.sendWw();
     try station.setY(0xC);
     // Reset on error as well as on success.
@@ -1012,7 +1018,9 @@ fn mclWaitHomeSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !voi
 
 fn mclIsolate(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
+    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
 
     const line = try mcl.getLine(line_name);
     if (axis_id == 0 or axis_id > line.axes.len) {
@@ -1030,7 +1038,7 @@ fn mclIsolate(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     };
 
     const slider_id: u16 = if (params[3].len > 0)
-        try std.fmt.parseInt(u16, params[3], 0)
+        std.fmt.parseInt(u16, params[3], 0) catch return error.InvalidSliderId
     else
         0;
     const link_axis: ?Direction = link: {
@@ -1047,9 +1055,8 @@ fn mclIsolate(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         } else break :link null;
     };
 
-    const axis_index: Mcl.Axis.Index.Line = @intCast(axis_id - 1);
-    const station = line.stations[axis_index / 3];
-    const local_axis: Mcl.Axis.Index.Station = @intCast(axis_index % 3);
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station.*;
 
     try waitCommandReady(station);
     if (link_axis) |a| {
@@ -1080,7 +1087,7 @@ fn mclIsolate(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         else
             .IsolateBackward,
         .command_slider_number = slider_id,
-        .target_axis_number = local_axis + 1,
+        .target_axis_number = axis.id.station,
     };
     try sendCommand(station);
 }
@@ -1123,8 +1130,12 @@ fn mclGetAcceleration(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !vo
 
 fn mclSliderLocation(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const slider_id = try std.fmt.parseInt(u16, params[1], 0);
-    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
+    const slider_id = std.fmt.parseInt(u16, params[1], 0) catch {
+        return error.InvalidSliderId;
+    };
+    if (slider_id == 0 or slider_id > 254) {
+        return error.InvalidSliderId;
+    }
     const result_var: []const u8 = params[2];
 
     const line = try mcl.getLine(line_name);
@@ -1154,8 +1165,12 @@ fn mclSliderLocation(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !voi
 
 fn mclSliderAxis(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const slider_id = try std.fmt.parseInt(u16, params[1], 0);
-    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
+    const slider_id = std.fmt.parseInt(u16, params[1], 0) catch {
+        return error.InvalidSliderId;
+    };
+    if (slider_id == 0 or slider_id > 254) {
+        return error.InvalidSliderId;
+    }
 
     const line = try mcl.getLine(line_name);
 
@@ -1180,7 +1195,11 @@ fn mclSliderAxis(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
 fn mclHallStatus(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id: ?Mcl.Axis.Id.Line = if (params[1].len > 0)
-        try std.fmt.parseInt(Mcl.Axis.Id.Line, params[1], 0)
+        std.fmt.parseInt(
+            Mcl.Axis.Id.Line,
+            params[1],
+            0,
+        ) catch return error.InvalidAxis
     else
         null;
     const line = try mcl.getLine(line_name);
@@ -1215,7 +1234,9 @@ fn mclHallStatus(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
 
 fn mclAssertHall(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis = try std.fmt.parseInt(Mcl.Axis.Id.Line, params[1], 0);
+    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
     const side: Mcl.Direction =
         if (std.ascii.eqlIgnoreCase("back", params[2]) or
         std.ascii.eqlIgnoreCase("left", params[2]))
@@ -1226,7 +1247,7 @@ fn mclAssertHall(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         else
             return error.InvalidHallAlarmSide;
     const line = try mcl.getLine(line_name);
-    if (axis == 0 or axis > line.axes.len) {
+    if (axis_id == 0 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
 
@@ -1239,20 +1260,18 @@ fn mclAssertHall(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         } else return error.InvalidHallAlarmState;
     }
 
-    const station_ind: Mcl.Station.Index = @intCast((axis - 1) / 3);
-    const local_axis: Mcl.Axis.Index.Station = @intCast((axis - 1) % 3);
-
-    const station = line.stations[station_ind];
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station.*;
     try station.pollX();
 
     switch (side) {
         .backward => {
-            if (station.x.hall_alarm.axis(local_axis).back != alarm_on) {
+            if (station.x.hall_alarm.axis(axis.index.station).back != alarm_on) {
                 return error.UnexpectedHallAlarm;
             }
         },
         .forward => {
-            if (station.x.hall_alarm.axis(local_axis).front != alarm_on) {
+            if (station.x.hall_alarm.axis(axis.index.station).front != alarm_on) {
                 return error.UnexpectedHallAlarm;
             }
         },
@@ -1261,16 +1280,21 @@ fn mclAssertHall(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
 
 fn mclSliderPosMoveAxis(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
-    const axis_id: u16 = std.fmt.parseInt(u16, params[2], 0) catch
+    const slider_id = std.fmt.parseInt(u16, params[1], 0) catch {
+        return error.InvalidSliderId;
+    };
+    const axis_id = std.fmt.parseInt(usize, params[2], 0) catch {
         return error.InvalidAxis;
-    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
+    };
+    if (slider_id == 0 or slider_id > 254) {
+        return error.InvalidSliderId;
+    }
 
     const line = try mcl.getLine(line_name);
     if (axis_id == 0 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
-
+    const axis = line.axes[axis_id - 1];
     try line.pollWr();
     const main, const _aux =
         if (line.search(slider_id)) |t| t else return error.SliderNotFound;
@@ -1310,7 +1334,7 @@ fn mclSliderPosMoveAxis(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !
     station.ww.* = .{
         .command_code = .MoveSliderToAxisByPosition,
         .command_slider_number = slider_id,
-        .target_axis_number = axis_id,
+        .target_axis_number = axis.id.line,
         .speed_percentage = line.speed,
         .acceleration_percentage = line.acceleration,
     };
@@ -1319,9 +1343,13 @@ fn mclSliderPosMoveAxis(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !
 
 fn mclSliderPosMoveLocation(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
+    const slider_id = std.fmt.parseInt(u16, params[1], 0) catch {
+        return error.InvalidSliderId;
+    };
     const location_float: f32 = try std.fmt.parseFloat(f32, params[2]);
-    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
+    if (slider_id == 0 or slider_id > 254) {
+        return error.InvalidSliderId;
+    }
 
     const location: Distance = .{
         .mm = @intFromFloat(location_float),
@@ -1381,9 +1409,13 @@ fn mclSliderPosMoveLocation(_: std.Io, _: std.mem.Allocator, params: [][]const u
 
 fn mclSliderPosMoveDistance(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name = params[0];
-    const slider_id = try std.fmt.parseInt(u16, params[1], 0);
+    const slider_id = std.fmt.parseInt(u16, params[1], 0) catch {
+        return error.InvalidSliderId;
+    };
     const distance_float = try std.fmt.parseFloat(f32, params[2]);
-    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
+    if (slider_id == 0 or slider_id > 254) {
+        return error.InvalidSliderId;
+    }
 
     const move_direction: Direction = move_dir: {
         if (distance_float > 0.0) {
@@ -1449,16 +1481,21 @@ fn mclSliderPosMoveDistance(_: std.Io, _: std.mem.Allocator, params: [][]const u
 
 fn mclSliderSpdMoveAxis(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
-    const axis_id: u16 = std.fmt.parseInt(u16, params[2], 0) catch
+    const slider_id = std.fmt.parseInt(u16, params[1], 0) catch {
+        return error.InvalidSliderId;
+    };
+    const axis_id = std.fmt.parseInt(usize, params[2], 0) catch {
         return error.InvalidAxis;
-    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
+    };
+    if (slider_id == 0 or slider_id > 254) {
+        return error.InvalidSliderId;
+    }
 
     const line = try mcl.getLine(line_name);
     if (axis_id == 0 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
-
+    const axis = line.axes[axis_id - 1];
     try line.pollWr();
     const main, const _aux =
         if (line.search(slider_id)) |t| t else return error.SliderNotFound;
@@ -1498,7 +1535,7 @@ fn mclSliderSpdMoveAxis(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !
     station.ww.* = .{
         .command_code = .MoveSliderToAxisBySpeed,
         .command_slider_number = slider_id,
-        .target_axis_number = axis_id,
+        .target_axis_number = axis.id.line,
         .speed_percentage = line.speed,
         .acceleration_percentage = line.acceleration,
     };
@@ -1507,9 +1544,13 @@ fn mclSliderSpdMoveAxis(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !
 
 fn mclSliderSpdMoveLocation(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
+    const slider_id = std.fmt.parseInt(u16, params[1], 0) catch {
+        return error.InvalidSliderId;
+    };
     const location_float: f32 = try std.fmt.parseFloat(f32, params[2]);
-    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
+    if (slider_id == 0 or slider_id > 254) {
+        return error.InvalidSliderId;
+    }
 
     const location: Distance = .{
         .mm = @intFromFloat(location_float),
@@ -1569,9 +1610,13 @@ fn mclSliderSpdMoveLocation(_: std.Io, _: std.mem.Allocator, params: [][]const u
 
 fn mclSliderSpdMoveDistance(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name = params[0];
-    const slider_id = try std.fmt.parseInt(u16, params[1], 0);
+    const slider_id = std.fmt.parseInt(u16, params[1], 0) catch {
+        return error.InvalidSliderId;
+    };
     const distance_float = try std.fmt.parseFloat(f32, params[2]);
-    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
+    if (slider_id == 0 or slider_id > 254) {
+        return error.InvalidSliderId;
+    }
 
     const move_direction: Direction = move_dir: {
         if (distance_float > 0.0) {
@@ -1637,8 +1682,12 @@ fn mclSliderSpdMoveDistance(_: std.Io, _: std.mem.Allocator, params: [][]const u
 
 fn mclSliderPushForward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name = params[0];
-    const slider_id = try std.fmt.parseInt(u16, params[1], 0);
-    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
+    const slider_id = std.fmt.parseInt(u16, params[1], 0) catch {
+        return error.InvalidSliderId;
+    };
+    if (slider_id == 0 or slider_id > 254) {
+        return error.InvalidSliderId;
+    }
 
     const line = try mcl.getLine(line_name);
 
@@ -1688,8 +1737,12 @@ fn mclSliderPushForward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !
 
 fn mclSliderPushBackward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name = params[0];
-    const slider_id = try std.fmt.parseInt(u16, params[1], 0);
-    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
+    const slider_id = std.fmt.parseInt(u16, params[1], 0) catch {
+        return error.InvalidSliderId;
+    };
+    if (slider_id == 0 or slider_id > 254) {
+        return error.InvalidSliderId;
+    }
 
     const line = try mcl.getLine(line_name);
 
@@ -1740,8 +1793,10 @@ fn mclSliderPushBackward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) 
 
 fn mclSliderPullForward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name = params[0];
-    const axis = try std.fmt.parseInt(u16, params[1], 0);
-    const slider_id = try std.fmt.parseInt(u16, params[2], 0);
+    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
+    const slider_id = std.fmt.parseInt(u16, params[2], 0) catch return error.InvalidSliderId;
     const location_float = try std.fmt.parseFloat(f32, params[3]);
     const line = try mcl.getLine(line_name);
     const location: Distance = .{
@@ -1749,18 +1804,17 @@ fn mclSliderPullForward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !
         .um = @intFromFloat((location_float - @trunc(location_float)) * 1000),
     };
 
-    if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
+    if (axis_id == 0 or axis_id > line.axes.len) return error.InvalidAxis;
 
-    const axis_index: Mcl.Axis.Index.Line = @intCast(axis - 1);
-    const local_axis: Mcl.Axis.Index.Station = @intCast(axis_index % 3);
-    const station = line.stations[axis_index / 3];
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station.*;
 
     try waitCommandReady(station);
     station.ww.* = .{
         .command_code = .PullAxisSliderForward,
         .location_distance = location,
         .command_slider_number = slider_id,
-        .target_axis_number = local_axis + 1,
+        .target_axis_number = axis.id.station,
         .speed_percentage = line.speed,
         .acceleration_percentage = line.acceleration,
     };
@@ -1769,8 +1823,10 @@ fn mclSliderPullForward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !
 
 fn mclSliderPullBackward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name = params[0];
-    const axis = try std.fmt.parseInt(u16, params[1], 0);
-    const slider_id = try std.fmt.parseInt(u16, params[2], 0);
+    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
+    const slider_id = std.fmt.parseInt(u16, params[2], 0) catch return error.InvalidSliderId;
     const location_float = try std.fmt.parseFloat(f32, params[3]);
     const line = try mcl.getLine(line_name);
     const location: Distance = .{
@@ -1778,18 +1834,17 @@ fn mclSliderPullBackward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) 
         .um = @intFromFloat((location_float - @trunc(location_float)) * 1000),
     };
 
-    if (axis == 0 or axis > line.axes.len) return error.InvalidAxis;
+    if (axis_id == 0 or axis_id > line.axes.len) return error.InvalidAxis;
 
-    const axis_index: Mcl.Axis.Index.Line = @intCast(axis - 1);
-    const local_axis: Mcl.Axis.Index.Station = @intCast(axis_index % 3);
-    const station = line.stations[axis_index / 3];
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station.*;
 
     try waitCommandReady(station);
     station.ww.* = .{
         .command_code = .PullAxisSliderBackward,
         .location_distance = location,
         .command_slider_number = slider_id,
-        .target_axis_number = local_axis + 1,
+        .target_axis_number = axis.id.station,
         .speed_percentage = line.speed,
         .acceleration_percentage = line.acceleration,
     };
@@ -1798,20 +1853,22 @@ fn mclSliderPullBackward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) 
 
 fn mclSliderWaitPull(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name = params[0];
-    const axis = try std.fmt.parseInt(i16, params[1], 0);
+    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
     const line = try mcl.getLine(line_name);
 
-    if (axis < 1 or axis > line.axes.len) return error.InvalidAxis;
+    if (axis_id < 1 or axis_id > line.axes.len)
+        return error.InvalidAxis;
 
-    const axis_index: Mcl.Axis.Index.Line = @intCast(axis - 1);
-    const local_axis: Mcl.Axis.Index.Station = @intCast(axis_index % 3);
-    const station = line.stations[axis_index / 3];
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station.*;
 
     while (true) {
         try command.checkCommandInterrupt();
         try station.pollX();
         try station.pollWr();
-        const slider_state = station.wr.slider_state.axis(local_axis);
+        const slider_state = station.wr.slider_state.axis(axis.index.station);
         if (slider_state == .PullForwardCompleted or
             slider_state == .PullBackwardCompleted) break;
         if (slider_state == .PullForwardFault or
@@ -1822,29 +1879,35 @@ fn mclSliderWaitPull(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !voi
 
 fn mclSliderStopPull(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name = params[0];
-    const axis = try std.fmt.parseInt(i16, params[1], 0);
+    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
     const line = try mcl.getLine(line_name);
 
-    if (axis < 1 or axis > line.axes.len) return error.InvalidAxis;
+    if (axis_id < 1 or axis_id > line.axes.len)
+        return error.InvalidAxis;
 
-    const axis_index: Mcl.Axis.Index.Line = @intCast(axis - 1);
-    const local_axis: Mcl.Axis.Index.Station = @intCast(axis_index % 3);
-    const station = line.stations[axis_index / 3];
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station.*;
 
-    try station.setY(0x10 + @as(u6, local_axis));
-    defer station.resetY(0x10 + @as(u6, local_axis)) catch {};
+    try station.setY(0x10 + @as(u6, axis.index.station));
+    defer station.resetY(0x10 + @as(u6, axis.index.station)) catch {};
 
     while (true) {
         try command.checkCommandInterrupt();
         try station.pollX();
-        if (!station.x.pulling_slider.axis(local_axis)) break;
+        if (!station.x.pulling_slider.axis(axis.index.station)) break;
     }
 }
 
 fn mclWaitMoveSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const slider_id = try std.fmt.parseInt(u16, params[1], 0);
-    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
+    const slider_id = std.fmt.parseInt(u16, params[1], 0) catch {
+        return error.InvalidSliderId;
+    };
+    if (slider_id == 0 or slider_id > 254) {
+        return error.InvalidSliderId;
+    }
 
     const line = try mcl.getLine(line_name);
 
@@ -1891,16 +1954,17 @@ fn mclWaitMoveSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !voi
 
 fn mclRecoverSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis: u16 = try std.fmt.parseUnsigned(u16, params[1], 0);
+    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
     const new_slider_id: u16 = try std.fmt.parseUnsigned(u16, params[2], 0);
     if (new_slider_id == 0 or new_slider_id > 254)
         return error.InvalidSliderID;
     const sensor: []const u8 = params[3];
 
     const line = try mcl.getLine(line_name);
-    if (axis < 1 or axis > line.axes.len) {
+    if (axis_id < 1 or axis_id > line.axes.len)
         return error.InvalidAxis;
-    }
 
     const use_sensor: ?Direction = parse_use_sensor: {
         if (sensor.len == 0) break :parse_use_sensor null;
@@ -1915,10 +1979,8 @@ fn mclRecoverSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void
         } else return error.InvalidSensorSide;
     };
 
-    const axis_index: Mcl.Axis.Index.Line = @intCast(axis - 1);
-    const local_axis_index: Mcl.Axis.Index.Station = @intCast(axis_index % 3);
-
-    const station = line.stations[axis_index / 3];
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station.*;
     try waitCommandReady(station);
     if (use_sensor) |side| {
         if (side == .backward) {
@@ -1944,7 +2006,7 @@ fn mclRecoverSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void
     }
     station.ww.* = .{
         .command_code = .RecoverSliderAtAxis,
-        .target_axis_number = local_axis_index + 1,
+        .target_axis_number = axis.id.station,
         .command_slider_number = new_slider_id,
     };
     try sendCommand(station);
@@ -1952,10 +2014,12 @@ fn mclRecoverSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void
 
 fn mclTrafficStop(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis = try std.fmt.parseUnsigned(Mcl.Axis.Id.Line, params[1], 0);
+    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
 
     const line = try mcl.getLine(line_name);
-    if (axis == 0 or axis > line.axes.len) {
+    if (axis_id == 0 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
 
@@ -1971,8 +2035,8 @@ fn mclTrafficStop(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         } else return error.InvalidDirection;
     };
 
-    const axis_index: Mcl.Axis.Index.Line = @intCast(axis - 1);
-    const station = line.stations[axis_index / 3];
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station.*;
     try station.poll();
 
     station.y.stop_driver_transmission.setTo(direction, true);
@@ -1985,10 +2049,12 @@ fn mclTrafficStop(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
 
 fn mclTrafficAllow(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis = try std.fmt.parseUnsigned(Mcl.Axis.Id.Line, params[1], 0);
+    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
 
     const line = try mcl.getLine(line_name);
-    if (axis == 0 or axis > line.axes.len) {
+    if (axis_id == 0 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
 
@@ -2004,8 +2070,8 @@ fn mclTrafficAllow(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void 
         } else return error.InvalidDirection;
     };
 
-    const axis_index: Mcl.Axis.Index.Line = @intCast(axis - 1);
-    const station = line.stations[axis_index / 3];
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station.*;
     try station.poll();
 
     station.y.stop_driver_transmission.setTo(direction, false);
@@ -2018,26 +2084,27 @@ fn mclTrafficAllow(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void 
 
 fn mclWaitRecoverSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis: u16 = try std.fmt.parseUnsigned(u16, params[1], 0);
+    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
     const result_var: []const u8 = params[2];
 
     const line = try mcl.getLine(line_name);
-    if (axis == 0 or axis > line.axes.len) {
+    if (axis_id == 0 or axis_id > line.axes.len) {
         return error.InvalidAxis;
     }
 
-    const axis_index: Mcl.Axis.Index.Line = @intCast(axis - 1);
-    const local_axis_index: Mcl.Axis.Index.Station = @intCast(axis_index % 3);
-    const station = line.stations[axis_index / 3];
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station.*;
 
     var slider_id: u16 = undefined;
     while (true) {
         try command.checkCommandInterrupt();
         try station.pollWr();
 
-        const slider_number = station.wr.slider_number.axis(local_axis_index);
+        const slider_number = station.wr.slider_number.axis(axis.index.station);
         if (slider_number != 0 and station.wr.slider_state.axis(
-            local_axis_index,
+            axis.index.station,
         ) == .PosMoveCompleted) {
             slider_id = slider_number;
             break;
@@ -2220,7 +2287,7 @@ fn mclSetLeftChainOn(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !voi
     }
 
     const axis = line.axes[axis_id - 1];
-    const station = axis.station;
+    const station = axis.station.*;
     try station.pollWr();
 
     if (station.wr.slider_number.axis(axis.index.station) == 0) {
@@ -2262,7 +2329,7 @@ fn mclSetRightChainOn(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !vo
     }
 
     const axis = line.axes[axis_id - 1];
-    const station = axis.station;
+    const station = axis.station.*;
     try station.pollWr();
 
     if (station.wr.slider_number.axis(axis.index.station) == 0) {
@@ -2304,7 +2371,7 @@ fn mclSetLeftChainOff(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !vo
     }
 
     const axis = line.axes[axis_id - 1];
-    const station = axis.station;
+    const station = axis.station.*;
     try station.pollWr();
 
     if (station.wr.slider_number.axis(axis.index.station) == 0) {
@@ -2346,7 +2413,7 @@ fn mclSetRightChainOff(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !v
     }
 
     const axis = line.axes[axis_id - 1];
-    const station = axis.station;
+    const station = axis.station.*;
     try station.pollWr();
 
     if (station.wr.slider_number.axis(axis.index.station) == 0) {
@@ -2378,9 +2445,15 @@ fn mclSetRightChainOff(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !v
 
 fn mclMoveSliderChain(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const slider_id: u16 = try std.fmt.parseInt(u16, params[1], 0);
-    const axis_id: u16 = try std.fmt.parseInt(u16, params[2], 0);
-    if (slider_id == 0 or slider_id > 254) return error.InvalidSliderId;
+    const slider_id = std.fmt.parseInt(u16, params[1], 0) catch {
+        return error.InvalidSliderId;
+    };
+    const axis_id = std.fmt.parseInt(usize, params[2], 0) catch {
+        return error.InvalidAxis;
+    };
+    if (slider_id == 0 or slider_id > 254) {
+        return error.InvalidSliderId;
+    }
 
     const line = try mcl.getLine(line_name);
     if (axis_id == 0 or axis_id > line.axes.len) {
@@ -2388,6 +2461,7 @@ fn mclMoveSliderChain(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !vo
     }
 
     try line.pollWr();
+    const axis = line.axes[axis_id - 1];
     const main, const _aux =
         if (line.search(slider_id)) |t| t else return error.SliderNotFound;
     var station: Mcl.Station = main.station.*;
@@ -2426,7 +2500,7 @@ fn mclMoveSliderChain(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !vo
     station.ww.* = .{
         .command_code = .MoveSliderChain,
         .command_slider_number = slider_id,
-        .target_axis_number = axis_id,
+        .target_axis_number = axis.id.line,
         .speed_percentage = line.speed,
         .acceleration_percentage = line.acceleration,
     };
