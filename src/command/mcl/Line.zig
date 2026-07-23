@@ -13,10 +13,10 @@ pub const Index = Station.Index;
 pub const Id = Station.Id;
 
 name: []const u8,
-speed: u7,
-acceleration: u7,
 index: Index,
 id: Id,
+speed: u7,
+acceleration: u7,
 
 /// Axes that make up line. Each axis contains both its own line index and
 /// local station index.
@@ -45,6 +45,10 @@ pub fn init(
 ) !void {
     self.index = line_index;
     self.id = line_index + 1;
+    self.acceleration = 40;
+    self.speed = 40;
+    self.name = try gpa.dupe(u8, config.name);
+    errdefer gpa.free(self.name);
     self.connection = try gpa.alloc(Range, config.ranges.len);
     errdefer gpa.free(self.connection);
     self.axes = try gpa.alloc(Axis, config.axes);
@@ -89,6 +93,7 @@ pub fn init(
                         .station = @intCast(axis_i + 1),
                         .line = @intCast(num_axes + 1),
                     },
+                    .length = config.axis.length,
                 };
                 num_axes += 1;
             }
@@ -111,6 +116,7 @@ pub fn init(
 }
 
 pub fn deinit(self: Line, gpa: std.mem.Allocator) void {
+    gpa.free(self.name);
     gpa.free(self.axes);
     gpa.free(self.stations);
     gpa.free(self.x);
@@ -397,16 +403,23 @@ pub fn search(line: *const Line, slider_id: u16) ?struct { Axis, ?Axis } {
 
 test "Line search" {
     var line: Line = undefined;
+    const gpa = std.testing.allocator;
     var _ranges: [1]Config.Line.Range = .{.{
         .channel = .cc_link_1slot,
         .start = 1,
         .end = 3,
     }};
-    try Line.init(std.testing.allocator, &line, 0, .{
+    const config: Line.Config.Line = .{
         .axes = 9,
+        .axis = .{
+            .length = 0.33,
+        },
+        .carrier = .{ .length = 0.3, .width = 0.3 },
+        .name = "test line",
         .ranges = &_ranges,
-    });
-    defer line.deinit();
+    };
+    try line.init(gpa, 0, config);
+    defer line.deinit(gpa);
 
     line.stations[1].wr.slider_number.axis3 = 1;
     line.stations[2].wr.slider_number.axis1 = 1;
