@@ -7,6 +7,8 @@ const std = @import("std");
 const MclStation = @import("Station.zig");
 
 station: *const MclStation,
+/// Axis length, in millimeters.
+length: f32,
 index: Index,
 id: Id,
 
