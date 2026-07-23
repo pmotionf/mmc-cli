@@ -2,7 +2,7 @@ const Station = @This();
 
 const std = @import("std");
 const mdfunc = @import("mdfunc");
-const registers = @import("mcl.zig").registers;
+const registers = @import("Mcl.zig").registers;
 const cclink = @import("cclink.zig");
 const Line = @import("Line.zig");
 const Axis = @import("Axis.zig");
