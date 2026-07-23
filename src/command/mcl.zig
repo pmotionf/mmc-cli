@@ -1,6 +1,6 @@
 const std = @import("std");
 const command = @import("../command.zig");
-const mcl = @import("mcl");
+const mcl = @import("mcl/mcl.zig");
 const mmc_api = @import("mmc_api");
 
 var line_names: [][]u8 = &.{};

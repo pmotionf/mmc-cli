@@ -5,12 +5,16 @@
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .mmc_api = .{
-            .url = "https://github.com/pmotionf/mmc-api/archive/ea45a3c0e5d6237e008d761f285b76d62d1104da.tar.gz",
-            .hash = "mmc_api-0.0.0-P5raR39KMwAeZ01VlS8sff_JsgGiupsJG7zfLfIsYfD3",
+            .url = "https://github.com/pmotionf/mmc-api/archive/128f91611bba030bd2beadbb6cfe538f9fbcd7de.tar.gz",
+            .hash = "mmc_api-0.0.0-P5raR6uMMgBqly2NEbnD2-UjVaS9IRTuy-nsDktCkYfc",
         },
         .chrono = .{
             .url = "https://github.com/aaumar25/chrono/archive/adfc771.tar.gz",
             .hash = "chrono-0.1.0-uVd76BPDAwAyXqy0OAP1MvUyfk72pvv7e6bU7s2TqV0h",
+        },
+        .mdfunc = .{
+            .url = "https://github.com/pmotionf/mdfunc.zig/archive/6d70ce0.tar.gz",
+            .hash = "mdfunc-0.0.5-k9D_qBiuAADEPbD9zlxCm_bwaA41w9vCZuVH-ENIdkFe",
         },
     },
     .paths = .{""},
