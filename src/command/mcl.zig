@@ -912,10 +912,19 @@ fn mclServoOff(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         return error.InvalidAxis;
     }
 
-    const axis = line.axes[axis_id - 1];
-    const station = axis.station.*;
+    const station = line.axes[axis_id - 1].station.*;
 
     try station.setY(0x6);
+    check_servo: while (true) {
+        try command.checkCommandInterrupt();
+        try station.pollX();
+        for (station.axes) |axis| {
+            if (station.x.servo_active.axis(axis.index.station)) {
+                continue :check_servo;
+            }
+        }
+        return;
+    }
 }
 
 fn mclServoOn(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
@@ -929,8 +938,7 @@ fn mclServoOn(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         return error.InvalidAxis;
     }
 
-    const axis = line.axes[axis_id - 1];
-    const station = axis.station.*;
+    const station = line.axes[axis_id - 1].station.*;
 
     try station.resetY(0x6);
 }
