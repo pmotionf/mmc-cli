@@ -1139,8 +1139,12 @@ fn mclIsolate(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
 
 fn mclSetSpeed(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const slider_speed = try std.fmt.parseUnsigned(u8, params[1], 0);
-    if (slider_speed < 1 or slider_speed > 100) return error.InvalidSpeed;
+    const slider_speed = std.fmt.parseUnsigned(u7, params[1], 0) catch {
+        return error.InvalidSpeed;
+    };
+    if (slider_speed < 1 or slider_speed > 100) {
+        return error.InvalidSpeed;
+    }
 
     const line = try mcl.getLine(line_name);
     line.speed = @intCast(slider_speed);
@@ -1148,7 +1152,9 @@ fn mclSetSpeed(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
 
 fn mclSetAcceleration(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const slider_acceleration = try std.fmt.parseUnsigned(u8, params[1], 0);
+    const slider_acceleration = std.fmt.parseUnsigned(u7, params[1], 0) catch {
+        return error.InvalidAcceleration;
+    };
     if (slider_acceleration < 1 or slider_acceleration > 100)
         return error.InvalidAcceleration;
 
