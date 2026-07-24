@@ -1465,6 +1465,18 @@ fn mclSliderPosMoveDistance(_: std.Io, _: std.mem.Allocator, params: [][]const u
         if (line.search(slider_id)) |t| t else return error.SliderNotFound;
     var station: Mcl.Station = main.station.*;
 
+    // Check if the final target location is in valid range
+    const current_location =
+        station.wr.slider_location.axis(main.index.station).toFloat();
+    const target_location = current_location + distance_float;
+    const max_location_target = line.carrier_length / 2 +
+        line.axes[0].length *
+            @as(f32, @floatFromInt((line.axes.len - 1)));
+    if (target_location < -line.carrier_length / 2 or
+        target_location > max_location_target)
+    {
+        return error.InvalidParameter;
+    }
     // Direction of auxiliary axis from main axis.
     var direction: Direction = undefined;
 
@@ -1673,6 +1685,18 @@ fn mclSliderSpdMoveDistance(_: std.Io, _: std.mem.Allocator, params: [][]const u
         if (line.search(slider_id)) |t| t else return error.SliderNotFound;
     var station: Mcl.Station = main.station.*;
 
+    // Check if the final target location is in valid range
+    const current_location =
+        station.wr.slider_location.axis(main.index.station).toFloat();
+    const target_location = current_location + distance_float;
+    const max_location_target = line.carrier_length / 2 +
+        line.axes[0].length *
+            @as(f32, @floatFromInt((line.axes.len - 1)));
+    if (target_location < -line.carrier_length / 2 or
+        target_location > max_location_target)
+    {
+        return error.InvalidParameter;
+    }
     // Direction of auxiliary axis from main axis.
     var direction: Direction = undefined;
 
