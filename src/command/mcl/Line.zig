@@ -17,6 +17,7 @@ index: Index,
 id: Id,
 speed: u7,
 acceleration: u7,
+carrier_length: f32, // in millimeters
 
 /// Axes that make up line. Each axis contains both its own line index and
 /// local station index.
@@ -47,6 +48,7 @@ pub fn init(
     self.id = line_index + 1;
     self.acceleration = 40;
     self.speed = 40;
+    self.carrier_length = config.carrier.length;
     self.name = try gpa.dupe(u8, config.name);
     errdefer gpa.free(self.name);
     self.connection = try gpa.alloc(Range, config.ranges.len);
