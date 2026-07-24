@@ -1376,6 +1376,13 @@ fn mclSliderPosMoveLocation(_: std.Io, _: std.mem.Allocator, params: [][]const u
     };
 
     const line = try mcl.getLine(line_name);
+    // Check if the target location is in valid range
+    const max_location_target = line.carrier_length / 2 +
+        line.axes[0].length *
+            @as(f32, @floatFromInt((line.axes.len - 1)));
+    if (location_float < -line.carrier_length / 2 or location_float > max_location_target) {
+        return error.InvalidParameter;
+    }
 
     try line.pollWr();
     const main: Mcl.Axis, const _aux: ?Mcl.Axis =
@@ -1577,6 +1584,13 @@ fn mclSliderSpdMoveLocation(_: std.Io, _: std.mem.Allocator, params: [][]const u
     };
 
     const line = try mcl.getLine(line_name);
+    // Check if the target location is in valid range
+    const max_location_target = line.carrier_length / 2 +
+        line.axes[0].length *
+            @as(f32, @floatFromInt((line.axes.len - 1)));
+    if (location_float < -line.carrier_length / 2 or location_float > max_location_target) {
+        return error.InvalidParameter;
+    }
 
     try line.pollWr();
     const main, const _aux =
