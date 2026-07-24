@@ -279,8 +279,8 @@ pub fn init(gpa: std.mem.Allocator, c: Config) !void {
         },
         .short_description = "Enable motor control of the given axis' driver.",
         .long_description =
-        \\Enable motor control of the given axis' driver, taking control any
-        \\initialized slider on the driver.
+        \\Enable motor control of the given axis' driver, allowing driver to
+        \\execute slider-moving commands.
         ,
         .execute = &mclServoOn,
     });
