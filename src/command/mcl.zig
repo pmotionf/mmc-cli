@@ -1898,6 +1898,11 @@ fn mclSliderPullForward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !
     const axis = line.axes[axis_id - 1];
     const station = axis.station.*;
 
+    // Checks if the slider already exists on the line
+    if (line.search(slider_id) != null) {
+        return error.SliderAlreadyExists;
+    }
+
     try waitCommandReady(station);
     station.ww.* = .{
         .command_code = .PullAxisSliderForward,
@@ -1927,6 +1932,11 @@ fn mclSliderPullBackward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) 
 
     const axis = line.axes[axis_id - 1];
     const station = axis.station.*;
+
+    // Checks if the slider already exists on the line
+    if (line.search(slider_id) != null) {
+        return error.SliderAlreadyExists;
+    }
 
     try waitCommandReady(station);
     station.ww.* = .{
