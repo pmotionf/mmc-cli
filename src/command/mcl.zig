@@ -256,21 +256,35 @@ pub fn init(gpa: std.mem.Allocator, c: Config) !void {
         .execute = &mclClearSliderInfo,
     });
     errdefer _ = command.registry.orderedRemove("CLEAR_SLIDER_INFO");
-    try command.registry.put(gpa, "RELEASE_AXIS_SERVO", .{
-        .name = "RELEASE_AXIS_SERVO",
+    try command.registry.put(gpa, "SERVO_OFF", .{
+        .name = "SERVO_OFF",
         .parameters = &[_]command.Command.Parameter{
             .{ .name = "line name" },
             .{ .name = "axis" },
         },
-        .short_description = "Release the servo of a given axis.",
+        .short_description = "Release motor control of the given axis' driver.",
         .long_description =
-        \\Release the servo of a given axis, allowing for free slider movement.
-        \\This command should be run before sliders move within or exit from
-        \\the system due to external influence.
+        \\Release motor control of the given axis' driver, allowing for free
+        \\slider movement. This command should be run before sliders move
+        \\within or exit from the system due to external influence.
         ,
-        .execute = &mclAxisReleaseServo,
+        .execute = &mclServoOff,
     });
-    errdefer _ = command.registry.orderedRemove("RELEASE_AXIS_SERVO");
+    errdefer _ = command.registry.orderedRemove("SERVO_OFF");
+    try command.registry.put(gpa, "SERVO_ON", .{
+        .name = "SERVO_ON",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+        },
+        .short_description = "Enable motor control of the given axis' driver.",
+        .long_description =
+        \\Enable motor control of the given axis' driver, allowing driver to
+        \\execute slider-moving commands.
+        ,
+        .execute = &mclServoOn,
+    });
+    errdefer _ = command.registry.orderedRemove("SERVO_OFF");
     try command.registry.put(gpa, "STOP_TRAFFIC", .{
         .name = "STOP_TRAFFIC",
         .parameters = &.{
@@ -887,7 +901,7 @@ fn mclAxisSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     }
 }
 
-fn mclAxisReleaseServo(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+fn mclServoOff(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const axis_id = std.fmt.parseInt(Mcl.Axis.Id.Line, params[1], 0) catch {
         return error.InvalidAxis;
@@ -898,17 +912,35 @@ fn mclAxisReleaseServo(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !v
         return error.InvalidAxis;
     }
 
-    const axis = line.axes[axis_id - 1];
-    const station = axis.station.*;
+    const station = line.axes[axis_id - 1].station.*;
 
     try station.setY(0x6);
-    // Reset on error as well as on success.
-    defer station.resetY(0x6) catch {};
-    while (true) {
+    check_servo: while (true) {
         try command.checkCommandInterrupt();
         try station.pollX();
-        if (!station.x.servo_active.axis(axis.index.station)) break;
+        for (station.axes) |axis| {
+            if (station.x.servo_active.axis(axis.index.station)) {
+                continue :check_servo;
+            }
+        }
+        return;
     }
+}
+
+fn mclServoOn(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
+
+    const line = try mcl.getLine(line_name);
+    if (axis_id < 1 or axis_id > line.axes.len) {
+        return error.InvalidAxis;
+    }
+
+    const station = line.axes[axis_id - 1].station.*;
+
+    try station.resetY(0x6);
 }
 
 fn mclClearErrors(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
