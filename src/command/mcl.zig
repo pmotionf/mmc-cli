@@ -1057,6 +1057,20 @@ fn mclIsolate(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const axis = line.axes[axis_id - 1];
     const station = axis.station.*;
 
+    // Checks if the target axis actually have a slider on top of it
+    try station.pollX();
+    try station.pollWr();
+    const hall_target_axis = station.x.hall_alarm.axis(axis.index.station);
+    if (!hall_target_axis.back and !hall_target_axis.front) {
+        // Returning invalid parameter to match the firmware response code
+        return error.InvalidParameter;
+    }
+
+    // Checks if the slider already exists on the line
+    if (line.search(slider_id) != null) {
+        return error.SliderAlreadyExists;
+    }
+
     try waitCommandReady(station);
     if (link_axis) |a| {
         if (a == .backward) {
