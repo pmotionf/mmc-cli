@@ -780,7 +780,7 @@ fn mclDisconnect(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
 
 fn mclStationX(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+    const axis_id = std.fmt.parseInt(Mcl.Axis.Id.Line, params[1], 0) catch {
         return error.InvalidAxis;
     };
 
@@ -799,7 +799,7 @@ fn mclStationX(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
 
 fn mclStationY(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+    const axis_id = std.fmt.parseInt(Mcl.Axis.Id.Line, params[1], 0) catch {
         return error.InvalidAxis;
     };
 
@@ -818,7 +818,7 @@ fn mclStationY(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
 
 fn mclStationWr(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+    const axis_id = std.fmt.parseInt(Mcl.Axis.Id.Line, params[1], 0) catch {
         return error.InvalidAxis;
     };
 
@@ -837,7 +837,7 @@ fn mclStationWr(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
 
 fn mclStationWw(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+    const axis_id = std.fmt.parseInt(Mcl.Axis.Id.Line, params[1], 0) catch {
         return error.InvalidAxis;
     };
 
@@ -856,7 +856,7 @@ fn mclStationWw(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
 
 fn mclAxisSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+    const axis_id = std.fmt.parseInt(Mcl.Axis.Id.Line, params[1], 0) catch {
         return error.InvalidAxis;
     };
     const result_var: []const u8 = params[2];
@@ -889,7 +889,7 @@ fn mclAxisSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
 
 fn mclAxisReleaseServo(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+    const axis_id = std.fmt.parseInt(Mcl.Axis.Id.Line, params[1], 0) catch {
         return error.InvalidAxis;
     };
 
@@ -901,7 +901,6 @@ fn mclAxisReleaseServo(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !v
     const axis = line.axes[axis_id - 1];
     const station = axis.station.*;
 
-    try station.sendWw();
     try station.setY(0x6);
     // Reset on error as well as on success.
     defer station.resetY(0x6) catch {};
@@ -914,7 +913,7 @@ fn mclAxisReleaseServo(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !v
 
 fn mclClearErrors(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+    const axis_id = std.fmt.parseInt(Mcl.Axis.Id.Line, params[1], 0) catch {
         return error.InvalidAxis;
     };
 
@@ -940,7 +939,7 @@ fn mclClearErrors(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
 
 fn mclClearSliderInfo(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+    const axis_id = std.fmt.parseInt(Mcl.Axis.Id.Line, params[1], 0) catch {
         return error.InvalidAxis;
     };
 
@@ -1018,7 +1017,7 @@ fn mclWaitHomeSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !voi
 
 fn mclIsolate(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+    const axis_id = std.fmt.parseInt(Mcl.Axis.Id.Line, params[1], 0) catch {
         return error.InvalidAxis;
     };
 
@@ -1234,7 +1233,7 @@ fn mclHallStatus(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
 
 fn mclAssertHall(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+    const axis_id = std.fmt.parseInt(Mcl.Axis.Id.Line, params[1], 0) catch {
         return error.InvalidAxis;
     };
     const side: Mcl.Direction =
@@ -1283,7 +1282,7 @@ fn mclSliderPosMoveAxis(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !
     const slider_id = std.fmt.parseInt(u16, params[1], 0) catch {
         return error.InvalidSliderId;
     };
-    const axis_id = std.fmt.parseInt(usize, params[2], 0) catch {
+    const axis_id = std.fmt.parseInt(Mcl.Axis.Id.Line, params[2], 0) catch {
         return error.InvalidAxis;
     };
     if (slider_id == 0 or slider_id > 254) {
@@ -1484,7 +1483,7 @@ fn mclSliderSpdMoveAxis(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !
     const slider_id = std.fmt.parseInt(u16, params[1], 0) catch {
         return error.InvalidSliderId;
     };
-    const axis_id = std.fmt.parseInt(usize, params[2], 0) catch {
+    const axis_id = std.fmt.parseInt(Mcl.Axis.Id.Line, params[2], 0) catch {
         return error.InvalidAxis;
     };
     if (slider_id == 0 or slider_id > 254) {
@@ -1793,7 +1792,7 @@ fn mclSliderPushBackward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) 
 
 fn mclSliderPullForward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name = params[0];
-    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+    const axis_id = std.fmt.parseInt(Mcl.Axis.Id.Line, params[1], 0) catch {
         return error.InvalidAxis;
     };
     const slider_id = std.fmt.parseInt(u16, params[2], 0) catch return error.InvalidSliderId;
@@ -1823,7 +1822,7 @@ fn mclSliderPullForward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !
 
 fn mclSliderPullBackward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name = params[0];
-    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+    const axis_id = std.fmt.parseInt(Mcl.Axis.Id.Line, params[1], 0) catch {
         return error.InvalidAxis;
     };
     const slider_id = std.fmt.parseInt(u16, params[2], 0) catch return error.InvalidSliderId;
@@ -1853,7 +1852,7 @@ fn mclSliderPullBackward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) 
 
 fn mclSliderWaitPull(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name = params[0];
-    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+    const axis_id = std.fmt.parseInt(Mcl.Axis.Id.Line, params[1], 0) catch {
         return error.InvalidAxis;
     };
     const line = try mcl.getLine(line_name);
@@ -1879,7 +1878,7 @@ fn mclSliderWaitPull(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !voi
 
 fn mclSliderStopPull(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name = params[0];
-    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+    const axis_id = std.fmt.parseInt(Mcl.Axis.Id.Line, params[1], 0) catch {
         return error.InvalidAxis;
     };
     const line = try mcl.getLine(line_name);
@@ -1954,7 +1953,7 @@ fn mclWaitMoveSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !voi
 
 fn mclRecoverSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+    const axis_id = std.fmt.parseInt(Mcl.Axis.Id.Line, params[1], 0) catch {
         return error.InvalidAxis;
     };
     const new_slider_id: u16 = try std.fmt.parseUnsigned(u16, params[2], 0);
@@ -2014,7 +2013,7 @@ fn mclRecoverSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void
 
 fn mclTrafficStop(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+    const axis_id = std.fmt.parseInt(Mcl.Axis.Id.Line, params[1], 0) catch {
         return error.InvalidAxis;
     };
 
@@ -2049,7 +2048,7 @@ fn mclTrafficStop(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
 
 fn mclTrafficAllow(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+    const axis_id = std.fmt.parseInt(Mcl.Axis.Id.Line, params[1], 0) catch {
         return error.InvalidAxis;
     };
 
@@ -2084,7 +2083,7 @@ fn mclTrafficAllow(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void 
 
 fn mclWaitRecoverSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+    const axis_id = std.fmt.parseInt(Mcl.Axis.Id.Line, params[1], 0) catch {
         return error.InvalidAxis;
     };
     const result_var: []const u8 = params[2];
@@ -2277,8 +2276,9 @@ fn mclSliderChainUnlink(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !
 
 fn mclSetLeftChainOn(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id: Mcl.Axis.Id.Line =
-        try std.fmt.parseUnsigned(Mcl.Axis.Id.Line, params[1], 0);
+    const axis_id = std.fmt.parseUnsigned(Mcl.Axis.Id.Line, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
 
     const line = try mcl.getLine(line_name);
 
@@ -2319,8 +2319,9 @@ fn mclSetLeftChainOn(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !voi
 
 fn mclSetRightChainOn(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id: Mcl.Axis.Id.Line =
-        try std.fmt.parseUnsigned(Mcl.Axis.Id.Line, params[1], 0);
+    const axis_id = std.fmt.parseUnsigned(Mcl.Axis.Id.Line, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
 
     const line = try mcl.getLine(line_name);
 
@@ -2361,8 +2362,9 @@ fn mclSetRightChainOn(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !vo
 
 fn mclSetLeftChainOff(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id: Mcl.Axis.Id.Line =
-        try std.fmt.parseUnsigned(Mcl.Axis.Id.Line, params[1], 0);
+    const axis_id = std.fmt.parseUnsigned(Mcl.Axis.Id.Line, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
 
     const line = try mcl.getLine(line_name);
 
@@ -2403,8 +2405,9 @@ fn mclSetLeftChainOff(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !vo
 
 fn mclSetRightChainOff(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
-    const axis_id: Mcl.Axis.Id.Line =
-        try std.fmt.parseUnsigned(Mcl.Axis.Id.Line, params[1], 0);
+    const axis_id = std.fmt.parseUnsigned(Mcl.Axis.Id.Line, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
 
     const line = try mcl.getLine(line_name);
 
@@ -2448,7 +2451,7 @@ fn mclMoveSliderChain(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !vo
     const slider_id = std.fmt.parseInt(u16, params[1], 0) catch {
         return error.InvalidSliderId;
     };
-    const axis_id = std.fmt.parseInt(usize, params[2], 0) catch {
+    const axis_id = std.fmt.parseInt(Mcl.Axis.Id.Line, params[2], 0) catch {
         return error.InvalidAxis;
     };
     if (slider_id == 0 or slider_id > 254) {
