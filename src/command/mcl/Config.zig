@@ -13,7 +13,7 @@ pub const Line = struct {
     /// CC-Link Station ranges.
     ranges: []Range,
     axis: AxisConfig,
-    carrier: CarrierConfig,
+    slider: Slider,
 
     pub const Range = struct {
         /// CC-Link Channel.
@@ -29,10 +29,10 @@ pub const Line = struct {
         length: f32,
     };
 
-    pub const CarrierConfig = struct {
-        /// Carrier dimension parallel to carrier movement, in millimeters.
+    pub const Slider = struct {
+        /// Slider dimension parallel to slider movement, in millimeters.
         length: f32,
-        /// Carrier dimension perpendicular to carrier movement, in millimeters.
+        /// Slider dimension perpendicular to slider movement, in millimeters.
         width: f32,
     };
 };

@@ -1409,10 +1409,10 @@ fn mclSliderPosMoveLocation(_: std.Io, _: std.mem.Allocator, params: [][]const u
 
     const line = try mcl.getLine(line_name);
     // Check if the target location is in valid range
-    const max_location_target = line.carrier_length / 2 +
+    const max_location_target = line.slider_length / 2 +
         line.axes[0].length *
             @as(f32, @floatFromInt((line.axes.len - 1)));
-    if (location_float < -line.carrier_length / 2 or location_float > max_location_target) {
+    if (location_float < -line.slider_length / 2 or location_float > max_location_target) {
         return error.InvalidParameter;
     }
 
@@ -1501,10 +1501,10 @@ fn mclSliderPosMoveDistance(_: std.Io, _: std.mem.Allocator, params: [][]const u
     const current_location =
         station.wr.slider_location.axis(main.index.station).toFloat();
     const target_location = current_location + distance_float;
-    const max_location_target = line.carrier_length / 2 +
+    const max_location_target = line.slider_length / 2 +
         line.axes[0].length *
             @as(f32, @floatFromInt((line.axes.len - 1)));
-    if (target_location < -line.carrier_length / 2 or
+    if (target_location < -line.slider_length / 2 or
         target_location > max_location_target)
     {
         return error.InvalidParameter;
@@ -1629,10 +1629,10 @@ fn mclSliderSpdMoveLocation(_: std.Io, _: std.mem.Allocator, params: [][]const u
 
     const line = try mcl.getLine(line_name);
     // Check if the target location is in valid range
-    const max_location_target = line.carrier_length / 2 +
+    const max_location_target = line.slider_length / 2 +
         line.axes[0].length *
             @as(f32, @floatFromInt((line.axes.len - 1)));
-    if (location_float < -line.carrier_length / 2 or location_float > max_location_target) {
+    if (location_float < -line.slider_length / 2 or location_float > max_location_target) {
         return error.InvalidParameter;
     }
 
@@ -1721,10 +1721,10 @@ fn mclSliderSpdMoveDistance(_: std.Io, _: std.mem.Allocator, params: [][]const u
     const current_location =
         station.wr.slider_location.axis(main.index.station).toFloat();
     const target_location = current_location + distance_float;
-    const max_location_target = line.carrier_length / 2 +
+    const max_location_target = line.slider_length / 2 +
         line.axes[0].length *
             @as(f32, @floatFromInt((line.axes.len - 1)));
-    if (target_location < -line.carrier_length / 2 or
+    if (target_location < -line.slider_length / 2 or
         target_location > max_location_target)
     {
         return error.InvalidParameter;
