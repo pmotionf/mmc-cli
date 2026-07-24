@@ -1001,7 +1001,7 @@ fn mclCalibrate(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line = try mcl.getLine(line_name);
 
     const station = line.stations[0];
-    try waitCommandReady(station);
+    try checkCommandReady(station);
     station.ww.command_code = .Calibration;
     station.ww.command_slider_number = 1;
     try sendCommand(station);
@@ -1013,7 +1013,7 @@ fn mclHomeSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
 
     const station = line.stations[0];
 
-    try waitCommandReady(station);
+    try checkCommandReady(station);
     station.ww.command_code = .Home;
     try sendCommand(station);
 }
@@ -1103,7 +1103,7 @@ fn mclIsolate(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
         return error.SliderAlreadyExists;
     }
 
-    try waitCommandReady(station);
+    try checkCommandReady(station);
     if (link_axis) |a| {
         if (a == .backward) {
             try station.setY(0xD);
@@ -1360,7 +1360,7 @@ fn mclSliderPosMoveAxis(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !
         }
     }
 
-    try waitCommandReady(station);
+    try checkCommandReady(station);
 
     if (_aux) |aux| {
         // Direction of auxiliary axis from main axis.
@@ -1440,7 +1440,7 @@ fn mclSliderPosMoveLocation(_: std.Io, _: std.mem.Allocator, params: [][]const u
         }
     }
 
-    try waitCommandReady(station);
+    try checkCommandReady(station);
 
     if (_aux) |_| {
         main.station.y.stop_driver_transmission.setTo(direction, true);
@@ -1524,7 +1524,7 @@ fn mclSliderPosMoveDistance(_: std.Io, _: std.mem.Allocator, params: [][]const u
         }
     }
 
-    try waitCommandReady(station);
+    try checkCommandReady(station);
 
     if (_aux) |_| {
         main.station.y.stop_driver_transmission.setTo(direction, true);
@@ -1580,7 +1580,7 @@ fn mclSliderSpdMoveAxis(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !
         }
     }
 
-    try waitCommandReady(station);
+    try checkCommandReady(station);
 
     if (_aux) |aux| {
         // Direction of auxiliary axis from main axis.
@@ -1660,7 +1660,7 @@ fn mclSliderSpdMoveLocation(_: std.Io, _: std.mem.Allocator, params: [][]const u
         }
     }
 
-    try waitCommandReady(station);
+    try checkCommandReady(station);
 
     if (_aux) |_| {
         main.station.y.stop_driver_transmission.setTo(direction, true);
@@ -1744,7 +1744,7 @@ fn mclSliderSpdMoveDistance(_: std.Io, _: std.mem.Allocator, params: [][]const u
         }
     }
 
-    try waitCommandReady(station);
+    try checkCommandReady(station);
 
     if (_aux) |_| {
         main.station.y.stop_driver_transmission.setTo(direction, true);
@@ -1799,7 +1799,7 @@ fn mclSliderPushForward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !
         }
     }
 
-    try waitCommandReady(station);
+    try checkCommandReady(station);
 
     if (_aux) |_| {
         main.station.y.stop_driver_transmission.setTo(direction, true);
@@ -1855,7 +1855,7 @@ fn mclSliderPushBackward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) 
         }
     }
 
-    try waitCommandReady(station);
+    try checkCommandReady(station);
 
     if (_aux) |_| {
         main.station.y.stop_driver_transmission.setTo(direction, true);
@@ -1903,7 +1903,7 @@ fn mclSliderPullForward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !
         return error.SliderAlreadyExists;
     }
 
-    try waitCommandReady(station);
+    try checkCommandReady(station);
     station.ww.* = .{
         .command_code = .PullAxisSliderForward,
         .location_distance = location,
@@ -1938,7 +1938,7 @@ fn mclSliderPullBackward(_: std.Io, _: std.mem.Allocator, params: [][]const u8) 
         return error.SliderAlreadyExists;
     }
 
-    try waitCommandReady(station);
+    try checkCommandReady(station);
     station.ww.* = .{
         .command_code = .PullAxisSliderBackward,
         .location_distance = location,
@@ -2093,7 +2093,7 @@ fn mclRecoverSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void
     if (line.search(new_slider_id) != null) {
         return error.SliderAlreadyExists;
     }
-    try waitCommandReady(station);
+    try checkCommandReady(station);
     if (use_sensor) |side| {
         if (side == .backward) {
             try station.setY(0x13);
@@ -2591,7 +2591,7 @@ fn mclMoveSliderChain(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !vo
         }
     }
 
-    try waitCommandReady(station);
+    try checkCommandReady(station);
 
     if (_aux) |aux| {
         // Direction of auxiliary axis from main axis.
@@ -2775,13 +2775,12 @@ fn mclPauseOff(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     }
 }
 
-fn waitCommandReady(station: Station) !void {
-    std.log.debug("Waiting for command ready state...", .{});
-    while (true) {
-        try command.checkCommandInterrupt();
-        try station.pollX();
-        if (station.x.ready_for_command) break;
-    }
+fn checkCommandReady(station: Station) !void {
+    try station.pollX();
+    if (station.x.ready_for_command)
+        return
+    else
+        return error.StationNotReady;
 }
 
 fn sendCommand(station: Station) !void {
