@@ -6,6 +6,7 @@ on:
     types: [completed]
     branches:
       - main
+      - chain_commands
   workflow_dispatch:
 
 jobs:
@@ -35,7 +36,7 @@ jobs:
 
       - uses: mlugg/setup-zig@v2
         with:
-          version: 0.15.2
+          version: 0.16.0
 
       - uses: actions/github-script@v7
         id: parse-version
