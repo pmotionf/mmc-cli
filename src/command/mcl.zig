@@ -994,6 +994,8 @@ fn mclClearSliderInfo(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !vo
         try station.pollX();
         if (station.x.axis_slider_info_cleared) break;
     }
+
+    try station.pollWr();
 }
 
 fn mclCalibrate(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
@@ -2082,7 +2084,7 @@ fn mclRecoverSlider(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void
     const station = axis.station.*;
     // Checks if the target axis actually have a slider on top of it
     try station.pollX();
-    try station.pollWr();
+    try line.pollWr();
     const hall_target_axis = station.x.hall_alarm.axis(axis.index.station);
     if (!hall_target_axis.back and !hall_target_axis.front) {
         // Returning invalid parameter to match the firmware response code
