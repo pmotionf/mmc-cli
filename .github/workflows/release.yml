@@ -34,9 +34,17 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: mlugg/setup-zig@v2
+      - name: Use zig 0.15.2
+        uses: mlugg/setup-zig@v2
+        if: github.ref_name == 'main'
         with:
           version: 0.15.2
+
+      - name: Use zig 0.16.0
+        uses: mlugg/setup-zig@v2
+        if: github.ref_name == 'chain_commands'
+        with:
+          version: 0.16.0
 
       - uses: actions/github-script@v7
         id: parse-version
