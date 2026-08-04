@@ -994,8 +994,6 @@ fn mclClearSliderInfo(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !vo
         try station.pollX();
         if (station.x.axis_slider_info_cleared) break;
     }
-
-    try station.pollWr();
 }
 
 fn mclCalibrate(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
