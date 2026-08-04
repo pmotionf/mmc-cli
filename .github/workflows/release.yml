@@ -6,6 +6,7 @@ on:
     types: [completed]
     branches:
       - main
+      - chain_commands
   workflow_dispatch:
 
 jobs:
