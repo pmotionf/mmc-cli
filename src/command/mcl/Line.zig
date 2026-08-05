@@ -2,7 +2,7 @@ const Line = @This();
 
 const std = @import("std");
 const mdfunc = @import("mdfunc");
-const cclink = @import("cclink.zig");
+const protocol = @import("protocol.zig");
 const Axis = @import("Axis.zig");
 const Station = @import("Station.zig");
 const Config = @import("Config.zig");
@@ -31,18 +31,14 @@ y: []Station.Y,
 wr: []Station.Wr,
 ww: []Station.Ww,
 
-connection: []Range,
-
-const Range = struct {
-    channel: cclink.Channel,
-    range: cclink.Range,
-};
+connection: protocol.Cclink.Line,
 
 pub fn init(
     self: *Line,
     gpa: std.mem.Allocator,
     line_index: Index,
     config: Config.Line,
+    connection: *protocol.Cclink,
 ) !void {
     self.index = line_index;
     self.id = line_index + 1;
@@ -51,8 +47,8 @@ pub fn init(
     self.slider_length = config.slider.length;
     self.name = try gpa.dupe(u8, config.name);
     errdefer gpa.free(self.name);
-    self.connection = try gpa.alloc(Range, config.ranges.len);
-    errdefer gpa.free(self.connection);
+    self.connection = try .init(gpa, config.ranges, connection);
+    errdefer self.connection.deinit(gpa);
     self.axes = try gpa.alloc(Axis, config.axes);
     errdefer gpa.free(self.axes);
     self.stations = try gpa.alloc(Station, (config.axes - 1) / 3 + 1);
@@ -73,14 +69,7 @@ pub fn init(
 
     var num_axes: usize = 0;
 
-    for (config.ranges, 0..) |range, range_i| {
-        self.connection[range_i] = .{
-            .channel = range.channel,
-            .range = .{
-                .start = @intCast(range.start - 1),
-                .end = @intCast(range.end - 1),
-            },
-        };
+    for (config.ranges) |range| {
         for (0..range.end - range.start + 1) |station_i| {
             const start_num_axes = num_axes;
             for (0..3) |axis_i| {
@@ -109,7 +98,7 @@ pub fn init(
                 .ww = &self.ww[station_i],
                 .axes = self.axes[start_num_axes..num_axes],
                 .connection = .{
-                    .channel = range.channel,
+                    .path = connection.channels.getPtr(range.channel).?,
                     .index = @intCast(range.start - 1 + station_i),
                 },
             };
@@ -125,219 +114,43 @@ pub fn deinit(self: Line, gpa: std.mem.Allocator) void {
     gpa.free(self.y);
     gpa.free(self.wr);
     gpa.free(self.ww);
-    gpa.free(self.connection);
+    self.connection.deinit(gpa);
 }
 
-pub fn poll(line: Line) !void {
-    var range_offset: usize = 0;
-    for (line.connection) |range| {
-        const path = try range.channel.openedPath();
-        const range_len: usize =
-            @as(usize, range.range.end - range.range.start) + 1;
-        defer range_offset += range_len;
-
-        const x_read_bytes = try mdfunc.receiveEx(
-            path,
-            0,
-            0xFF,
-            .DevX,
-            @as(i32, range.range.start) * @bitSizeOf(Station.X),
-            std.mem.sliceAsBytes(line.x[range_offset..][0..range_len]),
-        );
-        if (x_read_bytes != @sizeOf(Station.X) * range_len) {
-            return cclink.Error.UnexpectedReadSizeX;
-        }
-
-        const y_read_bytes = try mdfunc.receiveEx(
-            path,
-            0,
-            0xFF,
-            .DevY,
-            @as(i32, range.range.start) * @bitSizeOf(Station.Y),
-            std.mem.sliceAsBytes(line.y[range_offset..][0..range_len]),
-        );
-        if (y_read_bytes != @sizeOf(Station.Y) * range_len) {
-            return cclink.Error.UnexpectedReadSizeY;
-        }
-
-        const wr_read_bytes = try mdfunc.receiveEx(
-            path,
-            0,
-            0xFF,
-            .DevWr,
-            @as(i32, range.range.start) * 16, // 16 from MELSEC manual.
-            std.mem.sliceAsBytes(line.wr[range_offset..][0..range_len]),
-        );
-        if (wr_read_bytes != @sizeOf(Station.Wr) * range_len) {
-            return cclink.Error.UnexpectedReadSizeWr;
-        }
-    }
+pub fn poll(self: Line) (protocol.Cclink.Error || mdfunc.Error)!void {
+    try self.connection.pollX(self.x);
+    try self.connection.pollY(self.y);
+    try self.connection.pollWr(self.wr);
+    try self.connection.pollWw(self.ww);
 }
 
-pub fn pollX(line: Line) (cclink.Error || mdfunc.Error)!void {
-    var range_offset: usize = 0;
-    for (line.connection) |range| {
-        const path = try range.channel.openedPath();
-        const range_len: usize =
-            @as(usize, range.range.end - range.range.start) + 1;
-        defer range_offset += range_len;
-
-        const read_bytes = try mdfunc.receiveEx(
-            path,
-            0,
-            0xFF,
-            .DevX,
-            @as(i32, range.range.start) * @bitSizeOf(Station.X),
-            std.mem.sliceAsBytes(line.x[range_offset..][0..range_len]),
-        );
-        if (read_bytes != @sizeOf(Station.X) * range_len) {
-            return cclink.Error.UnexpectedReadSizeX;
-        }
-    }
+pub fn pollX(self: Line) (protocol.Cclink.Error || mdfunc.Error)!void {
+    try self.connection.pollX(self.x);
 }
 
-pub fn pollY(line: Line) (cclink.Error || mdfunc.Error)!void {
-    var range_offset: usize = 0;
-    for (line.connection) |range| {
-        const path = try range.channel.openedPath();
-        const range_len: usize =
-            @as(usize, range.range.end - range.range.start) + 1;
-        defer range_offset += range_len;
-
-        const read_bytes = try mdfunc.receiveEx(
-            path,
-            0,
-            0xFF,
-            .DevY,
-            @as(i32, range.range.start) * @bitSizeOf(Station.Y),
-            std.mem.sliceAsBytes(line.y[range_offset..][0..range_len]),
-        );
-        if (read_bytes != @sizeOf(Station.Y) * range_len) {
-            return cclink.Error.UnexpectedReadSizeY;
-        }
-    }
+pub fn pollY(self: Line) (protocol.Cclink.Error || mdfunc.Error)!void {
+    try self.connection.pollY(self.y);
 }
 
-pub fn pollWr(line: Line) (cclink.Error || mdfunc.Error)!void {
-    var range_offset: usize = 0;
-    for (line.connection) |range| {
-        const path = try range.channel.openedPath();
-        const range_len: usize =
-            @as(usize, range.range.end - range.range.start) + 1;
-        defer range_offset += range_len;
-
-        const read_bytes = try mdfunc.receiveEx(
-            path,
-            0,
-            0xFF,
-            .DevWr,
-            @as(i32, range.range.start) * 16, // 16 from MELSEC manual.
-            std.mem.sliceAsBytes(line.wr[range_offset..][0..range_len]),
-        );
-        if (read_bytes != @sizeOf(Station.Wr) * range_len) {
-            return cclink.Error.UnexpectedReadSizeWr;
-        }
-    }
+pub fn pollWr(self: Line) (protocol.Cclink.Error || mdfunc.Error)!void {
+    try self.connection.pollWr(self.wr);
 }
 
-pub fn pollWw(line: Line) (cclink.Error || mdfunc.Error)!void {
-    var range_offset: usize = 0;
-    for (line.connection) |range| {
-        const path = try range.channel.openedPath();
-        const range_len: usize =
-            @as(usize, range.range.end - range.range.start) + 1;
-        defer range_offset += range_len;
-
-        const read_bytes = try mdfunc.receiveEx(
-            path,
-            0,
-            0xFF,
-            .DevWw,
-            @as(i32, range.range.start) * 16, // 16 from MELSEC manual.
-            std.mem.sliceAsBytes(line.ww[range_offset..][0..range_len]),
-        );
-        if (read_bytes != @sizeOf(Station.Ww) * range_len) {
-            return cclink.Error.UnexpectedReadSizeWw;
-        }
-    }
+pub fn pollWw(self: Line) (protocol.Cclink.Error || mdfunc.Error)!void {
+    try self.connection.pollWw(self.ww);
 }
 
-pub fn send(line: Line) (cclink.Error || mdfunc.Error)!void {
-    var range_offset: usize = 0;
-    for (line.connection) |range| {
-        const path = try range.channel.openedPath();
-        const range_len: usize =
-            @as(usize, range.range.end - range.range.start) + 1;
-        defer range_offset += range_len;
-
-        const y_sent_bytes = try mdfunc.receiveEx(
-            path,
-            0,
-            0xFF,
-            .DevY,
-            @as(i32, range.range.start) * @bitSizeOf(Station.Y),
-            std.mem.sliceAsBytes(line.y[range_offset..][0..range_len]),
-        );
-        if (y_sent_bytes != @sizeOf(Station.Y) * range_len) {
-            return cclink.Error.UnexpectedSendSizeY;
-        }
-
-        const ww_sent_bytes = try mdfunc.receiveEx(
-            path,
-            0,
-            0xFF,
-            .DevWw,
-            @as(i32, range.range.start) * 16, // 16 from MELSEC manual.
-            std.mem.sliceAsBytes(line.ww[range_offset..][0..range_len]),
-        );
-        if (ww_sent_bytes != @sizeOf(Station.Ww) * range_len) {
-            return cclink.Error.UnexpectedSendSizeWw;
-        }
-    }
+pub fn send(self: Line) (protocol.Cclink.Error || mdfunc.Error)!void {
+    try self.connection.sendWw(self.ww);
+    try self.connection.sendY(self.y);
 }
 
-pub fn sendY(line: Line) (cclink.Error || mdfunc.Error)!void {
-    var range_offset: usize = 0;
-    for (line.connection) |range| {
-        const path = try range.channel.openedPath();
-        const range_len: usize =
-            @as(usize, range.range.end - range.range.start) + 1;
-        defer range_offset += range_len;
-
-        const sent_bytes = try mdfunc.receiveEx(
-            path,
-            0,
-            0xFF,
-            .DevY,
-            @as(i32, range.range.start) * @bitSizeOf(Station.Y),
-            std.mem.sliceAsBytes(line.y[range_offset..][0..range_len]),
-        );
-        if (sent_bytes != @sizeOf(Station.Y) * range_len) {
-            return cclink.Error.UnexpectedSendSizeY;
-        }
-    }
+pub fn sendY(self: Line) (protocol.Cclink.Error || mdfunc.Error)!void {
+    try self.connection.sendY(self.y);
 }
 
-pub fn sendWw(line: Line) (cclink.Error || mdfunc.Error)!void {
-    var range_offset: usize = 0;
-    for (line.connection) |range| {
-        const path = try range.channel.openedPath();
-        const range_len: usize =
-            @as(usize, range.range.end - range.range.start) + 1;
-        defer range_offset += range_len;
-
-        const sent_bytes = try mdfunc.receiveEx(
-            path,
-            0,
-            0xFF,
-            .DevWw,
-            @as(i32, range.range.start) * 16, // 16 from MELSEC manual.
-            std.mem.sliceAsBytes(line.ww[range_offset..][0..range_len]),
-        );
-        if (sent_bytes != @sizeOf(Station.Ww) * range_len) {
-            return cclink.Error.UnexpectedSendSizeWw;
-        }
-    }
+pub fn sendWw(self: Line) (protocol.Cclink.Error || mdfunc.Error)!void {
+    try self.connection.sendWw(self.ww);
 }
 
 /// Return the axis of the specified slider, if found in the system. If the
@@ -406,7 +219,7 @@ pub fn search(line: *const Line, slider_id: u16) ?struct { Axis, ?Axis } {
 test "Line search" {
     var line: Line = undefined;
     const gpa = std.testing.allocator;
-    var _ranges: [1]Config.Line.Range = .{.{
+    var _ranges: [1]protocol.Cclink.Range = .{.{
         .channel = .cc_link_1slot,
         .start = 1,
         .end = 3,

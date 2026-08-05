@@ -2,6 +2,7 @@ const Config = @This();
 
 const std = @import("std");
 const mcl = @import("Mcl.zig");
+const protocol = @import("protocol.zig");
 
 lines: []Line,
 
@@ -11,7 +12,7 @@ pub const Line = struct {
     /// Total number of axes in line.
     axes: mcl.Axis.Id.Line,
     /// CC-Link Station ranges.
-    ranges: []Range,
+    ranges: []protocol.Cclink.Range,
     axis: AxisConfig,
     slider: Slider,
 
