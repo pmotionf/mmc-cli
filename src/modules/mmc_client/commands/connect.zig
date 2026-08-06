@@ -44,28 +44,23 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
                     },
                 );
             }
-            const hostname: std.Io.net.HostName = try .init(
+            const address: std.Io.net.IpAddress = try .parse(
                 params[0][0..last_delimiter_idx],
-            );
-            std.log.info(
-                "Trying to connect to {s}:{d}",
-                .{ hostname.bytes, port },
-            );
-            break :stream try hostname.connect(
-                io,
                 port,
+            );
+            std.log.info("Trying to connect to {f}", .{address});
+            break :stream try address.connect(
+                io,
                 .{ .mode = .stream, .protocol = .tcp },
             );
         } else if (client.endpoint == null) {
-            // TODO: Support IPv6 on config file
-            const hostname: std.Io.net.HostName = try .init(client.config.host);
-            std.log.info(
-                "Trying to connect to {s}:{d}",
-                .{ hostname.bytes, client.config.port },
-            );
-            break :stream try hostname.connect(
-                io,
+            const address: std.Io.net.IpAddress = try .parse(
+                client.config.host,
                 client.config.port,
+            );
+            std.log.info("Trying to connect to {f}", .{address});
+            break :stream try address.connect(
+                io,
                 .{ .mode = .stream, .protocol = .tcp },
             );
         } else {
