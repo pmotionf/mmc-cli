@@ -9,7 +9,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "connect");
     defer tracy_zone.end();
     if (client.sock) |_| disconnect.impl(io, gpa, &.{}) catch unreachable;
-    const net: std.Io.net.Stream = stream: {
+    client.endpoint = endpoint: {
         if (params[0].len != 0) {
             const last_delimiter_idx =
                 std.mem.lastIndexOf(u8, params[0], ":") orelse
@@ -30,57 +30,40 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
                     params[0][last_delimiter_idx - 1 .. last_delimiter_idx],
                 ))
             {
-                const address: std.Io.net.IpAddress = try .resolveIp6(
+                break :endpoint try .resolveIp6(
                     io,
                     params[0][1 .. last_delimiter_idx - 1],
                     port,
                 );
-                std.log.info("Trying to connect to {f}", .{address});
-                break :stream try address.connect(
-                    io,
-                    .{
-                        .mode = .stream,
-                        .protocol = .tcp,
-                    },
-                );
             }
-            const address: std.Io.net.IpAddress = try .parse(
+            break :endpoint try .parse(
                 params[0][0..last_delimiter_idx],
                 port,
             );
-            std.log.info("Trying to connect to {f}", .{address});
-            break :stream try address.connect(
-                io,
-                .{ .mode = .stream, .protocol = .tcp },
-            );
         } else if (client.endpoint == null) {
-            const address: std.Io.net.IpAddress = try .parse(
+            break :endpoint try .parse(
                 client.config.host,
                 client.config.port,
             );
-            std.log.info("Trying to connect to {f}", .{address});
-            break :stream try address.connect(
-                io,
-                .{ .mode = .stream, .protocol = .tcp },
-            );
         } else {
-            const address = client.endpoint.?;
-            std.log.info("Trying to connect to {f}", .{address});
-            break :stream try address.connect(
-                io,
-                .{ .mode = .stream, .protocol = .tcp },
-            );
+            break :endpoint client.endpoint.?;
         }
     };
-    client.endpoint = net.socket.address;
-    client.sock = net;
+    std.log.info(
+        "Trying to connect to {f}",
+        .{client.endpoint.?},
+    );
+    client.sock = try client.endpoint.?.connect(
+        io,
+        .{ .mode = .stream, .protocol = .tcp },
+    );
     errdefer {
         for (client.lines) |*line| {
             line.deinit(gpa);
         }
         gpa.free(client.lines);
+        client.sock.?.close(io);
         client.sock = null;
-        net.close(io);
     }
     // Request server information, for matching API and getting server name.
     const server_request: api.protobuf.mmc.Request = .{
@@ -88,8 +71,17 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
             .core = .{ .kind = .CORE_REQUEST_KIND_SERVER_INFO },
         },
     };
-    try client.sendRequest(io, gpa, net, server_request);
-    var server_decoded = try client.getResponse(gpa, io, net);
+    try client.sendRequest(
+        io,
+        gpa,
+        client.sock.?,
+        server_request,
+    );
+    var server_decoded = try client.getResponse(
+        gpa,
+        io,
+        client.sock.?,
+    );
     defer server_decoded.deinit(gpa);
     const server = switch (server_decoded.body orelse
         return error.InvalidResponse) {
@@ -129,8 +121,12 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
             .core = .{ .kind = .CORE_REQUEST_KIND_TRACK_CONFIG },
         },
     };
-    try client.sendRequest(io, gpa, net, track_request);
-    var track_decoded = try client.getResponse(gpa, io, net);
+    try client.sendRequest(io, gpa, client.sock.?, track_request);
+    var track_decoded = try client.getResponse(
+        gpa,
+        io,
+        client.sock.?,
+    );
     defer track_decoded.deinit(gpa);
     const track_config = switch (track_decoded.body orelse
         return error.InvalidResponse) {
@@ -190,7 +186,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
         );
         try stdout.interface.flush();
     }
-    std.log.info("Connected to {f}", .{net.socket.address});
+    std.log.info("Connected to {f}", .{client.endpoint.?});
 }
 
 test {
