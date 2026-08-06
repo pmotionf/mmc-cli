@@ -146,3 +146,7 @@ pub fn append(self: *History, item: []const u8) void {
 pub fn clear(self: *History) void {
     self.history.clearRetainingCapacity();
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

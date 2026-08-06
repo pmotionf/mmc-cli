@@ -2,7 +2,7 @@ const builtin = @import("builtin");
 const std = @import("std");
 const network = @import("network");
 
-const io = @import("io.zig");
+const terminal = @import("terminal.zig");
 const command = @import("command.zig");
 const Prompt = @import("Prompt.zig");
 
@@ -14,53 +14,34 @@ pub var exit: std.atomic.Value(bool) = .init(false);
 
 var prompt: Prompt = .{};
 
-fn stopCommandWindows(
-    dwCtrlType: std.os.windows.DWORD,
-) callconv(.winapi) std.os.windows.BOOL {
-    if (dwCtrlType == std.os.windows.CTRL_C_EVENT) {
-        command.stop.store(true, .monotonic);
-        std.fs.File.stdin().sync() catch {};
-    }
-    return 1;
-}
+pub fn main(init: std.process.Init) !void {
+    const io = init.io;
+    const gpa = init.gpa;
+    const map = init.environ_map;
+    try terminal.init();
+    defer terminal.deinit();
 
-fn stopCommandLinux(_: c_int) callconv(.c) void {
-    command.stop.store(true, .monotonic);
-}
-
-pub fn main() !void {
-    try io.init();
-    defer io.deinit();
-
-    var prompter = try std.Thread.spawn(.{}, Prompt.handler, .{&prompt});
+    var prompter = try std.Thread.spawn(
+        .{},
+        Prompt.handler,
+        .{ io, &prompt },
+    );
     prompter.detach();
     defer prompt.close.store(true, .monotonic);
 
     switch (builtin.os.tag) {
         .windows => {
-            const windows = std.os.windows;
-            try windows.SetConsoleCtrlHandler(&stopCommandWindows, true);
-            const handle =
-                try windows.GetStdHandle(windows.STD_OUTPUT_HANDLE);
-            var mode: windows.DWORD = 0;
-            if (windows.kernel32.GetConsoleMode(
-                handle,
-                &mode,
-            ) != windows.TRUE) {
-                return error.WindowsConsoleModeRetrievalFailure;
-            }
-            mode |= windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-            if (windows.kernel32.SetConsoleMode(
-                handle,
-                mode,
-            ) != windows.TRUE) {
-                return error.WindowsConsoleModeSetFailure;
-            }
+            const success = kernel32.SetConsoleCtrlHandler(
+                &stopCommandWindows,
+                .fromBool(true),
+            );
+            if (success.toBool() == false)
+                return error.FailingSetConsoleCtrlHandler;
         },
         .linux => {
             const linux = std.os.linux;
             const action: linux.Sigaction = .{
-                .handler = .{ .handler = &stopCommandLinux },
+                .handler = .{ .handler = @alignCast(&stopCommandLinux) },
                 .mask = linux.sigemptyset(),
                 .flags = 0,
             };
@@ -69,30 +50,61 @@ pub fn main() !void {
                 return error.LinuxSignalHandlerSetFailure;
             }
         },
-        else => {},
+        else => @compileError("UnsupportedOs"),
     }
 
-    try command.init();
-    defer command.deinit();
+    try command.init(gpa, map);
+    defer command.deinit(gpa, io);
 
     command_loop: while (!exit.load(.monotonic)) {
-        command.checkCommandInterrupt() catch |e| std.log.err("{t}", .{e});
-        if (command.queueEmpty()) {
+        command.checkCommandInterrupt(io) catch |e| std.log.err("{t}", .{e});
+        if (try command.queueEmpty(io)) {
             prompt.disable.store(false, .monotonic);
             continue :command_loop;
         } else {
             prompt.disable.store(true, .monotonic);
         }
 
-        command.execute() catch |e| {
+        command.execute(gpa, io) catch |e| {
             std.log.err("{t}", .{e});
-            std.log.debug("{?f}", .{@errorReturnTrace()});
-            command.queueClear();
+            if (@errorReturnTrace()) |error_trace| {
+                std.debug.dumpErrorReturnTrace(error_trace);
+            }
+            try command.queueClear(io);
             continue :command_loop;
         };
     }
 }
 
+fn stopCommandLinux(_: std.os.linux.SIG) callconv(.c) void {
+    command.stop.store(true, .monotonic);
+}
+
+fn stopCommandWindows(
+    dwCtrlType: std.os.windows.DWORD,
+) callconv(.winapi) std.os.windows.BOOL {
+    if (dwCtrlType == kernel32.CTRL_C_EVENT) {
+        command.stop.store(true, .monotonic);
+    }
+    return .fromBool(true);
+}
+
+/// Windows kernel32 functions. This struct is introduced here since zig 0.16.0
+/// removes support for kernel32. Only used functions and variables are
+/// introduced in this struct.
+const kernel32 = struct {
+    pub extern "kernel32" fn SetConsoleCtrlHandler(
+        HandlerRoutine: ?HANDLER_ROUTINE,
+        add: std.os.windows.BOOL,
+    ) callconv(.winapi) std.os.windows.BOOL;
+
+    pub const HANDLER_ROUTINE = *const fn (
+        dwCtrlType: std.os.windows.DWORD,
+    ) callconv(.winapi) std.os.windows.BOOL;
+
+    pub const CTRL_C_EVENT: std.os.windows.DWORD = 0;
+};
+
 test {
-    std.testing.refAllDeclsRecursive(@This());
+    std.testing.refAllDecls(@This());
 }

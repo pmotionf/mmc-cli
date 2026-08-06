@@ -4,7 +4,7 @@ const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn isolate(params: [][]const u8) !void {
+pub fn isolate(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_isolate");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
@@ -25,12 +25,14 @@ pub fn isolate(params: [][]const u8) !void {
         } else break :b input;
     }, 0);
     const timeout = if (params[2].len > 0)
-        try std.fmt.parseInt(u64, params[2], 0)
+        try std.fmt.parseInt(i64, params[2], 0)
     else
         0;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     try waitCarrierState(
+        gpa,
+        io,
         net,
         line.id,
         carrier_id,
@@ -39,7 +41,7 @@ pub fn isolate(params: [][]const u8) !void {
     );
 }
 
-pub fn moveCarrier(params: [][]const u8) !void {
+pub fn moveCarrier(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_move_carrier");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
@@ -60,13 +62,15 @@ pub fn moveCarrier(params: [][]const u8) !void {
         } else break :b input;
     }, 0);
     const timeout = if (params[2].len > 0)
-        try std.fmt.parseInt(u64, params[2], 0)
+        try std.fmt.parseInt(i64, params[2], 0)
     else
         0;
 
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     try waitCarrierState(
+        gpa,
+        io,
         net,
         line.id,
         carrier_id,
@@ -75,7 +79,7 @@ pub fn moveCarrier(params: [][]const u8) !void {
     );
 }
 
-pub fn axisEmpty(params: [][]const u8) !void {
+pub fn axisEmpty(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_axis_empty");
     defer tracy_zone.end();
     errdefer client.log.stop.store(true, .monotonic);
@@ -96,18 +100,19 @@ pub fn axisEmpty(params: [][]const u8) !void {
         } else break :buf input;
     }, 0);
     const timeout = if (params[2].len > 0)
-        try std.fmt.parseInt(u64, params[2], 0)
+        try std.fmt.parseInt(i64, params[2], 0)
     else
         0;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     var line_array: [1]u32 = .{line.id};
     const lines: std.ArrayList(u32) = .fromOwnedSlice(&line_array);
-    var wait_timer = try std.time.Timer.start();
+    const timestamp: std.Io.Timestamp = .now(io, .real);
     while (true) {
-        try command.checkCommandInterrupt();
+        try command.checkCommandInterrupt(io);
         if (timeout != 0 and
-            wait_timer.read() > timeout * std.time.ns_per_ms)
+            timestamp.durationTo(.now(io, .real))
+                .toMilliseconds() > timeout)
             return error.WaitTimeout;
         const request: api.protobuf.mmc.Request = .{
             .body = .{
@@ -127,9 +132,9 @@ pub fn axisEmpty(params: [][]const u8) !void {
                 },
             },
         };
-        try client.sendRequest(client.allocator, net, request);
-        var decoded = try client.getResponse(client.allocator, net);
-        defer decoded.deinit(client.allocator);
+        try client.sendRequest(io, gpa, net, request);
+        var decoded = try client.getResponse(gpa, io, net);
+        defer decoded.deinit(gpa);
         const track = switch (decoded.body orelse return error.InvalidResponse) {
             .info => |info_resp| switch (info_resp.body orelse
                 return error.InvalidResponse) {
@@ -165,18 +170,21 @@ pub fn axisEmpty(params: [][]const u8) !void {
 }
 
 fn waitCarrierState(
-    net: client.zignet.Socket,
+    gpa: std.mem.Allocator,
+    io: std.Io,
+    net: std.Io.net.Stream,
     line: u32,
     id: std.math.IntFittingRange(1, 1023),
     state: api.protobuf.mmc.info.Response.Line.Carrier.State.State,
-    timeout: u64,
+    timeout: i64,
 ) !void {
     var ids = [1]u32{id};
-    var wait_timer = try std.time.Timer.start();
+    const timestamp: std.Io.Timestamp = .now(io, .real);
     while (true) {
-        try command.checkCommandInterrupt();
+        try command.checkCommandInterrupt(io);
         if (timeout != 0 and
-            wait_timer.read() > timeout * std.time.ns_per_ms)
+            timestamp.durationTo(.now(io, .real))
+                .toMilliseconds() > timeout)
             return error.WaitTimeout;
         var line_array: [1]u32 = .{line};
         const lines: std.ArrayList(u32) = .fromOwnedSlice(&line_array);
@@ -195,9 +203,9 @@ fn waitCarrierState(
                 },
             },
         };
-        try client.sendRequest(client.allocator, net, request);
-        var decoded = try client.getResponse(client.allocator, net);
-        defer decoded.deinit(client.allocator);
+        try client.sendRequest(io, gpa, net, request);
+        var decoded = try client.getResponse(gpa, io, net);
+        defer decoded.deinit(gpa);
         const track = switch (decoded.body orelse return error.InvalidResponse) {
             .info => |info_resp| switch (info_resp.body orelse
                 return error.InvalidResponse) {
@@ -226,4 +234,8 @@ fn waitCarrierState(
         if (carrier.state == .CARRIER_STATE_OVERCURRENT) return error.Overcurrent;
         if (carrier.state == state) return;
     }
+}
+
+test {
+    std.testing.refAllDecls(@This());
 }

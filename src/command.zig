@@ -21,47 +21,6 @@ const mes07 = if (config.mes07) @import("modules/mes07.zig") else void;
 
 const Config = @import("Config.zig");
 
-pub const Registry = struct {
-    mapping: std.StringArrayHashMap(Command.Executable),
-
-    pub fn init(gpa: std.mem.Allocator) Registry {
-        return .{
-            .mapping = std.StringArrayHashMap(Command.Executable).init(gpa),
-        };
-    }
-
-    pub fn deinit(self: *Registry) void {
-        self.mapping.deinit();
-    }
-
-    pub fn values(self: *Registry) []Command.Executable {
-        return self.mapping.values();
-    }
-
-    pub fn keys(self: *Registry) [][]const u8 {
-        return self.mapping.keys();
-    }
-
-    pub fn put(self: *Registry, command: Command) !void {
-        switch (command) {
-            .alias => |alias| {
-                try self.mapping.put(alias.name, alias.command.*);
-            },
-            .executable => |executable| {
-                try self.mapping.put(executable.name, executable);
-            },
-        }
-    }
-
-    pub fn getPtr(self: *Registry, key: []const u8) ?*Command.Executable {
-        return self.mapping.getPtr(key);
-    }
-
-    pub fn orderedRemove(self: *Registry, key: []const u8) void {
-        _ = self.mapping.orderedRemove(key);
-    }
-};
-
 pub const Table = struct {
     gpa: std.mem.Allocator,
 
@@ -81,7 +40,7 @@ pub const Table = struct {
     pub fn deinit(self: *Table) void {
         if (self.header.len > 0) {
             for (self.header) |*header| {
-                self.allocator.free(header.*);
+                self.gpa.free(header.*);
             }
             self.gpa.free(self.header);
         }
@@ -168,7 +127,7 @@ pub const Table = struct {
 };
 
 // Global registry of all commands, including from other command modules.
-pub var registry: Registry = undefined;
+pub var registry: std.array_hash_map.String(Command) = .empty;
 
 /// Global "stop" flag to interrupt command execution. Command modules should
 /// not use this atomic flag directly, but instead prefer to use the
@@ -185,11 +144,15 @@ pub var table: Table = undefined;
 // initialized will be deinitialized.
 var initialized_modules: std.EnumArray(Config.Module, bool) = undefined;
 
-var command_queue_lock: std.Thread.RwLock = undefined;
-var command_queue: std.DoublyLinkedList = undefined;
+var command_queue_lock: std.Io.RwLock = .init;
+var command_queue: std.DoublyLinkedList = .{};
 
-var timer: ?std.time.Timer = null;
-var log_file: ?std.fs.File = null;
+var timer: std.Io.Timestamp = .zero;
+var log_file: ?std.Io.File = null;
+var file_writer: ?std.Io.File.Writer = null;
+var file_buf: [4096]u8 = undefined;
+
+var environ_map: *std.process.Environ.Map = undefined;
 
 const CommandString = struct {
     str: []u8,
@@ -212,7 +175,11 @@ pub const Command = union(enum) {
         short_description: []const u8,
         /// Long description of command.
         long_description: []const u8,
-        execute: *const fn ([][]const u8) anyerror!void,
+        execute: *const fn (
+            std.Io,
+            std.mem.Allocator,
+            [][]const u8,
+        ) anyerror!void,
 
         pub const Parameter = struct {
             name: []const u8,
@@ -238,44 +205,37 @@ pub const Command = union(enum) {
                         parameters += @typeInfo(Kind).@"enum".fields.len;
                     }
                 }
-                var result: std.builtin.Type.Enum = .{
-                    .fields = &.{},
-                    .decls = &.{},
-                    .is_exhaustive = true,
-                    .tag_type = std.math.IntFittingRange(0, parameters),
-                };
-                var tag_value = 0;
-                result.fields = result.fields ++ .{
-                    std.builtin.Type.EnumField{
-                        .value = tag_value,
-                        .name = "none",
-                    },
-                };
-                tag_value += 1;
+                const TagInt = std.math.IntFittingRange(0, parameters);
+                comptime var field_names: []const []const u8 = &.{};
+                field_names = field_names ++ .{"none"};
+                // command.zig command parameter validation.
                 if (@hasDecl(This, "Parameter")) {
                     const ti = @typeInfo(This.Parameter.Kind).@"enum";
                     inline for (ti.fields) |field| {
-                        result.fields = result.fields ++ .{std.builtin.Type.EnumField{
-                            .value = tag_value,
-                            .name = field.name,
-                        }};
-                        tag_value += 1;
+                        field_names = field_names ++ .{field.name};
                     }
                 }
                 inline for (@typeInfo(Config.Module).@"enum".fields) |field| {
                     const module: type = comptime @field(This, field.name);
-                    if (@typeInfo(module) == .@"struct" and @hasDecl(module, "Parameter")) {
+                    if (@typeInfo(module) == .@"struct" and
+                        @hasDecl(module, "Parameter"))
+                    {
                         const ti = @typeInfo(module.Parameter.Kind).@"enum";
                         inline for (ti.fields) |kind_field| {
-                            result.fields = result.fields ++ .{std.builtin.Type.EnumField{
-                                .value = tag_value,
-                                .name = field.name ++ "_" ++ kind_field.name,
-                            }};
-                            tag_value += 1;
+                            field_names = field_names ++
+                                .{std.fmt.comptimePrint(
+                                    "{s}_{s}",
+                                    .{ field.name, kind_field.name },
+                                )};
                         }
                     }
                 }
-                return @Type(.{ .@"enum" = result });
+                comptime var field_values: [field_names.len]TagInt =
+                    undefined;
+                for (field_names, 0..) |_, tag_value| {
+                    field_values[tag_value] = tag_value;
+                }
+                return @Enum(TagInt, .exhaustive, field_names, &field_values);
             }
 
             pub fn isValid(self: @This(), input: []const u8) bool {
@@ -307,53 +267,45 @@ pub const Command = union(enum) {
 };
 
 pub fn logFn(
-    comptime message_level: std.log.Level,
-    comptime scope: @TypeOf(.EnumLiteral),
+    comptime level: std.log.Level,
+    comptime scope: @EnumLiteral(),
     comptime format: []const u8,
     args: anytype,
 ) void {
-    const level_txt = comptime message_level.asText();
-    const prefix2 = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
-
-    if (log_file) |f| {
-        var writer_buf: [4096]u8 = undefined;
-        var writer = f.writer(&writer_buf);
-        writer.interface.print(
-            level_txt ++ prefix2 ++ format ++ "\n",
-            args,
-        ) catch return;
-        writer.interface.flush() catch return;
+    if (file_writer) |*f| {
+        var writer = &f.interface;
+        writer.writeAll(level.asText()) catch {};
+        if (scope != .default) writer.print("({t})", .{scope}) catch {};
+        writer.writeAll(": ") catch {};
+        writer.print(format ++ "\n", args) catch {};
+        writer.flush() catch return;
     }
-
-    var stderr_buf: [4096]u8 = undefined;
-    var stderr = std.fs.File.stderr().writer(&stderr_buf);
-
-    std.debug.lockStdErr();
-    defer std.debug.unlockStdErr();
-    nosuspend {
-        stderr.interface.print(
-            level_txt ++ prefix2 ++ format ++ "\n",
-            args,
-        ) catch return;
-        stderr.interface.flush() catch return;
-    }
+    const io = std.Options.debug_io;
+    const prev = io.swapCancelProtection(.blocked);
+    defer _ = io.swapCancelProtection(prev);
+    var buffer: [64]u8 = undefined;
+    const stderr = std.debug.lockStderr(&buffer).terminal();
+    defer std.debug.unlockStderr();
+    return std.log.defaultLogFileTerminal(
+        level,
+        scope,
+        format,
+        args,
+        stderr,
+    ) catch {};
 }
 
-pub fn init() !void {
-    // TODO: Make every module as a type. It does not make sense to use arena here because it makes deinitialize a module impossible.
-    arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    allocator = arena.allocator();
-
+pub fn init(
+    gpa: std.mem.Allocator,
+    map: *std.process.Environ.Map,
+) !void {
     initialized_modules = std.EnumArray(Config.Module, bool).initFill(false);
-    registry = Registry.init(allocator);
-    variables = std.BufMap.init(allocator);
+    variables = std.BufMap.init(gpa);
     table = Table.init(std.heap.smp_allocator);
-    command_queue = .{ .first = null, .last = null };
-    command_queue_lock = .{};
     stop.store(false, .monotonic);
-    timer = try std.time.Timer.start();
+    environ_map = map;
 
-    try registry.put(.{ .executable = .{
+    try registry.put(gpa, "HELP", .{ .executable = .{
         .name = "HELP",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "command", .optional = true, .resolve = false },
@@ -366,7 +318,7 @@ pub fn init() !void {
         ,
         .execute = &help,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(gpa, "VERSION", .{ .executable = .{
         .name = "VERSION",
         .short_description = "Display the version of the MMC CLI.",
         .long_description =
@@ -375,7 +327,7 @@ pub fn init() !void {
         ,
         .execute = &version,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(gpa, "LOAD_CONFIG", .{ .executable = .{
         .name = "LOAD_CONFIG",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "file path", .optional = true },
@@ -388,7 +340,7 @@ pub fn init() !void {
         ,
         .execute = &loadConfig,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(gpa, "WAIT", .{ .executable = .{
         .name = "WAIT",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "duration", .resolve = true },
@@ -400,14 +352,14 @@ pub fn init() !void {
         ,
         .execute = &wait,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(gpa, "CLEAR", .{ .executable = .{
         .name = "CLEAR",
         .parameters = &.{},
         .short_description = "Clear visible screen output.",
         .long_description = "Clear visible screen output.",
         .execute = &clear,
     } });
-    try registry.put(.{
+    try registry.put(gpa, "SET", .{
         .executable = .{
             .name = "SET",
             .parameters = &[_]Command.Executable.Parameter{
@@ -441,7 +393,7 @@ pub fn init() !void {
             .execute = &set,
         },
     });
-    try registry.put(.{ .executable = .{
+    try registry.put(gpa, "GET", .{ .executable = .{
         .name = "GET",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "variable", .resolve = false },
@@ -453,7 +405,7 @@ pub fn init() !void {
         ,
         .execute = &get,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(gpa, "REMOVE", .{ .executable = .{
         .name = "REMOVE",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "variable", .resolve = false },
@@ -465,7 +417,7 @@ pub fn init() !void {
         ,
         .execute = &remove,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(gpa, "VARIABLES", .{ .executable = .{
         .name = "VARIABLES",
         .short_description = "Display all variables with their values.",
         .long_description =
@@ -473,7 +425,7 @@ pub fn init() !void {
         ,
         .execute = &printVariables,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(gpa, "TABLE_RESET", .{ .executable = .{
         .name = "TABLE_RESET",
         .short_description = "Fully reset global table to be empty.",
         .long_description =
@@ -483,7 +435,7 @@ pub fn init() !void {
         ,
         .execute = &tableReset,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(gpa, "TABLE_SET_COLUMNS", .{ .executable = .{
         .name = "TABLE_SET_COLUMNS",
         .parameters = &.{
             .{
@@ -501,7 +453,7 @@ pub fn init() !void {
         ,
         .execute = &tableSetColumns,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(gpa, "TABLE_ADD_ROW", .{ .executable = .{
         .name = "TABLE_ADD_ROW",
         .short_description = "Add row of current variable values to table.",
         .long_description =
@@ -509,7 +461,7 @@ pub fn init() !void {
         ,
         .execute = &tableAddRow,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(gpa, "TABLE_SAVE", .{ .executable = .{
         .name = "TABLE_SAVE",
         .parameters = &.{
             .{ .name = "file path" },
@@ -520,7 +472,7 @@ pub fn init() !void {
         ,
         .execute = &tableSave,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(gpa, "TIMER_START", .{ .executable = .{
         .name = "TIMER_START",
         .short_description = "Start a monotonic system timer.",
         .long_description =
@@ -530,7 +482,7 @@ pub fn init() !void {
         ,
         .execute = &timerStart,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(gpa, "TIMER_READ", .{ .executable = .{
         .name = "TIMER_READ",
         .short_description = "Read elapsed time from the system timer.",
         .long_description =
@@ -540,7 +492,7 @@ pub fn init() !void {
         ,
         .execute = &timerRead,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(gpa, "FILE", .{ .executable = .{
         .name = "FILE",
         .parameters = &[_]Command.Executable.Parameter{.{ .name = "path" }},
         .short_description = "Queue commands listed in the provided file.",
@@ -555,7 +507,7 @@ pub fn init() !void {
         ,
         .execute = &file,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(gpa, "SAVE_OUTPUT", .{ .executable = .{
         .name = "SAVE_OUTPUT",
         .parameters = &[_]Command.Executable.Parameter{
             .{ .name = "mode" },
@@ -576,7 +528,7 @@ pub fn init() !void {
         ,
         .execute = &setLog,
     } });
-    try registry.put(.{ .executable = .{
+    try registry.put(gpa, "EXIT", .{ .executable = .{
         .name = "EXIT",
         .short_description = "Exit the MMC command line utility.",
         .long_description =
@@ -587,38 +539,48 @@ pub fn init() !void {
     } });
 }
 
-test init {
-    try init();
-    defer deinit();
-    for (registry.values()) |executable| {
-        for (executable.parameters, 1..) |param, i| {
-            if (param.rest and i != executable.parameters.len) {
-                return error.FoundInvalidRestParameter;
-            }
+test "rest parameter" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    const env = std.testing.environ;
+    var env_map = try env.createMap(gpa);
+    defer env_map.deinit();
+    try init(gpa, &env_map);
+    defer deinit(gpa, io);
+    for (registry.values()) |command| {
+        switch (command) {
+            .alias => {},
+            .executable => |executable| {
+                for (executable.parameters, 1..) |param, i| {
+                    if (param.rest and i != executable.parameters.len) {
+                        return error.FoundInvalidRestParameter;
+                    }
+                }
+            },
         }
     }
 }
 
-pub fn deinit() void {
-    deinitModules();
+pub fn deinit(gpa: std.mem.Allocator, io: std.Io) void {
+    deinitModules(gpa, io);
+    queueClear(io) catch {};
+    environ_map = undefined;
     stop.store(true, .monotonic);
     defer stop.store(false, .monotonic);
     variables.deinit();
-    queueClear();
     command_queue_lock = undefined;
-    registry.deinit();
-    arena.deinit();
+    registry.deinit(gpa);
 }
 
-pub fn queueEmpty() bool {
-    command_queue_lock.lockShared();
-    defer command_queue_lock.unlockShared();
+pub fn queueEmpty(io: std.Io) error{Canceled}!bool {
+    try command_queue_lock.lockShared(io);
+    defer command_queue_lock.unlockShared(io);
     return command_queue.first == null and command_queue.last == null;
 }
 
-pub fn queueClear() void {
-    command_queue_lock.lock();
-    defer command_queue_lock.unlock();
+pub fn queueClear(io: std.Io) error{Canceled}!void {
+    try command_queue_lock.lock(io);
+    defer command_queue_lock.unlock(io);
     while (command_queue.popFirst()) |node| {
         const command_str: *CommandString = @fieldParentPtr("node", node);
         std.heap.smp_allocator.free(command_str.str);
@@ -628,41 +590,45 @@ pub fn queueClear() void {
 
 /// Checks if the `stop` flag is set, and if so returns an error and clear
 /// command queue.
-pub fn checkCommandInterrupt() error{CommandStopped}!void {
+pub fn checkCommandInterrupt(io: std.Io) error{CommandStopped}!void {
     if (stop.load(.monotonic)) {
         defer stop.store(false, .monotonic);
-        queueClear();
+        queueClear(io) catch {};
         return error.CommandStopped;
     }
 }
 
-pub fn enqueue(input: []const u8) !void {
+pub fn enqueue(io: std.Io, input: []const u8) !void {
     const str = try std.heap.smp_allocator.dupe(u8, input);
     errdefer std.heap.smp_allocator.free(str);
     const new_node: *CommandString =
         try std.heap.smp_allocator.create(CommandString);
     new_node.str = str;
-    command_queue_lock.lock();
-    defer command_queue_lock.unlock();
+    try command_queue_lock.lock(io);
+    defer command_queue_lock.unlock(io);
     command_queue.append(&new_node.node);
 }
 
-pub fn execute() !void {
-    command_queue_lock.lock();
+pub fn execute(gpa: std.mem.Allocator, io: std.Io) !void {
+    try command_queue_lock.lock(io);
     const node_opt = command_queue.popFirst();
-    command_queue_lock.unlock();
+    command_queue_lock.unlock(io);
     if (node_opt) |node| {
         const command_str: *CommandString = @fieldParentPtr("node", node);
         defer {
             std.heap.smp_allocator.free(command_str.str);
             std.heap.smp_allocator.destroy(command_str);
         }
-        try parseAndRun(command_str.str);
+        try parseAndRun(gpa, io, command_str.str);
     }
 }
 
-fn parseAndRun(input: []const u8) !void {
-    const trimmed = std.mem.trimLeft(u8, input, "\n\t \r");
+fn parseAndRun(
+    gpa: std.mem.Allocator,
+    io: std.Io,
+    input: []const u8,
+) !void {
+    const trimmed = std.mem.trimStart(u8, input, "\n\t \r");
     std.log.info("Running command: {s}\n", .{trimmed});
     if (trimmed.len == 0 or trimmed[0] == '#') {
         return;
@@ -672,15 +638,18 @@ fn parseAndRun(input: []const u8) !void {
     var command_buf: [256]u8 = undefined;
     if (token_iterator.next()) |token| {
         if (registry.getPtr(std.ascii.upperString(&command_buf, token))) |c| {
-            command = c;
+            command = switch (c.*) {
+                .alias => c.alias.command,
+                .executable => &c.executable,
+            };
         } else return error.InvalidCommand;
     } else return;
 
-    var params: [][]const u8 = try allocator.alloc(
+    var params: [][]const u8 = try gpa.alloc(
         []const u8,
         command.parameters.len,
     );
-    defer allocator.free(params);
+    defer gpa.free(params);
 
     for (command.parameters, 0..) |param, i| {
         const _token = token_iterator.peek();
@@ -732,13 +701,10 @@ fn parseAndRun(input: []const u8) !void {
     if (!is_rest and token_iterator.peek() != null)
         return error.UnexpectedParameter;
 
-    try command.execute(params);
+    try command.execute(io, gpa, params);
 }
 
-var arena: std.heap.ArenaAllocator = undefined;
-var allocator: std.mem.Allocator = undefined;
-
-fn help(params: [][]const u8) !void {
+fn help(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     if (params[0].len > 0) {
         var command: *Command.Executable = undefined;
         var command_buf: [32]u8 = undefined;
@@ -749,7 +715,10 @@ fn help(params: [][]const u8) !void {
             &command_buf,
             params[0],
         ))) |c| {
-            command = c;
+            command = switch (c.*) {
+                .alias => c.alias.command,
+                .executable => &c.executable,
+            };
         } else return error.InvalidCommand;
 
         var params_buffer: [512]u8 = .{0} ** 512;
@@ -794,7 +763,7 @@ fn help(params: [][]const u8) !void {
         for (registry.values()) |c| {
             var params_buffer: [512]u8 = .{0} ** 512;
             var params_len: usize = 0;
-            for (c.parameters) |param| {
+            for (c.executable.parameters) |param| {
                 params_len += (try std.fmt.bufPrint(
                     params_buffer[params_len..],
                     " {s}{s}{s}",
@@ -806,20 +775,20 @@ fn help(params: [][]const u8) !void {
                 )).len;
             }
             std.log.info("{s}{s}:\n\t{s}\n", .{
-                c.name,
+                c.executable.name,
                 params_buffer[0..params_len],
-                c.short_description,
+                c.executable.short_description,
             });
         }
     }
 }
 
-fn version(_: [][]const u8) !void {
+fn version(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     // TODO: Figure out better way to get version from `build.zig.zon`.
     std.log.info("CLI Version: {s}\n", .{build.version});
 }
 
-fn set(params: [][]const u8) !void {
+fn set(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     if (!std.ascii.isAlphabetic(params[0][0])) return error.InvalidParameter;
     const name: []const u8 = params[0];
     const value: []const u8 = params[1];
@@ -1035,7 +1004,7 @@ test "calc" {
     try std.testing.expectError(error.ExpectedNumber, calc("1.2.3"));
 }
 
-fn get(params: [][]const u8) !void {
+fn get(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     if (variables.get(params[0])) |value| {
         std.log.info("Variable '{s}': {s}\n", .{
             params[0],
@@ -1044,7 +1013,7 @@ fn get(params: [][]const u8) !void {
     } else return error.UndefinedVariable;
 }
 
-fn remove(params: [][]const u8) !void {
+fn remove(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     if (std.ascii.isDigit(params[0][0])) {
         return error.InvalidParameter;
     } else if (variables.get(params[0])) |value| {
@@ -1056,20 +1025,20 @@ fn remove(params: [][]const u8) !void {
     variables.remove(params[0]);
 }
 
-fn printVariables(_: [][]const u8) !void {
+fn printVariables(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     var variables_it = variables.iterator();
     while (variables_it.next()) |entry| {
         std.log.info("\t{s}: {s}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
     }
 }
 
-fn tableReset(_: [][]const u8) !void {
+fn tableReset(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     table.clearRows();
     // Should be impossible to fail with an empty header.
     table.setHeader(&.{}) catch unreachable;
 }
 
-fn tableSetColumns(params: [][]const u8) !void {
+fn tableSetColumns(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const all_variables = params[0];
     var names = std.mem.splitScalar(u8, all_variables, ',');
     var names_count: usize = 0;
@@ -1081,75 +1050,65 @@ fn tableSetColumns(params: [][]const u8) !void {
     try table.setHeader(names_buf[0..names_count]);
 }
 
-fn tableAddRow(_: [][]const u8) !void {
+fn tableAddRow(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     try table.addRow();
 }
 
-fn tableSave(params: [][]const u8) !void {
+fn tableSave(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const path = params[0];
 
-    var f = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer f.close();
+    var buf: [4096]u8 = undefined;
+    var f = try std.Io.Dir.cwd().createFile(io, path, .{ .truncate = true });
+    var writer = f.writer(io, &buf);
+    defer f.close(io);
 
     for (table.header) |col| {
-        try f.writeAll(col);
-        try f.writeAll(",");
+        try writer.interface.writeAll(col);
+        try writer.interface.writeAll(",");
     }
-    try f.writeAll("\n");
+    try writer.interface.writeAll("\n");
 
     for (table.rows.items) |row| {
         for (row) |val| {
-            try f.writeAll(val);
-            try f.writeAll(",");
+            try writer.interface.writeAll(val);
+            try writer.interface.writeAll(",");
         }
-        try f.writeAll("\n");
+        try writer.interface.writeAll("\n");
     }
 }
 
-fn timerStart(_: [][]const u8) !void {
-    if (timer) |*t| {
-        t.reset();
-    } else {
-        return error.SystemTimerFailure;
-    }
+fn timerStart(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
+    timer = .now(io, .real);
 }
 
-fn timerRead(_: [][]const u8) !void {
-    if (timer) |*t| {
-        var timer_value: f64 = @floatFromInt(t.read());
-        timer_value = timer_value / std.time.ns_per_s;
-        // Only print to microsecond precision.
-        std.log.info("Timer: {d:.6}\n", .{timer_value});
-    } else {
-        return error.SystemTimerFailure;
-    }
+fn timerRead(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
+    const duration = timer.untilNow(io, .real);
+    var timer_value: f64 = @floatFromInt(duration.toMicroseconds());
+    timer_value = timer_value / std.time.us_per_s;
+    // Only print to microsecond precision.
+    std.log.info("Elapsed time in seconds: {d:.6}\n", .{timer_value});
 }
 
-fn file(params: [][]const u8) !void {
-    var f = try std.fs.cwd().openFile(params[0], .{});
-    defer f.close();
-    var reader_buf: [std.fs.max_path_bytes + 512]u8 = undefined;
-    var reader = f.reader(&reader_buf);
+fn file(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+    var file_buffer: [4096]u8 = undefined;
+    var f = try std.Io.Dir.cwd().openFile(io, params[0], .{});
+    var file_reader = f.reader(io, &file_buffer);
+    const reader = &file_reader.interface;
     while (true) {
-        try checkCommandInterrupt();
-        const _line = reader.interface.takeDelimiter('\n') catch |e| {
-            switch (e) {
-                error.StreamTooLong => break,
-                else => return e,
-            }
-        } orelse break;
-        const line = std.mem.trimLeft(
+        try checkCommandInterrupt(io);
+        const _line = try reader.takeDelimiter('\n') orelse return;
+        const line = std.mem.trimStart(
             u8,
-            std.mem.trimRight(u8, _line, "\r"),
+            std.mem.trimEnd(u8, _line, "\r"),
             "\n\t ",
         );
         if (line.len == 0 or line[0] == '#') continue;
         std.log.info("Queueing command: {s}", .{line});
-        try enqueue(line);
+        try enqueue(io, line);
     }
 }
 
-fn deinitModules() void {
+fn deinitModules(gpa: std.mem.Allocator, io: std.Io) void {
     var mod_it = initialized_modules.iterator();
     const fields = @typeInfo(Config.Module).@"enum".fields;
     while (mod_it.next()) |e| {
@@ -1158,7 +1117,7 @@ fn deinitModules() void {
                 inline 0...fields.len - 1 => |i| {
                     const f_type = @typeInfo(@field(@This(), fields[i].name));
                     if (comptime f_type != .void) {
-                        @field(@This(), fields[i].name).deinit();
+                        @field(@This(), fields[i].name).deinit(gpa, io);
                         const module = @field(Config.Module, fields[i].name);
                         initialized_modules.set(module, false);
                     }
@@ -1169,72 +1128,88 @@ fn deinitModules() void {
     }
 }
 
-fn loadConfig(params: [][]const u8) !void {
+fn loadConfig(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     // De-initialize any previously initialized modules.
-    deinitModules();
+    deinitModules(gpa, io);
 
     // Load config file.
     const config_file = if (params[0].len > 0)
-        std.fs.cwd().openFile(params[0], .{}) catch
-            try std.fs.openFileAbsolute(params[0], .{})
+        std.Io.Dir.cwd().openFile(io, params[0], .{}) catch
+            try std.Io.Dir.openFileAbsolute(io, params[0], .{})
     else
-        std.fs.cwd().openFile("config.json5", .{}) catch exe_local: {
+        std.Io.Dir.cwd().openFile(io, "config.json5", .{}) catch exe_local: {
             var exe_dir_buf: [std.fs.max_path_bytes]u8 = undefined;
-            const exe_dir_path = std.fs.selfExeDirPath(&exe_dir_buf) catch
+            const path_len = std.process.executableDirPath(io, &exe_dir_buf) catch
                 break :exe_local error.FileNotFound;
-            var exe_dir = std.fs.cwd().openDir(exe_dir_path, .{}) catch
+            var exe_dir = std.Io.Dir.cwd().openDir(io, exe_dir_buf[0..path_len], .{}) catch
                 break :exe_local error.FileNotFound;
-            defer exe_dir.close();
-            break :exe_local exe_dir.openFile("config.json5", .{});
+            defer exe_dir.close(io);
+            break :exe_local exe_dir.openFile(io, "config.json5", .{});
         } catch config_local: {
             var config_dir = switch (comptime builtin.os.tag) {
                 .windows => b: {
-                    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-                    var fba = std.heap.FixedBufferAllocator.init(&path_buf);
-                    const fba_alloc = fba.allocator();
-                    const home_path = try std.process.getEnvVarOwned(
-                        fba_alloc,
-                        "USERPROFILE",
-                    );
+                    const home_path = environ_map.get("USERPROFILE") orelse "";
 
-                    var home_dir = try std.fs.cwd().openDir(home_path, .{});
-                    defer home_dir.close();
-                    var config_root = try home_dir.openDir(".config", .{});
-                    defer config_root.close();
-                    break :b try config_root.openDir("mmc-cli", .{});
+                    var home_dir = try std.Io.Dir.cwd().openDir(
+                        io,
+                        home_path,
+                        .{},
+                    );
+                    defer home_dir.close(io);
+                    var config_root = try home_dir.openDir(
+                        io,
+                        ".config",
+                        .{},
+                    );
+                    defer config_root.close(io);
+                    break :b try config_root.openDir(
+                        io,
+                        "mmc-cli",
+                        .{},
+                    );
                 },
                 .linux => b: {
-                    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-                    var fba = std.heap.FixedBufferAllocator.init(&path_buf);
-                    const fba_alloc = fba.allocator();
-                    const config_path = std.process.getEnvVarOwned(
-                        fba_alloc,
-                        "XDG_CONFIG_HOME",
-                    ) catch "";
+                    const config_path =
+                        environ_map.get("XDG_CONFIG_HOME") orelse "";
                     if (config_path.len > 0) {
-                        break :b try std.fs.cwd().openDir(config_path, .{});
+                        break :b try std.Io.Dir.cwd().openDir(
+                            io,
+                            config_path,
+                            .{},
+                        );
                     }
-                    const home_path = try std.process.getEnvVarOwned(
-                        fba_alloc,
-                        "HOME",
+                    const home_path = environ_map.get("HOME") orelse
+                        return error.EnvironmentVariableNotFound;
+                    var home_dir = try std.Io.Dir.cwd().openDir(
+                        io,
+                        home_path,
+                        .{},
                     );
-                    var home_dir = try std.fs.cwd().openDir(home_path, .{});
-                    defer home_dir.close();
-                    var config_root = try home_dir.openDir(".config", .{});
-                    defer config_root.close();
-                    break :b try config_root.openDir("mmc-cli", .{});
+                    defer home_dir.close(io);
+                    var config_root = try home_dir.openDir(
+                        io,
+                        ".config",
+                        .{},
+                    );
+                    defer config_root.close(io);
+                    break :b try config_root.openDir(
+                        io,
+                        "mmc-cli",
+                        .{},
+                    );
                 },
                 else => return error.UnsupportedOs,
             };
 
             break :config_local try config_dir.openFile(
+                io,
                 "config.json5",
                 .{},
             );
         };
-    var m_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    const m_allocator = m_arena.allocator();
-    var conf = try Config.parse(m_allocator, config_file);
+
+    var conf = try Config.parse(gpa, io, config_file);
+    defer conf.deinit();
 
     // Initialize only the modules specified in config file.
     const fields = @typeInfo(Config.Module).@"enum".fields;
@@ -1244,6 +1219,8 @@ fn loadConfig(params: [][]const u8) !void {
                 const f_type = @typeInfo(@field(@This(), fields[i].name));
                 if (comptime f_type != .void) {
                     try @field(@This(), fields[i].name).init(
+                        gpa,
+                        io,
                         @field(module, fields[i].name),
                     );
                     initialized_modules.set(
@@ -1255,31 +1232,30 @@ fn loadConfig(params: [][]const u8) !void {
             else => unreachable,
         }
     }
-    conf.deinit();
-    m_arena.deinit();
 }
 
-fn wait(params: [][]const u8) !void {
-    const duration: u64 = try std.fmt.parseInt(u64, params[0], 0);
-    var wait_timer = try std.time.Timer.start();
-    while (wait_timer.read() < duration * std.time.ns_per_ms) {
-        try checkCommandInterrupt();
+fn wait(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+    const duration = try std.fmt.parseInt(i64, params[0], 0);
+    const timestamp: std.Io.Timestamp = .now(io, .real);
+    while (timestamp.untilNow(io, .real).toMilliseconds() < duration) {
+        try checkCommandInterrupt(io);
     }
 }
 
-fn setLog(params: [][]const u8) !void {
+fn setLog(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const mode_str = params[0];
     const path = params[1];
 
     var buf: [512]u8 = undefined;
     const file_path = if (path.len > 0) path else p: {
-        var timestamp: u64 = @intCast(std.time.timestamp());
+        var timestamp: i64 =
+            std.Io.Timestamp.now(io, std.Io.Clock.real).toSeconds();
         timestamp += std.time.s_per_hour * 9;
-        const days_since_epoch: i32 = @intCast(timestamp / std.time.s_per_day);
+        const days_since_epoch: i32 = @intCast(@divFloor(timestamp, std.time.s_per_day));
         const ymd =
             chrono.date.YearMonthDay.fromDaysSinceUnixEpoch(days_since_epoch);
-        const time_day: u32 = @intCast(timestamp % std.time.s_per_day);
-        const time = try chrono.Time.fromNumSecondsFromMidnight(time_day, 0);
+        const time_day: u32 = @intCast(@rem(timestamp, std.time.s_per_day));
+        const time = chrono.Time.fromNumSecondsFromMidnight(time_day, 0) catch return;
 
         break :p try std.fmt.bufPrint(
             &buf,
@@ -1297,32 +1273,39 @@ fn setLog(params: [][]const u8) !void {
 
     if (std.ascii.eqlIgnoreCase("stop", mode_str)) {
         if (log_file) |f| {
-            f.close();
+            f.close(io);
         }
         log_file = null;
     } else if (std.ascii.eqlIgnoreCase("append", mode_str)) {
         if (log_file) |f| {
-            f.close();
+            f.close(io);
+            file_writer = null;
         }
-
-        log_file = try std.fs.cwd().createFile(file_path, .{
+        log_file = try std.Io.Dir.cwd().createFile(io, file_path, .{
             .truncate = false,
         });
+        file_writer = log_file.?.writer(io, &file_buf);
     } else if (std.ascii.eqlIgnoreCase("replace", mode_str)) {
         if (log_file) |f| {
-            f.close();
+            f.close(io);
+            file_writer = null;
         }
-        log_file = try std.fs.cwd().createFile(file_path, .{});
+        log_file = try std.Io.Dir.cwd().createFile(io, file_path, .{});
+        file_writer = log_file.?.writer(io, &file_buf);
     } else {
         return error.InvalidSaveOutputMode;
     }
 }
 
-fn clear(_: [][]const u8) !void {
-    var stdout = std.fs.File.stdout().writer(&.{});
+fn clear(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
+    var stdout = std.Io.File.stdout().writer(io, &.{});
     try stdout.interface.writeAll("\x1bc");
 }
 
-fn exit(_: [][]const u8) !void {
+fn exit(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     main.exit.store(true, .monotonic);
+}
+
+test {
+    std.testing.refAllDecls(@This());
 }

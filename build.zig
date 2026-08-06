@@ -1,4 +1,5 @@
 const std = @import("std");
+const Translator = @import("translate_c").Translator;
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -86,11 +87,6 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    const zignet = b.dependency("zignet", .{
-        .target = target,
-        .optimize = optimize,
-    });
-
     const build_zig_zon = b.createModule(.{
         .root_source_file = b.path("build.zig.zon"),
         .target = target,
@@ -103,7 +99,6 @@ pub fn build(b: *std.Build) !void {
         .{ .name = "mmc-api", .module = mmc_api.module("mmc-api") },
         .{ .name = "network", .module = network_dep.module("network") },
         .{ .name = "chrono", .module = chrono.module("chrono") },
-        .{ .name = "zignet", .module = zignet.module("zignet") },
         .{ .name = "tracy", .module = tracy_module },
     };
     const setup_options: SetupOptions = .{
@@ -184,10 +179,32 @@ fn setupModule(
                 .target = options.target,
                 .optimize = options.optimize,
             });
-            if (soem) |dep| {
-                mod.linkLibrary(dep.artifact("soem"));
-                mod.addIncludePath(dep.path("include"));
+
+            if (soem) |soem_dep| {
+                const translate_c = b.dependency("translate_c", .{
+                    .target = options.target,
+                    .optimize = options.optimize,
+                });
+
+                const trans_soem: Translator = .init(translate_c, .{
+                    .c_source_file = b.addWriteFiles().add("c.h",
+                        \\#include <soem/soem.h>
+                    ),
+                    .target = options.target,
+                    .optimize = options.optimize,
+                });
+
+                trans_soem.linkLibrary(soem_dep.artifact("soem"));
+                mod.addImport("soem", trans_soem.mod);
             }
+            // const soem = b.lazyDependency("soem", .{
+            //     .target = options.target,
+            //     .optimize = options.optimize,
+            // });
+            // if (soem) |dep| {
+            //     mod.linkLibrary(dep.artifact("soem"));
+            //     mod.addIncludePath(dep.path("include"));
+            // }
         },
         else => {
             return error.UnsupportedOs;

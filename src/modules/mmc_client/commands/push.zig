@@ -4,7 +4,7 @@ const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn impl(params: [][]const u8) !void {
+pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const net = client.sock orelse return error.ServerNotConnected;
     const line_name = params[0];
     const line_idx = try client.matchLine(line_name);
@@ -80,9 +80,9 @@ pub fn impl(params: [][]const u8) !void {
                     },
                 },
             };
-            try client.sendRequest(client.allocator, net, request);
-            var decoded = try client.getResponse(client.allocator, net);
-            defer decoded.deinit(client.allocator);
+            try client.sendRequest(io, gpa, net, request);
+            var decoded = try client.getResponse(gpa, io, net);
+            defer decoded.deinit(gpa);
             const track = switch (decoded.body orelse return error.InvalidResponse) {
                 .info => |info_resp| switch (info_resp.body orelse
                     return error.InvalidResponse) {
@@ -142,8 +142,8 @@ pub fn impl(params: [][]const u8) !void {
                 },
             },
         };
-        try client.sendRequest(client.allocator, net, request);
-        try client.waitCommandCompleted(client.allocator, net);
+        try client.sendRequest(io, gpa, net, request);
+        try client.waitCommandCompleted(io, gpa, net);
     }
     // Push command request
     {
@@ -163,7 +163,11 @@ pub fn impl(params: [][]const u8) !void {
                 },
             },
         };
-        try client.sendRequest(client.allocator, net, request);
-        try client.waitCommandCompleted(client.allocator, net);
+        try client.sendRequest(io, gpa, net, request);
+        try client.waitCommandCompleted(io, gpa, net);
     }
+}
+
+test {
+    std.testing.refAllDecls(@This());
 }

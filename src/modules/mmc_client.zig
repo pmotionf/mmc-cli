@@ -8,7 +8,6 @@ const commands = @import("mmc_client/commands.zig");
 pub const Parameter = @import("mmc_client/Parameter.zig");
 pub const Line = @import("mmc_client/Line.zig");
 pub const log = @import("mmc_client/log.zig");
-pub const zignet = @import("zignet");
 pub const api = @import("mmc-api");
 
 pub const Config = struct {
@@ -165,31 +164,24 @@ pub var lines: []Line = &.{};
 /// deinitialized if the client is disconnected.
 pub var log_config: log.Config = undefined;
 /// Currently connected socket. Nulled when disconnect.
-pub var sock: ?zignet.Socket = null;
+pub var sock: ?std.Io.net.Stream = null;
 /// Currently saved endpoint. The endpoint will be overwritten if the client
 /// is connected to a different server. Stays null before connected to a socket.
-pub var endpoint: ?zignet.Endpoint = null;
-pub var allocator: std.mem.Allocator = undefined;
+pub var endpoint: ?std.Io.net.IpAddress = null;
 
 /// Store the configuration.
 pub var config: Config = undefined;
 
-var debug_allocator = std.heap.DebugAllocator(.{}){};
-
-pub fn init(c: Config) !void {
-    allocator = if (builtin.mode == .Debug)
-        debug_allocator.allocator()
-    else
-        std.heap.smp_allocator;
+pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
     config = .{
-        .host = try allocator.dupe(u8, c.host),
+        .host = try gpa.dupe(u8, c.host),
         .port = c.port,
     };
-    errdefer allocator.free(config.host);
-    parameter = .init(allocator);
+    errdefer gpa.free(config.host);
+    parameter = .init(gpa);
     errdefer parameter.deinit();
 
-    try command.registry.put(.{ .executable = .{
+    try command.registry.put(gpa, "SERVER_VERSION", .{ .executable = .{
         .name = "SERVER_VERSION",
         .short_description = "Display the connected MMC server version.",
         .long_description =
@@ -198,8 +190,8 @@ pub fn init(c: Config) !void {
         ,
         .execute = &commands.server_version.impl,
     } });
-    errdefer command.registry.orderedRemove("SERVER_VERSION");
-    try command.registry.put(.{ .executable = .{
+    errdefer _ = command.registry.orderedRemove("SERVER_VERSION");
+    try command.registry.put(gpa, "CONNECT", .{ .executable = .{
         .name = "CONNECT",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "endpoint", .optional = true },
@@ -219,8 +211,8 @@ pub fn init(c: Config) !void {
         , .{}),
         .execute = &commands.connect.impl,
     } });
-    errdefer command.registry.orderedRemove("CONNECT");
-    try command.registry.put(.{ .executable = .{
+    errdefer _ = command.registry.orderedRemove("CONNECT");
+    try command.registry.put(gpa, "DISCONNECT", .{ .executable = .{
         .name = "DISCONNECT",
         .short_description = "End connection with MMC server.",
         .long_description = std.fmt.comptimePrint(
@@ -228,8 +220,8 @@ pub fn init(c: Config) !void {
         , .{}),
         .execute = &commands.disconnect.impl,
     } });
-    errdefer command.registry.orderedRemove("DISCONNECT");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("DISCONNECT");
+    try command.registry.put(gpa, "SET_SPEED", .{
         .executable = .{
             .name = "SET_SPEED",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -252,8 +244,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.set_speed.impl,
         },
     });
-    errdefer command.registry.orderedRemove("SET_SPEED");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("SET_SPEED");
+    try command.registry.put(gpa, "SET_ACCELERATION", .{
         .executable = .{
             .name = "SET_ACCELERATION",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -276,8 +268,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.set_acceleration.impl,
         },
     });
-    errdefer command.registry.orderedRemove("SET_ACCELERATION");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("SET_ACCELERATION");
+    try command.registry.put(gpa, "GET_SPEED", .{
         .executable = .{
             .name = "GET_SPEED",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -293,8 +285,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.get_speed.impl,
         },
     });
-    errdefer command.registry.orderedRemove("GET_SPEED");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("GET_SPEED");
+    try command.registry.put(gpa, "GET_ACCELERATION", .{
         .executable = .{
             .name = "GET_ACCELERATION",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -310,8 +302,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.get_acceleration.impl,
         },
     });
-    errdefer command.registry.orderedRemove("GET_ACCELERATION");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("GET_ACCELERATION");
+    try command.registry.put(gpa, "PRINT_AXIS_INFO", .{
         .executable = .{
             .name = "PRINT_AXIS_INFO",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -333,8 +325,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.print_axis_info.impl,
         },
     });
-    errdefer command.registry.orderedRemove("PRINT_AXIS_INFO");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("PRINT_AXIS_INFO");
+    try command.registry.put(gpa, "PRINT_DRIVER_INFO", .{
         .executable = .{
             .name = "PRINT_DRIVER_INFO",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -356,8 +348,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.print_driver_info.impl,
         },
     });
-    errdefer command.registry.orderedRemove("PRINT_DRIVER_INFO");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("PRINT_DRIVER_INFO");
+    try command.registry.put(gpa, "PRINT_CARRIER_INFO", .{
         .executable = .{
             .name = "PRINT_CARRIER_INFO",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -387,8 +379,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.print_carrier_info.impl,
         },
     });
-    errdefer command.registry.orderedRemove("PRINT_CARRIER_INFO");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("PRINT_CARRIER_INFO");
+    try command.registry.put(gpa, "AXIS_CARRIER", .{
         .executable = .{
             .name = "AXIS_CARRIER",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -422,7 +414,7 @@ pub fn init(c: Config) !void {
         },
     });
     errdefer _ = command.registry.orderedRemove("AXIS_CARRIER");
-    try command.registry.put(.{
+    try command.registry.put(gpa, "CARRIER_ID", .{
         .executable = .{
             .name = "CARRIER_ID",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -452,8 +444,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.carrier_id.impl,
         },
     });
-    errdefer command.registry.orderedRemove("CARRIER_ID");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("CARRIER_ID");
+    try command.registry.put(gpa, "ASSERT_CARRIER_LOCATION", .{
         .executable = .{
             .name = "ASSERT_CARRIER_LOCATION",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -486,8 +478,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.assert_location.impl,
         },
     });
-    errdefer command.registry.orderedRemove("ASSERT_CARRIER_LOCATION");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("ASSERT_CARRIER_LOCATION");
+    try command.registry.put(gpa, "CARRIER_LOCATION", .{
         .executable = .{
             .name = "CARRIER_LOCATION",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -512,8 +504,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.carrier_location.impl,
         },
     });
-    errdefer command.registry.orderedRemove("CARRIER_LOCATION");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("CARRIER_LOCATION");
+    try command.registry.put(gpa, "CARRIER_AXIS", .{
         .executable = .{
             .name = "CARRIER_AXIS",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -530,8 +522,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.carrier_axis.impl,
         },
     });
-    errdefer command.registry.orderedRemove("CARRIER_AXIS");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("CARRIER_AXIS");
+    try command.registry.put(gpa, "HALL_STATUS", .{
         .executable = .{
             .name = "HALL_STATUS",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -561,8 +553,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.hall_status.impl,
         },
     });
-    errdefer command.registry.orderedRemove("HALL_STATUS");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("HALL_STATUS");
+    try command.registry.put(gpa, "ASSERT_HALL", .{
         .executable = .{
             .name = "ASSERT_HALL",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -598,8 +590,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.assert_hall.impl,
         },
     });
-    errdefer command.registry.orderedRemove("ASSERT_HALL");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("ASSERT_HALL");
+    try command.registry.put(gpa, "CLEAR_ERRORS", .{
         .executable = .{
             .name = "CLEAR_ERRORS",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -628,8 +620,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.clear_errors.impl,
         },
     });
-    errdefer command.registry.orderedRemove("CLEAR_ERRORS");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("CLEAR_ERRORS");
+    try command.registry.put(gpa, "DEINITIALIZE", .{
         .executable = .{
             .name = "DEINITIALIZE",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -662,8 +654,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.clear_carrier_info.impl,
         },
     });
-    errdefer command.registry.orderedRemove("DEINITIALIZE");
-    try command.registry.put(.{ .executable = .{
+    errdefer _ = command.registry.orderedRemove("DEINITIALIZE");
+    try command.registry.put(gpa, "RESET_SYSTEM", .{ .executable = .{
         .name = "RESET_SYSTEM",
         .short_description = "Reset system state.",
         .long_description = std.fmt.comptimePrint(
@@ -674,8 +666,8 @@ pub fn init(c: Config) !void {
         , .{}),
         .execute = &commands.reset_system.impl,
     } });
-    errdefer command.registry.orderedRemove("RESET_SYSTEM");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("RESET_SYSTEM");
+    try command.registry.put(gpa, "RELEASE_CARRIER", .{
         .executable = .{
             .name = "RELEASE_CARRIER",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -709,8 +701,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.release_carrier.impl,
         },
     });
-    errdefer command.registry.orderedRemove("RELEASE_CARRIER");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("RELEASE_CARRIER");
+    try command.registry.put(gpa, "AUTO_INITIALIZE", .{
         .executable = .{
             .name = "AUTO_INITIALIZE",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -741,8 +733,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.auto_initialize.impl,
         },
     });
-    errdefer command.registry.orderedRemove("AUTO_INITIALIZE");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("AUTO_INITIALIZE");
+    try command.registry.put(gpa, "CALIBRATE", .{
         .executable = .{
             .name = "CALIBRATE",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -759,8 +751,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.calibrate.impl,
         },
     });
-    errdefer command.registry.orderedRemove("CALIBRATE");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("CALIBRATE");
+    try command.registry.put(gpa, "SET_ZERO", .{
         .executable = .{
             .name = "SET_ZERO",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -777,8 +769,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.set_line_zero.impl,
         },
     });
-    errdefer command.registry.orderedRemove("SET_ZERO");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("SET_ZERO");
+    try command.registry.put(gpa, "INITIALIZE", .{
         .executable = .{
             .name = "INITIALIZE",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -819,8 +811,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.isolate.impl,
         },
     });
-    errdefer command.registry.orderedRemove("INITIALIZE");
-    try command.registry.put(.{ .executable = .{
+    errdefer _ = command.registry.orderedRemove("INITIALIZE");
+    try command.registry.put(gpa, "WAIT_INITIALIZE", .{ .executable = .{
         .name = "WAIT_INITIALIZE",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "Line", .kind = .mmc_client_line },
@@ -845,8 +837,8 @@ pub fn init(c: Config) !void {
         }),
         .execute = &commands.wait.isolate,
     } });
-    errdefer command.registry.orderedRemove("WAIT_INITIALIZE");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("WAIT_INITIALIZE");
+    try command.registry.put(gpa, "WAIT_MOVE_CARRIER", .{
         .executable = .{
             .name = "WAIT_MOVE_CARRIER",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -873,8 +865,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.wait.moveCarrier,
         },
     });
-    errdefer command.registry.orderedRemove("WAIT_MOVE_CARRIER");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("WAIT_MOVE_CARRIER");
+    try command.registry.put(gpa, "MOVE_CARRIER", .{
         .executable = .{
             .name = "MOVE_CARRIER",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -924,8 +916,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.move.impl,
         },
     });
-    errdefer command.registry.orderedRemove("MOVE_CARRIER");
-    try command.registry.put(.{ .executable = .{
+    errdefer _ = command.registry.orderedRemove("MOVE_CARRIER");
+    try command.registry.put(gpa, "PUSH_CARRIER", .{ .executable = .{
         .name = "PUSH_CARRIER",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "Line", .kind = .mmc_client_line },
@@ -960,8 +952,8 @@ pub fn init(c: Config) !void {
         , .{}),
         .execute = &commands.push.impl,
     } });
-    errdefer command.registry.orderedRemove("PUSH_CARRIER");
-    try command.registry.put(.{ .executable = .{
+    errdefer _ = command.registry.orderedRemove("PUSH_CARRIER");
+    try command.registry.put(gpa, "PULL_CARRIER", .{ .executable = .{
         .name = "PULL_CARRIER",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "Line", .kind = .mmc_client_line },
@@ -1011,8 +1003,8 @@ pub fn init(c: Config) !void {
         }),
         .execute = &commands.pull.impl,
     } });
-    errdefer command.registry.orderedRemove("PULL_CARRIER");
-    try command.registry.put(.{ .executable = .{
+    errdefer _ = command.registry.orderedRemove("PULL_CARRIER");
+    try command.registry.put(gpa, "STOP_PULL_CARRIER", .{ .executable = .{
         .name = "STOP_PULL_CARRIER",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "Line", .kind = .mmc_client_line },
@@ -1035,8 +1027,8 @@ pub fn init(c: Config) !void {
         , .{}),
         .execute = &commands.stop_pull.impl,
     } });
-    errdefer command.registry.orderedRemove("STOP_PULL_CARRIER");
-    try command.registry.put(.{ .executable = .{
+    errdefer _ = command.registry.orderedRemove("STOP_PULL_CARRIER");
+    try command.registry.put(gpa, "STOP_PUSH_CARRIER", .{ .executable = .{
         .name = "STOP_PUSH_CARRIER",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "Line", .kind = .mmc_client_line },
@@ -1060,8 +1052,8 @@ pub fn init(c: Config) !void {
         , .{}),
         .execute = &commands.stop_push.impl,
     } });
-    errdefer command.registry.orderedRemove("STOP_PUSH_CARRIER");
-    try command.registry.put(.{ .executable = .{
+    errdefer _ = command.registry.orderedRemove("STOP_PUSH_CARRIER");
+    try command.registry.put(gpa, "WAIT_AXIS_EMPTY", .{ .executable = .{
         .name = "WAIT_AXIS_EMPTY",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "Line", .kind = .mmc_client_line },
@@ -1088,8 +1080,8 @@ pub fn init(c: Config) !void {
         }),
         .execute = &commands.wait.axisEmpty,
     } });
-    errdefer command.registry.orderedRemove("WAIT_AXIS_EMPTY");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("WAIT_AXIS_EMPTY");
+    try command.registry.put(gpa, "ADD_LOG_INFO", .{
         .executable = .{
             .name = "ADD_LOG_INFO",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -1118,8 +1110,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.log.add,
         },
     });
-    errdefer command.registry.orderedRemove("ADD_LOG_INFO");
-    try command.registry.put(.{ .executable = .{
+    errdefer _ = command.registry.orderedRemove("ADD_LOG_INFO");
+    try command.registry.put(gpa, "START_LOG_INFO", .{ .executable = .{
         .name = "START_LOG_INFO",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "duration" },
@@ -1145,8 +1137,8 @@ pub fn init(c: Config) !void {
         , .{}),
         .execute = &commands.log.start,
     } });
-    errdefer command.registry.orderedRemove("START_LOG_INFO");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("START_LOG_INFO");
+    try command.registry.put(gpa, "REMOVE_LOG_INFO", .{
         .executable = .{
             .name = "REMOVE_LOG_INFO",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -1177,8 +1169,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.log.remove,
         },
     });
-    errdefer command.registry.orderedRemove("REMOVE_LOG_INFO");
-    try command.registry.put(.{ .executable = .{
+    errdefer _ = command.registry.orderedRemove("REMOVE_LOG_INFO");
+    try command.registry.put(gpa, "STATUS_LOG_INFO", .{ .executable = .{
         .name = "STATUS_LOG_INFO",
         .short_description = "Show logging configuration.",
         .long_description = std.fmt.comptimePrint(
@@ -1186,8 +1178,8 @@ pub fn init(c: Config) !void {
         , .{}),
         .execute = &commands.log.status,
     } });
-    errdefer command.registry.orderedRemove("STATUS_LOG_INFO");
-    try command.registry.put(.{ .executable = .{
+    errdefer _ = command.registry.orderedRemove("STATUS_LOG_INFO");
+    try command.registry.put(gpa, "STOP_LOG_INFO", .{ .executable = .{
         .name = "STOP_LOG_INFO",
         .short_description = "Stop MMC logging.",
         .long_description = std.fmt.comptimePrint(
@@ -1195,8 +1187,8 @@ pub fn init(c: Config) !void {
         , .{}),
         .execute = &commands.log.stop,
     } });
-    errdefer command.registry.orderedRemove("STOP_LOG_INFO");
-    try command.registry.put(.{ .executable = .{
+    errdefer _ = command.registry.orderedRemove("STOP_LOG_INFO");
+    try command.registry.put(gpa, "CANCEL_LOG_INFO", .{ .executable = .{
         .name = "CANCEL_LOG_INFO",
         .short_description = "Cancel MMC logging process.",
         .long_description = std.fmt.comptimePrint(
@@ -1204,8 +1196,8 @@ pub fn init(c: Config) !void {
         , .{}),
         .execute = &commands.log.cancel,
     } });
-    errdefer command.registry.orderedRemove("CANCEL_LOG_INFO");
-    try command.registry.put(.{ .executable = .{
+    errdefer _ = command.registry.orderedRemove("CANCEL_LOG_INFO");
+    try command.registry.put(gpa, "PRINT_ERRORS", .{ .executable = .{
         .name = "PRINT_ERRORS",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "Line", .kind = .mmc_client_line },
@@ -1228,8 +1220,8 @@ pub fn init(c: Config) !void {
         , .{}),
         .execute = &commands.show_errors.impl,
     } });
-    errdefer command.registry.orderedRemove("PRINT_ERRORS");
-    try command.registry.put(.{ .executable = .{
+    errdefer _ = command.registry.orderedRemove("PRINT_ERRORS");
+    try command.registry.put(gpa, "STOP", .{ .executable = .{
         .name = "STOP",
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "Line", .kind = .mmc_client_line, .optional = true },
@@ -1241,8 +1233,8 @@ pub fn init(c: Config) !void {
         , .{}),
         .execute = &commands.stop.impl,
     } });
-    errdefer command.registry.orderedRemove("STOP");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("STOP");
+    try command.registry.put(gpa, "PAUSE", .{
         .executable = .{
             .name = "PAUSE",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -1256,8 +1248,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.pause.impl,
         },
     });
-    errdefer command.registry.orderedRemove("PAUSE");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("PAUSE");
+    try command.registry.put(gpa, "RESUME", .{
         .executable = .{
             .name = "RESUME",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -1271,8 +1263,8 @@ pub fn init(c: Config) !void {
             .execute = &commands.@"resume".impl,
         },
     });
-    errdefer command.registry.orderedRemove("RESUME");
-    try command.registry.put(.{
+    errdefer _ = command.registry.orderedRemove("RESUME");
+    try command.registry.put(gpa, "SET_CARRIER_ID", .{
         .executable = .{
             .name = "SET_CARRIER_ID",
             .parameters = &[_]command.Command.Executable.Parameter{
@@ -1291,30 +1283,13 @@ pub fn init(c: Config) !void {
             .execute = &commands.set_carrier_id.impl,
         },
     });
-    errdefer command.registry.orderedRemove("SET_CARRIER_ID");
+    errdefer _ = command.registry.orderedRemove("SET_CARRIER_ID");
 }
 
-test init {
-    const dummy_config: Config = .{ .host = &.{}, .port = 0 };
-    try command.init();
-    try init(dummy_config);
-    defer command.deinit();
-    for (command.registry.values()) |executable| {
-        for (executable.parameters, 1..) |param, i| {
-            if (param.rest and i != executable.parameters.len) {
-                return error.FoundInvalidRestParameter;
-            }
-        }
-    }
-}
-pub fn deinit() void {
-    commands.disconnect.impl(&.{}) catch {};
+pub fn deinit(gpa: std.mem.Allocator, io: std.Io) void {
+    commands.disconnect.impl(io, gpa, &.{}) catch {};
     parameter.deinit();
-    allocator.free(config.host);
-    if (debug_allocator.detectLeaks()) {
-        std.log.debug("Leaks detected", .{});
-    }
-    if (builtin.os.tag == .windows) std.os.windows.WSACleanup() catch return;
+    gpa.free(config.host);
 }
 
 pub fn matchLine(name: []const u8) !usize {
@@ -1325,7 +1300,11 @@ pub fn matchLine(name: []const u8) !usize {
 
 /// Track a command until it executed completely followed by removing that
 /// command from the server.
-pub fn waitCommandCompleted(gpa: std.mem.Allocator, net: zignet.Socket) !void {
+pub fn waitCommandCompleted(
+    io: std.Io,
+    gpa: std.mem.Allocator,
+    net: std.Io.net.Stream,
+) !void {
     const command_id = command_id: {
         // If command is cancelled while fetching the command ID, client has to
         // keep waiting until command ID response is arrived. Client forces
@@ -1337,9 +1316,9 @@ pub fn waitCommandCompleted(gpa: std.mem.Allocator, net: zignet.Socket) !void {
         const cancel_thread: std.Thread = try .spawn(
             .{},
             checkInterrupt,
-            .{ finish, &cancel },
+            .{ io, finish, &cancel },
         );
-        var decoded = getResponse(gpa, net) catch |err| {
+        var decoded = getResponse(gpa, io, net) catch |err| {
             // It is impossible to remove command from the server if the
             // connection is suddenly closed during reading this response.
             //
@@ -1370,13 +1349,13 @@ pub fn waitCommandCompleted(gpa: std.mem.Allocator, net: zignet.Socket) !void {
             else => return error.InvalidResponse,
         };
         if (cancel.load(.monotonic)) {
-            try removeCommand(id);
+            try removeCommand(gpa, io, id);
             return error.CommandStopped;
         } else break :command_id id;
     };
-    defer removeCommand(command_id) catch {};
+    defer removeCommand(gpa, io, command_id) catch {};
     while (true) {
-        try command.checkCommandInterrupt();
+        try command.checkCommandInterrupt(io);
 
         const request: api.protobuf.mmc.Request = .{
             .body = .{
@@ -1387,9 +1366,9 @@ pub fn waitCommandCompleted(gpa: std.mem.Allocator, net: zignet.Socket) !void {
                 },
             },
         };
-        try sendRequest(allocator, net, request);
-        var decoded = try getResponse(allocator, net);
-        defer decoded.deinit(allocator);
+        try sendRequest(io, gpa, net, request);
+        var decoded = try getResponse(gpa, io, net);
+        defer decoded.deinit(gpa);
         var commands_resp = switch (decoded.body orelse
             return error.InvalidResponse) {
             .request_error => |req_err| {
@@ -1430,17 +1409,18 @@ pub fn waitCommandCompleted(gpa: std.mem.Allocator, net: zignet.Socket) !void {
 
 /// Send request to server.
 pub fn sendRequest(
+    io: std.Io,
     ///  Internally used by zig-protobuf.
     gpa: std.mem.Allocator,
-    net: zignet.Socket,
+    net: std.Io.net.Stream,
     request: api.protobuf.mmc.Request,
 ) !void {
     var writer_buf: [4096]u8 = undefined;
-    var net_writer = net.writer(&writer_buf);
+    var net_writer = net.writer(io, &writer_buf);
     try request.encode(&net_writer.interface, gpa);
     net_writer.interface.flush() catch {
-        if (net_writer.error_state) |err| {
-            commands.disconnect.impl(&.{}) catch {};
+        if (net_writer.err) |err| {
+            commands.disconnect.impl(io, gpa, &.{}) catch {};
             return err;
         }
     };
@@ -1452,10 +1432,11 @@ pub fn sendRequest(
 /// is cancellable is only command that require to remove command from server.
 pub fn getResponse(
     gpa: std.mem.Allocator,
-    net: zignet.Socket,
+    io: std.Io,
+    net: std.Io.net.Stream,
 ) !api.protobuf.mmc.Response {
     var reader_buf: [4096]u8 = undefined;
-    var net_reader = net.reader(&reader_buf);
+    var net_reader = net.reader(io, &reader_buf);
     while (true) {
         if (net_reader.interface.peekByte()) |_| {
             break;
@@ -1463,9 +1444,9 @@ pub fn getResponse(
             switch (e) {
                 std.Io.Reader.Error.EndOfStream => continue,
                 std.Io.Reader.Error.ReadFailed => {
-                    switch (net_reader.error_state orelse error.Unexpected) {
+                    switch (net_reader.err orelse error.Unexpected) {
                         else => |err| {
-                            commands.disconnect.impl(&.{}) catch {};
+                            commands.disconnect.impl(io, gpa, &.{}) catch {};
                             return err;
                         },
                     }
@@ -1477,7 +1458,7 @@ pub fn getResponse(
     return try .decode(&proto_reader, gpa);
 }
 
-fn removeCommand(id: u32) !void {
+fn removeCommand(gpa: std.mem.Allocator, io: std.Io, id: u32) !void {
     const net = if (sock) |net| net else return error.ServerNotConnected;
     const request: api.protobuf.mmc.Request = .{
         .body = .{
@@ -1488,9 +1469,9 @@ fn removeCommand(id: u32) !void {
             },
         },
     };
-    try sendRequest(allocator, net, request);
-    var decoded = try getResponse(allocator, net);
-    defer decoded.deinit(allocator);
+    try sendRequest(io, gpa, net, request);
+    var decoded = try getResponse(gpa, io, net);
+    defer decoded.deinit(gpa);
     const removed_id = switch (decoded.body orelse
         return error.InvalidResponse) {
         .command => |command_resp| switch (command_resp.body orelse
@@ -1602,15 +1583,20 @@ pub fn nestedWrite(
 
 /// Looping to check command interrupt. Returned if other task is finished.
 fn checkInterrupt(
+    io: std.Io,
     /// Flag to check if task on other thread is finished.
     finish: std.atomic.Value(bool),
     /// Flag to let the caller know that interrupt is detected.
     cancel: *std.atomic.Value(bool),
 ) void {
     while (finish.load(.monotonic)) {
-        command.checkCommandInterrupt() catch {
+        command.checkCommandInterrupt(io) catch {
             cancel.store(true, .monotonic);
             return;
         };
     }
+}
+
+test {
+    std.testing.refAllDecls(@This());
 }

@@ -275,3 +275,7 @@ pub fn CircularBufferAlloc(comptime T: type) type {
         }
     };
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

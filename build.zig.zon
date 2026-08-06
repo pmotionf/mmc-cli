@@ -2,7 +2,7 @@
     .name = .mmc_cli,
     .version = "0.17.0",
     .fingerprint = 0x392c74984291bf14,
-    .minimum_zig_version = "0.15.1",
+    .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .json5 = .{
             .url = "https://github.com/mochalins/json5.zig/archive/2ef1032.tar.gz",
@@ -12,27 +12,27 @@
             .url = "https://github.com/mochalins/network/archive/084fed7.tar.gz",
             .hash = "network-0.1.0-Pm-AgiMxAQCuaDrGAfSxVHeozUQ2gU3jINGLFxJ1Zpld",
         },
-        .zignet = .{
-            .url = "https://github.com/aaumar25/zignet/archive/ca7d172.tar.gz",
-            .hash = "zignet-0.2.0-BAu-r4GpAACnu7GCkbPHa4F6lQaq5wypMWqr0z0BM9nO",
-        },
         .chrono = .{
-            .url = "https://github.com/pmotionf/chrono/archive/31e31b0.tar.gz",
-            .hash = "chrono-0.1.0-uVd76I_AAwCMh8lYH9E-5ia0tI-tda4Q2FjFoIdE2dYG",
+            .url = "git+https://github.com/aaumar25/chrono.git#adfc7712169d7bdbeb20bb1b75824fe2dc02e2a0",
+            .hash = "chrono-0.1.0-uVd76BPDAwAyXqy0OAP1MvUyfk72pvv7e6bU7s2TqV0h",
         },
         .mmc_api = .{
-            .url = "https://github.com/pmotionf/mmc-api/archive/a5ae477.tar.gz",
-            .hash = "mmc_api-0.0.0-P5raR6PqMQCNhJYdOKmP5vgSpJLyTbLIj2jvfAqWlh9A",
+            .url = "git+https://github.com/pmotionf/mmc-api.git#0a212c9240db003d05e012509fa1aaa8106f5e5c",
+            .hash = "mmc_api-0.0.0-P5raR6pjMgCpq795vTCW5EnQ4eIrbLpCvA8SRw_8GS9Z",
         },
         .soem = .{
-            .url = "https://github.com/pmotionf/SOEM/archive/6dff3f5.tar.gz",
-            .hash = "soem-1.4.0-hMH6QwH7DQDhU4QpnIidSZbzZlVoljUcay_9RIbl4jPj",
+            .url = "git+https://github.com/aaumar25/SOEM.git#51364cb57f5bfe40ce1ff8f4f9ed5a0c7de95221",
+            .hash = "soem-2.0.0-XrzE9AouAAB3AG1xfMRHxwDrppnhsfJ0pMEEqAMHV4vI",
             .lazy = true,
         },
         .tracy = .{
             .url = "https://github.com/wolfpld/tracy/archive/refs/tags/v0.12.2.tar.gz",
             .hash = "N-V-__8AANptPwE8EYOS5w6KRzVyfllpOBthYRcuuQvYhhxb",
             .lazy = true,
+        },
+        .translate_c = .{
+            .url = "git+https://codeberg.org/ziglang/translate-c?ref=zig-0.16.x#6fe0ffc4549f15c5f2d9432c2b4460ba90ff85ac",
+            .hash = "translate_c-1.0.0-Q_BUWo_5BgD4flHdUhA31zOz0XvZk9k7lQv1ouzyNXj2",
         },
     },
     .paths = .{

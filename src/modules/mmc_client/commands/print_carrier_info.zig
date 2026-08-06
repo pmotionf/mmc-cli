@@ -4,7 +4,7 @@ const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn impl(params: [][]const u8) !void {
+pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "print_carrier_info");
     defer tracy_zone.end();
     const net = client.sock orelse return error.ServerNotConnected;
@@ -31,9 +31,9 @@ pub fn impl(params: [][]const u8) !void {
             },
         },
     };
-    try client.sendRequest(client.allocator, net, request);
-    var decoded = try client.getResponse(client.allocator, net);
-    defer decoded.deinit(client.allocator);
+    try client.sendRequest(io, gpa, net, request);
+    var decoded = try client.getResponse(gpa, io, net);
+    defer decoded.deinit(gpa);
     const track = switch (decoded.body orelse return error.InvalidResponse) {
         .info => |info_resp| switch (info_resp.body orelse
             return error.InvalidResponse) {
@@ -59,10 +59,14 @@ pub fn impl(params: [][]const u8) !void {
     const carriers = track_line.carrier_state;
     if (carriers.items.len == 0) return error.CarrierNotFound;
     var writer_buf: [4096]u8 = undefined;
-    var stdout = std.fs.File.stdout().writer(&writer_buf);
+    var stdout = std.Io.File.stdout().writer(io, &writer_buf);
     const writer = &stdout.interface;
     for (carriers.items) |carrier| {
         _ = try client.nestedWrite("Carrier state", carrier, 0, writer);
         try writer.flush();
     }
+}
+
+test {
+    std.testing.refAllDecls(@This());
 }

@@ -5,7 +5,7 @@ const builtin = @import("builtin");
 const std = @import("std");
 
 const command = @import("command.zig");
-const io = @import("io.zig");
+const terminal = @import("terminal.zig");
 
 const Complete = @import("Prompt/Complete.zig");
 const History = @import("Prompt/History.zig");
@@ -36,12 +36,12 @@ selected_command: []const u8 = &.{},
 /// Prompt handler thread callback. Input must be set to non-canonical mode
 /// prior to spawning this thread. Only one prompt handler thread may be
 /// running at a time.
-pub fn handler(ctx: *Prompt) void {
+pub fn handler(io: std.Io, ctx: *Prompt) !void {
     ctx.history.clear();
     ctx.clear();
 
     var stdout_buf: [4096]u8 = undefined;
-    var stdout = std.fs.File.stdout().writer(&stdout_buf);
+    var stdout = std.Io.File.stdout().writer(io, &stdout_buf);
 
     var prev_disable: bool = true;
     main: while (!ctx.close.load(.monotonic)) {
@@ -53,7 +53,7 @@ pub fn handler(ctx: *Prompt) void {
 
         // Print prompt once on enable.
         if (prev_disable) {
-            std.Thread.sleep(std.time.ns_per_ms * 10);
+            try io.sleep(.fromMicroseconds(10), .awake);
             stdout.interface.writeAll(
                 "Enter command (HELP for usage):\n",
             ) catch continue :main;
@@ -67,7 +67,7 @@ pub fn handler(ctx: *Prompt) void {
         }
         prev_disable = false;
 
-        if (io.event.poll() catch continue :main == 0) {
+        if (terminal.event.poll() catch continue :main == 0) {
             continue :main;
         }
 
@@ -76,7 +76,7 @@ pub fn handler(ctx: *Prompt) void {
         // keep the completion selection.
         var keep_complete_selection: bool = false;
 
-        const event = io.event.read(.{}) catch continue :main;
+        const event = terminal.event.read(io, .{}) catch continue :main;
         parse: switch (event) {
             .key => |key_event| {
                 switch (key_event.value) {
@@ -174,7 +174,7 @@ pub fn handler(ctx: *Prompt) void {
                                     // Print newline at end of prompt before
                                     // command start.
                                     ctx.cursor.moveEnd();
-                                    io.cursor.moveColumn(
+                                    terminal.cursor.moveColumn(
                                         &stdout.interface,
                                         ctx.cursor.visible + 1,
                                     ) catch continue :main;
@@ -183,7 +183,7 @@ pub fn handler(ctx: *Prompt) void {
                                     stdout.interface.flush() catch
                                         continue :main;
 
-                                    command.enqueue(ctx.input) catch
+                                    command.enqueue(io, ctx.input) catch
                                         continue :main;
                                     ctx.history.append(ctx.input);
                                     ctx.history.selection = null;
@@ -344,7 +344,7 @@ pub fn handler(ctx: *Prompt) void {
                                         .windows => {
                                             var buf: [max_input_size]u8 =
                                                 undefined;
-                                            const paste = io.clipboard.get(
+                                            const paste = terminal.clipboard.get(
                                                 &buf,
                                             ) catch {};
                                             ctx.insertString(paste);
@@ -418,7 +418,7 @@ pub fn handler(ctx: *Prompt) void {
                     // Underline fragment if it has just been completed.
                     if (ctx.complete_partial_start) |cvs| {
                         if (cvs == start and ctx.complete_selection != null) {
-                            io.style.set(
+                            terminal.style.set(
                                 &stdout.interface,
                                 .{ .underline = true },
                             ) catch continue :main;
@@ -427,19 +427,19 @@ pub fn handler(ctx: *Prompt) void {
                     const fragment = ctx.input[start..i];
                     // Parsing the first fragment
                     if (std.mem.count(u8, ctx.input[0..i], " ") == 0) {
-                        io.style.set(&stdout.interface, .{
+                        terminal.style.set(&stdout.interface, .{
                             .fg = .{ .named = .red },
                         }) catch continue :main;
                         for (command.registry.keys()) |key| {
                             if (std.ascii.eqlIgnoreCase(key, fragment)) {
-                                io.style.set(&stdout.interface, .{
+                                terminal.style.set(&stdout.interface, .{
                                     .fg = .{ .named = .green },
                                 }) catch continue :main;
                                 ctx.selected_command = key;
                                 break;
                             }
                         }
-                        defer io.style.reset(&stdout.interface) catch {};
+                        defer terminal.style.reset(&stdout.interface) catch {};
                         stdout.interface.writeAll(fragment) catch
                             continue :main;
                     } else {
@@ -451,10 +451,10 @@ pub fn handler(ctx: *Prompt) void {
                                 var_entry.key_ptr.*,
                                 fragment,
                             )) {
-                                io.style.set(&stdout.interface, .{
+                                terminal.style.set(&stdout.interface, .{
                                     .fg = .{ .named = .magenta },
                                 }) catch continue :main;
-                                defer io.style.reset(
+                                defer terminal.style.reset(
                                     &stdout.interface,
                                 ) catch {};
                                 stdout.interface.writeAll(fragment) catch
@@ -463,28 +463,34 @@ pub fn handler(ctx: *Prompt) void {
                             }
                         } else validation: {
                             if (ctx.selected_command.len == 0) {
-                                io.style.set(&stdout.interface, .{
+                                terminal.style.set(&stdout.interface, .{
                                     .fg = .{ .named = .red },
                                 }) catch continue :main;
-                                defer io.style.reset(
+                                defer terminal.style.reset(
                                     &stdout.interface,
                                 ) catch {};
                                 stdout.interface.writeAll(fragment) catch
                                     continue :main;
                                 break :validation;
                             }
-                            const selected_command =
-                                command.registry.getPtr(ctx.selected_command) orelse {
-                                    io.style.set(&stdout.interface, .{
+                            const selected_command = executable: {
+                                const command_ptr = command.registry.getPtr(ctx.selected_command) orelse {
+                                    terminal.style.set(&stdout.interface, .{
                                         .fg = .{ .named = .red },
                                     }) catch continue :main;
-                                    defer io.style.reset(
+                                    defer terminal.style.reset(
                                         &stdout.interface,
                                     ) catch {};
                                     stdout.interface.writeAll(fragment) catch
                                         continue :main;
                                     break :validation;
                                 };
+                                break :executable switch (command_ptr.*) {
+                                    .alias => command_ptr.alias.command,
+                                    .executable => &command_ptr.executable,
+                                };
+                            };
+
                             // Index of current fragment
                             const fragment_id =
                                 std.mem.count(
@@ -498,10 +504,10 @@ pub fn handler(ctx: *Prompt) void {
                                 if (selected_command.parameters.len > 0) selected_command.parameters.len - 1 else 0;
                             const is_rest = if (param_end > 0) selected_command.parameters[param_end].rest else false;
                             if (param_idx >= param_end and !is_rest) {
-                                io.style.set(&stdout.interface, .{
+                                terminal.style.set(&stdout.interface, .{
                                     .fg = .{ .named = .red },
                                 }) catch continue :main;
-                                defer io.style.reset(
+                                defer terminal.style.reset(
                                     &stdout.interface,
                                 ) catch {};
                                 stdout.interface.writeAll(fragment) catch
@@ -516,10 +522,10 @@ pub fn handler(ctx: *Prompt) void {
                                 stdout.interface.writeAll(fragment) catch
                                     continue :main;
                             } else {
-                                io.style.set(&stdout.interface, .{
+                                terminal.style.set(&stdout.interface, .{
                                     .fg = .{ .named = .red },
                                 }) catch continue :main;
-                                defer io.style.reset(
+                                defer terminal.style.reset(
                                     &stdout.interface,
                                 ) catch {};
                                 stdout.interface.writeAll(fragment) catch
@@ -537,10 +543,10 @@ pub fn handler(ctx: *Prompt) void {
                         if (ctx.complete.prefix.len > completed_len) {
                             const suggestion =
                                 ctx.complete.prefix[completed_len..];
-                            io.style.set(&stdout.interface, .{
+                            terminal.style.set(&stdout.interface, .{
                                 .fg = .{ .lut = .grayscale(12) },
                             }) catch continue :main;
-                            defer io.style.reset(&stdout.interface) catch {};
+                            defer terminal.style.reset(&stdout.interface) catch {};
                             stdout.interface.writeAll(suggestion) catch
                                 continue :main;
                         }
@@ -556,7 +562,7 @@ pub fn handler(ctx: *Prompt) void {
                 // Underline fragment if it has just been completed.
                 if (ctx.complete_partial_start) |cvs| {
                     if (cvs == start and ctx.complete_selection != null) {
-                        io.style.set(
+                        terminal.style.set(
                             &stdout.interface,
                             .{ .underline = true },
                         ) catch continue :main;
@@ -567,11 +573,11 @@ pub fn handler(ctx: *Prompt) void {
                 if (std.mem.count(u8, ctx.input, " ") == 0) {
                     for (command.registry.keys()) |key| {
                         if (std.ascii.eqlIgnoreCase(key, fragment)) {
-                            io.style.set(&stdout.interface, .{
+                            terminal.style.set(&stdout.interface, .{
                                 .fg = .{ .named = .green },
                             }) catch continue :main;
                             ctx.selected_command = key;
-                            defer io.style.reset(&stdout.interface) catch {};
+                            defer terminal.style.reset(&stdout.interface) catch {};
                             stdout.interface.writeAll(fragment) catch
                                 continue :main;
                             break;
@@ -589,10 +595,10 @@ pub fn handler(ctx: *Prompt) void {
                             var_entry.key_ptr.*,
                             fragment,
                         )) {
-                            io.style.set(&stdout.interface, .{
+                            terminal.style.set(&stdout.interface, .{
                                 .fg = .{ .named = .magenta },
                             }) catch continue :main;
-                            defer io.style.reset(&stdout.interface) catch {};
+                            defer terminal.style.reset(&stdout.interface) catch {};
                             stdout.interface.writeAll(fragment) catch
                                 continue :main;
                             break;
@@ -610,10 +616,10 @@ pub fn handler(ctx: *Prompt) void {
                     if (ctx.complete.prefix.len > completed_len) {
                         const suggestion =
                             ctx.complete.prefix[completed_len..];
-                        io.style.set(&stdout.interface, .{
+                        terminal.style.set(&stdout.interface, .{
                             .fg = .{ .lut = .grayscale(12) },
                         }) catch continue :main;
-                        defer io.style.reset(&stdout.interface) catch {};
+                        defer terminal.style.reset(&stdout.interface) catch {};
                         stdout.interface.writeAll(suggestion) catch
                             continue :main;
                     }
@@ -625,11 +631,11 @@ pub fn handler(ctx: *Prompt) void {
         if (ctx.history.selection) |*selection| {
             const hist_item = selection.slice();
             if (hist_item.len > ctx.input.len) {
-                io.style.set(&stdout.interface, .{
+                terminal.style.set(&stdout.interface, .{
                     .fg = .{ .lut = .grayscale(12) },
                     .underline = true,
                 }) catch continue :main;
-                defer io.style.reset(&stdout.interface) catch {};
+                defer terminal.style.reset(&stdout.interface) catch {};
                 stdout.interface.writeAll(hist_item[ctx.input.len..]) catch
                     continue :main;
             }
@@ -641,7 +647,7 @@ pub fn handler(ctx: *Prompt) void {
 
         // Move back to input line
         stdout.interface.writeAll("\x1B[1A") catch continue :main;
-        io.cursor.moveColumn(&stdout.interface, ctx.cursor.visible + 1) catch
+        terminal.cursor.moveColumn(&stdout.interface, ctx.cursor.visible + 1) catch
             continue :main;
     }
 }
@@ -669,8 +675,14 @@ fn argIndexAtCursor(ctx: *const Prompt) ?usize {
     if (ti == 0) return null;
 
     const raw_arg_idx = ti - 1;
-    const cmd_ptr = command.registry.getPtr(ctx.selected_command) orelse
-        return raw_arg_idx;
+    const cmd_ptr = executable: {
+        const ptr = command.registry.getPtr(ctx.selected_command) orelse
+            return raw_arg_idx;
+        break :executable switch (ptr.*) {
+            .alias => ptr.alias.command,
+            .executable => &ptr.executable,
+        };
+    };
 
     // When the cursor reaches a `rest` parameter that same parameter index will
     // be reported for all following tokens.
@@ -682,7 +694,7 @@ fn argIndexAtCursor(ctx: *const Prompt) ?usize {
     return raw_arg_idx;
 }
 
-fn clearTwoLinesAndReturnToTop(w: *std.io.Writer) !void {
+fn clearTwoLinesAndReturnToTop(w: *std.Io.Writer) !void {
     try w.writeAll("\x1B7"); // Save cursor position
     try w.writeAll("\x1B[2K"); // Clear line, return to column 1
     try w.writeAll("\x1B[1B"); // Cursor down by 1
@@ -693,13 +705,20 @@ fn clearTwoLinesAndReturnToTop(w: *std.io.Writer) !void {
 fn renderArgHintLine(ctx: *const Prompt, w: *std.Io.Writer) !void {
     if (ctx.selected_command.len == 0) return;
 
-    const cmd_ptr = command.registry.getPtr(ctx.selected_command) orelse return;
+    const cmd_ptr = executable: {
+        const ptr = command.registry.getPtr(ctx.selected_command) orelse
+            return;
+        break :executable switch (ptr.*) {
+            .alias => ptr.alias.command,
+            .executable => &ptr.executable,
+        };
+    };
     const cmd = cmd_ptr.*;
 
     const ai_cursor = argIndexAtCursor(ctx) orelse return;
 
-    try io.style.set(w, .{ .fg = .{ .lut = .grayscale(12) } });
-    defer io.style.reset(w) catch {};
+    try terminal.style.set(w, .{ .fg = .{ .lut = .grayscale(12) } });
+    defer terminal.style.reset(w) catch {};
 
     try w.writeAll("Parameter: ");
 
@@ -708,14 +727,14 @@ fn renderArgHintLine(ctx: *const Prompt, w: *std.Io.Writer) !void {
         const close: u8 = if (p.optional) ']' else ')';
 
         if (i == ai_cursor and ai_cursor < cmd.parameters.len) {
-            try io.style.set(w, .{ .underline = true });
+            try terminal.style.set(w, .{ .underline = true });
         }
 
         try w.print("{c}{s}{c}", .{ open, p.name, close });
 
         if (i == ai_cursor and ai_cursor < cmd.parameters.len) {
-            try io.style.reset(w);
-            try io.style.set(w, .{ .fg = .{ .lut = .grayscale(12) } });
+            try terminal.style.reset(w);
+            try terminal.style.set(w, .{ .fg = .{ .lut = .grayscale(12) } });
         }
 
         if (i + 1 < cmd.parameters.len) try w.writeByte(' ');
@@ -1157,4 +1176,8 @@ fn utfDisplayWidth(cp: []const u8) u3 {
             (ucs >= 0xffe0 and ucs <= 0xffe6) or
             (ucs >= 0x20000 and ucs <= 0x2fffd) or
             (ucs >= 0x30000 and ucs <= 0x3fffd))));
+}
+
+test {
+    std.testing.refAllDecls(@This());
 }

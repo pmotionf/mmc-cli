@@ -5,15 +5,20 @@ const disconnect = @import("disconnect.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-pub fn impl(params: [][]const u8) !void {
+pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "connect");
     defer tracy_zone.end();
-    if (client.sock) |_| disconnect.impl(&.{}) catch unreachable;
-    const endpoint: client.Config =
-        if (params[0].len != 0) endpoint: {
+    if (client.sock) |_| disconnect.impl(io, gpa, &.{}) catch unreachable;
+    client.endpoint = endpoint: {
+        if (params[0].len != 0) {
             const last_delimiter_idx =
                 std.mem.lastIndexOf(u8, params[0], ":") orelse
                 return error.MissingPort;
+            const port: u16 = std.fmt.parseInt(
+                u16,
+                params[0][last_delimiter_idx + 1 ..],
+                0,
+            ) catch return error.InvalidPort;
             // IPv6 address shall be provided with square brackets. In addition,
             // Ipv6 address has at least 2 ":" characters, with the port
             // separator makes it 3 characters.
@@ -25,82 +30,40 @@ pub fn impl(params: [][]const u8) !void {
                     params[0][last_delimiter_idx - 1 .. last_delimiter_idx],
                 ))
             {
-                // IPv6 address shall be provided with scope id. Required for
-                // local connection.
-                if (std.mem.count(u8, params[0], "%") == 0)
-                    return error.MissingScopeId;
-                break :endpoint .{
-                    .port = std.fmt.parseInt(
-                        u16,
-                        params[0][last_delimiter_idx + 1 ..],
-                        0,
-                    ) catch return error.InvalidEndpoint,
-                    .host = try client.allocator.dupe(
-                        u8,
-                        params[0][1 .. last_delimiter_idx - 1],
-                    ),
-                };
+                break :endpoint try .resolveIp6(
+                    io,
+                    params[0][1 .. last_delimiter_idx - 1],
+                    port,
+                );
             }
-            // IPv4 address or hostname logic.
-            break :endpoint .{
-                .port = std.fmt.parseInt(
-                    u16,
-                    params[0][last_delimiter_idx + 1 ..],
-                    0,
-                ) catch return error.InvalidEndpoint,
-                .host = try client.allocator.dupe(
-                    u8,
-                    params[0][0..last_delimiter_idx],
-                ),
-            };
-        } else if (client.endpoint == null) .{
-            .host = try client.allocator.dupe(u8, client.config.host),
-            .port = client.config.port,
-        } else .{
-            .host = switch (client.endpoint.?.addr) {
-                .ipv4 => |ipv4| try std.fmt.allocPrint(
-                    client.allocator,
-                    "{f}",
-                    .{ipv4},
-                ),
-                .ipv6 => |ipv6| ipv6: {
-                    const format = try std.fmt.allocPrint(
-                        client.allocator,
-                        "{f}",
-                        .{ipv6},
-                    );
-                    defer client.allocator.free(format);
-                    // Remove the square bracket from ipv6
-                    break :ipv6 try std.fmt.allocPrint(
-                        client.allocator,
-                        "{s}",
-                        .{format[1 .. format.len - 1]},
-                    );
-                },
-            },
-            .port = client.endpoint.?.port,
-        };
-    defer client.allocator.free(endpoint.host);
+            break :endpoint try .parse(
+                params[0][0..last_delimiter_idx],
+                port,
+            );
+        } else if (client.endpoint == null) {
+            break :endpoint try .parse(
+                client.config.host,
+                client.config.port,
+            );
+        } else {
+            break :endpoint client.endpoint.?;
+        }
+    };
     std.log.info(
-        "Trying to connect to {s}:{d}",
-        .{ endpoint.host, endpoint.port },
+        "Trying to connect to {f}",
+        .{client.endpoint.?},
     );
-    const net = try client.zignet.Socket.connectToHost(
-        client.allocator,
-        endpoint.host,
-        endpoint.port,
-        &command.checkCommandInterrupt,
-        3000,
+    client.sock = try client.endpoint.?.connect(
+        io,
+        .{ .mode = .stream, .protocol = .tcp },
     );
-    client.endpoint = try net.getRemoteEndPoint();
-    client.sock = net;
     errdefer {
         for (client.lines) |*line| {
-            line.deinit(client.allocator);
+            line.deinit(gpa);
         }
-        client.allocator.free(client.lines);
+        gpa.free(client.lines);
+        client.sock.?.close(io);
         client.sock = null;
-        net.close();
     }
     // Request server information, for matching API and getting server name.
     const server_request: api.protobuf.mmc.Request = .{
@@ -108,9 +71,18 @@ pub fn impl(params: [][]const u8) !void {
             .core = .{ .kind = .CORE_REQUEST_KIND_SERVER_INFO },
         },
     };
-    try client.sendRequest(client.allocator, net, server_request);
-    var server_decoded = try client.getResponse(client.allocator, net);
-    defer server_decoded.deinit(client.allocator);
+    try client.sendRequest(
+        io,
+        gpa,
+        client.sock.?,
+        server_request,
+    );
+    var server_decoded = try client.getResponse(
+        gpa,
+        io,
+        client.sock.?,
+    );
+    defer server_decoded.deinit(gpa);
     const server = switch (server_decoded.body orelse
         return error.InvalidResponse) {
         .core => |core_resp| switch (core_resp.body orelse
@@ -149,9 +121,13 @@ pub fn impl(params: [][]const u8) !void {
             .core = .{ .kind = .CORE_REQUEST_KIND_TRACK_CONFIG },
         },
     };
-    try client.sendRequest(client.allocator, net, track_request);
-    var track_decoded = try client.getResponse(client.allocator, net);
-    defer track_decoded.deinit(client.allocator);
+    try client.sendRequest(io, gpa, client.sock.?, track_request);
+    var track_decoded = try client.getResponse(
+        gpa,
+        io,
+        client.sock.?,
+    );
+    defer track_decoded.deinit(gpa);
     const track_config = switch (track_decoded.body orelse
         return error.InvalidResponse) {
         .core => |core_resp| switch (core_resp.body orelse
@@ -167,15 +143,15 @@ pub fn impl(params: [][]const u8) !void {
         },
         else => return error.InvalidResponse,
     };
-    client.lines = try client.allocator.alloc(
+    client.lines = try gpa.alloc(
         client.Line,
         track_config.lines.items.len,
     );
     errdefer {
         for (client.lines) |*line| {
-            line.deinit(client.allocator);
+            line.deinit(gpa);
         }
-        client.allocator.free(client.lines);
+        gpa.free(client.lines);
     }
     for (
         track_config.lines.items,
@@ -183,7 +159,7 @@ pub fn impl(params: [][]const u8) !void {
         0..,
     ) |config, *line, idx| {
         line.* = try client.Line.init(
-            client.allocator,
+            gpa,
             @intCast(idx),
             config,
         );
@@ -191,11 +167,11 @@ pub fn impl(params: [][]const u8) !void {
     }
     // Initialize memory for logging configuration
     client.log_config =
-        try client.log.Config.init(client.allocator, client.lines);
-    errdefer client.log_config.deinit(client.allocator);
+        try client.log.Config.init(gpa, client.lines);
+    errdefer client.log_config.deinit(gpa);
     // Displaying track configuration
     std.log.info("Track configuration for {s}:", .{server.name});
-    var stdout = std.fs.File.stdout().writer(&.{});
+    var stdout = std.Io.File.stdout().writer(io, &.{});
     for (client.lines) |line| {
         try stdout.interface.print(
             "\t {s} ({}) - {} {s} | {} {s}\n",
@@ -210,5 +186,9 @@ pub fn impl(params: [][]const u8) !void {
         );
         try stdout.interface.flush();
     }
-    std.log.info("Connected to {f}", .{try net.getRemoteEndPoint()});
+    std.log.info("Connected to {f}", .{client.endpoint.?});
+}
+
+test {
+    std.testing.refAllDecls(@This());
 }
