@@ -3,6 +3,7 @@ const client = @import("../../mmc_client.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
+const InfoResponse = @FieldType(api.protobuf.mmc.Response.body_union, "info");
 
 pub fn isolate(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "wait_isolate");
@@ -175,7 +176,7 @@ fn waitCarrierState(
     net: std.Io.net.Stream,
     line: u32,
     id: std.math.IntFittingRange(1, 1023),
-    state: api.protobuf.mmc.info.Response.Line.Carrier.State.State,
+    state: InfoResponse.Line.Carrier.State.State,
     timeout: i64,
 ) !void {
     var ids = [1]u32{id};

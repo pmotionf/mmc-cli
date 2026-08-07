@@ -3,6 +3,10 @@ const client = @import("../../mmc_client.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
+const CommandRequest = @FieldType(
+    api.protobuf.mmc.Request.body_union,
+    "command",
+);
 
 pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "isolate");
@@ -28,7 +32,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
 
-    const dir: api.protobuf.mmc.command.Request.Direction = dir_parse: {
+    const dir: CommandRequest.Direction = dir_parse: {
         if (std.ascii.eqlIgnoreCase("forward", params[2])) {
             break :dir_parse .DIRECTION_FORWARD;
         } else if (std.ascii.eqlIgnoreCase("backward", params[2])) {
@@ -52,7 +56,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
             break :b input[0..ignore_idx];
         } else break :b input;
     }, 0);
-    const link_axis: ?api.protobuf.mmc.command.Request.Direction = link: {
+    const link_axis: ?CommandRequest.Direction = link: {
         if (params[4].len > 0) {
             if (std.ascii.eqlIgnoreCase("next", params[4]) or
                 std.ascii.eqlIgnoreCase("right", params[4]))

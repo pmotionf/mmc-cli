@@ -2,6 +2,7 @@ const log = @This();
 
 const std = @import("std");
 const api = @import("mmc-api");
+const InfoResponse = @FieldType(api.protobuf.mmc.Response.body_union, "info");
 
 const client = @import("../mmc_client.zig");
 const command = @import("../../command.zig");
@@ -213,7 +214,7 @@ const Stream = struct {
                 pub const Carrier = struct {
                     id: u10,
                     position: f32,
-                    state: api.protobuf.mmc.info.Response.Line.Carrier.State.State,
+                    state: InfoResponse.Line.Carrier.State.State,
                     cas: struct { enabled: bool, triggered: bool },
                 };
                 pub const Error = struct {

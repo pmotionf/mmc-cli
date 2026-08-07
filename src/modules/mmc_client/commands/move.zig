@@ -3,6 +3,10 @@ const client = @import("../../mmc_client.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
+const CommandRequest = @FieldType(
+    api.protobuf.mmc.Request.body_union,
+    "command",
+);
 
 pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "move_carrier");
@@ -62,9 +66,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     try client.waitCommandCompleted(io, gpa, net);
 }
 
-fn parseTarget(
-    param: []const u8,
-) !api.protobuf.mmc.command.Request.Move.target_union {
+fn parseTarget(param: []const u8) !CommandRequest.Move.target_union {
     var suffix_idx: usize = 0;
     for (param) |c| {
         if (std.ascii.isAlphabetic(c)) break else suffix_idx += 1;
@@ -134,27 +136,27 @@ fn parseTarget(
 
 test parseTarget {
     try std.testing.expectEqual(
-        api.protobuf.mmc.command.Request.Move.target_union{ .axis = 1 },
+        CommandRequest.Move.target_union{ .axis = 1 },
         try parseTarget("1a"),
     );
     try std.testing.expectEqual(
-        api.protobuf.mmc.command.Request.Move.target_union{ .axis = 1 },
+        CommandRequest.Move.target_union{ .axis = 1 },
         try parseTarget("1axis"),
     );
     try std.testing.expectEqual(
-        api.protobuf.mmc.command.Request.Move.target_union{ .location = 100 },
+        CommandRequest.Move.target_union{ .location = 100 },
         try parseTarget("100l"),
     );
     try std.testing.expectEqual(
-        api.protobuf.mmc.command.Request.Move.target_union{ .location = 100 },
+        CommandRequest.Move.target_union{ .location = 100 },
         try parseTarget("100location"),
     );
     try std.testing.expectEqual(
-        api.protobuf.mmc.command.Request.Move.target_union{ .distance = 100 },
+        CommandRequest.Move.target_union{ .distance = 100 },
         try parseTarget("100d"),
     );
     try std.testing.expectEqual(
-        api.protobuf.mmc.command.Request.Move.target_union{ .distance = 100 },
+        CommandRequest.Move.target_union{ .distance = 100 },
         try parseTarget("100distance"),
     );
     try std.testing.expectError(

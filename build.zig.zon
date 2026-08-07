@@ -17,8 +17,8 @@
             .hash = "chrono-0.1.0-uVd76BPDAwAyXqy0OAP1MvUyfk72pvv7e6bU7s2TqV0h",
         },
         .mmc_api = .{
-            .url = "git+https://github.com/pmotionf/mmc-api.git#0a212c9240db003d05e012509fa1aaa8106f5e5c",
-            .hash = "mmc_api-0.0.0-P5raR6pjMgCpq795vTCW5EnQ4eIrbLpCvA8SRw_8GS9Z",
+            .url = "https://github.com/pmotionf/mmc-api/archive/9c8e3795c3261995ff546466a2cdad37601fecd2.tar.gz",
+            .hash = "mmc_api-0.0.0-P5raRxXgMgClZCPfZbUUZ7Sp_dcfkv1qiq8Zj97-P-YT",
         },
         .soem = .{
             .url = "git+https://github.com/aaumar25/SOEM.git#51364cb57f5bfe40ce1ff8f4f9ed5a0c7de95221",
