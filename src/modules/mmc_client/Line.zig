@@ -1,6 +1,7 @@
 const Line = @This();
 const std = @import("std");
 const api = @import("mmc-api");
+const CoreResponse = @FieldType(api.protobuf.mmc.Response.body_union, "core");
 
 index: Line.Index,
 id: Line.Id,
@@ -23,7 +24,7 @@ pub const Id = std.math.IntFittingRange(1, max_driver);
 pub fn init(
     gpa: std.mem.Allocator,
     index: Index,
-    config: api.protobuf.mmc.core.Response.TrackConfig.Line,
+    config: CoreResponse.TrackConfig.Line,
 ) !Line {
     var result: Line = undefined;
     if (config.axes > std.math.maxInt(u10)) return error.InvalidConfiguration;

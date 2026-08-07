@@ -3,6 +3,10 @@ const client = @import("../../mmc_client.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
+const CommandRequest = @FieldType(
+    api.protobuf.mmc.Request.body_union,
+    "command",
+);
 
 pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "assert_hall");
@@ -24,7 +28,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
             break :buf input[0..ignore_idx];
         } else break :buf input;
     }, 0);
-    const side: api.protobuf.mmc.command.Request.Direction =
+    const side: CommandRequest.Direction =
         if (std.ascii.eqlIgnoreCase("back", params[2]) or
         std.ascii.eqlIgnoreCase("left", params[2]))
             .DIRECTION_BACKWARD

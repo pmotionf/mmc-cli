@@ -9,6 +9,12 @@ pub const Parameter = @import("mmc_client/Parameter.zig");
 pub const Line = @import("mmc_client/Line.zig");
 pub const log = @import("mmc_client/log.zig");
 pub const api = @import("mmc-api");
+const InfoRequest = @FieldType(api.protobuf.mmc.Request.body_union, "info");
+const CoreRequest = @FieldType(api.protobuf.mmc.Request.body_union, "core");
+const CommandRequest = @FieldType(
+    api.protobuf.mmc.Request.body_union,
+    "command",
+);
 
 pub const Config = struct {
     host: []u8,
@@ -53,7 +59,7 @@ pub const Filter = union(enum) {
     }
 
     /// Invalidates original filter's allocated memory ownership.
-    pub fn toProtobuf(filter: *Filter) api.protobuf.mmc.info.Request.Track.filter_union {
+    pub fn toProtobuf(filter: *Filter) InfoRequest.Track.filter_union {
         return switch (filter.*) {
             .axis => |axis_id| .{
                 .axes = .{
@@ -101,7 +107,7 @@ pub const standard = struct {
 
 pub const error_response = struct {
     /// Throw an error if receive response of core request error
-    pub fn throwCoreError(err: api.protobuf.mmc.core.Request.Error) anyerror {
+    pub fn throwCoreError(err: CoreRequest.Error) anyerror {
         return switch (err) {
             .CORE_REQUEST_ERROR_UNSPECIFIED => error.InvalidResponse,
             .CORE_REQUEST_ERROR_REQUEST_UNKNOWN => error.RequestUnknown,
@@ -109,7 +115,7 @@ pub const error_response = struct {
         };
     }
 
-    pub fn throwCommandError(err: api.protobuf.mmc.command.Request.Error) anyerror {
+    pub fn throwCommandError(err: CommandRequest.Error) anyerror {
         return switch (err) {
             .COMMAND_REQUEST_ERROR_UNSPECIFIED,
             => error.InvalidResponse,
@@ -133,7 +139,7 @@ pub const error_response = struct {
         };
     }
 
-    pub fn throwInfoError(err: api.protobuf.mmc.info.Request.Error) anyerror {
+    pub fn throwInfoError(err: InfoRequest.Error) anyerror {
         return switch (err) {
             .INFO_REQUEST_ERROR_UNSPECIFIED => error.InvalidResponse,
             .INFO_REQUEST_ERROR_INVALID_LINE => error.InvalidLine,

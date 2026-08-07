@@ -3,6 +3,10 @@ const client = @import("../../mmc_client.zig");
 const command = @import("../../../command.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
+const CommandRequest = @FieldType(
+    api.protobuf.mmc.Request.body_union,
+    "command",
+);
 
 pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const net = client.sock orelse return error.ServerNotConnected;
@@ -23,7 +27,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
             break :buf input[0..ignore_idx];
         } else break :buf input;
     }, 0);
-    const dir: api.protobuf.mmc.command.Request.Direction =
+    const dir: CommandRequest.Direction =
         if (std.mem.eql(u8, "forward", params[2]))
             .DIRECTION_FORWARD
         else if (std.mem.eql(u8, "backward", params[2]))
