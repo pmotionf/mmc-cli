@@ -136,27 +136,27 @@ fn parseTarget(param: []const u8) !CommandRequest.Move.target_union {
 
 test parseTarget {
     try std.testing.expectEqual(
-        api.protobuf.mmc.command.Request.Move.target_union{ .axis = 1 },
+        CommandRequest.Move.target_union{ .axis = 1 },
         try parseTarget("1a"),
     );
     try std.testing.expectEqual(
-        api.protobuf.mmc.command.Request.Move.target_union{ .axis = 1 },
+        CommandRequest.Move.target_union{ .axis = 1 },
         try parseTarget("1axis"),
     );
     try std.testing.expectEqual(
-        api.protobuf.mmc.command.Request.Move.target_union{ .location = 100 },
+        CommandRequest.Move.target_union{ .location = 100 },
         try parseTarget("100l"),
     );
     try std.testing.expectEqual(
-        api.protobuf.mmc.command.Request.Move.target_union{ .location = 100 },
+        CommandRequest.Move.target_union{ .location = 100 },
         try parseTarget("100location"),
     );
     try std.testing.expectEqual(
-        api.protobuf.mmc.command.Request.Move.target_union{ .distance = 100 },
+        CommandRequest.Move.target_union{ .distance = 100 },
         try parseTarget("100d"),
     );
     try std.testing.expectEqual(
-        api.protobuf.mmc.command.Request.Move.target_union{ .distance = 100 },
+        CommandRequest.Move.target_union{ .distance = 100 },
         try parseTarget("100distance"),
     );
     try std.testing.expectError(
