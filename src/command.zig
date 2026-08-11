@@ -154,7 +154,7 @@ var file_buf: [4096]u8 = undefined;
 
 var environ_map: *std.process.Environ.Map = undefined;
 
-pub var group: std.ArrayList(Command.Parsed) = .empty;
+pub var group: std.Deque(Command.Parsed) = .empty;
 var grouping: bool = false;
 
 const CommandString = struct {
@@ -746,15 +746,18 @@ pub fn execute(gpa: std.mem.Allocator, io: std.Io) !void {
         const parsed = try Command.parse(gpa, trimmed);
         if (grouping) {
             if (std.ascii.eqlIgnoreCase("ENDGROUP", parsed.executable.name)) {
+                defer parsed.deinit(gpa);
                 try parsed.executable.execute(io, gpa, &.{});
             } else {
+                errdefer parsed.deinit(gpa);
                 if (!parsed.executable.groupable) {
                     return error.UngroupableCommand;
                 }
                 std.log.info("Grouping command: {s}\n", .{trimmed});
-                try group.append(gpa, parsed);
+                try group.pushBack(gpa, parsed);
             }
         } else {
+            defer parsed.deinit(gpa);
             std.log.info("Running command: {s}\n", .{trimmed});
             try parsed.executable.execute(io, gpa, parsed.params);
         }
@@ -1372,7 +1375,8 @@ fn clear(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
     try stdout.interface.writeAll("\x1bc");
 }
 
-fn exit(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
+fn exit(_: std.Io, gpa: std.mem.Allocator, _: [][]const u8) !void {
+    group.deinit(gpa);
     main.exit.store(true, .monotonic);
 }
 

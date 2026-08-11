@@ -14,7 +14,14 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator) !void {
     const net = client.sock orelse return error.ServerNotConnected;
     var commands: std.ArrayList(CommandRequest.CommandGroup) = .empty;
     defer commands.deinit(gpa);
-    for (command.group.items) |item| {
+    errdefer {
+        while (command.group.popFront()) |item| {
+            item.deinit(gpa);
+        }
+    }
+    if (command.group.len == 0) return;
+    while (command.group.popFront()) |item| {
+        defer item.deinit(gpa);
         const params = item.params;
         if (std.mem.eql(u8, "MOVE_CARRIER", item.executable.name)) {
             const line_name = params[0];
