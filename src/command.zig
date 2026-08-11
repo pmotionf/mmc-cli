@@ -745,7 +745,7 @@ pub fn execute(gpa: std.mem.Allocator, io: std.Io) !void {
         }
         const parsed = try Command.parse(gpa, trimmed);
         if (grouping) {
-            if (std.ascii.eqlIgnoreCase("end_group", trimmed)) {
+            if (std.ascii.eqlIgnoreCase("ENDGROUP", parsed.executable.name)) {
                 try parsed.executable.execute(io, gpa, &.{});
             } else {
                 if (!parsed.executable.groupable) {
