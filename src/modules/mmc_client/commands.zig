@@ -35,3 +35,4 @@ pub const print_axis_info = @import("commands/print_axis_info.zig");
 pub const print_driver_info = @import("commands/print_driver_info.zig");
 pub const show_errors = @import("commands/show_errors.zig");
 pub const server_version = @import("commands/server_version.zig");
+pub const group = @import("commands/group.zig");

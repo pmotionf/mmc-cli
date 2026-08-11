@@ -4,7 +4,7 @@ const builtin = @import("builtin");
 const chrono = @import("chrono");
 
 const command = @import("../command.zig");
-const commands = @import("mmc_client/commands.zig");
+pub const commands = @import("mmc_client/commands.zig");
 pub const Parameter = @import("mmc_client/Parameter.zig");
 pub const Line = @import("mmc_client/Line.zig");
 pub const log = @import("mmc_client/log.zig");
@@ -875,6 +875,7 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
     try command.registry.put(gpa, "MOVE_CARRIER", .{
         .executable = .{
             .name = "MOVE_CARRIER",
+            .groupable = true,
             .parameters = &[_]command.Command.Executable.Parameter{
                 .{ .name = "Line", .kind = .mmc_client_line },
                 .{ .name = "Carrier", .kind = .mmc_client_carrier },
@@ -925,6 +926,7 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
     errdefer _ = command.registry.orderedRemove("MOVE_CARRIER");
     try command.registry.put(gpa, "PUSH_CARRIER", .{ .executable = .{
         .name = "PUSH_CARRIER",
+        .groupable = true,
         .parameters = &[_]command.Command.Executable.Parameter{
             .{ .name = "Line", .kind = .mmc_client_line },
             .{ .name = "Axis", .kind = .mmc_client_axis },
