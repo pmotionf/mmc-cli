@@ -57,11 +57,8 @@ pub fn handler(io: std.Io, ctx: *Prompt) !void {
             stdout.interface.writeAll(
                 "Enter command (HELP for usage):\n",
             ) catch continue :main;
-            // Create new line to have space for hint line
-            stdout.interface.writeAll("\x0A") catch // new line
-                continue :main;
-            stdout.interface.writeAll("\x1B[1A") catch // cursor up
-                continue :main;
+            terminal.cursor.newLine(&stdout.interface) catch continue :main;
+            terminal.cursor.moveRowUp(&stdout.interface, 1) catch continue :main;
 
             stdout.interface.flush() catch continue :main;
         }
@@ -406,8 +403,9 @@ pub fn handler(io: std.Io, ctx: *Prompt) !void {
         };
         ctx.complete_partial_start = start_completion;
 
-        // Clear input line and hint line to prepare for writing
-        clearTwoLinesAndReturnToTop(&stdout.interface) catch continue :main;
+        // Return to the first physical row of the input.
+        terminal.cursor.moveColumn(&stdout.interface, 1) catch continue :main;
+        terminal.cursor.clearAfter(&stdout.interface) catch continue :main;
 
         ctx.selected_command = &.{};
         // Parse and print syntax highlighted input
@@ -641,12 +639,10 @@ pub fn handler(io: std.Io, ctx: *Prompt) !void {
             }
         }
 
-        // Go to hint line, then print hints and then to input line
-        stdout.interface.writeByte('\n') catch continue :main;
+        // Hint line
+        terminal.cursor.newLine(&stdout.interface) catch continue :main;
         renderArgHintLine(ctx, &stdout.interface) catch continue :main;
-
-        // Move back to input line
-        stdout.interface.writeAll("\x1B[1A") catch continue :main;
+        terminal.cursor.moveRowUp(&stdout.interface, 1) catch continue :main;
         terminal.cursor.moveColumn(&stdout.interface, ctx.cursor.visible + 1) catch
             continue :main;
     }
@@ -694,16 +690,9 @@ fn argIndexAtCursor(ctx: *const Prompt) ?usize {
     return raw_arg_idx;
 }
 
-fn clearTwoLinesAndReturnToTop(w: *std.Io.Writer) !void {
-    try w.writeAll("\x1B7"); // Save cursor position
-    try w.writeAll("\x1B[2K"); // Clear line, return to column 1
-    try w.writeAll("\x1B[1B"); // Cursor down by 1
-    try w.writeAll("\x1B[2K"); // Clear entire line
-    try w.writeAll("\x1B8\r"); // Restore cursor position, return to column 1
-}
-
 fn renderArgHintLine(ctx: *const Prompt, w: *std.Io.Writer) !void {
     if (ctx.selected_command.len == 0) return;
+    var len: usize = 0;
 
     const cmd_ptr = executable: {
         const ptr = command.registry.getPtr(ctx.selected_command) orelse
@@ -721,6 +710,7 @@ fn renderArgHintLine(ctx: *const Prompt, w: *std.Io.Writer) !void {
     defer terminal.style.reset(w) catch {};
 
     try w.writeAll("Parameter: ");
+    len += "Parameter: ".len;
 
     for (cmd.parameters, 0..) |p, i| {
         const open: u8 = if (p.optional) '[' else '(';
@@ -731,14 +721,23 @@ fn renderArgHintLine(ctx: *const Prompt, w: *std.Io.Writer) !void {
         }
 
         try w.print("{c}{s}{c}", .{ open, p.name, close });
+        len += p.name.len + 2;
 
         if (i == ai_cursor and ai_cursor < cmd.parameters.len) {
             try terminal.style.reset(w);
             try terminal.style.set(w, .{ .fg = .{ .lut = .grayscale(12) } });
         }
 
-        if (i + 1 < cmd.parameters.len) try w.writeByte(' ');
+        if (i + 1 < cmd.parameters.len) {
+            try w.writeByte(' ');
+            len += 1;
+        }
     }
+
+    const window_width: usize = try terminal.window.getCols();
+    const rows_up = (len - 1) / window_width;
+    try terminal.cursor.moveRowUp(w, rows_up);
+    try terminal.cursor.moveColumn(w, 1);
 }
 
 const separators: []const u8 = " ,._-()[]{}`~+=*!@#$%^&|\\/'\":;<>?\t\n";
