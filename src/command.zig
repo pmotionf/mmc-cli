@@ -748,6 +748,9 @@ pub fn execute(gpa: std.mem.Allocator, io: std.Io) !void {
             if (std.ascii.eqlIgnoreCase("end_group", trimmed)) {
                 try parsed.executable.execute(io, gpa, &.{});
             } else {
+                if (!parsed.executable.groupable) {
+                    return error.UngroupableCommand;
+                }
                 std.log.info("Grouping command: {s}\n", .{trimmed});
                 try group.append(gpa, parsed);
             }
