@@ -66,7 +66,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     try client.waitCommandCompleted(io, gpa, net);
 }
 
-fn parseTarget(param: []const u8) !CommandRequest.Move.target_union {
+pub fn parseTarget(param: []const u8) !CommandRequest.Move.target_union {
     var suffix_idx: usize = 0;
     for (param) |c| {
         if (std.ascii.isAlphabetic(c)) break else suffix_idx += 1;

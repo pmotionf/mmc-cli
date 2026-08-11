@@ -154,6 +154,9 @@ var file_buf: [4096]u8 = undefined;
 
 var environ_map: *std.process.Environ.Map = undefined;
 
+pub var group: std.ArrayList(Command.Parsed) = .empty;
+var grouping: bool = false;
+
 const CommandString = struct {
     str: []u8,
     node: std.DoublyLinkedList.Node,
@@ -175,6 +178,7 @@ pub const Command = union(enum) {
         short_description: []const u8,
         /// Long description of command.
         long_description: []const u8,
+        groupable: bool = false,
         execute: *const fn (
             std.Io,
             std.mem.Allocator,
@@ -264,6 +268,98 @@ pub const Command = union(enum) {
             }
         };
     };
+
+    pub const Parsed = struct {
+        executable: *Executable,
+        params: [][]const u8,
+
+        pub fn deinit(self: Parsed, gpa: std.mem.Allocator) void {
+            for (self.params) |param| {
+                gpa.free(param);
+            }
+            gpa.free(self.params);
+        }
+    };
+
+    pub fn parse(gpa: std.mem.Allocator, input: []const u8) !Parsed {
+        var res: Parsed = undefined;
+        var token_iterator = std.mem.tokenizeSequence(u8, input, " ");
+        var command_buf: [256]u8 = undefined;
+        if (token_iterator.next()) |token| {
+            if (registry.getPtr(std.ascii.upperString(&command_buf, token))) |c| {
+                res.executable = switch (c.*) {
+                    .alias => c.alias.command,
+                    .executable => &c.executable,
+                };
+            } else return error.InvalidCommand;
+        } else {
+            // It is ensured the command is an empty line
+            unreachable;
+        }
+        res.params = try gpa.alloc(
+            []const u8,
+            res.executable.parameters.len,
+        );
+        errdefer res.deinit(gpa);
+
+        for (res.executable.parameters, 0..) |param, i| {
+            const _token = token_iterator.peek();
+            defer _ = token_iterator.next();
+            if (_token == null) {
+                if (param.optional) {
+                    res.params[i] = try gpa.dupe(u8, "");
+                    continue;
+                } else return error.MissingParameter;
+            }
+            var token = _token.?;
+
+            // Resolve variables.
+            if (param.resolve) {
+                if (variables.get(token)) |val| {
+                    token = val;
+                }
+            }
+
+            if (param.quotable) {
+                if (token[0] == '"') {
+                    const start_ind: usize = token_iterator.index + 1;
+                    var len: usize = 0;
+                    while (token_iterator.next()) |tok| {
+                        if (tok[tok.len - 1] == '"') {
+                            // 2 subtracted from length to account for the two
+                            // quotation marks.
+                            len += tok.len - 2;
+                            break;
+                        }
+                        // Because the token was consumed with `.next`, the index
+                        // here will be the start index of the next token.
+                        len = token_iterator.index - start_ind;
+                    }
+                    res.params[i] = try gpa.dupe(
+                        u8,
+                        input[start_ind .. start_ind + len],
+                    );
+                } else res.params[i] = try gpa.dupe(u8, token);
+            } else res.params[i] = try gpa.dupe(u8, token);
+
+            if (param.rest) {
+                res.params[i] = try gpa.dupe(
+                    u8,
+                    token_iterator.rest(),
+                );
+                while (token_iterator.next()) |_| {} else break;
+            }
+        }
+
+        const is_rest: bool =
+            res.executable.parameters.len > 0 and
+            res.executable.parameters[res.executable.parameters.len - 1].rest;
+
+        if (!is_rest and token_iterator.peek() != null)
+            return error.UnexpectedParameter;
+
+        return res;
+    }
 };
 
 pub fn logFn(
@@ -537,6 +633,26 @@ pub fn init(
         ,
         .execute = &exit,
     } });
+    try registry.put(gpa, "GROUP", .{ .executable = .{
+        .name = "GROUP",
+        .short_description = "Start grouping commands.",
+        .long_description =
+        \\Start grouping commands before sent as one request to the
+        \\server. This allows the command to be managed internally by
+        \\the server, allowing commands in the group that target
+        \\different driver runs simultaneously.
+        ,
+        .execute = &groupCommand,
+    } });
+    try registry.put(gpa, "ENDGROUP", .{ .executable = .{
+        .name = "ENDGROUP",
+        .short_description = "Stop grouping commands.",
+        .long_description =
+        \\Stop grouping commands and send the grouped commands to the
+        \\server for execution.
+        ,
+        .execute = &endGroup,
+    } });
 }
 
 test "rest parameter" {
@@ -619,89 +735,40 @@ pub fn execute(gpa: std.mem.Allocator, io: std.Io) !void {
             std.heap.smp_allocator.free(command_str.str);
             std.heap.smp_allocator.destroy(command_str);
         }
-        try parseAndRun(gpa, io, command_str.str);
+        const trimmed = std.mem.trimStart(
+            u8,
+            command_str.str,
+            "\n\t \r",
+        );
+        if (trimmed.len == 0 or trimmed[0] == '#') {
+            return;
+        }
+        const parsed = try Command.parse(gpa, trimmed);
+        if (grouping) {
+            if (std.ascii.eqlIgnoreCase("end_group", trimmed)) {
+                try parsed.executable.execute(io, gpa, &.{});
+            } else {
+                std.log.info("Grouping command: {s}\n", .{trimmed});
+                try group.append(gpa, parsed);
+            }
+        } else {
+            std.log.info("Running command: {s}\n", .{trimmed});
+            try parsed.executable.execute(io, gpa, parsed.params);
+        }
     }
 }
 
-fn parseAndRun(
-    gpa: std.mem.Allocator,
-    io: std.Io,
-    input: []const u8,
-) !void {
-    const trimmed = std.mem.trimStart(u8, input, "\n\t \r");
-    std.log.info("Running command: {s}\n", .{trimmed});
-    if (trimmed.len == 0 or trimmed[0] == '#') {
-        return;
-    }
-    var token_iterator = std.mem.tokenizeSequence(u8, trimmed, " ");
-    var command: *Command.Executable = undefined;
-    var command_buf: [256]u8 = undefined;
-    if (token_iterator.next()) |token| {
-        if (registry.getPtr(std.ascii.upperString(&command_buf, token))) |c| {
-            command = switch (c.*) {
-                .alias => c.alias.command,
-                .executable => &c.executable,
-            };
-        } else return error.InvalidCommand;
-    } else return;
+/// Enable command grouping. No command will be executed until user send `end_group` command
+fn groupCommand(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
+    if (grouping) return error.GroupingAlreadyStarted;
+    grouping = true;
+}
 
-    var params: [][]const u8 = try gpa.alloc(
-        []const u8,
-        command.parameters.len,
-    );
-    defer gpa.free(params);
-
-    for (command.parameters, 0..) |param, i| {
-        const _token = token_iterator.peek();
-        defer _ = token_iterator.next();
-        if (_token == null) {
-            if (param.optional) {
-                params[i] = "";
-                continue;
-            } else return error.MissingParameter;
-        }
-        var token = _token.?;
-
-        // Resolve variables.
-        if (param.resolve) {
-            if (variables.get(token)) |val| {
-                token = val;
-            }
-        }
-
-        if (param.quotable) {
-            if (token[0] == '"') {
-                const start_ind: usize = token_iterator.index + 1;
-                var len: usize = 0;
-                while (token_iterator.next()) |tok| {
-                    if (tok[tok.len - 1] == '"') {
-                        // 2 subtracted from length to account for the two
-                        // quotation marks.
-                        len += tok.len - 2;
-                        break;
-                    }
-                    // Because the token was consumed with `.next`, the index
-                    // here will be the start index of the next token.
-                    len = token_iterator.index - start_ind;
-                }
-                params[i] = input[start_ind .. start_ind + len];
-            } else params[i] = token;
-        } else params[i] = token;
-
-        if (param.rest) {
-            params[i] = token_iterator.rest();
-            while (token_iterator.next()) |_| {} else break;
-        }
-    }
-
-    const is_rest: bool =
-        command.parameters.len > 0 and
-        command.parameters[command.parameters.len - 1].rest;
-
-    if (!is_rest and token_iterator.peek() != null)
-        return error.UnexpectedParameter;
-
-    try command.execute(io, gpa, params);
+fn endGroup(io: std.Io, gpa: std.mem.Allocator, _: [][]const u8) !void {
+    if (!grouping) return error.GroupingNotStarted;
+    grouping = false;
+    // TODO: Currently, only supports two command in mmc_client
+    try mmc_client.commands.group.impl(io, gpa);
 }
 
 fn help(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
