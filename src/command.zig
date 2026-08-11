@@ -340,15 +340,13 @@ pub const Command = union(enum) {
                         input[start_ind .. start_ind + len],
                     );
                 } else res.params[i] = try gpa.dupe(u8, token);
-            } else res.params[i] = try gpa.dupe(u8, token);
-
-            if (param.rest) {
+            } else if (param.rest) {
                 res.params[i] = try gpa.dupe(
                     u8,
                     token_iterator.rest(),
                 );
                 while (token_iterator.next()) |_| {} else break;
-            }
+            } else res.params[i] = try gpa.dupe(u8, token);
         }
 
         const is_rest: bool =
