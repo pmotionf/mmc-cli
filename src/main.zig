@@ -18,14 +18,14 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
     const gpa = init.gpa;
     const map = init.environ_map;
+
     try terminal.init();
     defer terminal.deinit();
 
-    var prompter = try std.Thread.spawn(
-        .{},
-        Prompt.handler,
-        .{ io, &prompt },
-    );
+    try command.init(gpa, map);
+    defer command.deinit(gpa, io);
+
+    var prompter = try std.Thread.spawn(.{}, Prompt.handler, .{ io, &prompt });
     prompter.detach();
     defer prompt.close.store(true, .monotonic);
 
@@ -52,9 +52,6 @@ pub fn main(init: std.process.Init) !void {
         },
         else => @compileError("UnsupportedOs"),
     }
-
-    try command.init(gpa, map);
-    defer command.deinit(gpa, io);
 
     command_loop: while (!exit.load(.monotonic)) {
         command.checkCommandInterrupt(io) catch |e| std.log.err("{t}", .{e});
