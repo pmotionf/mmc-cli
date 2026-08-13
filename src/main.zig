@@ -19,7 +19,7 @@ pub fn main(init: std.process.Init) !void {
     const gpa = init.gpa;
     const map = init.environ_map;
 
-    try terminal.init();
+    try terminal.init(io);
     defer terminal.deinit();
 
     try command.init(gpa, map);

@@ -7,7 +7,7 @@ var original_canonical_context: OriginalCanonicalContext = undefined;
 
 /// Runs necessary setup for terminal IO. Must be called exactly once before
 /// any other IO function.
-pub fn init() !void {
+pub fn init(io: std.Io) !void {
     switch (comptime builtin.os.tag) {
         .linux => {
             const stdin = std.Io.File.stdin().handle;
@@ -30,6 +30,7 @@ pub fn init() !void {
             try std.posix.tcsetattr(stdin, .NOW, attr);
         },
         .windows => {
+            _ = try std.Io.File.stdout().enableAnsiEscapeCodes(io);
             const stdin = std.Io.File.stdin().handle;
 
             if (IsValidCodePage(65001).toBool() == false) {
