@@ -52,10 +52,6 @@ pub const Station = struct {
     /// CC-Link driver index of the channel
     index: i32,
 
-    pub fn init(channel: Channel, index: Index) Station {
-        return .{ .path = channel.path, .devno = @as(i32, index) };
-    }
-
     pub fn setY(
         self: Station,
         /// Bitwise offset of desired field (0..).
