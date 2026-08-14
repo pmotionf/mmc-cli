@@ -11,9 +11,9 @@ var mcl: Mcl = undefined;
 
 pub const Config = Mcl.Config;
 
-pub fn init(gpa: std.mem.Allocator, c: Config) !void {
+pub fn init(gpa: std.mem.Allocator, io: std.Io, c: Config) !void {
     try Mcl.Config.validate(.{ .lines = c.lines });
-    mcl = try .init(gpa, .{ .lines = c.lines });
+    mcl = try .init(gpa, io, .{ .lines = c.lines });
 
     try command.registry.put(gpa, "CONNECT", .{
         .name = "CONNECT",

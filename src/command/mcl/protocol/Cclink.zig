@@ -22,6 +22,14 @@ pub const Range = struct {
     end: Id,
 };
 
+pub fn init(gpa: std.mem.Allocator) Cclink {
+    return .{ .channels = .init(gpa) };
+}
+
+pub fn deinit(self: *Cclink) void {
+    self.channels.deinit();
+}
+
 // The path to CC-Link channel.
 pub const Channel = enum(u2) {
     cc_link_1slot = 0,
@@ -51,6 +59,15 @@ pub const Station = struct {
     path: *?i32,
     /// CC-Link driver index of the channel
     index: i32,
+
+    pub const Config = struct {
+        /// Channel used by the driver
+        cc_link_channel: Channel,
+        /// Station ID on the channel
+        station_id: Id,
+        /// Number of axes used on the station
+        axes: u2,
+    };
 
     pub fn setY(
         self: Station,

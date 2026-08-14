@@ -12,31 +12,83 @@ pub const Line = @import("Line.zig");
 const Mcl = @This();
 
 lines: []Line,
-connection: *protocol.Cclink,
+connection: Connection,
 
 pub const Distance = registers.Distance;
 pub const Direction = registers.Direction;
 
-/// Initialize the MCL library. This must be run before any other MCL library
-/// functions, except functions in `Config.zig`, are called. This must also be
-/// re-run after every configuration change to the system.
-pub fn init(gpa: std.mem.Allocator, config: Config) !Mcl {
-    const lines = try gpa.alloc(Line, config.lines.len);
-    errdefer gpa.free(lines);
-    var comm: *protocol.Cclink = try gpa.create(protocol.Cclink);
-    errdefer gpa.destroy(comm);
-    comm.channels = .init(gpa);
-    errdefer comm.channels.deinit();
-    for (config.lines) |line| {
-        for (line.ranges) |range| {
-            if (comm.channels.get(range.channel)) |_|
-                continue
-            else {
-                try comm.channels.put(range.channel, null);
-            }
+const Connection = union(Kind) {
+    cclink: *protocol.Cclink,
+    ethercat: *protocol.Ethercat,
+
+    const Kind = enum { cclink, ethercat };
+
+    fn init(
+        gpa: std.mem.Allocator,
+        io: std.Io,
+        kind: Kind,
+    ) !Connection {
+        switch (kind) {
+            .cclink => {
+                const cclink = try gpa.create(protocol.Cclink);
+                cclink.* = .init(gpa);
+                return .{ .cclink = cclink };
+            },
+            .ethercat => {
+                const ethercat = try gpa.create(protocol.Ethercat);
+                errdefer gpa.destroy(ethercat);
+                ethercat.* = .{ .master = try .init(gpa, io), .slaves = &.{} };
+                return .{ .ethercat = ethercat };
+            },
         }
     }
 
+    fn deinit(self: Connection, gpa: std.mem.Allocator) void {
+        switch (self) {
+            .cclink => |cclink| {
+                cclink.deinit();
+                gpa.destroy(cclink);
+            },
+            .ethercat => |ethercat| {
+                ethercat.deinit(gpa);
+                gpa.destroy(ethercat);
+            },
+        }
+    }
+};
+
+/// Initialize the MCL library. This must be run before any other MCL library
+/// functions, except functions in `Config.zig`, are called. This must also be
+/// re-run after every configuration change to the system.
+pub fn init(gpa: std.mem.Allocator, io: std.Io, config: Config) !Mcl {
+    const lines = try gpa.alloc(Line, config.lines.len);
+    errdefer gpa.free(lines);
+    var comm: Connection = try .init(
+        gpa,
+        io,
+        switch (config.lines[0].drivers[0]) {
+            .cclink => .cclink,
+            .ethercat => .ethercat,
+        },
+    );
+    errdefer comm.deinit(gpa);
+    var driver_num: usize = 0;
+    for (config.lines) |line| {
+        for (line.drivers) |driver| {
+            if (comm == .cclink) {
+                if (comm.cclink.channels.get(driver.cclink.channel)) |_|
+                    continue
+                else {
+                    try comm.cclink.channels.put(driver.cclink.channel, null);
+                }
+            }
+            driver_num += 1;
+        }
+    }
+    if (comm == .ethercat) {
+        comm.ethercat.slaves =
+            try gpa.alloc(protocol.Ethercat.soem.ec_slavet, driver_num);
+    }
     for (config.lines, lines, 0..) |line_config, *line, line_idx| {
         try line.init(gpa, @intCast(line_idx), line_config, comm);
     }
@@ -47,9 +99,8 @@ pub fn deinit(self: Mcl, gpa: std.mem.Allocator) void {
     for (self.lines) |*line| {
         line.deinit(gpa);
     }
-    self.connection.channels.deinit();
+    self.connection.deinit(gpa);
     gpa.free(self.lines);
-    gpa.destroy(self.connection);
 }
 
 /// Opens all channels used in all configured lines.
