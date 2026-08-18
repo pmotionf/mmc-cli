@@ -74,6 +74,7 @@ pub fn build(b: *std.Build) !void {
         .{ .name = "build.zig.zon", .module = build_zig_zon },
         .{ .name = "chrono", .module = chrono.module("chrono") },
         .{ .name = "mmc-api", .module = mmc_api.module("mmc-api") },
+        .{ .name = "soem", .module = trans_soem.mod },
     };
 
     const mod = b.createModule(.{
@@ -84,7 +85,6 @@ pub fn build(b: *std.Build) !void {
         .error_tracing = true,
     });
 
-    mod.addImport("soem", trans_soem.mod);
     mod.addImport("mdfunc", mdfunc.module("mdfunc"));
 
     const exe = b.addExecutable(.{

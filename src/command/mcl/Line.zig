@@ -55,7 +55,7 @@ pub fn init(
     errdefer gpa.free(self.name);
     self.axes = try gpa.alloc(Axis, config.axes);
     errdefer gpa.free(self.axes);
-    self.stations = try gpa.alloc(Station, (config.axes - 1) / 3 + 1);
+    self.stations = try gpa.alloc(Station, config.drivers.len);
     errdefer gpa.free(self.stations);
     self.x = try gpa.alloc(Station.X, self.stations.len);
     errdefer gpa.free(self.x);
@@ -65,18 +65,22 @@ pub fn init(
     errdefer gpa.free(self.wr);
     self.ww = try gpa.alloc(Station.Ww, self.stations.len);
     errdefer gpa.free(self.ww);
-    switch (connection.*) {
+    self.connection = connection: switch (connection.*) {
         .cclink => |cclink| {
-            self.connection.cclink = try .init(gpa, config.drivers, cclink);
+            break :connection .{
+                .cclink = try .init(gpa, config.drivers, cclink),
+            };
         },
         .ethercat => |ethercat| {
-            self.connection.ethercat = .init(
-                ethercat.slaves,
-                ethercat.master.lock,
-                config.drivers,
-            );
+            break :connection .{
+                .ethercat = .init(
+                    ethercat.slaves,
+                    ethercat.master.lock,
+                    config.drivers,
+                ),
+            };
         },
-    }
+    };
 
     @memset(self.x, std.mem.zeroes(Station.X));
     @memset(self.y, std.mem.zeroes(Station.Y));
@@ -119,7 +123,10 @@ pub fn init(
                 switch (connection.*) {
                     .cclink => |cclink| break :connection .{
                         .cclink = .{
-                            .path = cclink.channels.getPtr(driver.cclink.channel).?,
+                            .path = cclink.channels.getPtr(driver.cclink.channel) orelse put: {
+                                try cclink.channels.put(driver.cclink.channel, null);
+                                break :put cclink.channels.getPtr(driver.cclink.channel).?;
+                            },
                             .index = @intCast(driver.cclink.station_id - 1),
                         },
                     },
@@ -335,11 +342,7 @@ pub fn search(line: *const Line, slider_id: u16) ?struct { Axis, ?Axis } {
 test "Line search" {
     var line: Line = undefined;
     const gpa = std.testing.allocator;
-    var _ranges: [1]protocol.Cclink.Range = .{.{
-        .channel = .cc_link_1slot,
-        .start = 1,
-        .end = 3,
-    }};
+    const io = std.testing.io;
     const config: Line.Config.Line = .{
         .axes = 9,
         .axis = .{
@@ -347,9 +350,25 @@ test "Line search" {
         },
         .slider = .{ .length = 0.3, .width = 0.3 },
         .name = "test line",
-        .ranges = &_ranges,
+        .drivers = &drivers: {
+            var drivers: [3]protocol.Config = undefined;
+            var driver_idx: usize = 0;
+            inline for (1..4) |station_id| {
+                drivers[driver_idx] = .{
+                    .cclink = .{
+                        .channel = .cc_link_1slot,
+                        .station_id = station_id,
+                        .axes = 3,
+                    },
+                };
+                driver_idx += 1;
+            }
+            break :drivers drivers;
+        },
     };
-    try line.init(gpa, 0, config);
+    var mcl: Mcl.Connection = try .init(gpa, io, .cclink);
+    defer mcl.deinit(gpa);
+    try line.init(gpa, 0, config, &mcl);
     defer line.deinit(gpa);
 
     line.stations[1].wr.slider_number.axis3 = 1;

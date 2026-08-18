@@ -24,7 +24,7 @@ pub const Connection = union(Kind) {
 
     const Kind = enum { cclink, ethercat };
 
-    fn init(
+    pub fn init(
         gpa: std.mem.Allocator,
         io: std.Io,
         kind: Kind,
@@ -44,7 +44,7 @@ pub const Connection = union(Kind) {
         }
     }
 
-    fn deinit(self: Connection, gpa: std.mem.Allocator) void {
+    pub fn deinit(self: Connection, gpa: std.mem.Allocator) void {
         switch (self) {
             .cclink => |cclink| {
                 cclink.deinit();
