@@ -19,7 +19,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
         .EC_TIMEOUTRET = 1000,
         // Maximum slaves match maximum cclink stations
-        .EC_MAXSLAVE = 256,
+        .EC_MAXSLAVE = 257,
     });
 
     const trans_soem: Translator = .init(translate_c, .{

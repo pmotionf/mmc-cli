@@ -1,6 +1,7 @@
 const std = @import("std");
 const mdfunc = @import("mdfunc");
 const registers = @import("../Mcl.zig").registers;
+const protocol = @import("../protocol.zig");
 
 const Cclink = @This();
 
@@ -8,6 +9,15 @@ const X = registers.X;
 const Y = registers.Y;
 const Wr = registers.Wr;
 const Ww = registers.Ww;
+
+pub const Config = struct {
+    /// Channel used by the driver
+    channel: Cclink.Channel,
+    /// Station ID on the channel
+    station_id: Cclink.Id,
+    /// Number of axes used on the station
+    axes: u2,
+};
 
 channels: std.hash_map.AutoHashMap(Channel, ?i32),
 
@@ -191,11 +201,44 @@ pub const Line = struct {
 
     pub fn init(
         gpa: std.mem.Allocator,
-        ranges: []const Range,
+        /// Configured drivers on the line
+        drivers: []protocol.Config,
+        /// Initialized cclink protocol
         cclink: *Cclink,
     ) std.mem.Allocator.Error!Line {
+        var ranges: std.ArrayList(Range) = .empty;
+        errdefer ranges.deinit(gpa);
+        // Check how many continuous cclink stationi range from provided drivers
+        var latest_range: ?Range = null;
+        for (drivers) |driver| {
+            if (latest_range) |*range| {
+                if (
+                // Different channel being used on current driver
+                range.channel != driver.cclink.channel or
+                    // Station ID is not continuous to current range
+                    range.end != driver.cclink.station_id - 1)
+                {
+                    try ranges.append(gpa, range.*);
+                    latest_range = .{
+                        .channel = driver.cclink.channel,
+                        .start = driver.cclink.station_id,
+                        .end = driver.cclink.station_id,
+                    };
+                } else {
+                    // Continue the range
+                    range.end = driver.cclink.station_id;
+                }
+            } else {
+                latest_range = .{
+                    .channel = driver.cclink.channel,
+                    .start = driver.cclink.station_id,
+                    .end = driver.cclink.station_id,
+                };
+            }
+        }
+        try ranges.append(gpa, latest_range.?);
         return .{
-            .ranges = try gpa.dupe(Range, ranges),
+            .ranges = try ranges.toOwnedSlice(gpa),
             .channels = &cclink.channels,
         };
     }

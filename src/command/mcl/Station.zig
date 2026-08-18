@@ -25,70 +25,163 @@ y: *Y,
 wr: *Wr,
 ww: *Ww,
 
-connection: protocol.Cclink.Station,
+connection: Connection,
 
-pub fn prev(self: Station) ?Station {
-    if (self.index > 0) {
-        return self.line.stations[self.index - 1];
-    } else return null;
-}
-
-pub fn next(self: Station) ?Station {
-    if (self.index < self.line.stations.len - 1) {
-        return self.line.stations[self.index + 1];
-    } else return null;
-}
+const Connection = union(enum) {
+    cclink: protocol.Cclink.Station,
+    ethercat: protocol.Ethercat.Station,
+};
 
 pub fn setY(
     self: Station,
+    io: std.Io,
     /// Bitwise offset of desired field (0..).
     offset: u6,
-) (protocol.Cclink.Error || mdfunc.Error)!void {
-    try self.connection.setY(offset);
+) !void {
+    switch (self.connection) {
+        .cclink => |cclink| {
+            try cclink.setY(offset);
+        },
+        .ethercat => |ethercat| {
+            try ethercat.setY(io, offset);
+        },
+    }
 }
 
 pub fn resetY(
     self: Station,
+    io: std.Io,
     /// Bitwise offset of desired field (0..).
     offset: u6,
-) (protocol.Cclink.Error || mdfunc.Error)!void {
-    try self.connection.resetY(offset);
+) !void {
+    switch (self.connection) {
+        .cclink => |cclink| {
+            try cclink.resetY(offset);
+        },
+        .ethercat => |ethercat| {
+            try ethercat.resetY(io, offset);
+        },
+    }
 }
 
-pub fn poll(self: Station) (protocol.Cclink.Error || mdfunc.Error)!void {
-    try self.connection.pollX(self.x);
-    try self.connection.pollY(self.y);
-    try self.connection.pollWr(self.wr);
-    try self.connection.pollWw(self.ww);
+pub fn poll(
+    self: Station,
+    io: std.Io,
+) !void {
+    switch (self.connection) {
+        .cclink => |cclink| {
+            try cclink.pollX(self.x);
+            try cclink.pollY(self.y);
+            try cclink.pollWr(self.wr);
+            try cclink.pollWw(self.ww);
+        },
+        .ethercat => |ethercat| {
+            try ethercat.pollX(io, self.x);
+            try ethercat.pollY(io, self.y);
+            try ethercat.pollWr(io, self.wr);
+            try ethercat.pollWw(io, self.ww);
+        },
+    }
 }
 
-pub fn pollX(self: Station) (protocol.Cclink.Error || mdfunc.Error)!void {
-    try self.connection.pollX(self.x);
+pub fn pollX(
+    self: Station,
+    io: std.Io,
+) !void {
+    switch (self.connection) {
+        .cclink => |cclink| {
+            try cclink.pollX(self.x);
+        },
+        .ethercat => |ethercat| {
+            try ethercat.pollX(io, self.x);
+        },
+    }
 }
 
-pub fn pollY(self: Station) (protocol.Cclink.Error || mdfunc.Error)!void {
-    try self.connection.pollY(self.y);
+pub fn pollY(
+    self: Station,
+    io: std.Io,
+) !void {
+    switch (self.connection) {
+        .cclink => |cclink| {
+            try cclink.pollY(self.y);
+        },
+        .ethercat => |ethercat| {
+            try ethercat.pollY(io, self.y);
+        },
+    }
 }
 
-pub fn pollWr(self: Station) (protocol.Cclink.Error || mdfunc.Error)!void {
-    try self.connection.pollWr(self.wr);
+pub fn pollWr(
+    self: Station,
+    io: std.Io,
+) !void {
+    switch (self.connection) {
+        .cclink => |cclink| {
+            try cclink.pollWr(self.wr);
+        },
+        .ethercat => |ethercat| {
+            try ethercat.pollWr(io, self.wr);
+        },
+    }
 }
 
-pub fn pollWw(self: Station) (protocol.Cclink.Error || mdfunc.Error)!void {
-    try self.connection.pollWw(self.ww);
+pub fn pollWw(
+    self: Station,
+    io: std.Io,
+) !void {
+    switch (self.connection) {
+        .cclink => |cclink| {
+            try cclink.pollWw(self.ww);
+        },
+        .ethercat => |ethercat| {
+            try ethercat.pollWw(io, self.ww);
+        },
+    }
 }
 
-pub fn send(self: Station) (protocol.Cclink.Error || mdfunc.Error)!void {
-    try self.connection.sendWw(self.ww);
-    try self.connection.sendY(self.y);
+pub fn send(
+    self: Station,
+    io: std.Io,
+) !void {
+    switch (self.connection) {
+        .cclink => |cclink| {
+            try cclink.sendWw(self.ww);
+            try cclink.sendY(self.y);
+        },
+        .ethercat => |ethercat| {
+            try ethercat.sendWw(io, self.ww);
+            try ethercat.sendY(io, self.y);
+        },
+    }
 }
 
-pub fn sendY(self: Station) (protocol.Cclink.Error || mdfunc.Error)!void {
-    try self.connection.sendY(self.y);
+pub fn sendY(
+    self: Station,
+    io: std.Io,
+) !void {
+    switch (self.connection) {
+        .cclink => |cclink| {
+            try cclink.sendY(self.y);
+        },
+        .ethercat => |ethercat| {
+            try ethercat.sendY(io, self.y);
+        },
+    }
 }
 
-pub fn sendWw(self: Station) (protocol.Cclink.Error || mdfunc.Error)!void {
-    try self.connection.sendWw(self.ww);
+pub fn sendWw(
+    self: Station,
+    io: std.Io,
+) !void {
+    switch (self.connection) {
+        .cclink => |cclink| {
+            try cclink.sendWw(self.ww);
+        },
+        .ethercat => |ethercat| {
+            try ethercat.sendWw(io, self.ww);
+        },
+    }
 }
 
 test {

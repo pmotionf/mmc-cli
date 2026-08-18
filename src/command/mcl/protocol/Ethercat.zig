@@ -1,6 +1,7 @@
 const std = @import("std");
 pub const soem = @import("soem");
 const registers = @import("../Mcl.zig").registers;
+const protocol = @import("../protocol.zig");
 const Ethercat = @import("ethercat/Ethercat.zig");
 
 const X = registers.X;
@@ -11,6 +12,13 @@ pub const Id = std.math.IntFittingRange(1, 256);
 master: Ethercat,
 /// List of all initialized slaves
 slaves: []soem.ec_slavet,
+
+pub const Config = struct {
+    /// Station ID on the channel
+    station_id: std.math.IntFittingRange(1, 256),
+    /// Number of axes used on the station
+    axes: u2,
+};
 
 pub fn deinit(self: @This(), gpa: std.mem.Allocator) void {
     self.master.deinit(gpa);
@@ -39,11 +47,13 @@ pub const Station = struct {
         }
         try self.lock.lock(io);
         defer self.lock.unlock(io);
-        var y: [64]bool = @bitCast(self.slave.outputs[0..@sizeOf(Y)]);
-        y[offset] = true;
+        var y: u64 =
+            @bitCast(self.slave.outputs[0..@sizeOf(Y)].*);
+        // Turn on bit in Y on the offset index
+        y |= @as(u64, 1) << offset;
         @memcpy(
             self.slave.outputs[0..@sizeOf(Y)],
-            std.mem.asBytes(y),
+            std.mem.asBytes(&y),
         );
     }
 
@@ -58,11 +68,13 @@ pub const Station = struct {
         }
         try self.lock.lock(io);
         defer self.lock.unlock(io);
-        var y: [64]bool = @bitCast(self.slave.outputs[0..@sizeOf(Y)]);
-        y[offset] = false;
+        var y: u64 =
+            @bitCast(self.slave.outputs[0..@sizeOf(Y)].*);
+        // Turn off bit in Y on the offset index
+        y &= ~(@as(u64, 1) << offset);
         @memcpy(
             self.slave.outputs[0..@sizeOf(Y)],
-            std.mem.asBytes(y),
+            std.mem.asBytes(&y),
         );
     }
 
@@ -114,7 +126,7 @@ pub const Station = struct {
         defer self.lock.unlockShared(io);
         @memcpy(
             std.mem.asBytes(ww),
-            self.slave.outputs[@sizeOf(Y) .. @sizeOf(Y) + @sizeOf(Station.Ww)],
+            self.slave.outputs[@sizeOf(Y) .. @sizeOf(Y) + @sizeOf(Ww)],
         );
     }
 
@@ -139,7 +151,7 @@ pub const Station = struct {
         try self.lock.lock(io);
         defer self.lock.unlock(io);
         @memcpy(
-            self.slave.outputs[@sizeOf(Y) .. @sizeOf(Y) + @sizeOf(Station.Ww)],
+            self.slave.outputs[@sizeOf(Y) .. @sizeOf(Y) + @sizeOf(Ww)],
             std.mem.asBytes(ww),
         );
     }
@@ -148,11 +160,27 @@ pub const Station = struct {
 pub const Line = struct {
     /// Slaves of a line
     slaves: []soem.ec_slavet,
+    lock: *std.Io.RwLock,
+
+    pub fn init(
+        slaves: []soem.ec_slavet,
+        lock: *std.Io.RwLock,
+        drivers: []protocol.Config,
+    ) Line {
+        const start_id = drivers[0].ethercat.station_id;
+        const end_id = drivers[drivers.len - 1].ethercat.station_id;
+        return .{
+            .slaves = slaves[start_id..end_id],
+            .lock = lock,
+        };
+    }
 
     pub fn pollX(self: Line, io: std.Io, x: []X) !void {
-        // Ensure slave still in operational mode
-        if (self.slave.state != soem.EC_STATE_OPERATIONAL) {
-            return error.SlaveNotOperational;
+        // Ensure all slaves in operational mode
+        for (self.slaves) |slave| {
+            if (slave.state != soem.EC_STATE_OPERATIONAL) {
+                return error.SlaveNotOperational;
+            }
         }
         try self.lock.lockShared(io);
         defer self.lock.unlockShared(io);
@@ -165,9 +193,11 @@ pub const Line = struct {
     }
 
     pub fn pollY(self: Line, io: std.Io, y: []Y) !void {
-        // Ensure slave still in operational mode
-        if (self.slave.state != soem.EC_STATE_OPERATIONAL) {
-            return error.SlaveNotOperational;
+        // Ensure all slaves in operational mode
+        for (self.slaves) |slave| {
+            if (slave.state != soem.EC_STATE_OPERATIONAL) {
+                return error.SlaveNotOperational;
+            }
         }
         try self.lock.lockShared(io);
         defer self.lock.unlockShared(io);
@@ -180,9 +210,11 @@ pub const Line = struct {
     }
 
     pub fn pollWr(self: Line, io: std.Io, wr: []Wr) !void {
-        // Ensure slave still in operational mode
-        if (self.slave.state != soem.EC_STATE_OPERATIONAL) {
-            return error.SlaveNotOperational;
+        // Ensure all slaves in operational mode
+        for (self.slaves) |slave| {
+            if (slave.state != soem.EC_STATE_OPERATIONAL) {
+                return error.SlaveNotOperational;
+            }
         }
         try self.lock.lockShared(io);
         defer self.lock.unlockShared(io);
@@ -195,9 +227,11 @@ pub const Line = struct {
     }
 
     pub fn pollWw(self: Line, io: std.Io, ww: []Ww) !void {
-        // Ensure slave still in operational mode
-        if (self.slave.state != soem.EC_STATE_OPERATIONAL) {
-            return error.SlaveNotOperational;
+        // Ensure all slaves in operational mode
+        for (self.slaves) |slave| {
+            if (slave.state != soem.EC_STATE_OPERATIONAL) {
+                return error.SlaveNotOperational;
+            }
         }
         try self.lock.lockShared(io);
         defer self.lock.unlockShared(io);
@@ -210,9 +244,11 @@ pub const Line = struct {
     }
 
     pub fn sendY(self: Line, io: std.Io, y: []Y) !void {
-        // Ensure slave still in operational mode
-        if (self.slave.state != soem.EC_STATE_OPERATIONAL) {
-            return error.SlaveNotOperational;
+        // Ensure all slaves in operational mode
+        for (self.slaves) |slave| {
+            if (slave.state != soem.EC_STATE_OPERATIONAL) {
+                return error.SlaveNotOperational;
+            }
         }
         try self.lock.lock(io);
         defer self.lock.unlock(io);
@@ -225,9 +261,11 @@ pub const Line = struct {
     }
 
     pub fn sendWw(self: Line, io: std.Io, ww: []Ww) !void {
-        // Ensure slave still in operational mode
-        if (self.slave.state != soem.EC_STATE_OPERATIONAL) {
-            return error.SlaveNotOperational;
+        // Ensure all slaves in operational mode
+        for (self.slaves) |slave| {
+            if (slave.state != soem.EC_STATE_OPERATIONAL) {
+                return error.SlaveNotOperational;
+            }
         }
         try self.lock.lock(io);
         defer self.lock.unlock(io);

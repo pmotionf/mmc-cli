@@ -16,8 +16,7 @@ connection: Connection,
 
 pub const Distance = registers.Distance;
 pub const Direction = registers.Direction;
-
-const Connection = union(Kind) {
+pub const Connection = union(Kind) {
     cclink: *protocol.Cclink,
     ethercat: *protocol.Ethercat,
 
@@ -90,7 +89,7 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io, config: Config) !Mcl {
             try gpa.alloc(protocol.Ethercat.soem.ec_slavet, driver_num);
     }
     for (config.lines, lines, 0..) |line_config, *line, line_idx| {
-        try line.init(gpa, @intCast(line_idx), line_config, comm);
+        try line.init(gpa, @intCast(line_idx), line_config, &comm);
     }
     return .{ .lines = lines, .connection = comm };
 }
@@ -105,7 +104,8 @@ pub fn deinit(self: Mcl, gpa: std.mem.Allocator) void {
 
 /// Opens all channels used in all configured lines.
 pub fn open(self: Mcl) !void {
-    var channel_iterator = self.connection.channels.iterator();
+    var channel_iterator =
+        self.connection.cclink.channels.iterator();
     while (channel_iterator.next()) |channel| {
         channel.value_ptr.* = try channel.key_ptr.open();
     }
@@ -113,7 +113,7 @@ pub fn open(self: Mcl) !void {
 
 /// Closes all channels used in all configured lines.
 pub fn close(self: Mcl) !void {
-    var channel_iterator = self.connection.channels.iterator();
+    var channel_iterator = self.connection.cclink.channels.iterator();
     while (channel_iterator.next()) |channel| {
         const path = channel.value_ptr.* orelse continue;
         channel.value_ptr.* = null;

@@ -6,6 +6,7 @@ const protocol = @import("protocol.zig");
 const Axis = @import("Axis.zig");
 const Station = @import("Station.zig");
 const Config = @import("Config.zig");
+const Mcl = @import("Mcl.zig");
 
 // The maximum number of stations is also the maximum number of lines, as
 // there can be a minimum of one station per line.
@@ -31,14 +32,19 @@ y: []Station.Y,
 wr: []Station.Wr,
 ww: []Station.Ww,
 
-connection: protocol.Cclink.Line,
+connection: Connection,
+
+const Connection = union(enum) {
+    cclink: protocol.Cclink.Line,
+    ethercat: protocol.Ethercat.Line,
+};
 
 pub fn init(
     self: *Line,
     gpa: std.mem.Allocator,
     line_index: Index,
     config: Config.Line,
-    connection: *protocol.Cclink,
+    connection: *const Mcl.Connection,
 ) !void {
     self.index = line_index;
     self.id = line_index + 1;
@@ -47,8 +53,6 @@ pub fn init(
     self.slider_length = config.slider.length;
     self.name = try gpa.dupe(u8, config.name);
     errdefer gpa.free(self.name);
-    self.connection = try .init(gpa, config.ranges, connection);
-    errdefer self.connection.deinit(gpa);
     self.axes = try gpa.alloc(Axis, config.axes);
     errdefer gpa.free(self.axes);
     self.stations = try gpa.alloc(Station, (config.axes - 1) / 3 + 1);
@@ -61,6 +65,18 @@ pub fn init(
     errdefer gpa.free(self.wr);
     self.ww = try gpa.alloc(Station.Ww, self.stations.len);
     errdefer gpa.free(self.ww);
+    switch (connection.*) {
+        .cclink => |cclink| {
+            self.connection.cclink = try .init(gpa, config.drivers, cclink);
+        },
+        .ethercat => |ethercat| {
+            self.connection.ethercat = .init(
+                ethercat.slaves,
+                ethercat.master.lock,
+                config.drivers,
+            );
+        },
+    }
 
     @memset(self.x, std.mem.zeroes(Station.X));
     @memset(self.y, std.mem.zeroes(Station.Y));
@@ -68,41 +84,55 @@ pub fn init(
     @memset(self.ww, std.mem.zeroes(Station.Ww));
 
     var num_axes: usize = 0;
-
-    for (config.ranges) |range| {
-        for (0..range.end - range.start + 1) |station_i| {
-            const start_num_axes = num_axes;
-            for (0..3) |axis_i| {
-                if (num_axes >= self.axes.len) break;
-                self.axes[num_axes] = .{
-                    .station = &self.stations[station_i],
-                    .index = .{
-                        .station = @intCast(axis_i),
-                        .line = @intCast(num_axes),
-                    },
-                    .id = .{
-                        .station = @intCast(axis_i + 1),
-                        .line = @intCast(num_axes + 1),
-                    },
-                    .length = config.axis.length,
-                };
-                num_axes += 1;
-            }
-            self.stations[station_i] = .{
-                .line = self,
-                .index = @intCast(station_i),
-                .id = @intCast(station_i + 1),
-                .x = &self.x[station_i],
-                .y = &self.y[station_i],
-                .wr = &self.wr[station_i],
-                .ww = &self.ww[station_i],
-                .axes = self.axes[start_num_axes..num_axes],
-                .connection = .{
-                    .path = connection.channels.getPtr(range.channel).?,
-                    .index = @intCast(range.start - 1 + station_i),
+    var num_drivers: usize = 0;
+    for (config.drivers) |driver| {
+        const axes = switch (driver) {
+            .cclink => |cclink| cclink.axes,
+            .ethercat => |ethercat| ethercat.axes,
+        };
+        const start_num_axes = num_axes;
+        for (0..axes) |axis_i| {
+            self.axes[num_axes] = .{
+                .station = &self.stations[num_drivers],
+                .index = .{
+                    .station = @intCast(axis_i),
+                    .line = @intCast(num_axes),
                 },
+                .id = .{
+                    .station = @intCast(axis_i + 1),
+                    .line = @intCast(num_axes + 1),
+                },
+                .length = config.axis.length,
             };
+            num_axes += 1;
         }
+        self.stations[num_drivers] = .{
+            .line = self,
+            .index = @intCast(num_drivers),
+            .id = @intCast(num_drivers + 1),
+            .x = &self.x[num_drivers],
+            .y = &self.y[num_drivers],
+            .wr = &self.wr[num_drivers],
+            .ww = &self.ww[num_drivers],
+            .axes = self.axes[start_num_axes..num_axes],
+            .connection = connection: {
+                switch (connection.*) {
+                    .cclink => |cclink| break :connection .{
+                        .cclink = .{
+                            .path = cclink.channels.getPtr(driver.cclink.channel).?,
+                            .index = @intCast(driver.cclink.station_id - 1),
+                        },
+                    },
+                    .ethercat => |ethercat| break :connection .{
+                        .ethercat = .{
+                            .slave = &ethercat.master.ctx.slavelist[driver.ethercat.station_id],
+                            .lock = ethercat.master.lock,
+                        },
+                    },
+                }
+            },
+        };
+        num_drivers += 1;
     }
 }
 
@@ -114,43 +144,129 @@ pub fn deinit(self: Line, gpa: std.mem.Allocator) void {
     gpa.free(self.y);
     gpa.free(self.wr);
     gpa.free(self.ww);
-    self.connection.deinit(gpa);
+    if (self.connection == .cclink) {
+        self.connection.cclink.deinit(gpa);
+    }
 }
 
-pub fn poll(self: Line) (protocol.Cclink.Error || mdfunc.Error)!void {
-    try self.connection.pollX(self.x);
-    try self.connection.pollY(self.y);
-    try self.connection.pollWr(self.wr);
-    try self.connection.pollWw(self.ww);
+pub fn poll(
+    self: Line,
+    io: std.Io,
+) !void {
+    switch (self.connection) {
+        .cclink => |cclink| {
+            try cclink.pollX(self.x);
+            try cclink.pollY(self.y);
+            try cclink.pollWr(self.wr);
+            try cclink.pollWw(self.ww);
+        },
+        .ethercat => |ethercat| {
+            try ethercat.pollX(io, self.x);
+            try ethercat.pollY(io, self.y);
+            try ethercat.pollWr(io, self.wr);
+            try ethercat.pollWw(io, self.ww);
+        },
+    }
 }
 
-pub fn pollX(self: Line) (protocol.Cclink.Error || mdfunc.Error)!void {
-    try self.connection.pollX(self.x);
+pub fn pollX(
+    self: Line,
+    io: std.Io,
+) !void {
+    switch (self.connection) {
+        .cclink => |cclink| {
+            try cclink.pollX(self.x);
+        },
+        .ethercat => |ethercat| {
+            try ethercat.pollX(io, self.x);
+        },
+    }
 }
 
-pub fn pollY(self: Line) (protocol.Cclink.Error || mdfunc.Error)!void {
-    try self.connection.pollY(self.y);
+pub fn pollY(
+    self: Line,
+    io: std.Io,
+) !void {
+    switch (self.connection) {
+        .cclink => |cclink| {
+            try cclink.pollY(self.y);
+        },
+        .ethercat => |ethercat| {
+            try ethercat.pollY(io, self.y);
+        },
+    }
 }
 
-pub fn pollWr(self: Line) (protocol.Cclink.Error || mdfunc.Error)!void {
-    try self.connection.pollWr(self.wr);
+pub fn pollWr(
+    self: Line,
+    io: std.Io,
+) !void {
+    switch (self.connection) {
+        .cclink => |cclink| {
+            try cclink.pollWr(self.wr);
+        },
+        .ethercat => |ethercat| {
+            try ethercat.pollWr(io, self.wr);
+        },
+    }
 }
 
-pub fn pollWw(self: Line) (protocol.Cclink.Error || mdfunc.Error)!void {
-    try self.connection.pollWw(self.ww);
+pub fn pollWw(
+    self: Line,
+    io: std.Io,
+) !void {
+    switch (self.connection) {
+        .cclink => |cclink| {
+            try cclink.pollWw(self.ww);
+        },
+        .ethercat => |ethercat| {
+            try ethercat.pollWw(io, self.ww);
+        },
+    }
 }
 
-pub fn send(self: Line) (protocol.Cclink.Error || mdfunc.Error)!void {
-    try self.connection.sendWw(self.ww);
-    try self.connection.sendY(self.y);
+pub fn send(
+    self: Line,
+    io: std.Io,
+) !void {
+    switch (self.connection) {
+        .cclink => |cclink| {
+            try cclink.sendWw(self.ww);
+            try cclink.sendY(self.y);
+        },
+        .ethercat => |ethercat| {
+            try ethercat.sendWw(io, self.ww);
+            try ethercat.sendY(io, self.y);
+        },
+    }
 }
 
-pub fn sendY(self: Line) (protocol.Cclink.Error || mdfunc.Error)!void {
-    try self.connection.sendY(self.y);
+pub fn sendY(
+    self: Line,
+    io: std.Io,
+) !void {
+    switch (self.connection) {
+        .cclink => |cclink| {
+            try cclink.sendY(self.y);
+        },
+        .ethercat => |ethercat| {
+            try ethercat.sendY(io, self.y);
+        },
+    }
 }
 
-pub fn sendWw(self: Line) (protocol.Cclink.Error || mdfunc.Error)!void {
-    try self.connection.sendWw(self.ww);
+pub fn sendWw(
+    self: Line,
+    io: std.Io,
+) !void {
+    switch (self.connection) {
+        .cclink => |cclink| {
+            try cclink.sendWw(self.ww);
+        },
+        .ethercat => |ethercat| {
+            try ethercat.sendWw(io, self.ww);
+        },
+    }
 }
 
 /// Return the axis of the specified slider, if found in the system. If the
