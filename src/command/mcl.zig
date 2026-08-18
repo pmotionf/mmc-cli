@@ -14,6 +14,7 @@ pub const Config = Mcl.Config;
 pub fn init(gpa: std.mem.Allocator, io: std.Io, c: Config) !void {
     try Mcl.Config.validate(.{ .lines = c.lines });
     mcl = try .init(gpa, io, .{ .lines = c.lines });
+    errdefer mcl.deinit(gpa);
 
     try command.registry.put(gpa, "CONNECT", .{
         .name = "CONNECT",
@@ -773,7 +774,7 @@ pub fn deinit(gpa: std.mem.Allocator) void {
 }
 
 fn mclConnect(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
-    try mcl.open();
+    try mcl.open(io);
     for (mcl.lines) |line| {
         for (line.stations) |station| {
             station.y.cc_link_enable = true;
@@ -789,7 +790,7 @@ fn mclDisconnect(io: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
             try station.send(io);
         }
     }
-    try mcl.close();
+    try mcl.close(io);
 }
 
 fn mclStationX(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {

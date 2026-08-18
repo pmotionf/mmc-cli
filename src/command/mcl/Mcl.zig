@@ -3,6 +3,8 @@ const mdfunc = @import("mdfunc");
 
 pub const registers = @import("mmc-api").registers;
 const protocol = @import("protocol.zig");
+const soem = protocol.Ethercat.soem;
+const command = @import("../../command.zig");
 
 pub const Config = @import("Config.zig");
 pub const Axis = @import("Axis.zig");
@@ -103,21 +105,43 @@ pub fn deinit(self: Mcl, gpa: std.mem.Allocator) void {
 }
 
 /// Opens all channels used in all configured lines.
-pub fn open(self: Mcl) !void {
-    var channel_iterator =
-        self.connection.cclink.channels.iterator();
-    while (channel_iterator.next()) |channel| {
-        channel.value_ptr.* = try channel.key_ptr.open();
+pub fn open(self: Mcl, io: std.Io) !void {
+    switch (self.connection) {
+        .cclink => |cclink| {
+            var channel_iterator = cclink.channels.iterator();
+            while (channel_iterator.next()) |channel| {
+                channel.value_ptr.* = try channel.key_ptr.open();
+            }
+        },
+        .ethercat => |ethercat| {
+            try ethercat.master.open(io);
+            errdefer ethercat.master.close(io) catch {};
+            _ = try io.concurrent(
+                protocol.Ethercat.Board.process,
+                .{ io, &ethercat.master },
+            );
+            while (ethercat.master.ctx.slavelist[0].state != soem.EC_STATE_OPERATIONAL) {
+                _ = soem.ecx_readstate(ethercat.master.ctx);
+                try command.checkCommandInterrupt();
+            }
+        },
     }
 }
 
 /// Closes all channels used in all configured lines.
-pub fn close(self: Mcl) !void {
-    var channel_iterator = self.connection.cclink.channels.iterator();
-    while (channel_iterator.next()) |channel| {
-        const path = channel.value_ptr.* orelse continue;
-        channel.value_ptr.* = null;
-        try mdfunc.close(path);
+pub fn close(self: Mcl, io: std.Io) !void {
+    switch (self.connection) {
+        .cclink => |cclink| {
+            var channel_iterator = cclink.channels.iterator();
+            while (channel_iterator.next()) |channel| {
+                const path = channel.value_ptr.* orelse continue;
+                channel.value_ptr.* = null;
+                try mdfunc.close(path);
+            }
+        },
+        .ethercat => |ethercat| {
+            try ethercat.master.close(io);
+        },
     }
 }
 

@@ -2,14 +2,14 @@ const std = @import("std");
 pub const soem = @import("soem");
 const registers = @import("../Mcl.zig").registers;
 const protocol = @import("../protocol.zig");
-const Ethercat = @import("ethercat/Ethercat.zig");
+pub const Board = @import("ethercat/Ethercat.zig");
 
 const X = registers.X;
 const Y = registers.Y;
 const Wr = registers.Wr;
 const Ww = registers.Ww;
 pub const Id = std.math.IntFittingRange(1, 256);
-master: Ethercat,
+master: Board,
 /// List of all initialized slaves
 slaves: []soem.ec_slavet,
 
