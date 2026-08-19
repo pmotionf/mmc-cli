@@ -204,7 +204,7 @@ pub const Line = struct {
         for (self.slaves, y) |slave, *y_station| {
             @memcpy(
                 std.mem.asBytes(y_station),
-                slave.inputs[0..@sizeOf(Y)],
+                slave.outputs[0..@sizeOf(Y)],
             );
         }
     }
@@ -221,7 +221,7 @@ pub const Line = struct {
         for (self.slaves, wr) |slave, *wr_station| {
             @memcpy(
                 std.mem.asBytes(wr_station),
-                slave.inputs[0..@sizeOf(Wr)],
+                slave.inputs[@sizeOf(X) .. @sizeOf(X) + @sizeOf(Wr)],
             );
         }
     }
@@ -238,7 +238,7 @@ pub const Line = struct {
         for (self.slaves, ww) |slave, *ww_station| {
             @memcpy(
                 std.mem.asBytes(ww_station),
-                slave.inputs[0..@sizeOf(Ww)],
+                slave.outputs[@sizeOf(Y) .. @sizeOf(Y) + @sizeOf(Ww)],
             );
         }
     }
@@ -271,7 +271,7 @@ pub const Line = struct {
         defer self.lock.unlock(io);
         for (self.slaves, ww) |slave, *ww_station| {
             @memcpy(
-                slave.outputs[0..@sizeOf(Ww)],
+                slave.outputs[@sizeOf(Y) .. @sizeOf(Y) + @sizeOf(Ww)],
                 std.mem.asBytes(ww_station),
             );
         }
