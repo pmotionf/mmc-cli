@@ -1,4 +1,5 @@
 const std = @import("std");
+
 const Translator = @import("translate_c").Translator;
 
 pub fn build(b: *std.Build) !void {
@@ -37,6 +38,11 @@ pub fn build(b: *std.Build) !void {
     trans_soem.mod.addCSourceFile(.{
         .file = b.path("src/command/mcl/protocol/ethercat/soem_shim.c"),
     });
+
+    // Building this library requires the wpcap bundled by SOEM
+    if (target.result.os.tag == .windows) {
+        trans_soem.mod.addLibraryPath(soem.namedLazyPath("wpcap_lib_dir"));
+    }
 
     const mdfunc_lib_path = b.option(
         []const u8,
