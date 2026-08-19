@@ -20,9 +20,17 @@ pub const Config = struct {
     axes: u2,
 };
 
-pub fn deinit(self: @This(), gpa: std.mem.Allocator) void {
+pub fn init(gpa: std.mem.Allocator, io: std.Io) !@This() {
+    var res: @This() = undefined;
+    res.master = try .init(gpa, io);
+    const slaves: usize = @intCast(res.master.ctx.slavecount);
+    res.slaves = res.master.ctx.slavelist[0 .. slaves + 1];
+    return res;
+}
+
+pub fn deinit(self: *@This(), gpa: std.mem.Allocator) void {
     self.master.deinit(gpa);
-    gpa.free(self.slaves);
+    self.slaves = &.{};
 }
 
 pub const Station = struct {
@@ -167,10 +175,10 @@ pub const Line = struct {
         lock: *std.Io.RwLock,
         drivers: []protocol.Config,
     ) Line {
-        const start_id = drivers[0].ethercat.station_id;
-        const end_id = drivers[drivers.len - 1].ethercat.station_id;
+        const start = drivers[0].ethercat.station_id;
+        const end = drivers[drivers.len - 1].ethercat.station_id + 1;
         return .{
-            .slaves = slaves[start_id..end_id],
+            .slaves = slaves[start..end],
             .lock = lock,
         };
     }

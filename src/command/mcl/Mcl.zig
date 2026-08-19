@@ -38,7 +38,7 @@ pub const Connection = union(Kind) {
             .ethercat => {
                 const ethercat = try gpa.create(protocol.Ethercat);
                 errdefer gpa.destroy(ethercat);
-                ethercat.* = .{ .master = try .init(gpa, io), .slaves = &.{} };
+                ethercat.* = try .init(gpa, io);
                 return .{ .ethercat = ethercat };
             },
         }
@@ -85,10 +85,6 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io, config: Config) !Mcl {
             }
             driver_num += 1;
         }
-    }
-    if (comm == .ethercat) {
-        comm.ethercat.slaves =
-            try gpa.alloc(protocol.Ethercat.soem.ec_slavet, driver_num);
     }
     for (config.lines, lines, 0..) |line_config, *line, line_idx| {
         try line.init(gpa, @intCast(line_idx), line_config, &comm);
