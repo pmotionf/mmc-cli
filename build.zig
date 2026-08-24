@@ -1,8 +1,48 @@
 const std = @import("std");
 
+const Translator = @import("translate_c").Translator;
+
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+
+    switch (target.result.os.tag) {
+        .windows, .linux => {},
+        else => return error.UnsupportedOs,
+    }
+    const translate_c = b.dependency("translate_c", .{
+        .target = b.graph.host,
+        .optimize = optimize,
+    });
+
+    const soem = b.dependency("soem", .{
+        .target = target,
+        .optimize = optimize,
+        .EC_TIMEOUTRET = 1000,
+        // Maximum slaves match maximum cclink stations
+        .EC_MAXSLAVE = 257,
+    });
+
+    const trans_soem: Translator = .init(translate_c, .{
+        .c_source_file = b.addWriteFiles().add("c.h",
+            \\#include <soem/soem.h>
+        ),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    trans_soem.linkLibrary(soem.artifact("soem"));
+    // Workaround for the wrong alignment caused by #pragma pack.
+    // TODO: Remove this one once the zig 0.17.0 is used. This problem might be
+    // fixed with https://codeberg.org/ziglang/translate-c/commit/174a76a5b20c0fde03032d9c1cc9d4a78a6318af
+    trans_soem.mod.addCSourceFile(.{
+        .file = b.path("src/command/mcl/protocol/ethercat/soem_shim.c"),
+    });
+
+    // Building this library requires the wpcap bundled by SOEM
+    if (target.result.os.tag == .windows) {
+        trans_soem.mod.addLibraryPath(soem.namedLazyPath("wpcap_lib_dir"));
+    }
 
     const mdfunc_lib_path = b.option(
         []const u8,
@@ -40,6 +80,7 @@ pub fn build(b: *std.Build) !void {
         .{ .name = "build.zig.zon", .module = build_zig_zon },
         .{ .name = "chrono", .module = chrono.module("chrono") },
         .{ .name = "mmc-api", .module = mmc_api.module("mmc-api") },
+        .{ .name = "soem", .module = trans_soem.mod },
     };
 
     const mod = b.createModule(.{

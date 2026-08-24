@@ -16,6 +16,14 @@
             .url = "https://github.com/pmotionf/mdfunc.zig/archive/6d70ce0.tar.gz",
             .hash = "mdfunc-0.0.5-k9D_qBiuAADEPbD9zlxCm_bwaA41w9vCZuVH-ENIdkFe",
         },
+        .soem = .{
+            .url = "git+https://github.com/aaumar25/SOEM.git#38b9304f4036c062525b7f5e30bcad4cca01817a",
+            .hash = "soem-2.0.0-XrzE9OI0AABfD8Cj7MOIsWz9O1KamyUdWF2RgJLAjraU",
+        },
+        .translate_c = .{
+            .url = "git+https://codeberg.org/ziglang/translate-c?ref=zig-0.16.x#6fe0ffc4549f15c5f2d9432c2b4460ba90ff85ac",
+            .hash = "translate_c-1.0.0-Q_BUWo_5BgD4flHdUhA31zOz0XvZk9k7lQv1ouzyNXj2",
+        },
     },
     .paths = .{""},
 }
