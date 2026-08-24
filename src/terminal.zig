@@ -7,7 +7,7 @@ var original_canonical_context: OriginalCanonicalContext = undefined;
 
 /// Runs necessary setup for terminal IO. Must be called exactly once before
 /// any other IO function.
-pub fn init() !void {
+pub fn init(io: std.Io) !void {
     switch (comptime builtin.os.tag) {
         .linux => {
             const stdin = std.Io.File.stdin().handle;
@@ -30,6 +30,7 @@ pub fn init() !void {
             try std.posix.tcsetattr(stdin, .NOW, attr);
         },
         .windows => {
+            _ = try std.Io.File.stdout().enableAnsiEscapeCodes(io);
             const stdin = std.Io.File.stdin().handle;
 
             if (IsValidCodePage(65001).toBool() == false) {
@@ -269,6 +270,96 @@ pub const cursor = struct {
     /// Move cursor to provided column.
     pub fn moveColumn(writer: *std.Io.Writer, column: usize) !void {
         try writer.print("\x1B[{d}G", .{column});
+    }
+
+    /// Move cursor to a specific location.
+    pub fn moveTo(writer: *std.Io.Writer, row: usize, column: usize) !void {
+        try writer.print("\x1B[{d};{d}H", .{ row, column });
+    }
+
+    /// Move cursor up. Relative to the current position.
+    pub fn moveRowUp(writer: *std.Io.Writer, row: usize) !void {
+        if (row == 0) return;
+        try writer.print("\x1B[{d}A", .{row});
+    }
+
+    /// Move cursor down. Relative to the current position.
+    pub fn moveRowDown(writer: *std.Io.Writer, row: usize) !void {
+        if (row == 0) return;
+        try writer.print("\x1B[{d}B", .{row});
+    }
+
+    /// Erase everything from the current cursor position to the end of the line.
+    pub fn clearLine(writer: *std.Io.Writer) !void {
+        try writer.print("\x1B[K", .{});
+    }
+
+    /// Erase everything from the current cursor position to the end of the screen.
+    pub fn clearAfter(writer: *std.Io.Writer) !void {
+        try writer.print("\x1B[J", .{});
+    }
+
+    /// Save current cursor position.
+    pub fn saveCursorPos(writer: *std.Io.Writer) !void {
+        try writer.print("\x1B7", .{});
+    }
+
+    /// Restore Cursor Postion after it was saved with saveCursorPos().
+    pub fn restoreCursorPos(writer: *std.Io.Writer) !void {
+        try writer.print("\x1B8", .{});
+    }
+
+    /// Move to the first column of the next row.
+    pub fn newLine(writer: *std.Io.Writer) !void {
+        try writer.writeAll("\r\n");
+    }
+};
+
+pub const window = struct {
+    pub const Size = struct {
+        rows: u16,
+        cols: u16,
+    };
+
+    pub fn getSize() !Size {
+        switch (comptime builtin.os.tag) {
+            .linux => {
+                var ws: std.posix.winsize =
+                    .{ .row = 0, .col = 0, .xpixel = 0, .ypixel = 0 };
+                const rc = std.posix.system.ioctl(
+                    std.Io.File.stdout().handle,
+                    std.posix.T.IOCGWINSZ,
+                    @intFromPtr(&ws),
+                );
+                if (std.posix.errno(rc) != .SUCCESS or
+                    ws.row == 0 or
+                    ws.col == 0) return error.TerminalSizeUnavailable;
+
+                return .{ .rows = ws.row, .cols = ws.col };
+            },
+            .windows => {
+                var info: CONSOLE_SCREEN_BUFFER_INFO = undefined;
+                if (GetConsoleScreenBufferInfo(
+                    std.Io.File.stdout().handle,
+                    &info,
+                ).toBool() == false) {
+                    return error.TerminalSizeUnavailable;
+                }
+                return .{
+                    .rows = @intCast(info.srWindow.Bottom - info.srWindow.Top + 1),
+                    .cols = @intCast(info.srWindow.Right - info.srWindow.Left + 1),
+                };
+            },
+            else => @compileError("unsupported OS"),
+        }
+    }
+
+    pub fn getRows() !u16 {
+        return (try getSize()).rows;
+    }
+
+    pub fn getCols() !u16 {
+        return (try getSize()).cols;
     }
 };
 
@@ -826,6 +917,26 @@ const OriginalCanonicalContext = switch (builtin.os.tag) {
     .windows => CONSOLE_MODE,
     else => @compileError("unsupported OS"),
 };
+
+const COORD = extern struct { X: i16, Y: i16 };
+const SMALL_RECT = extern struct {
+    Left: i16,
+    Top: i16,
+    Right: i16,
+    Bottom: i16,
+};
+const CONSOLE_SCREEN_BUFFER_INFO = extern struct {
+    dwSize: COORD,
+    dwCursorPosition: COORD,
+    wAttributes: u16,
+    srWindow: SMALL_RECT,
+    dwMaximumWindowSize: COORD,
+};
+
+extern "kernel32" fn GetConsoleScreenBufferInfo(
+    hConsoleOutput: std.os.windows.HANDLE,
+    lpConsoleScreenBufferInfo: *CONSOLE_SCREEN_BUFFER_INFO,
+) callconv(.winapi) std.os.windows.BOOL;
 
 extern "kernel32" fn IsValidCodePage(
     cp: std.os.windows.UINT,
