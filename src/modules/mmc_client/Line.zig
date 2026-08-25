@@ -5,7 +5,7 @@ const CoreResponse = @FieldType(api.protobuf.mmc.Response.body_union, "core");
 
 index: Line.Index,
 id: Line.Id,
-axes: u10,
+axes: std.math.IntFittingRange(1, max_axis),
 name: []u8,
 velocity: f32,
 acceleration: f32,
@@ -13,7 +13,7 @@ length: struct {
     axis: f32,
     carrier: f32,
 },
-drivers: std.math.IntFittingRange(1, max_axis),
+drivers: std.math.IntFittingRange(1, max_driver),
 
 /// Maximum number of drivers
 pub const max_driver = 64 * 4;
@@ -27,7 +27,9 @@ pub fn init(
     config: CoreResponse.TrackConfig.Line,
 ) !Line {
     var result: Line = undefined;
-    if (config.axes > std.math.maxInt(u10)) return error.InvalidConfiguration;
+    if (config.axes > max_axis or config.drivers.items.len > max_driver) {
+        return error.InvalidConfiguration;
+    }
     result.index = index;
     result.id = @as(Id, index) + 1;
     result.acceleration = 7800; // mm/s^2
@@ -38,7 +40,7 @@ pub fn init(
     };
     result.name = try gpa.dupe(u8, config.name);
     result.axes = @intCast(config.axes);
-    result.drivers = @intCast(config.drivers);
+    result.drivers = @intCast(config.drivers.items.len);
     return result;
 }
 
