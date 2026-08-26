@@ -44,6 +44,7 @@ pub fn handler(io: std.Io, ctx: *Prompt) !void {
     var stdout = std.Io.File.stdout().writer(io, &stdout_buf);
 
     var prev_disable: bool = true;
+    var rendered_cursor_row: usize = 0;
     main: while (!ctx.close.load(.monotonic)) {
         if (ctx.disable.load(.monotonic)) {
             prev_disable = true;
@@ -403,7 +404,11 @@ pub fn handler(io: std.Io, ctx: *Prompt) !void {
         };
         ctx.complete_partial_start = start_completion;
 
+        const window_width: usize = terminal.window.getCols() catch continue :main;
+
         // Return to the first physical row of the input.
+        terminal.cursor.moveRowUp(&stdout.interface, rendered_cursor_row) catch
+            continue :main;
         terminal.cursor.moveColumn(&stdout.interface, 1) catch continue :main;
         terminal.cursor.clearAfter(&stdout.interface) catch continue :main;
 
@@ -639,12 +644,31 @@ pub fn handler(io: std.Io, ctx: *Prompt) !void {
             }
         }
 
+        const saved_cursor = ctx.cursor;
+        ctx.cursor.moveEnd();
+        const input_width: usize = ctx.cursor.visible;
+        ctx.cursor = saved_cursor;
+        const input_rows: usize =
+            @max(1, (input_width + window_width - 1) / window_width);
+
         // Hint line
         terminal.cursor.newLine(&stdout.interface) catch continue :main;
         renderArgHintLine(ctx, &stdout.interface) catch continue :main;
-        terminal.cursor.moveRowUp(&stdout.interface, 1) catch continue :main;
-        terminal.cursor.moveColumn(&stdout.interface, ctx.cursor.visible + 1) catch
-            continue :main;
+
+        var cursor_row: usize = ctx.cursor.visible / window_width;
+        var cursor_col: usize = ctx.cursor.visible % window_width;
+        if (ctx.cursor.isAtEnd() and
+            ctx.cursor.visible > 0 and
+            ctx.cursor.visible % window_width == 0)
+        {
+            cursor_row -= 1;
+            cursor_col = window_width - 1;
+        }
+        terminal.cursor.moveRowUp(&stdout.interface, input_rows) catch continue :main;
+        terminal.cursor.moveRowDown(&stdout.interface, cursor_row) catch continue :main;
+        terminal.cursor.moveColumn(&stdout.interface, cursor_col + 1) catch continue :main;
+
+        rendered_cursor_row = cursor_row;
     }
 }
 
