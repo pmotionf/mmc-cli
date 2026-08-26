@@ -300,6 +300,9 @@ pub const Command = union(enum) {
             []const u8,
             res.executable.parameters.len,
         );
+        for (res.params) |*param| {
+            param.* = &.{};
+        }
         errdefer res.deinit(gpa);
 
         for (res.executable.parameters, 0..) |param, i| {
