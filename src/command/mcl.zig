@@ -621,100 +621,6 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io, c: Config) !void {
         .execute = &mclSliderStopPull,
     });
     errdefer _ = command.registry.orderedRemove("STOP_PULL_SLIDER");
-    try command.registry.put(gpa, "SLIDER_CHAIN_LINK", .{
-        .name = "SLIDER_CHAIN_LINK",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "first axis" },
-            .{ .name = "second axis" },
-        },
-        .short_description = "Link sliders on two axes in a chain.",
-        .long_description =
-        \\Link sliders on two axes in a chain.
-        ,
-        .execute = &mclSliderChainLink,
-    });
-    errdefer _ = command.registry.orderedRemove("SLIDER_CHAIN_LINK");
-    try command.registry.put(gpa, "SLIDER_CHAIN_UNLINK", .{
-        .name = "SLIDER_CHAIN_UNLINK",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "first axis" },
-            .{ .name = "second axis" },
-        },
-        .short_description = "Unlink sliders on two axes from a chain.",
-        .long_description =
-        \\Unlink sliders on two axes from a chain.
-        ,
-        .execute = &mclSliderChainUnlink,
-    });
-    errdefer _ = command.registry.orderedRemove("SLIDER_CHAIN_UNLINK");
-    try command.registry.put(gpa, "SET_LEFT_CHAIN_ON", .{
-        .name = "SET_LEFT_CHAIN_ON",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-        },
-        .short_description = "Link sliders on axis and backwards axis.",
-        .long_description =
-        \\Link sliders on axis and backwards axis.
-        ,
-        .execute = &mclSetLeftChainOn,
-    });
-    errdefer _ = command.registry.orderedRemove("SET_LEFT_CHAIN_ON");
-    try command.registry.put(gpa, "SET_RIGHT_CHAIN_ON", .{
-        .name = "SET_RIGHT_CHAIN_ON",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-        },
-        .short_description = "Link sliders on axis and forwards axis.",
-        .long_description =
-        \\Link sliders on axis and forwards axis.
-        ,
-        .execute = &mclSetRightChainOn,
-    });
-    errdefer _ = command.registry.orderedRemove("SET_RIGHT_CHAIN_ON");
-    try command.registry.put(gpa, "SET_LEFT_CHAIN_OFF", .{
-        .name = "SET_LEFT_CHAIN_OFF",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-        },
-        .short_description = "Unlink sliders on axis and backwards axis.",
-        .long_description =
-        \\Unlink sliders on axis and backwards axis.
-        ,
-        .execute = &mclSetLeftChainOff,
-    });
-    errdefer _ = command.registry.orderedRemove("SET_LEFT_CHAIN_OFF");
-    try command.registry.put(gpa, "SET_RIGHT_CHAIN_OFF", .{
-        .name = "SET_RIGHT_CHAIN_OFF",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "axis" },
-        },
-        .short_description = "Unlink sliders on axis and forwards axis.",
-        .long_description =
-        \\Unlink sliders on axis and forwards axis.
-        ,
-        .execute = &mclSetRightChainOff,
-    });
-    errdefer _ = command.registry.orderedRemove("SET_RIGHT_CHAIN_OFF");
-    try command.registry.put(gpa, "MOVE_SLIDER_CHAIN", .{
-        .name = "MOVE_SLIDER_CHAIN",
-        .parameters = &[_]command.Command.Parameter{
-            .{ .name = "line name" },
-            .{ .name = "head slider ID" },
-            .{ .name = "destination axis" },
-        },
-        .short_description = "Move chain linked sliders to axis.",
-        .long_description =
-        \\Move chain linked sliders to axis.
-        ,
-        .execute = &mclMoveSliderChain,
-    });
-    errdefer _ = command.registry.orderedRemove("MOVE_SLIDER_CHAIN");
     try command.registry.put(gpa, "EMERGENCY_STOP_ON", .{
         .name = "EMERGENCY_STOP_ON",
         .parameters = &[_]command.Command.Parameter{
@@ -1371,13 +1277,13 @@ fn mclSliderPosMoveAxis(io: std.Io, _: std.mem.Allocator, params: [][]const u8) 
         } else {
             direction = .backward;
         }
-        main.station.y.stop_driver_transmission.setTo(direction, true);
+        main.station.y.stop_driver_transmission.set(direction);
         try main.station.sendY(io);
         defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
+            main.station.y.stop_driver_transmission.reset(direction);
             main.station.sendY(io) catch {};
         }
-        while (!main.station.x.transmission_stopped.to(direction)) {
+        while (!main.station.x.transmission_stopped.from(direction)) {
             try command.checkCommandInterrupt();
             try main.station.pollX(io);
         }
@@ -1444,13 +1350,13 @@ fn mclSliderPosMoveLocation(io: std.Io, _: std.mem.Allocator, params: [][]const 
     try checkCommandReady(io, station);
 
     if (_aux) |_| {
-        main.station.y.stop_driver_transmission.setTo(direction, true);
+        main.station.y.stop_driver_transmission.set(direction);
         try main.station.sendY(io);
         defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
+            main.station.y.stop_driver_transmission.reset(direction);
             main.station.sendY(io) catch {};
         }
-        while (!main.station.x.transmission_stopped.to(direction)) {
+        while (!main.station.x.transmission_stopped.from(direction)) {
             try command.checkCommandInterrupt();
             try main.station.pollX(io);
         }
@@ -1528,13 +1434,13 @@ fn mclSliderPosMoveDistance(io: std.Io, _: std.mem.Allocator, params: [][]const 
     try checkCommandReady(io, station);
 
     if (_aux) |_| {
-        main.station.y.stop_driver_transmission.setTo(direction, true);
+        main.station.y.stop_driver_transmission.set(direction);
         try main.station.sendY(io);
         defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
+            main.station.y.stop_driver_transmission.reset(direction);
             main.station.sendY(io) catch {};
         }
-        while (!main.station.x.transmission_stopped.to(direction)) {
+        while (!main.station.x.transmission_stopped.from(direction)) {
             try command.checkCommandInterrupt();
             try main.station.pollX(io);
         }
@@ -1591,13 +1497,13 @@ fn mclSliderSpdMoveAxis(io: std.Io, _: std.mem.Allocator, params: [][]const u8) 
         } else {
             direction = .backward;
         }
-        main.station.y.stop_driver_transmission.setTo(direction, true);
+        main.station.y.stop_driver_transmission.set(direction);
         try main.station.sendY(io);
         defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
+            main.station.y.stop_driver_transmission.reset(direction);
             main.station.sendY(io) catch {};
         }
-        while (!main.station.x.transmission_stopped.to(direction)) {
+        while (!main.station.x.transmission_stopped.from(direction)) {
             try command.checkCommandInterrupt();
             try main.station.pollX(io);
         }
@@ -1664,13 +1570,13 @@ fn mclSliderSpdMoveLocation(io: std.Io, _: std.mem.Allocator, params: [][]const 
     try checkCommandReady(io, station);
 
     if (_aux) |_| {
-        main.station.y.stop_driver_transmission.setTo(direction, true);
+        main.station.y.stop_driver_transmission.set(direction);
         try main.station.sendY(io);
         defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
+            main.station.y.stop_driver_transmission.reset(direction);
             main.station.sendY(io) catch {};
         }
-        while (!main.station.x.transmission_stopped.to(direction)) {
+        while (!main.station.x.transmission_stopped.from(direction)) {
             try command.checkCommandInterrupt();
             try main.station.pollX(io);
         }
@@ -1748,13 +1654,13 @@ fn mclSliderSpdMoveDistance(io: std.Io, _: std.mem.Allocator, params: [][]const 
     try checkCommandReady(io, station);
 
     if (_aux) |_| {
-        main.station.y.stop_driver_transmission.setTo(direction, true);
+        main.station.y.stop_driver_transmission.set(direction);
         try main.station.sendY(io);
         defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
+            main.station.y.stop_driver_transmission.reset(direction);
             main.station.sendY(io) catch {};
         }
-        while (!main.station.x.transmission_stopped.to(direction)) {
+        while (!main.station.x.transmission_stopped.from(direction)) {
             try command.checkCommandInterrupt();
             try main.station.pollX(io);
         }
@@ -1803,13 +1709,13 @@ fn mclSliderPushForward(io: std.Io, _: std.mem.Allocator, params: [][]const u8) 
     try checkCommandReady(io, station);
 
     if (_aux) |_| {
-        main.station.y.stop_driver_transmission.setTo(direction, true);
+        main.station.y.stop_driver_transmission.set(direction);
         try main.station.sendY(io);
         defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
+            main.station.y.stop_driver_transmission.reset(direction);
             main.station.sendY(io) catch {};
         }
-        while (!main.station.x.transmission_stopped.to(direction)) {
+        while (!main.station.x.transmission_stopped.from(direction)) {
             try command.checkCommandInterrupt();
             try main.station.pollX(io);
         }
@@ -1859,13 +1765,13 @@ fn mclSliderPushBackward(io: std.Io, _: std.mem.Allocator, params: [][]const u8)
     try checkCommandReady(io, station);
 
     if (_aux) |_| {
-        main.station.y.stop_driver_transmission.setTo(direction, true);
+        main.station.y.stop_driver_transmission.set(direction);
         try main.station.sendY(io);
         defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
+            main.station.y.stop_driver_transmission.reset(direction);
             main.station.sendY(io) catch {};
         }
-        while (!main.station.x.transmission_stopped.to(direction)) {
+        while (!main.station.x.transmission_stopped.from(direction)) {
             try command.checkCommandInterrupt();
             try main.station.pollX(io);
         }
@@ -2025,9 +1931,7 @@ fn mclWaitMoveSlider(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !vo
         const wr = station.wr;
 
         if (wr.slider_state.axis(main.index.station) == .PosMoveCompleted or
-            wr.slider_state.axis(main.index.station) == .SpdMoveCompleted or
-            wr.slider_state.axis(main.index.station) == .ChainCompleted or
-            wr.slider_state.axis(main.index.station) == .ChainSlaveCompleted)
+            wr.slider_state.axis(main.index.station) == .SpdMoveCompleted)
         {
             break;
         }
@@ -2044,9 +1948,7 @@ fn mclWaitMoveSlider(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !vo
                 next_station.wr.slider_state.axis(next_axis_index);
             if (slider_number == slider_id and
                 (slider_state == .PosMoveCompleted or
-                    slider_state == .SpdMoveCompleted or
-                    slider_state == .ChainCompleted or
-                    slider_state == .ChainSlaveCompleted))
+                    slider_state == .SpdMoveCompleted))
             {
                 break;
             }
@@ -2154,9 +2056,9 @@ fn mclTrafficStop(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void 
     const station = axis.station.*;
     try station.poll(io);
 
-    station.y.stop_driver_transmission.setTo(direction, true);
+    station.y.stop_driver_transmission.set(direction);
     try station.sendY(io);
-    while (!station.x.transmission_stopped.to(direction)) {
+    while (!station.x.transmission_stopped.from(direction)) {
         try command.checkCommandInterrupt();
         try station.pollX(io);
     }
@@ -2189,9 +2091,9 @@ fn mclTrafficAllow(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void
     const station = axis.station.*;
     try station.poll(io);
 
-    station.y.stop_driver_transmission.setTo(direction, false);
+    station.y.stop_driver_transmission.reset(direction);
     try station.sendY(io);
-    while (station.x.transmission_stopped.to(direction)) {
+    while (station.x.transmission_stopped.from(direction)) {
         try command.checkCommandInterrupt();
         try station.pollX(io);
     }
@@ -2234,396 +2136,6 @@ fn mclWaitRecoverSlider(io: std.Io, _: std.mem.Allocator, params: [][]const u8) 
             try std.fmt.bufPrint(&int_buf, "{d}", .{slider_id}),
         );
     }
-}
-
-fn mclSliderChainLink(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const first_axis: Mcl.Axis.Id.Line =
-        try std.fmt.parseUnsigned(Mcl.Axis.Id.Line, params[1], 0);
-    const second_axis: Mcl.Axis.Id.Line =
-        try std.fmt.parseUnsigned(Mcl.Axis.Id.Line, params[2], 0);
-
-    const line = try mcl.getLine(line_name);
-
-    if (first_axis == 0 or first_axis > line.axes.len) {
-        return error.InvalidAxis;
-    }
-    if (second_axis == 0 or second_axis > line.axes.len) {
-        return error.InvalidAxis;
-    }
-
-    if (@abs(first_axis - second_axis) != 1) {
-        return error.InvalidAxisPair;
-    }
-
-    const axis = line.axes[first_axis - 1];
-    const axis_two = line.axes[second_axis - 1];
-    const station = line.axes[first_axis - 1].station;
-    const station_two = axis_two.station;
-    try station.pollWr(io);
-    try station_two.pollWr(io);
-
-    if (station.wr.slider_number.axis(axis.index.station) == 0) {
-        return error.NoSliderOnAxis;
-    }
-    if (station_two.wr.slider_number.axis(axis_two.index.station) == 0) {
-        return error.NoSliderOnAxis;
-    }
-
-    if (second_axis > first_axis) {
-        station.y.link_chain.setAxis(
-            axis.index.station,
-            .{ .forward = true },
-        );
-    } else {
-        station.y.link_chain.setAxis(
-            axis.index.station,
-            .{ .backward = true },
-        );
-    }
-    try station.sendY(io);
-    defer {
-        if (second_axis > first_axis) {
-            station.y.link_chain.setAxis(
-                axis.index.station,
-                .{ .forward = false },
-            );
-        } else {
-            station.y.link_chain.setAxis(
-                axis.index.station,
-                .{ .backward = false },
-            );
-        }
-        station.sendY(io) catch {};
-    }
-
-    while (true) {
-        try command.checkCommandInterrupt();
-        try station.pollX(io);
-
-        if (second_axis > first_axis and
-            station.x.chain_enabled.axis(axis.index.station).forward)
-        {
-            break;
-        } else if (second_axis < first_axis and
-            station.x.chain_enabled.axis(axis.index.station).backward)
-        {
-            break;
-        }
-    }
-}
-
-fn mclSliderChainUnlink(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const first_axis: Mcl.Axis.Id.Line =
-        try std.fmt.parseUnsigned(Mcl.Axis.Id.Line, params[1], 0);
-    const second_axis: Mcl.Axis.Id.Line =
-        try std.fmt.parseUnsigned(Mcl.Axis.Id.Line, params[2], 0);
-
-    const line = try mcl.getLine(line_name);
-
-    if (first_axis == 0 or first_axis > line.axes.len) {
-        return error.InvalidAxis;
-    }
-    if (second_axis == 0 or second_axis > line.axes.len) {
-        return error.InvalidAxis;
-    }
-
-    if (@abs(first_axis - second_axis) != 1) {
-        return error.InvalidAxisPair;
-    }
-
-    const axis = line.axes[first_axis - 1];
-    const axis_two = line.axes[second_axis - 1];
-    const station = line.axes[first_axis - 1].station;
-    const station_two = axis_two.station;
-    try station.pollWr(io);
-    try station_two.pollWr(io);
-
-    if (station.wr.slider_number.axis(axis.index.station) == 0) {
-        return error.NoSliderOnAxis;
-    }
-    if (station_two.wr.slider_number.axis(axis_two.index.station) == 0) {
-        return error.NoSliderOnAxis;
-    }
-
-    if (second_axis > first_axis) {
-        station.y.unlink_chain.setAxis(
-            axis.index.station,
-            .{ .forward = true },
-        );
-    } else {
-        station.y.unlink_chain.setAxis(
-            axis.index.station,
-            .{ .backward = true },
-        );
-    }
-    try station.sendY(io);
-    defer {
-        if (second_axis > first_axis) {
-            station.y.unlink_chain.setAxis(
-                axis.index.station,
-                .{ .forward = false },
-            );
-        } else {
-            station.y.unlink_chain.setAxis(
-                axis.index.station,
-                .{ .backward = false },
-            );
-        }
-        station.sendY(io) catch {};
-    }
-
-    while (true) {
-        try command.checkCommandInterrupt();
-        try station.pollX(io);
-
-        if (second_axis > first_axis and
-            !station.x.chain_enabled.axis(axis.index.station).forward)
-        {
-            break;
-        } else if (second_axis < first_axis and
-            !station.x.chain_enabled.axis(axis.index.station).backward)
-        {
-            break;
-        }
-    }
-}
-
-fn mclSetLeftChainOn(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const axis_id = std.fmt.parseUnsigned(Mcl.Axis.Id.Line, params[1], 0) catch {
-        return error.InvalidAxis;
-    };
-
-    const line = try mcl.getLine(line_name);
-
-    if (axis_id == 0 or axis_id > line.axes.len) {
-        return error.InvalidAxis;
-    }
-
-    const axis = line.axes[axis_id - 1];
-    const station = axis.station.*;
-    try station.pollWr(io);
-
-    if (station.wr.slider_number.axis(axis.index.station) == 0) {
-        return error.NoSliderOnAxis;
-    }
-
-    station.y.link_chain.setAxis(
-        axis.index.station,
-        .{ .backward = true },
-    );
-    try station.sendY(io);
-    defer {
-        station.y.link_chain.setAxis(
-            axis.index.station,
-            .{ .backward = false },
-        );
-        station.sendY(io) catch {};
-    }
-
-    while (true) {
-        try command.checkCommandInterrupt();
-        try station.pollX(io);
-
-        if (station.x.chain_enabled.axis(axis.index.station).backward) {
-            break;
-        }
-    }
-}
-
-fn mclSetRightChainOn(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const axis_id = std.fmt.parseUnsigned(Mcl.Axis.Id.Line, params[1], 0) catch {
-        return error.InvalidAxis;
-    };
-
-    const line = try mcl.getLine(line_name);
-
-    if (axis_id == 0 or axis_id > line.axes.len) {
-        return error.InvalidAxis;
-    }
-
-    const axis = line.axes[axis_id - 1];
-    const station = axis.station.*;
-    try station.pollWr(io);
-
-    if (station.wr.slider_number.axis(axis.index.station) == 0) {
-        return error.NoSliderOnAxis;
-    }
-
-    station.y.link_chain.setAxis(
-        axis.index.station,
-        .{ .forward = true },
-    );
-    try station.sendY(io);
-    defer {
-        station.y.link_chain.setAxis(
-            axis.index.station,
-            .{ .forward = false },
-        );
-        station.sendY(io) catch {};
-    }
-
-    while (true) {
-        try command.checkCommandInterrupt();
-        try station.pollX(io);
-
-        if (station.x.chain_enabled.axis(axis.index.station).forward) {
-            break;
-        }
-    }
-}
-
-fn mclSetLeftChainOff(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const axis_id = std.fmt.parseUnsigned(Mcl.Axis.Id.Line, params[1], 0) catch {
-        return error.InvalidAxis;
-    };
-
-    const line = try mcl.getLine(line_name);
-
-    if (axis_id == 0 or axis_id > line.axes.len) {
-        return error.InvalidAxis;
-    }
-
-    const axis = line.axes[axis_id - 1];
-    const station = axis.station.*;
-    try station.pollWr(io);
-
-    if (station.wr.slider_number.axis(axis.index.station) == 0) {
-        return error.NoSliderOnAxis;
-    }
-
-    station.y.unlink_chain.setAxis(
-        axis.index.station,
-        .{ .backward = true },
-    );
-    try station.sendY(io);
-    defer {
-        station.y.unlink_chain.setAxis(
-            axis.index.station,
-            .{ .backward = false },
-        );
-        station.sendY(io) catch {};
-    }
-
-    while (true) {
-        try command.checkCommandInterrupt();
-        try station.pollX(io);
-
-        if (!station.x.chain_enabled.axis(axis.index.station).backward) {
-            break;
-        }
-    }
-}
-
-fn mclSetRightChainOff(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const axis_id = std.fmt.parseUnsigned(Mcl.Axis.Id.Line, params[1], 0) catch {
-        return error.InvalidAxis;
-    };
-
-    const line = try mcl.getLine(line_name);
-
-    if (axis_id == 0 or axis_id > line.axes.len) {
-        return error.InvalidAxis;
-    }
-
-    const axis = line.axes[axis_id - 1];
-    const station = axis.station.*;
-    try station.pollWr(io);
-
-    if (station.wr.slider_number.axis(axis.index.station) == 0) {
-        return error.NoSliderOnAxis;
-    }
-
-    station.y.unlink_chain.setAxis(
-        axis.index.station,
-        .{ .forward = true },
-    );
-    try station.sendY(io);
-    defer {
-        station.y.unlink_chain.setAxis(
-            axis.index.station,
-            .{ .forward = false },
-        );
-        station.sendY(io) catch {};
-    }
-
-    while (true) {
-        try command.checkCommandInterrupt();
-        try station.pollX(io);
-
-        if (!station.x.chain_enabled.axis(axis.index.station).forward) {
-            break;
-        }
-    }
-}
-
-fn mclMoveSliderChain(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
-    const line_name: []const u8 = params[0];
-    const slider_id = std.fmt.parseInt(u16, params[1], 0) catch {
-        return error.InvalidSliderId;
-    };
-    const axis_id = std.fmt.parseInt(Mcl.Axis.Id.Line, params[2], 0) catch {
-        return error.InvalidAxis;
-    };
-    if (slider_id == 0 or slider_id > 254) {
-        return error.InvalidSliderId;
-    }
-
-    const line = try mcl.getLine(line_name);
-    if (axis_id == 0 or axis_id > line.axes.len) {
-        return error.InvalidAxis;
-    }
-
-    try line.pollWr(io);
-    const axis = line.axes[axis_id - 1];
-    const main, const _aux =
-        if (line.search(slider_id)) |t| t else return error.SliderNotFound;
-    var station: Mcl.Station = main.station.*;
-
-    // Set command station in direction of movement command.
-    if (_aux) |aux| {
-        if ((main.index.line < aux.index.line and axis_id >= aux.id.line) or
-            (aux.index.line < main.index.line and axis_id <= aux.id.line))
-        {
-            station = aux.station.*;
-        }
-    }
-
-    try checkCommandReady(io, station);
-
-    if (_aux) |aux| {
-        // Direction of auxiliary axis from main axis.
-        var direction: Direction = undefined;
-        if (aux.index.line > main.index.line) {
-            direction = .forward;
-        } else {
-            direction = .backward;
-        }
-        main.station.y.stop_driver_transmission.setTo(direction, true);
-        try main.station.sendY(io);
-        defer {
-            main.station.y.stop_driver_transmission.setTo(direction, false);
-            main.station.sendY(io) catch {};
-        }
-        while (!main.station.x.transmission_stopped.to(direction)) {
-            try command.checkCommandInterrupt();
-            try main.station.pollX(io);
-        }
-    }
-
-    station.ww.* = .{
-        .command_code = .MoveSliderChain,
-        .command_slider_number = slider_id,
-        .target_axis_number = axis.id.line,
-        .speed_percentage = line.speed,
-        .acceleration_percentage = line.acceleration,
-    };
-    try sendCommand(io, station);
 }
 
 fn mclStopOn(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
