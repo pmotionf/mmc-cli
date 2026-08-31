@@ -18,17 +18,30 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const line_name = params[0];
     var filter: client.Filter = try .parse(params[1]);
 
-    const register: Register =
-        if (std.ascii.eqlIgnoreCase(params[2], "x"))
-            .REGISTER_X
-        else if (std.ascii.eqlIgnoreCase(params[2], "y"))
-            .REGISTER_Y
-        else if (std.ascii.eqlIgnoreCase(params[2], "wr"))
-            .REGISTER_WR
-        else if (std.ascii.eqlIgnoreCase(params[2], "ww"))
-            .REGISTER_WW
-        else
-            return error.InvalidParameter;
+    var register_x = false;
+    var register_y = false;
+    var register_wr = false;
+    var register_ww = false;
+
+    if (params[2].len > 0) {
+        var it = std.mem.splitScalar(u8, params[2], ',');
+        while (it.next()) |register_name| {
+            if (std.ascii.eqlIgnoreCase(register_name, "x")) {
+                register_x = true;
+            } else if (std.ascii.eqlIgnoreCase(register_name, "y")) {
+                register_y = true;
+            } else if (std.ascii.eqlIgnoreCase(register_name, "wr")) {
+                register_wr = true;
+            } else if (std.ascii.eqlIgnoreCase(register_name, "ww")) {
+                register_ww = true;
+            } else return error.InvalidParameter;
+        }
+    } else {
+        register_x = true;
+        register_y = true;
+        register_wr = true;
+        register_ww = true;
+    }
 
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -40,7 +53,10 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
                 .body = .{
                     .track = .{
                         .lines = lines,
-                        .register = register,
+                        .register_x = register_x,
+                        .register_y = register_y,
+                        .register_wr = register_wr,
+                        .register_ww = register_ww,
                         .filter = filter.toProtobuf(),
                     },
                 },
@@ -73,26 +89,54 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
 
     var stdout = std.Io.File.stdout().writer(io, &.{});
     const writer = &stdout.interface;
-    switch (register) {
-        .REGISTER_X, .REGISTER_Y => {
-            for (track_line.register_values.items) |item| {
-                try writer.print("{s}[0x{X:0>4}] {d}\n", .{
-                    params[2],
-                    item.address,
-                    item.value,
-                });
-            }
-        },
-        .REGISTER_WW, .REGISTER_WR => {
-            for (track_line.register_values.items) |item| {
-                try writer.print("{s}[0x{X:0>4}] {d}\n", .{
-                    params[2],
-                    item.address,
-                    @as(i16, @bitCast(@as(u16, @truncate(item.value)))),
-                });
-            }
-        },
-        else => unreachable,
+
+    if (register_x and register_y) {
+        for (track_line.register_x.items, track_line.register_y.items) |x, y| {
+            try writer.print("X[0x{X:0>4}] {d}\tY[0x{X:0>4}] {d} \n", .{
+                x.address,
+                x.value,
+                y.address,
+                y.value,
+            });
+        }
+    } else if (register_x) {
+        for (track_line.register_x.items) |item| {
+            try writer.print("X[0x{X:0>4}] {d}\n", .{
+                item.address,
+                item.value,
+            });
+        }
+    } else if (register_y) {
+        for (track_line.register_y.items) |item| {
+            try writer.print("Y[0x{X:0>4}] {d}\n", .{
+                item.address,
+                item.value,
+            });
+        }
+    }
+    if (register_ww and register_wr) {
+        for (track_line.register_ww.items, track_line.register_wr.items) |ww, wr| {
+            try writer.print("WW[0x{X:0>4}] {d:5}\tWR[0x{X:0>4}] {d:5}\n", .{
+                ww.address,
+                @as(i16, @bitCast(@as(u16, @truncate(ww.value)))),
+                wr.address,
+                @as(i16, @bitCast(@as(u16, @truncate(wr.value)))),
+            });
+        }
+    } else if (register_ww) {
+        for (track_line.register_ww.items) |item| {
+            try writer.print("WW[0x{X:0>4}] {d:5}\n", .{
+                item.address,
+                @as(i16, @bitCast(@as(u16, @truncate(item.value)))),
+            });
+        }
+    } else if (register_wr) {
+        for (track_line.register_wr.items) |item| {
+            try writer.print("WR[0x{X:0>4}] {d:5}\n", .{
+                item.address,
+                @as(i16, @bitCast(@as(u16, @truncate(item.value)))),
+            });
+        }
     }
     try writer.flush();
 }

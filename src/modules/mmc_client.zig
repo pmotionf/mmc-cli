@@ -361,14 +361,17 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
             .parameters = &[_]command.Command.Executable.Parameter{
                 .{ .name = "Line", .kind = .mmc_client_line },
                 .{ .name = "filter", .kind = .mmc_client_filter },
-                .{ .name = "Register" },
+                .{ .name = "register", .optional = true },
             },
             .short_description = "Print register values.",
             .long_description = std.fmt.comptimePrint(
                 \\Print raw X, Y, Wr, or Ww register addresses and values.
                 \\
-                \\Example:
+                \\Example: Print X registers from Line "line1" Driver "2".
                 \\PRINT_REGISTER line1 2d X
+                \\
+                \\Example: Print X and Y registers from Line "line1" Driver "2".
+                \\PRINT_REGISTER line1 2d X,Y
             , .{}),
             .execute = &commands.print_register.impl,
         },
