@@ -116,25 +116,37 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     }
     if (register_ww and register_wr) {
         for (track_line.register_ww.items, track_line.register_wr.items) |ww, wr| {
-            try writer.print("WW[0x{X:0>4}] {d:5}\tWR[0x{X:0>4}] {d:5}\n", .{
+            const ww_value: i16 = @bitCast(@as(u16, @truncate(ww.value)));
+            const wr_value: i16 = @bitCast(@as(u16, @truncate(wr.value)));
+            var ww_buf: [6]u8 = undefined;
+            var wr_buf: [6]u8 = undefined;
+            const ww_str = try std.fmt.bufPrint(&ww_buf, "{d}", .{ww_value});
+            const wr_str = try std.fmt.bufPrint(&wr_buf, "{d}", .{wr_value});
+            try writer.print("WW[0x{X:0>4}] {s:>6}\tWR[0x{X:0>4}] {s:>6}\n", .{
                 ww.address,
-                @as(i16, @bitCast(@as(u16, @truncate(ww.value)))),
+                ww_str,
                 wr.address,
-                @as(i16, @bitCast(@as(u16, @truncate(wr.value)))),
+                wr_str,
             });
         }
     } else if (register_ww) {
         for (track_line.register_ww.items) |item| {
-            try writer.print("WW[0x{X:0>4}] {d:5}\n", .{
+            const ww_value: i16 = @bitCast(@as(u16, @truncate(item.value)));
+            var ww_buf: [6]u8 = undefined;
+            const ww_str = try std.fmt.bufPrint(&ww_buf, "{d}", .{ww_value});
+            try writer.print("WW[0x{X:0>4}] {s:>6}\n", .{
                 item.address,
-                @as(i16, @bitCast(@as(u16, @truncate(item.value)))),
+                ww_str,
             });
         }
     } else if (register_wr) {
         for (track_line.register_wr.items) |item| {
-            try writer.print("WR[0x{X:0>4}] {d:5}\n", .{
+            const wr_value: i16 = @bitCast(@as(u16, @truncate(item.value)));
+            var wr_buf: [6]u8 = undefined;
+            const wr_str = try std.fmt.bufPrint(&wr_buf, "{d}", .{wr_value});
+            try writer.print("WR[0x{X:0>4}] {s:>6}\n", .{
                 item.address,
-                @as(i16, @bitCast(@as(u16, @truncate(item.value)))),
+                wr_str,
             });
         }
     }
