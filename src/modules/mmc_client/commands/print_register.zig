@@ -3,12 +3,19 @@ const client = @import("../../mmc_client.zig");
 const tracy = @import("tracy");
 const api = @import("mmc-api");
 
-const InfoRequest = @FieldType(
-    api.protobuf.mmc.Request.body_union,
+const InfoResponse = @FieldType(
+    api.protobuf.mmc.Response.body_union,
     "info",
 );
 
-const Register = InfoRequest.Track.Register;
+const Register = InfoResponse.Line.Register;
+
+fn getWord(values: []const u64, index: usize) i16 {
+    const chunk = values[index / 4];
+    const shift: u6 = @intCast((index % 4) * 16);
+    const raw: u16 = @truncate(chunk >> shift);
+    return @bitCast(raw);
+}
 
 pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "print_register");
@@ -92,62 +99,114 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
 
     if (register_x and register_y) {
         for (track_line.register_x.items, track_line.register_y.items) |x, y| {
-            try writer.print("X[0x{X:0>4}] {d}\tY[0x{X:0>4}] {d} \n", .{
-                x.address,
-                x.value,
-                y.address,
-                y.value,
-            });
+            if (x.value.items.len != y.value.items.len)
+                return error.InvalidResponse;
+            if (x.driver != y.driver) return error.InvalidResponse;
+            try writer.print(
+                "Line: {s}, Driver: {d}\n",
+                .{ line_name, x.driver },
+            );
+            for (0..@bitSizeOf(@TypeOf(x.value.items[0]))) |i| {
+                try writer.print("X[0x{X:0>4}] {d}\tY[0x{X:0>4}] {d} \n", .{
+                    i,
+                    @as(u1, @truncate(x.value.items[0] >> @intCast(i))),
+                    i,
+                    @as(u1, @truncate(y.value.items[0] >> @intCast(i))),
+                });
+            }
         }
     } else if (register_x) {
         for (track_line.register_x.items) |item| {
-            try writer.print("X[0x{X:0>4}] {d}\n", .{
-                item.address,
-                item.value,
-            });
+            try writer.print(
+                "Line: {s}, Driver: {d}\n",
+                .{ line_name, item.driver },
+            );
+            for (0..@bitSizeOf(@TypeOf(item.value.items[0]))) |i| {
+                try writer.print("X[0x{X:0>4}] {d}\n", .{
+                    i,
+                    @as(u1, @truncate(item.value.items[0] >> @intCast(i))),
+                });
+            }
         }
     } else if (register_y) {
         for (track_line.register_y.items) |item| {
-            try writer.print("Y[0x{X:0>4}] {d}\n", .{
-                item.address,
-                item.value,
-            });
+            try writer.print(
+                "Line: {s}, Driver: {d}\n",
+                .{ line_name, item.driver },
+            );
+            for (0..@bitSizeOf(@TypeOf(item.value.items[0]))) |i| {
+                try writer.print("Y[0x{X:0>4}] {d}\n", .{
+                    i,
+                    @as(u1, @truncate(item.value.items[0] >> @intCast(i))),
+                });
+            }
         }
     }
+
     if (register_ww and register_wr) {
         for (track_line.register_ww.items, track_line.register_wr.items) |ww, wr| {
-            const ww_value: i16 = @bitCast(@as(u16, @truncate(ww.value)));
-            const wr_value: i16 = @bitCast(@as(u16, @truncate(wr.value)));
-            var ww_buf: [6]u8 = undefined;
-            var wr_buf: [6]u8 = undefined;
-            const ww_str = try std.fmt.bufPrint(&ww_buf, "{d}", .{ww_value});
-            const wr_str = try std.fmt.bufPrint(&wr_buf, "{d}", .{wr_value});
-            try writer.print("WW[0x{X:0>4}] {s:>6}\tWR[0x{X:0>4}] {s:>6}\n", .{
-                ww.address,
-                ww_str,
-                wr.address,
-                wr_str,
-            });
+            if (ww.driver != wr.driver) return error.InvalidResponse;
+            if (ww.value.items.len != wr.value.items.len)
+                return error.InvalidResponse;
+            try writer.print(
+                "Line: {s}, Driver: {d}\n",
+                .{ line_name, ww.driver },
+            );
+            const words_per_chunk =
+                @bitSizeOf(@TypeOf(track_line.register_wr.items[0])) /
+                @bitSizeOf(@TypeOf(getWord(ww.value.items, 0)));
+            for (0..words_per_chunk) |i| {
+                const ww_value: i16 = getWord(ww.value.items, i);
+                const wr_value: i16 = getWord(wr.value.items, i);
+                var ww_buf: [6]u8 = undefined;
+                var wr_buf: [6]u8 = undefined;
+                const ww_str = try std.fmt.bufPrint(&ww_buf, "{d}", .{ww_value});
+                const wr_str = try std.fmt.bufPrint(&wr_buf, "{d}", .{wr_value});
+                try writer.print("WW[0x{X:0>4}] {s:>6}\tWR[0x{X:0>4}] {s:>6}\n", .{
+                    i,
+                    ww_str,
+                    i,
+                    wr_str,
+                });
+            }
         }
     } else if (register_ww) {
         for (track_line.register_ww.items) |item| {
-            const ww_value: i16 = @bitCast(@as(u16, @truncate(item.value)));
-            var ww_buf: [6]u8 = undefined;
-            const ww_str = try std.fmt.bufPrint(&ww_buf, "{d}", .{ww_value});
-            try writer.print("WW[0x{X:0>4}] {s:>6}\n", .{
-                item.address,
-                ww_str,
-            });
+            try writer.print(
+                "Line: {s}, Driver: {d}\n",
+                .{ line_name, item.driver },
+            );
+            const words_per_chunk =
+                @bitSizeOf(@TypeOf(track_line.register_wr.items[0])) /
+                @bitSizeOf(@TypeOf(getWord(item.value.items, 0)));
+            for (0..words_per_chunk) |i| {
+                const ww_value: i16 = getWord(item.value.items, i);
+                var ww_buf: [6]u8 = undefined;
+                const ww_str = try std.fmt.bufPrint(&ww_buf, "{d}", .{ww_value});
+                try writer.print("WW[0x{X:0>4}] {s:>6}\n", .{
+                    i,
+                    ww_str,
+                });
+            }
         }
     } else if (register_wr) {
         for (track_line.register_wr.items) |item| {
-            const wr_value: i16 = @bitCast(@as(u16, @truncate(item.value)));
-            var wr_buf: [6]u8 = undefined;
-            const wr_str = try std.fmt.bufPrint(&wr_buf, "{d}", .{wr_value});
-            try writer.print("WR[0x{X:0>4}] {s:>6}\n", .{
-                item.address,
-                wr_str,
-            });
+            try writer.print(
+                "Line: {s}, Driver: {d}\n",
+                .{ line_name, item.driver },
+            );
+            const words_per_chunk =
+                @bitSizeOf(@TypeOf(track_line.register_wr.items[0])) /
+                @bitSizeOf(@TypeOf(getWord(item.value.items, 0)));
+            for (0..words_per_chunk) |i| {
+                const wr_value: i16 = getWord(item.value.items, i);
+                var wr_buf: [6]u8 = undefined;
+                const wr_str = try std.fmt.bufPrint(&wr_buf, "{d}", .{wr_value});
+                try writer.print("WW[0x{X:0>4}] {s:>6}\n", .{
+                    i,
+                    wr_str,
+                });
+            }
         }
     }
     try writer.flush();
