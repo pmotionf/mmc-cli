@@ -202,7 +202,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
                 const wr_value: i16 = getWord(item.value.items, i);
                 var wr_buf: [6]u8 = undefined;
                 const wr_str = try std.fmt.bufPrint(&wr_buf, "{d}", .{wr_value});
-                try writer.print("WW[0x{X:0>4}] {s:>6}\n", .{
+                try writer.print("WR[0x{X:0>4}] {s:>6}\n", .{
                     i,
                     wr_str,
                 });
