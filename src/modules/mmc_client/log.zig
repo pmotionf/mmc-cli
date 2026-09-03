@@ -208,7 +208,6 @@ const Stream = struct {
                 hall: struct { back: bool, front: bool },
                 motor_active: bool,
                 waiting_pull: bool,
-                waiting_push: bool,
                 carrier: Carrier,
                 err: Error,
                 pub const Carrier = struct {
@@ -518,7 +517,6 @@ const Stream = struct {
                     },
                     .motor_active = axis_info.motor_active,
                     .waiting_pull = axis_info.waiting_pull,
-                    .waiting_push = axis_info.waiting_push,
                     .err = .{
                         .overcurrent = axis_err.overcurrent,
                     },
