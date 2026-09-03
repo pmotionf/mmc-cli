@@ -1289,26 +1289,6 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
         },
     });
     errdefer _ = command.registry.orderedRemove("RESUME");
-    try command.registry.put(gpa, "SET_CARRIER_ID", .{
-        .executable = .{
-            .name = "SET_CARRIER_ID",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-                .{ .name = "Carrier", .kind = .mmc_client_carrier },
-                .{ .name = "new Carrier id", .kind = .mmc_client_carrier },
-            },
-            .short_description = "Modify Carrier ID.",
-            .long_description = std.fmt.comptimePrint(
-                \\Modify Carrier ID of initialized Carrier. Carrier ID must be unique per
-                \\Line.
-                \\
-                \\Example: Modify Carrier ID of Carrier "3" to "4" on Line "line1".
-                \\SET_CARRIER_ID line1 3 4
-            , .{}),
-            .execute = &commands.set_carrier_id.impl,
-        },
-    });
-    errdefer _ = command.registry.orderedRemove("SET_CARRIER_ID");
 }
 
 pub fn deinit(gpa: std.mem.Allocator, io: std.Io) void {
