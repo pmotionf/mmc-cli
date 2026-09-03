@@ -375,6 +375,8 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
                 \\
                 \\Optional: Provide the register(s) to be printed.
                 \\Optional: Add "raw" to print the raw register values with addresses.
+                \\Addresses are displayed in hexadecimal. Register values are displayed
+                \\as signed decimal integers.
                 \\
                 \\Example: Print X registers from Line "line1" Driver "2".
                 \\PRINT_REGISTER line1 2d X
