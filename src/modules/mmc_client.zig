@@ -941,11 +941,6 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
             .{ .name = "Line", .kind = .mmc_client_line },
             .{ .name = "Axis", .kind = .mmc_client_axis },
             .{ .name = "direction", .kind = .mmc_client_direction },
-            .{
-                .name = "Carrier",
-                .optional = true,
-                .kind = .mmc_client_carrier,
-            },
         },
         .short_description = "Push Carrier on the specified Axis.",
         .long_description = std.fmt.comptimePrint(
@@ -956,17 +951,9 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
             \\- forward  (direction of increasing Axis number)
             \\- backward (direction of decreasing Axis number)
             \\
-            \\Optional: Provide Carrier to move the specified Carrier to the center
-            \\of the specified Axis, then push it according to direction.
-            \\
             \\Example: Push Carrier on Axis "3" to Axis "4". If Line "line1" only has
             \\3 Axes, push Carrier out from Line "line1" to Line "line2".
             \\PUSH_CARRIER line1 3 forward
-            \\
-            \\Example: Move Carrier "2" to Axis "3" and transition to push movement to
-            \\Axis "4". If Line "line1" only has 3 Axes, then transition to push movement
-            \\out from Line "line1" to Line "line2".
-            \\PUSH_CARRIER line1 3 forward 2
         , .{}),
         .execute = &commands.push.impl,
     } });
