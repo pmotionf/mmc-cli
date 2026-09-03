@@ -673,6 +673,34 @@ pub fn init(gpa: std.mem.Allocator, io: std.Io, c: Config) !void {
         .execute = &mclPauseOff,
     });
     errdefer _ = command.registry.orderedRemove("PAUSE_OFF");
+    try command.registry.put(gpa, "ENABLE_LOCKUP", .{
+        .name = "ENABLE_LOCKUP",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name", .optional = true },
+            .{ .name = "axis", .optional = true },
+        },
+        .short_description = "Enable lockup at axis",
+        .long_description = std.fmt.comptimePrint(
+            \\Enable lockup at targeted axis. Lockup functionality prevents
+            \\vibration to the carrier when the carrier stays still while being
+            \\controlled.
+        , .{}),
+        .execute = &mclEnableLockup,
+    });
+    errdefer _ = command.registry.orderedRemove("ENABLE_LOCKUP");
+    try command.registry.put(gpa, "DISABLE_LOCKUP", .{
+        .name = "DISABLE_LOCKUP",
+        .parameters = &[_]command.Command.Parameter{
+            .{ .name = "line name" },
+            .{ .name = "axis" },
+        },
+        .short_description = "Disable lockup at axis",
+        .long_description = std.fmt.comptimePrint(
+            \\Disable lockup at targeted axis.
+        , .{}),
+        .execute = &mclDisableLockup,
+    });
+    errdefer _ = command.registry.orderedRemove("DISABLE_LOCKUP");
 }
 
 pub fn deinit(gpa: std.mem.Allocator) void {
@@ -2285,6 +2313,54 @@ fn mclPauseOff(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
                     if (station.x.paused) continue :wait_pause;
                 }
             }
+            return;
+        }
+    }
+}
+
+fn mclEnableLockup(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
+
+    const line = try mcl.getLine(line_name);
+    if (axis_id < 1 or axis_id > line.axes.len) {
+        return error.InvalidAxis;
+    }
+
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station;
+    station.y.lockup.setAxis(axis.index.station);
+    try station.sendY(io);
+    while (true) {
+        try command.checkCommandInterrupt();
+        try station.pollX(io);
+        if (station.x.lockup.axis(axis.index.station)) {
+            return;
+        }
+    }
+}
+
+fn mclDisableLockup(io: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
+    const line_name: []const u8 = params[0];
+    const axis_id = std.fmt.parseInt(usize, params[1], 0) catch {
+        return error.InvalidAxis;
+    };
+
+    const line = try mcl.getLine(line_name);
+    if (axis_id < 1 or axis_id > line.axes.len) {
+        return error.InvalidAxis;
+    }
+
+    const axis = line.axes[axis_id - 1];
+    const station = axis.station;
+    station.y.lockup.resetAxis(axis.index.station);
+    try station.sendY(io);
+    while (true) {
+        try command.checkCommandInterrupt();
+        try station.pollX(io);
+        if (station.x.lockup.axis(axis.index.station) == false) {
             return;
         }
     }
