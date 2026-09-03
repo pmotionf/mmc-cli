@@ -978,7 +978,6 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
             .{ .name = "Axis", .kind = .mmc_client_axis },
             .{ .name = "Carrier", .kind = .mmc_client_carrier },
             .{ .name = "direction", .kind = .mmc_client_direction },
-            .{ .name = "location", .optional = true },
         },
         .short_description = "Pull incoming Carrier.",
         .long_description = std.fmt.comptimePrint(
@@ -989,25 +988,10 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
             \\ - forward  (direction of increasing Axis number)
             \\ - backward (direction of decreasing Axis number)
             \\
-            \\Optional: Provide location to move Carrier after completed pulling
-            \\Carrier. Location must be provided as:
-            \\- {s} (move Carrier to specified location after pulled to
-            \\  specified  Axis), or
-            \\- "nan" (Carrier can move through external force after pulled to
-            \\  specified Axis).
-            \\
             \\Example: Pull Carrier onto Axis "1" on Line "line2" from Line "line1" and
             \\assign Carrier ID to "123".
             \\PULL_CARRIER line2 1 123 forward
-            \\
-            \\Example: Pull Carrier to Line "line2" from Line "line1", assign Carrier ID
-            \\to "123" and move Carrier "123" to location 1500 {s} upon recognized on
-            \\Line "line2".
-            \\PULL_CARRIER line2 1 123 forward 1500
-        , .{
-            standard.length.unit_long,
-            standard.length.unit_short,
-        }),
+        , .{}),
         .execute = &commands.pull.impl,
     } });
     errdefer _ = command.registry.orderedRemove("PULL_CARRIER");
