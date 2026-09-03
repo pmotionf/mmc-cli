@@ -714,31 +714,20 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
             .name = "RELEASE_CARRIER",
             .parameters = &[_]command.Command.Executable.Parameter{
                 .{ .name = "Line", .kind = .mmc_client_line },
-                .{
-                    .name = "filter",
-                    .optional = true,
-                    .kind = .mmc_client_filter,
-                },
+                .{ .name = "Driver" },
             },
             .short_description = "Release Carrier",
             .long_description = std.fmt.comptimePrint(
-                \\Release Carrier, allows to move Carrier through external force. Carrier
-                \\stays initialized.
-                \\Optional: Provide filter to specify selection of Carrier(s). To apply
-                \\filter, provide ID with filter suffix (e.g., 1c). Supported suffixes
-                \\are:
-                \\ - "a" or "axis" to filter by Axis
-                \\ - "c" or "carrier" to filter by Carrier
-                \\ - "d" or "driver" to filter by Driver
+                \\Release motor control of all motor in drivers,
+                \\allowing to move Carrier(s) through external force.
+                \\Carrier stays initialized.
+                \\Optional: Provide Driver to specify selection of Driver.
                 \\
                 \\Example: Release Carrier(s) on Line "line1".
                 \\RELEASE_CARRIER line1
                 \\
                 \\Example: Release Carrier(s) on Driver "2" on Line "line1".
-                \\RELEASE_CARRIER line1 2d
-                \\
-                \\Example: Release Carrier "3" on Line "line1".
-                \\RELEASE_CARRIER line1 3c
+                \\RELEASE_CARRIER line1 2
             , .{}),
             .execute = &commands.release_carrier.impl,
         },
