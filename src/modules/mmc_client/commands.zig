@@ -11,7 +11,6 @@ pub const move = @import("commands/move.zig");
 pub const push = @import("commands/push.zig");
 pub const pull = @import("commands/pull.zig");
 pub const stop_pull = @import("commands/stop_pull.zig");
-pub const stop_push = @import("commands/stop_push.zig");
 pub const stop = @import("commands/stop.zig");
 pub const pause = @import("commands/pause.zig");
 pub const @"resume" = @import("commands/resume.zig");

@@ -1053,31 +1053,6 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
         .execute = &commands.stop_pull.impl,
     } });
     errdefer _ = command.registry.orderedRemove("STOP_PULL_CARRIER");
-    try command.registry.put(gpa, "STOP_PUSH_CARRIER", .{ .executable = .{
-        .name = "STOP_PUSH_CARRIER",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "Line", .kind = .mmc_client_line },
-            .{ .name = "filter", .optional = true, .kind = .mmc_client_filter },
-        },
-        .short_description = "Stop pushing Carrier at axis.",
-        .long_description = std.fmt.comptimePrint(
-            \\Stop active Carrier push on specified Line.
-            \\Optional: Provide filter to specify selection of push. To apply
-            \\filter, provide ID with filter suffix (e.g., 1c).
-            \\Supported suffixes are:
-            \\ - "a" or "axis" to filter by Axis
-            \\ - "c" or "Carrier" to filter by Carrier
-            \\ - "d" or "driver" to filter by Driver
-            \\
-            \\Example: Stop push Carrier(s) on Line "line1".
-            \\STOP_PUSH_CARRIER line1
-            \\
-            \\Example: Stop push for Axis "3" on Line "line1".
-            \\STOP_PUSH_CARRIER line1 3a
-        , .{}),
-        .execute = &commands.stop_push.impl,
-    } });
-    errdefer _ = command.registry.orderedRemove("STOP_PUSH_CARRIER");
     try command.registry.put(gpa, "WAIT_AXIS_EMPTY", .{ .executable = .{
         .name = "WAIT_AXIS_EMPTY",
         .parameters = &[_]command.Command.Executable.Parameter{

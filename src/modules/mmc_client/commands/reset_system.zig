@@ -38,20 +38,6 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, _: [][]const u8) !void {
             try client.sendRequest(io, gpa, net, request);
             try client.waitCommandCompleted(io, gpa, net);
         }
-        // Send stop push command
-        {
-            const request: api.protobuf.mmc.Request = .{
-                .body = .{
-                    .command = .{
-                        .body = .{
-                            .stop_push = .{ .line = line.id },
-                        },
-                    },
-                },
-            };
-            try client.sendRequest(io, gpa, net, request);
-            try client.waitCommandCompleted(io, gpa, net);
-        }
         // Send stop pull command
         {
             const request: api.protobuf.mmc.Request = .{
