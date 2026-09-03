@@ -49,14 +49,6 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator) !void {
                     .CONTROL_VELOCITY
                 else
                     return error.InvalidControlMode;
-            const disable_cas = if (params[3].len == 0)
-                false
-            else if (std.ascii.eqlIgnoreCase("on", params[4]))
-                false
-            else if (std.ascii.eqlIgnoreCase("off", params[4]))
-                true
-            else
-                return error.InvalidCasConfiguration;
             try commands.append(gpa, .{
                 .command = .{
                     .move = .{
@@ -65,7 +57,6 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator) !void {
                         .velocity = line.velocity,
                         .acceleration = line.acceleration,
                         .target = target,
-                        .disable_cas = disable_cas,
                         .control = control,
                     },
                 },
@@ -197,7 +188,6 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator) !void {
                             .velocity = line.velocity,
                             .acceleration = line.acceleration,
                             .target = .{ .location = location },
-                            .disable_cas = false,
                             .control = .CONTROL_POSITION,
                         },
                     },

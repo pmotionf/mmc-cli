@@ -921,7 +921,6 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
                     .optional = true,
                     .kind = .mmc_client_control_mode,
                 },
-                .{ .name = "CAS", .optional = true, .kind = .mmc_client_cas },
             },
             .short_description = "Move Carrier to specified target.",
             .long_description = std.fmt.comptimePrint(
@@ -937,8 +936,6 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
                 \\Optional: Provide following to specify movement control mode:
                 \\- "speed" to move Carrier with speed profile feedback.
                 \\- "position" to move Carrier with position profile feedback.
-                \\Optional: Provide "on" or "off" to specify CAS (Collision Avoidance
-                \\System) activation (enabled by default).
                 \\
                 \\Example: Move Carrier "2" to Axis "3" on Line "line1".
                 \\MOVE_CARRIER line1 2 3a
@@ -946,12 +943,7 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
                 \\Example: Move Carrier "2" to location 150 {s} on Line "line1" and move
                 \\Carrier with speed profile feedback.
                 \\MOVE_CARRIER line1 2 150l speed
-                \\
-                \\Example: Move Carrier "2" to location 150 {s} on Line "line1" and disable
-                \\CAS.
-                \\MOVE_CARRIER line1 2 150l position off
             , .{
-                standard.length.unit_short,
                 standard.length.unit_short,
                 standard.length.unit_short,
                 standard.length.unit_short,
@@ -1005,7 +997,6 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
             .{ .name = "Carrier", .kind = .mmc_client_carrier },
             .{ .name = "direction", .kind = .mmc_client_direction },
             .{ .name = "location", .optional = true },
-            .{ .name = "CAS", .optional = true, .kind = .mmc_client_cas },
         },
         .short_description = "Pull incoming Carrier.",
         .long_description = std.fmt.comptimePrint(
@@ -1023,10 +1014,6 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
             \\- "nan" (Carrier can move through external force after pulled to
             \\  specified Axis).
             \\
-            \\Optional: Provide "on" or "off" to specify CAS (Collision
-            \\Avoidance System) activation (enabled by default) while Carrier is
-            \\being moved to specified location.
-            \\
             \\Example: Pull Carrier onto Axis "1" on Line "line2" from Line "line1" and
             \\assign Carrier ID to "123".
             \\PULL_CARRIER line2 1 123 forward
@@ -1035,14 +1022,8 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
             \\to "123" and move Carrier "123" to location 1500 {s} upon recognized on
             \\Line "line2".
             \\PULL_CARRIER line2 1 123 forward 1500
-            \\
-            \\Example: Pull Carrier to Line "line2" from Line "line1", assign Carrier ID
-            \\to "123", and move Carrier "123" to location 1500 {s} with CAS deactivated
-            \\upon recognized on Line "line2".
-            \\PULL_CARRIER line2 1 123 forward 1500 off
         , .{
             standard.length.unit_long,
-            standard.length.unit_short,
             standard.length.unit_short,
         }),
         .execute = &commands.pull.impl,

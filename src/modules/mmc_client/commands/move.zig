@@ -37,14 +37,6 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
             .CONTROL_VELOCITY
         else
             return error.InvalidControlMode;
-    const disable_cas = if (params[3].len == 0)
-        false
-    else if (std.ascii.eqlIgnoreCase("on", params[4]))
-        false
-    else if (std.ascii.eqlIgnoreCase("off", params[4]))
-        true
-    else
-        return error.InvalidCasConfiguration;
     const request: api.protobuf.mmc.Request = .{
         .body = .{
             .command = .{
@@ -55,7 +47,6 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
                         .velocity = line.velocity,
                         .acceleration = line.acceleration,
                         .target = target,
-                        .disable_cas = disable_cas,
                         .control = control,
                     },
                 },

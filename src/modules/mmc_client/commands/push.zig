@@ -139,7 +139,6 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
                             .velocity = line.velocity,
                             .acceleration = line.acceleration,
                             .target = .{ .location = location },
-                            .disable_cas = false,
                             .control = .CONTROL_POSITION,
                         },
                     },
