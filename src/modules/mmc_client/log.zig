@@ -214,7 +214,6 @@ const Stream = struct {
                     id: u10,
                     position: f32,
                     state: InfoResponse.Line.Carrier.State.State,
-                    cas: struct { enabled: bool, triggered: bool },
                 };
                 pub const Error = struct {
                     overcurrent: bool,
@@ -532,20 +531,12 @@ const Stream = struct {
                     .id = @intCast(carrier.id),
                     .position = carrier.position,
                     .state = carrier.state,
-                    .cas = .{
-                        .enabled = !carrier.cas_disabled,
-                        .triggered = carrier.cas_triggered,
-                    },
                 };
                 if (carrier.axis_auxiliary) |aux|
                     data.lines[line.id - 1].axes[aux - 1].carrier = .{
                         .id = @intCast(carrier.id),
                         .position = carrier.position,
                         .state = carrier.state,
-                        .cas = .{
-                            .enabled = !carrier.cas_disabled,
-                            .triggered = carrier.cas_triggered,
-                        },
                     };
             }
             for (
