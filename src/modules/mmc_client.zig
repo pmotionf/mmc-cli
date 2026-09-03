@@ -794,24 +794,6 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
         },
     });
     errdefer _ = command.registry.orderedRemove("CALIBRATE");
-    try command.registry.put(gpa, "SET_ZERO", .{
-        .executable = .{
-            .name = "SET_ZERO",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-            },
-            .short_description = "Set Line zero position.",
-            .long_description = std.fmt.comptimePrint(
-                \\Set zero position for specified Line. Initialized Carrier must be on
-                \\first Axis of specified Line.
-                \\
-                \\Example: Set zero position for Line "line1".
-                \\SET_ZERO line1
-            , .{}),
-            .execute = &commands.set_line_zero.impl,
-        },
-    });
-    errdefer _ = command.registry.orderedRemove("SET_ZERO");
     try command.registry.put(gpa, "INITIALIZE", .{
         .executable = .{
             .name = "INITIALIZE",

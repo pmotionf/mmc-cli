@@ -4,7 +4,6 @@ pub const clear_errors = @import("commands/clear_errors.zig");
 pub const clear_carrier_info = @import("commands/clear_carrier_info.zig");
 pub const reset_system = @import("commands/reset_system.zig");
 pub const calibrate = @import("commands/calibrate.zig");
-pub const set_line_zero = @import("commands/set_line_zero.zig");
 pub const isolate = @import("commands/isolate.zig");
 pub const wait = @import("commands/wait.zig");
 pub const move = @import("commands/move.zig");
