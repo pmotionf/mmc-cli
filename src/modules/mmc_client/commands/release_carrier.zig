@@ -13,27 +13,33 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    var filter: ?client.Filter = null;
-    if (params[1].len > 0) {
-        filter = try .parse(params[1]);
-    }
+    const driver_id: ?u32 = if (params[1].len == 0)
+        null
+    else
+        try std.fmt.parseInt(u32, buf: {
+            const input = params[1];
+            var suffix: ?usize = null;
+            for (input, 0..) |c, i| if (!std.ascii.isDigit(c)) {
+                // Only valid suffix for axis_id is either 'd' or "driver".
+                if (c != 'd') return error.InvalidCharacter;
+                suffix = i;
+                break;
+            };
+            if (suffix) |ignore_idx| {
+                if (ignore_idx == 0) return error.InvalidCharacter;
+                break :buf input[0..ignore_idx];
+            } else break :buf input;
+        }, 0);
     const request: api.protobuf.mmc.Request = .{
         .body = .{
             .command = .{
                 .body = .{
                     .release = .{
                         .line = line.id,
-                        .target = if (filter) |f| b: switch (f) {
-                            .axis => |axis| break :b .{
-                                .axes = .{ .start = axis, .end = axis },
-                            },
-                            .driver => |driver| break :b .{
-                                .drivers = .{ .start = driver, .end = driver },
-                            },
-                            .carrier => |carrier| break :b .{
-                                .carrier = carrier[0],
-                            },
-                        } else null,
+                        .drivers = if (driver_id) |id|
+                            .{ .start = id, .end = id }
+                        else
+                            null,
                     },
                 },
             },
