@@ -58,14 +58,6 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
 
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const disable_cas = if (params[5].len == 0)
-        false
-    else if (std.ascii.eqlIgnoreCase("on", params[5]))
-        false
-    else if (std.ascii.eqlIgnoreCase("off", params[5]))
-        true
-    else
-        return error.InvalidCasConfiguration;
     const request: api.protobuf.mmc.Request = .{
         .body = .{
             .command = .{
@@ -86,7 +78,6 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
                                     .CONTROL_UNSPECIFIED
                                 else
                                     .CONTROL_POSITION,
-                                .disable_cas = disable_cas,
                                 .target = loc,
                             } else break :blk null;
                         },
