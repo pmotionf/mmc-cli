@@ -9,13 +9,7 @@ const InfoResponse = @FieldType(
 );
 
 const Register = InfoResponse.Line.Register;
-
-fn getWord(values: []const u64, index: usize) i16 {
-    const chunk = values[index / 4];
-    const shift: u6 = @intCast((index % 4) * 16);
-    const raw: u16 = @truncate(chunk >> shift);
-    return @bitCast(raw);
-}
+const registers = api.registers;
 
 pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "print_register");
@@ -97,119 +91,186 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     var stdout = std.Io.File.stdout().writer(io, &.{});
     const writer = &stdout.interface;
 
-    if (register_x and register_y) {
-        for (track_line.register_x.items, track_line.register_y.items) |x, y| {
-            if (x.value.items.len != y.value.items.len)
-                return error.InvalidResponse;
-            if (x.driver != y.driver) return error.InvalidResponse;
-            try writer.print(
-                "Line: {s}, Driver: {d}\n",
-                .{ line_name, x.driver },
-            );
-            for (0..@bitSizeOf(@TypeOf(x.value.items[0]))) |i| {
-                try writer.print("X[0x{X:0>4}] {d}\tY[0x{X:0>4}] {d} \n", .{
-                    i,
-                    @as(u1, @truncate(x.value.items[0] >> @intCast(i))),
-                    i,
-                    @as(u1, @truncate(y.value.items[0] >> @intCast(i))),
-                });
+    if (std.ascii.eqlIgnoreCase(params[3], "raw")) {
+        // Raw register print
+        if (register_x and register_y) {
+            for (track_line.register_x.items, track_line.register_y.items) |x, y| {
+                if (x.value.items.len != y.value.items.len)
+                    return error.InvalidResponse;
+                if (x.driver != y.driver) return error.InvalidResponse;
+                try writer.print(
+                    "Line: {s}, Driver: {d}\n",
+                    .{ line_name, x.driver },
+                );
+                for (0..@bitSizeOf(@TypeOf(x.value.items[0]))) |i| {
+                    try writer.print("X[0x{X:0>4}] {d}\tY[0x{X:0>4}] {d} \n", .{
+                        i,
+                        @as(u1, @truncate(x.value.items[0] >> @intCast(i))),
+                        i,
+                        @as(u1, @truncate(y.value.items[0] >> @intCast(i))),
+                    });
+                }
+            }
+        } else if (register_x) {
+            for (track_line.register_x.items) |item| {
+                try writer.print(
+                    "Line: {s}, Driver: {d}\n",
+                    .{ line_name, item.driver },
+                );
+                for (0..@bitSizeOf(@TypeOf(item.value.items[0]))) |i| {
+                    try writer.print("X[0x{X:0>4}] {d}\n", .{
+                        i,
+                        @as(u1, @truncate(item.value.items[0] >> @intCast(i))),
+                    });
+                }
+            }
+        } else if (register_y) {
+            for (track_line.register_y.items) |item| {
+                try writer.print(
+                    "Line: {s}, Driver: {d}\n",
+                    .{ line_name, item.driver },
+                );
+                for (0..@bitSizeOf(@TypeOf(item.value.items[0]))) |i| {
+                    try writer.print("Y[0x{X:0>4}] {d}\n", .{
+                        i,
+                        @as(u1, @truncate(item.value.items[0] >> @intCast(i))),
+                    });
+                }
             }
         }
-    } else if (register_x) {
-        for (track_line.register_x.items) |item| {
-            try writer.print(
-                "Line: {s}, Driver: {d}\n",
-                .{ line_name, item.driver },
-            );
-            for (0..@bitSizeOf(@TypeOf(item.value.items[0]))) |i| {
-                try writer.print("X[0x{X:0>4}] {d}\n", .{
-                    i,
-                    @as(u1, @truncate(item.value.items[0] >> @intCast(i))),
-                });
-            }
-        }
-    } else if (register_y) {
-        for (track_line.register_y.items) |item| {
-            try writer.print(
-                "Line: {s}, Driver: {d}\n",
-                .{ line_name, item.driver },
-            );
-            for (0..@bitSizeOf(@TypeOf(item.value.items[0]))) |i| {
-                try writer.print("Y[0x{X:0>4}] {d}\n", .{
-                    i,
-                    @as(u1, @truncate(item.value.items[0] >> @intCast(i))),
-                });
-            }
-        }
-    }
 
-    if (register_ww and register_wr) {
-        for (track_line.register_ww.items, track_line.register_wr.items) |ww, wr| {
-            if (ww.driver != wr.driver) return error.InvalidResponse;
-            if (ww.value.items.len != wr.value.items.len)
-                return error.InvalidResponse;
-            try writer.print(
-                "Line: {s}, Driver: {d}\n",
-                .{ line_name, ww.driver },
-            );
-            const words_per_chunk =
-                @bitSizeOf(@TypeOf(track_line.register_wr.items[0])) /
-                @bitSizeOf(@TypeOf(getWord(ww.value.items, 0)));
-            for (0..words_per_chunk) |i| {
-                const ww_value: i16 = getWord(ww.value.items, i);
-                const wr_value: i16 = getWord(wr.value.items, i);
-                var ww_buf: [6]u8 = undefined;
-                var wr_buf: [6]u8 = undefined;
-                const ww_str = try std.fmt.bufPrint(&ww_buf, "{d}", .{ww_value});
-                const wr_str = try std.fmt.bufPrint(&wr_buf, "{d}", .{wr_value});
-                try writer.print("WW[0x{X:0>4}] {s:>6}\tWR[0x{X:0>4}] {s:>6}\n", .{
-                    i,
-                    ww_str,
-                    i,
-                    wr_str,
-                });
+        if (register_ww and register_wr) {
+            for (track_line.register_ww.items, track_line.register_wr.items) |ww, wr| {
+                if (ww.driver != wr.driver) return error.InvalidResponse;
+                if (ww.value.items.len != wr.value.items.len)
+                    return error.InvalidResponse;
+                try writer.print(
+                    "Line: {s}, Driver: {d}\n",
+                    .{ line_name, ww.driver },
+                );
+                const words_per_chunk =
+                    @bitSizeOf(@TypeOf(track_line.register_wr.items[0])) /
+                    @bitSizeOf(@TypeOf(getWord(ww.value.items, 0)));
+                for (0..words_per_chunk) |i| {
+                    const ww_value: i16 = getWord(ww.value.items, i);
+                    const wr_value: i16 = getWord(wr.value.items, i);
+                    var ww_buf: [6]u8 = undefined;
+                    var wr_buf: [6]u8 = undefined;
+                    const ww_str = try std.fmt.bufPrint(&ww_buf, "{d}", .{ww_value});
+                    const wr_str = try std.fmt.bufPrint(&wr_buf, "{d}", .{wr_value});
+                    try writer.print("WW[0x{X:0>4}] {s:>6}\tWR[0x{X:0>4}] {s:>6}\n", .{
+                        i,
+                        ww_str,
+                        i,
+                        wr_str,
+                    });
+                }
+            }
+        } else if (register_ww) {
+            for (track_line.register_ww.items) |item| {
+                try writer.print(
+                    "Line: {s}, Driver: {d}\n",
+                    .{ line_name, item.driver },
+                );
+                const words_per_chunk =
+                    @bitSizeOf(@TypeOf(track_line.register_wr.items[0])) /
+                    @bitSizeOf(@TypeOf(getWord(item.value.items, 0)));
+                for (0..words_per_chunk) |i| {
+                    const ww_value: i16 = getWord(item.value.items, i);
+                    var ww_buf: [6]u8 = undefined;
+                    const ww_str = try std.fmt.bufPrint(&ww_buf, "{d}", .{ww_value});
+                    try writer.print("WW[0x{X:0>4}] {s:>6}\n", .{
+                        i,
+                        ww_str,
+                    });
+                }
+            }
+        } else if (register_wr) {
+            for (track_line.register_wr.items) |item| {
+                try writer.print(
+                    "Line: {s}, Driver: {d}\n",
+                    .{ line_name, item.driver },
+                );
+                const words_per_chunk =
+                    @bitSizeOf(@TypeOf(track_line.register_wr.items[0])) /
+                    @bitSizeOf(@TypeOf(getWord(item.value.items, 0)));
+                for (0..words_per_chunk) |i| {
+                    const wr_value: i16 = getWord(item.value.items, i);
+                    var wr_buf: [6]u8 = undefined;
+                    const wr_str = try std.fmt.bufPrint(&wr_buf, "{d}", .{wr_value});
+                    try writer.print("WR[0x{X:0>4}] {s:>6}\n", .{
+                        i,
+                        wr_str,
+                    });
+                }
             }
         }
-    } else if (register_ww) {
-        for (track_line.register_ww.items) |item| {
-            try writer.print(
-                "Line: {s}, Driver: {d}\n",
-                .{ line_name, item.driver },
-            );
-            const words_per_chunk =
-                @bitSizeOf(@TypeOf(track_line.register_wr.items[0])) /
-                @bitSizeOf(@TypeOf(getWord(item.value.items, 0)));
-            for (0..words_per_chunk) |i| {
-                const ww_value: i16 = getWord(item.value.items, i);
-                var ww_buf: [6]u8 = undefined;
-                const ww_str = try std.fmt.bufPrint(&ww_buf, "{d}", .{ww_value});
-                try writer.print("WW[0x{X:0>4}] {s:>6}\n", .{
-                    i,
-                    ww_str,
+    } else {
+        // Structured register print
+        if (register_x) {
+            for (track_line.register_x.items) |item| {
+                try writer.print("Line: {s}, Driver: {d}, Register: ", .{
+                    line_name,
+                    item.driver,
                 });
+                const value = try decodeRegister(registers.X, item.value.items);
+                try writer.print("{f}", .{value});
             }
         }
-    } else if (register_wr) {
-        for (track_line.register_wr.items) |item| {
-            try writer.print(
-                "Line: {s}, Driver: {d}\n",
-                .{ line_name, item.driver },
-            );
-            const words_per_chunk =
-                @bitSizeOf(@TypeOf(track_line.register_wr.items[0])) /
-                @bitSizeOf(@TypeOf(getWord(item.value.items, 0)));
-            for (0..words_per_chunk) |i| {
-                const wr_value: i16 = getWord(item.value.items, i);
-                var wr_buf: [6]u8 = undefined;
-                const wr_str = try std.fmt.bufPrint(&wr_buf, "{d}", .{wr_value});
-                try writer.print("WR[0x{X:0>4}] {s:>6}\n", .{
-                    i,
-                    wr_str,
+        if (register_y) {
+            for (track_line.register_y.items) |item| {
+                try writer.print("Line: {s}, Driver: {d}, Register: ", .{
+                    line_name,
+                    item.driver,
                 });
+                const value = try decodeRegister(registers.Y, item.value.items);
+                try writer.print("{f}", .{value});
+            }
+        }
+        if (register_ww) {
+            for (track_line.register_ww.items) |item| {
+                try writer.print("Line: {s}, Driver: {d}, Register: ", .{
+                    line_name,
+                    item.driver,
+                });
+                const value = try decodeRegister(registers.Ww, item.value.items);
+                try writer.print("{f}", .{value});
+            }
+        }
+        if (register_wr) {
+            for (track_line.register_wr.items) |item| {
+                try writer.print("Line: {s}, Driver: {d}, Register: ", .{
+                    line_name,
+                    item.driver,
+                });
+                const values = try decodeRegister(registers.Wr, item.value.items);
+                try writer.print("{f}", .{values});
             }
         }
     }
     try writer.flush();
+}
+
+fn getWord(values: []const u64, index: usize) i16 {
+    const chunk = values[index / 4];
+    const shift: u6 = @intCast((index % 4) * 16);
+    const raw: u16 = @truncate(chunk >> shift);
+    return @bitCast(raw);
+}
+
+fn decodeRegister(comptime T: type, values: []const u64) !T {
+    const chunk_size = @bitSizeOf(@TypeOf(values[0]));
+    comptime if (@bitSizeOf(T) % chunk_size != 0)
+        @compileError("Register size not divisible by `values` size");
+    if (values.len != @bitSizeOf(T) / chunk_size)
+        return error.InvalidResponse;
+
+    const Raw = @Int(.unsigned, @bitSizeOf(T));
+    var raw: Raw = 0;
+    for (values, 0..) |chunk, i|
+        raw |= @as(Raw, chunk) << @intCast(i * chunk_size);
+
+    return @bitCast(raw);
 }
 
 test {
