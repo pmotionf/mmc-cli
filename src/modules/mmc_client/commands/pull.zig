@@ -46,15 +46,6 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
             .DIRECTION_BACKWARD
         else
             return error.InvalidDirection;
-    const destination: ?f32 = if (params[4].len > 0)
-        try std.fmt.parseFloat(f32, params[4])
-    else
-        null;
-
-    const no_servo: bool = if (destination) |loc|
-        std.math.isNan(loc)
-    else
-        false;
 
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
@@ -66,21 +57,9 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
                         .line = line.id,
                         .axis = axis_id,
                         .carrier = carrier_id,
-                        .velocity = if (no_servo) 0 else line.velocity,
-                        .acceleration = if (no_servo)
-                            0
-                        else
-                            line.acceleration,
+                        .velocity = line.velocity,
+                        .acceleration = line.acceleration,
                         .direction = dir,
-                        .transition = blk: {
-                            if (destination) |loc| break :blk .{
-                                .control = if (no_servo)
-                                    .CONTROL_UNSPECIFIED
-                                else
-                                    .CONTROL_POSITION,
-                                .target = loc,
-                            } else break :blk null;
-                        },
                     },
                 },
             },
