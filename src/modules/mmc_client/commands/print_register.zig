@@ -93,25 +93,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
 
     if (std.ascii.eqlIgnoreCase(params[3], "raw")) {
         // Raw register print
-        if (register_x and register_y) {
-            for (track_line.register_x.items, track_line.register_y.items) |x, y| {
-                if (x.value.items.len != y.value.items.len)
-                    return error.InvalidResponse;
-                if (x.driver != y.driver) return error.InvalidResponse;
-                try writer.print(
-                    "Line: {s}, Driver: {d}\n",
-                    .{ line_name, x.driver },
-                );
-                for (0..@bitSizeOf(@TypeOf(x.value.items[0]))) |i| {
-                    try writer.print("X[0x{X:0>4}] {d}\tY[0x{X:0>4}] {d} \n", .{
-                        i,
-                        @as(u1, @truncate(x.value.items[0] >> @intCast(i))),
-                        i,
-                        @as(u1, @truncate(y.value.items[0] >> @intCast(i))),
-                    });
-                }
-            }
-        } else if (register_x) {
+        if (register_x) {
             for (track_line.register_x.items) |item| {
                 try writer.print(
                     "Line: {s}, Driver: {d}\n",
@@ -124,7 +106,8 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
                     });
                 }
             }
-        } else if (register_y) {
+        }
+        if (register_y) {
             for (track_line.register_y.items) |item| {
                 try writer.print(
                     "Line: {s}, Driver: {d}\n",
@@ -139,68 +122,41 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
             }
         }
 
-        if (register_ww and register_wr) {
-            for (track_line.register_ww.items, track_line.register_wr.items) |ww, wr| {
-                if (ww.driver != wr.driver) return error.InvalidResponse;
-                if (ww.value.items.len != wr.value.items.len)
-                    return error.InvalidResponse;
-                try writer.print(
-                    "Line: {s}, Driver: {d}\n",
-                    .{ line_name, ww.driver },
-                );
-                const words_per_chunk =
-                    @bitSizeOf(@TypeOf(track_line.register_wr.items[0])) /
-                    @bitSizeOf(@TypeOf(getWord(ww.value.items, 0)));
-                for (0..words_per_chunk) |i| {
-                    const ww_value: i16 = getWord(ww.value.items, i);
-                    const wr_value: i16 = getWord(wr.value.items, i);
-                    var ww_buf: [6]u8 = undefined;
-                    var wr_buf: [6]u8 = undefined;
-                    const ww_str = try std.fmt.bufPrint(&ww_buf, "{d}", .{ww_value});
-                    const wr_str = try std.fmt.bufPrint(&wr_buf, "{d}", .{wr_value});
-                    try writer.print("WW[0x{X:0>4}] {s:>6}\tWR[0x{X:0>4}] {s:>6}\n", .{
-                        i,
-                        ww_str,
-                        i,
-                        wr_str,
-                    });
-                }
-            }
-        } else if (register_ww) {
+        if (register_ww) {
             for (track_line.register_ww.items) |item| {
                 try writer.print(
                     "Line: {s}, Driver: {d}\n",
                     .{ line_name, item.driver },
                 );
-                const words_per_chunk =
-                    @bitSizeOf(@TypeOf(track_line.register_wr.items[0])) /
-                    @bitSizeOf(@TypeOf(getWord(item.value.items, 0)));
-                for (0..words_per_chunk) |i| {
-                    const ww_value: i16 = getWord(item.value.items, i);
-                    var ww_buf: [6]u8 = undefined;
-                    const ww_str = try std.fmt.bufPrint(&ww_buf, "{d}", .{ww_value});
-                    try writer.print("WW[0x{X:0>4}] {s:>6}\n", .{
-                        i,
-                        ww_str,
+                var ww: [16]u16 = undefined;
+                @memcpy(&ww, std.mem.bytesAsSlice(
+                    u16,
+                    std.mem.sliceAsBytes(item.value.items),
+                ));
+
+                for (ww, 0..) |value, idx| {
+                    try writer.print("WW[0x{X:0>4}] {d}\n", .{
+                        idx,
+                        @as(i16, @bitCast(value)),
                     });
                 }
             }
-        } else if (register_wr) {
+        }
+        if (register_wr) {
             for (track_line.register_wr.items) |item| {
                 try writer.print(
                     "Line: {s}, Driver: {d}\n",
                     .{ line_name, item.driver },
                 );
-                const words_per_chunk =
-                    @bitSizeOf(@TypeOf(track_line.register_wr.items[0])) /
-                    @bitSizeOf(@TypeOf(getWord(item.value.items, 0)));
-                for (0..words_per_chunk) |i| {
-                    const wr_value: i16 = getWord(item.value.items, i);
-                    var wr_buf: [6]u8 = undefined;
-                    const wr_str = try std.fmt.bufPrint(&wr_buf, "{d}", .{wr_value});
-                    try writer.print("WR[0x{X:0>4}] {s:>6}\n", .{
-                        i,
-                        wr_str,
+                var wr: [16]u16 = undefined;
+                @memcpy(&wr, std.mem.bytesAsSlice(
+                    u16,
+                    std.mem.sliceAsBytes(item.value.items),
+                ));
+                for (wr, 0..) |value, idx| {
+                    try writer.print("WR[0x{X:0>4}] {d}\n", .{
+                        idx,
+                        @as(i16, @bitCast(value)),
                     });
                 }
             }
@@ -213,8 +169,11 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
                     line_name,
                     item.driver,
                 });
-                const value = try decodeRegister(registers.X, item.value.items);
-                try writer.print("{f}", .{value});
+                const x = std.mem.bytesAsValue(
+                    registers.X,
+                    std.mem.sliceAsBytes(item.value.items),
+                );
+                try writer.print("{f}", .{x.*});
             }
         }
         if (register_y) {
@@ -223,8 +182,11 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
                     line_name,
                     item.driver,
                 });
-                const value = try decodeRegister(registers.Y, item.value.items);
-                try writer.print("{f}", .{value});
+                const y = std.mem.bytesAsValue(
+                    registers.Y,
+                    std.mem.sliceAsBytes(item.value.items),
+                );
+                try writer.print("{f}", .{y.*});
             }
         }
         if (register_ww) {
@@ -233,8 +195,11 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
                     line_name,
                     item.driver,
                 });
-                const value = try decodeRegister(registers.Ww, item.value.items);
-                try writer.print("{f}", .{value});
+                const ww = std.mem.bytesAsValue(
+                    registers.Ww,
+                    std.mem.sliceAsBytes(item.value.items),
+                );
+                try writer.print("{f}", .{ww.*});
             }
         }
         if (register_wr) {
@@ -243,34 +208,15 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
                     line_name,
                     item.driver,
                 });
-                const values = try decodeRegister(registers.Wr, item.value.items);
-                try writer.print("{f}", .{values});
+                const wr = std.mem.bytesAsValue(
+                    registers.Wr,
+                    std.mem.sliceAsBytes(item.value.items),
+                );
+                try writer.print("{f}", .{wr.*});
             }
         }
     }
     try writer.flush();
-}
-
-fn getWord(values: []const u64, index: usize) i16 {
-    const chunk = values[index / 4];
-    const shift: u6 = @intCast((index % 4) * 16);
-    const raw: u16 = @truncate(chunk >> shift);
-    return @bitCast(raw);
-}
-
-fn decodeRegister(comptime T: type, values: []const u64) !T {
-    const chunk_size = @bitSizeOf(@TypeOf(values[0]));
-    comptime if (@bitSizeOf(T) % chunk_size != 0)
-        @compileError("Register size not divisible by `values` size");
-    if (values.len != @bitSizeOf(T) / chunk_size)
-        return error.InvalidResponse;
-
-    const Raw = @Int(.unsigned, @bitSizeOf(T));
-    var raw: Raw = 0;
-    for (values, 0..) |chunk, i|
-        raw |= @as(Raw, chunk) << @intCast(i * chunk_size);
-
-    return @bitCast(raw);
 }
 
 test {
