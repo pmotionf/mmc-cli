@@ -31,7 +31,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     }, 0);
     const target = try parseTarget(params[2]);
     const control: api.protobuf.mmc.Control =
-        if (params[4].len == 0 or std.mem.eql(u8, "position", params[3]))
+        if (params[3].len == 0 or std.mem.eql(u8, "position", params[3]))
             .CONTROL_POSITION
         else if (std.mem.eql(u8, "speed", params[3]))
             .CONTROL_VELOCITY
