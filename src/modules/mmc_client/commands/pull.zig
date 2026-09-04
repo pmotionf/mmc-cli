@@ -46,7 +46,10 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
             .DIRECTION_BACKWARD
         else
             return error.InvalidDirection;
-
+    const destination: ?f32 = if (params[4].len > 0)
+        try std.fmt.parseFloat(f32, params[4])
+    else
+        null;
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
     const request: api.protobuf.mmc.Request = .{
@@ -60,6 +63,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
                         .velocity = line.velocity,
                         .acceleration = line.acceleration,
                         .direction = dir,
+                        .location = destination,
                     },
                 },
             },
