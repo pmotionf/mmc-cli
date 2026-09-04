@@ -714,31 +714,20 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
             .name = "RELEASE_CARRIER",
             .parameters = &[_]command.Command.Executable.Parameter{
                 .{ .name = "Line", .kind = .mmc_client_line },
-                .{
-                    .name = "filter",
-                    .optional = true,
-                    .kind = .mmc_client_filter,
-                },
+                .{ .name = "Driver" },
             },
             .short_description = "Release Carrier",
             .long_description = std.fmt.comptimePrint(
-                \\Release Carrier, allows to move Carrier through external force. Carrier
-                \\stays initialized.
-                \\Optional: Provide filter to specify selection of Carrier(s). To apply
-                \\filter, provide ID with filter suffix (e.g., 1c). Supported suffixes
-                \\are:
-                \\ - "a" or "axis" to filter by Axis
-                \\ - "c" or "carrier" to filter by Carrier
-                \\ - "d" or "driver" to filter by Driver
+                \\Release motor control of all motor in drivers,
+                \\allowing to move Carrier(s) through external force.
+                \\Carrier stays initialized.
+                \\Optional: Provide Driver to specify selection of Driver.
                 \\
                 \\Example: Release Carrier(s) on Line "line1".
                 \\RELEASE_CARRIER line1
                 \\
                 \\Example: Release Carrier(s) on Driver "2" on Line "line1".
-                \\RELEASE_CARRIER line1 2d
-                \\
-                \\Example: Release Carrier "3" on Line "line1".
-                \\RELEASE_CARRIER line1 3c
+                \\RELEASE_CARRIER line1 2
             , .{}),
             .execute = &commands.release_carrier.impl,
         },
@@ -794,24 +783,6 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
         },
     });
     errdefer _ = command.registry.orderedRemove("CALIBRATE");
-    try command.registry.put(gpa, "SET_ZERO", .{
-        .executable = .{
-            .name = "SET_ZERO",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-            },
-            .short_description = "Set Line zero position.",
-            .long_description = std.fmt.comptimePrint(
-                \\Set zero position for specified Line. Initialized Carrier must be on
-                \\first Axis of specified Line.
-                \\
-                \\Example: Set zero position for Line "line1".
-                \\SET_ZERO line1
-            , .{}),
-            .execute = &commands.set_line_zero.impl,
-        },
-    });
-    errdefer _ = command.registry.orderedRemove("SET_ZERO");
     try command.registry.put(gpa, "INITIALIZE", .{
         .executable = .{
             .name = "INITIALIZE",
@@ -921,7 +892,6 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
                     .optional = true,
                     .kind = .mmc_client_control_mode,
                 },
-                .{ .name = "CAS", .optional = true, .kind = .mmc_client_cas },
             },
             .short_description = "Move Carrier to specified target.",
             .long_description = std.fmt.comptimePrint(
@@ -937,8 +907,6 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
                 \\Optional: Provide following to specify movement control mode:
                 \\- "speed" to move Carrier with speed profile feedback.
                 \\- "position" to move Carrier with position profile feedback.
-                \\Optional: Provide "on" or "off" to specify CAS (Collision Avoidance
-                \\System) activation (enabled by default).
                 \\
                 \\Example: Move Carrier "2" to Axis "3" on Line "line1".
                 \\MOVE_CARRIER line1 2 3a
@@ -946,12 +914,7 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
                 \\Example: Move Carrier "2" to location 150 {s} on Line "line1" and move
                 \\Carrier with speed profile feedback.
                 \\MOVE_CARRIER line1 2 150l speed
-                \\
-                \\Example: Move Carrier "2" to location 150 {s} on Line "line1" and disable
-                \\CAS.
-                \\MOVE_CARRIER line1 2 150l position off
             , .{
-                standard.length.unit_short,
                 standard.length.unit_short,
                 standard.length.unit_short,
                 standard.length.unit_short,
@@ -967,11 +930,6 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
             .{ .name = "Line", .kind = .mmc_client_line },
             .{ .name = "Axis", .kind = .mmc_client_axis },
             .{ .name = "direction", .kind = .mmc_client_direction },
-            .{
-                .name = "Carrier",
-                .optional = true,
-                .kind = .mmc_client_carrier,
-            },
         },
         .short_description = "Push Carrier on the specified Axis.",
         .long_description = std.fmt.comptimePrint(
@@ -982,17 +940,9 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
             \\- forward  (direction of increasing Axis number)
             \\- backward (direction of decreasing Axis number)
             \\
-            \\Optional: Provide Carrier to move the specified Carrier to the center
-            \\of the specified Axis, then push it according to direction.
-            \\
             \\Example: Push Carrier on Axis "3" to Axis "4". If Line "line1" only has
             \\3 Axes, push Carrier out from Line "line1" to Line "line2".
             \\PUSH_CARRIER line1 3 forward
-            \\
-            \\Example: Move Carrier "2" to Axis "3" and transition to push movement to
-            \\Axis "4". If Line "line1" only has 3 Axes, then transition to push movement
-            \\out from Line "line1" to Line "line2".
-            \\PUSH_CARRIER line1 3 forward 2
         , .{}),
         .execute = &commands.push.impl,
     } });
@@ -1005,7 +955,6 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
             .{ .name = "Carrier", .kind = .mmc_client_carrier },
             .{ .name = "direction", .kind = .mmc_client_direction },
             .{ .name = "location", .optional = true },
-            .{ .name = "CAS", .optional = true, .kind = .mmc_client_cas },
         },
         .short_description = "Pull incoming Carrier.",
         .long_description = std.fmt.comptimePrint(
@@ -1023,10 +972,6 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
             \\- "nan" (Carrier can move through external force after pulled to
             \\  specified Axis).
             \\
-            \\Optional: Provide "on" or "off" to specify CAS (Collision
-            \\Avoidance System) activation (enabled by default) while Carrier is
-            \\being moved to specified location.
-            \\
             \\Example: Pull Carrier onto Axis "1" on Line "line2" from Line "line1" and
             \\assign Carrier ID to "123".
             \\PULL_CARRIER line2 1 123 forward
@@ -1035,14 +980,8 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
             \\to "123" and move Carrier "123" to location 1500 {s} upon recognized on
             \\Line "line2".
             \\PULL_CARRIER line2 1 123 forward 1500
-            \\
-            \\Example: Pull Carrier to Line "line2" from Line "line1", assign Carrier ID
-            \\to "123", and move Carrier "123" to location 1500 {s} with CAS deactivated
-            \\upon recognized on Line "line2".
-            \\PULL_CARRIER line2 1 123 forward 1500 off
         , .{
             standard.length.unit_long,
-            standard.length.unit_short,
             standard.length.unit_short,
         }),
         .execute = &commands.pull.impl,
@@ -1072,31 +1011,6 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
         .execute = &commands.stop_pull.impl,
     } });
     errdefer _ = command.registry.orderedRemove("STOP_PULL_CARRIER");
-    try command.registry.put(gpa, "STOP_PUSH_CARRIER", .{ .executable = .{
-        .name = "STOP_PUSH_CARRIER",
-        .parameters = &[_]command.Command.Executable.Parameter{
-            .{ .name = "Line", .kind = .mmc_client_line },
-            .{ .name = "filter", .optional = true, .kind = .mmc_client_filter },
-        },
-        .short_description = "Stop pushing Carrier at axis.",
-        .long_description = std.fmt.comptimePrint(
-            \\Stop active Carrier push on specified Line.
-            \\Optional: Provide filter to specify selection of push. To apply
-            \\filter, provide ID with filter suffix (e.g., 1c).
-            \\Supported suffixes are:
-            \\ - "a" or "axis" to filter by Axis
-            \\ - "c" or "Carrier" to filter by Carrier
-            \\ - "d" or "driver" to filter by Driver
-            \\
-            \\Example: Stop push Carrier(s) on Line "line1".
-            \\STOP_PUSH_CARRIER line1
-            \\
-            \\Example: Stop push for Axis "3" on Line "line1".
-            \\STOP_PUSH_CARRIER line1 3a
-        , .{}),
-        .execute = &commands.stop_push.impl,
-    } });
-    errdefer _ = command.registry.orderedRemove("STOP_PUSH_CARRIER");
     try command.registry.put(gpa, "WAIT_AXIS_EMPTY", .{ .executable = .{
         .name = "WAIT_AXIS_EMPTY",
         .parameters = &[_]command.Command.Executable.Parameter{
@@ -1308,26 +1222,6 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
         },
     });
     errdefer _ = command.registry.orderedRemove("RESUME");
-    try command.registry.put(gpa, "SET_CARRIER_ID", .{
-        .executable = .{
-            .name = "SET_CARRIER_ID",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{ .name = "Line", .kind = .mmc_client_line },
-                .{ .name = "Carrier", .kind = .mmc_client_carrier },
-                .{ .name = "new Carrier id", .kind = .mmc_client_carrier },
-            },
-            .short_description = "Modify Carrier ID.",
-            .long_description = std.fmt.comptimePrint(
-                \\Modify Carrier ID of initialized Carrier. Carrier ID must be unique per
-                \\Line.
-                \\
-                \\Example: Modify Carrier ID of Carrier "3" to "4" on Line "line1".
-                \\SET_CARRIER_ID line1 3 4
-            , .{}),
-            .execute = &commands.set_carrier_id.impl,
-        },
-    });
-    errdefer _ = command.registry.orderedRemove("SET_CARRIER_ID");
 }
 
 pub fn deinit(gpa: std.mem.Allocator, io: std.Io) void {

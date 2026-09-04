@@ -50,22 +50,8 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
         try std.fmt.parseFloat(f32, params[4])
     else
         null;
-
-    const no_servo: bool = if (destination) |loc|
-        std.math.isNan(loc)
-    else
-        false;
-
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const disable_cas = if (params[5].len == 0)
-        false
-    else if (std.ascii.eqlIgnoreCase("on", params[5]))
-        false
-    else if (std.ascii.eqlIgnoreCase("off", params[5]))
-        true
-    else
-        return error.InvalidCasConfiguration;
     const request: api.protobuf.mmc.Request = .{
         .body = .{
             .command = .{
@@ -74,22 +60,10 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
                         .line = line.id,
                         .axis = axis_id,
                         .carrier = carrier_id,
-                        .velocity = if (no_servo) 0 else line.velocity,
-                        .acceleration = if (no_servo)
-                            0
-                        else
-                            line.acceleration,
+                        .velocity = line.velocity,
+                        .acceleration = line.acceleration,
                         .direction = dir,
-                        .transition = blk: {
-                            if (destination) |loc| break :blk .{
-                                .control = if (no_servo)
-                                    .CONTROL_UNSPECIFIED
-                                else
-                                    .CONTROL_POSITION,
-                                .disable_cas = disable_cas,
-                                .target = loc,
-                            } else break :blk null;
-                        },
+                        .location = destination,
                     },
                 },
             },

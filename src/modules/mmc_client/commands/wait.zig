@@ -162,7 +162,6 @@ pub fn axisEmpty(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void
         if (axis.carrier == 0 and
             !axis.hall_alarm_back and
             !axis.hall_alarm_front and
-            !axis.waiting_push and
             !axis.waiting_pull)
         {
             break;
