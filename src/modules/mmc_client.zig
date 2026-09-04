@@ -355,6 +355,42 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
         },
     });
     errdefer _ = command.registry.orderedRemove("PRINT_DRIVER_INFO");
+    try command.registry.put(gpa, "PRINT_REGISTER", .{
+        .executable = .{
+            .name = "PRINT_REGISTER",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line", .kind = .mmc_client_line },
+                .{ .name = "filter", .kind = .mmc_client_filter },
+                .{ .name = "register", .optional = true },
+                .{ .name = "raw", .optional = true },
+            },
+            .short_description = "Print register values.",
+            .long_description = std.fmt.comptimePrint(
+                \\Print X, Y, Wr, and Ww registers. Specify which Driver registers to
+                \\print info via filter. To apply filter, provide ID with filter suffix
+                \\(e.g., 1d). Supported suffixes are:
+                \\ - "a" or "axis" to filter by Axis
+                \\ - "c" or "carrier" to filter by Carrier
+                \\ - "d" or "driver" to filter by Driver
+                \\
+                \\Optional: Provide the register(s) to be printed.
+                \\Optional: Add "raw" to print the raw register values with addresses.
+                \\Addresses are displayed in hexadecimal. Register values are displayed
+                \\as signed decimal integers.
+                \\
+                \\Example: Print X registers from Line "line1" Driver "2".
+                \\PRINT_REGISTER line1 2d X
+                \\
+                \\Example: Print X and Y registers from Line "line1" Driver "2".
+                \\PRINT_REGISTER line1 2d X,Y
+                \\
+                \\Example: Print raw X and Y registers from Line "line1" Driver "2".
+                \\PRINT_REGISTER line1 2d X,Y raw
+            , .{}),
+            .execute = &commands.print_register.impl,
+        },
+    });
+    errdefer _ = command.registry.orderedRemove("PRINT_REGISTER");
     try command.registry.put(gpa, "PRINT_CARRIER_INFO", .{
         .executable = .{
             .name = "PRINT_CARRIER_INFO",
