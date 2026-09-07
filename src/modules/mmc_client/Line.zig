@@ -32,8 +32,8 @@ pub fn init(
     }
     result.index = index;
     result.id = @as(Id, index) + 1;
-    result.acceleration = 7800; // mm/s^2
-    result.velocity = 1200; // mm/s
+    result.acceleration = 40; // %
+    result.velocity = 40; // %
     result.length = .{
         .axis = config.axis_length,
         .carrier = config.carrier_length,

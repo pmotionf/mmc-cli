@@ -8,17 +8,16 @@ pub fn impl(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     defer tracy_zone.end();
     const line_name: []const u8 = params[0];
     const carrier_speed: f32 = try std.fmt.parseFloat(f32, params[1]);
-    if (carrier_speed < 0 or carrier_speed > 6000) return error.InvalidSpeed;
+    if (carrier_speed <= 0 or carrier_speed > 100) return error.InvalidSpeed;
     // from 0.1 to 6000.0 mm/s
 
     const line_idx = try client.matchLine(line_name);
     client.lines[line_idx].velocity = carrier_speed;
 
     std.log.info(
-        "Set speed to {d} {s}",
+        "Set speed to {d} %",
         .{
             client.lines[line_idx].velocity,
-            client.standard.speed.unit,
         },
     );
 }
