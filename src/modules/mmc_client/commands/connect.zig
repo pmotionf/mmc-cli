@@ -174,14 +174,12 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     var stdout = std.Io.File.stdout().writer(io, &.{});
     for (client.lines) |line| {
         try stdout.interface.print(
-            "\t {s} ({}) - {} {s} | {} {s}\n",
+            "\t {s} ({}) - speed: {} % | acceleration: {} %\n",
             .{
                 line.name,
                 line.axes,
                 line.velocity,
-                client.standard.speed.unit,
                 line.acceleration,
-                client.standard.acceleration.unit,
             },
         );
         try stdout.interface.flush();

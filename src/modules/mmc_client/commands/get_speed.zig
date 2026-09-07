@@ -10,11 +10,10 @@ pub fn impl(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const line_idx = try client.matchLine(line_name);
     const velocity = client.lines[line_idx].velocity;
     std.log.info(
-        "Line {s} speed: {d} {s}",
+        "Line {s} speed: {d} %",
         .{
             line_name,
             velocity,
-            client.standard.speed.unit,
         },
     );
 }

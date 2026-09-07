@@ -8,15 +8,14 @@ pub fn impl(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     defer tracy_zone.end();
     const line_name: []const u8 = params[0];
     const carrier_acceleration = try std.fmt.parseFloat(f32, params[1]);
-    if (carrier_acceleration <= 0.0 or carrier_acceleration > 24500)
+    if (carrier_acceleration <= 0.0 or carrier_acceleration > 100)
         return error.InvalidAcceleration;
 
     const line_idx = try client.matchLine(line_name);
     client.lines[line_idx].acceleration = carrier_acceleration;
 
-    std.log.info("Set acceleration to {d} {s}.", .{
+    std.log.info("Set acceleration to {d} %.", .{
         client.lines[line_idx].acceleration,
-        client.standard.acceleration.unit,
     });
 }
 
