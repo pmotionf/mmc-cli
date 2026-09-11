@@ -461,7 +461,7 @@ pub fn init(
             .name = "SET",
             .parameters = &[_]Command.Executable.Parameter{
                 .{ .name = "name", .resolve = false },
-                .{ .name = "value", .resolve = false, .rest = true },
+                .{ .name = "value", .resolve = false, .rest = true, .quotable = false },
             },
             .short_description = "Set a variable equal to a value.",
             .long_description =
