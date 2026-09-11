@@ -164,6 +164,9 @@ pub fn handler(io: std.Io, ctx: *Prompt) !void {
                                     ctx.input =
                                         ctx.input_buffer[0..hist_item.len];
                                     @memcpy(ctx.input, hist_item);
+                                    ctx.cursor.moveEnd();
+                                    ctx.history.selection = null;
+                                    break :parse;
                                 }
                                 if (ctx.input.len > 0) {
                                     ctx.disable.store(true, .monotonic);
