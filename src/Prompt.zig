@@ -169,6 +169,13 @@ pub fn handler(io: std.Io, ctx: *Prompt) !void {
                                     break :parse;
                                 }
                                 if (ctx.input.len > 0) {
+                                    try terminal.cursor.moveColumn(
+                                        &stdout.interface,
+                                        ctx.cursor.visible + 1,
+                                    );
+                                    try terminal.cursor
+                                        .clearAfter(&stdout.interface);
+
                                     ctx.disable.store(true, .monotonic);
                                     prev_disable = true;
 
