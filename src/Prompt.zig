@@ -164,8 +164,18 @@ pub fn handler(io: std.Io, ctx: *Prompt) !void {
                                     ctx.input =
                                         ctx.input_buffer[0..hist_item.len];
                                     @memcpy(ctx.input, hist_item);
+                                    ctx.cursor.moveEnd();
+                                    ctx.history.selection = null;
+                                    break :parse;
                                 }
                                 if (ctx.input.len > 0) {
+                                    try terminal.cursor.moveColumn(
+                                        &stdout.interface,
+                                        ctx.cursor.visible + 1,
+                                    );
+                                    try terminal.cursor
+                                        .clearAfter(&stdout.interface);
+
                                     ctx.disable.store(true, .monotonic);
                                     prev_disable = true;
 
