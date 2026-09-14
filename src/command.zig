@@ -189,7 +189,6 @@ pub const Command = union(enum) {
             name: []const u8,
             kind: resolveKind() = .none,
             optional: bool = false,
-            quotable: bool = true,
             resolve: bool = true,
             /// If true, this parameter consumes all remaining input as a single
             /// value. This parameter can only be used as the last parameter.
@@ -323,27 +322,7 @@ pub const Command = union(enum) {
                 }
             }
 
-            if (param.quotable) {
-                if (token[0] == '"') {
-                    const start_ind: usize = token_iterator.index + 1;
-                    var len: usize = 0;
-                    while (token_iterator.next()) |tok| {
-                        if (tok[tok.len - 1] == '"') {
-                            // 2 subtracted from length to account for the two
-                            // quotation marks.
-                            len += tok.len - 2;
-                            break;
-                        }
-                        // Because the token was consumed with `.next`, the index
-                        // here will be the start index of the next token.
-                        len = token_iterator.index - start_ind;
-                    }
-                    res.params[i] = try gpa.dupe(
-                        u8,
-                        input[start_ind .. start_ind + len],
-                    );
-                } else res.params[i] = try gpa.dupe(u8, token);
-            } else if (param.rest) {
+            if (param.rest) {
                 res.params[i] = try gpa.dupe(
                     u8,
                     token_iterator.rest(),
@@ -461,7 +440,7 @@ pub fn init(
             .name = "SET",
             .parameters = &[_]Command.Executable.Parameter{
                 .{ .name = "name", .resolve = false },
-                .{ .name = "value", .resolve = false, .rest = true, .quotable = false },
+                .{ .name = "value", .resolve = false, .rest = true },
             },
             .short_description = "Set a variable equal to a value.",
             .long_description =
