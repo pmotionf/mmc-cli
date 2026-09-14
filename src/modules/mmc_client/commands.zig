@@ -34,3 +34,4 @@ pub const show_errors = @import("commands/show_errors.zig");
 pub const server_version = @import("commands/server_version.zig");
 pub const group = @import("commands/group.zig");
 pub const print_register = @import("commands/print_register.zig");
+pub const set_carrier_id = @import("commands/set_carrier_id.zig");
