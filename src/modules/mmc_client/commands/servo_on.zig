@@ -13,7 +13,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
     const line_name: []const u8 = params[0];
     const line_idx = try client.matchLine(line_name);
     const line = client.lines[line_idx];
-    const axis_id: ?u32 = if (params[1].len == 0)
+    const axis_id: ?u32 = if (params[1].len > 0)
         try std.fmt.parseUnsigned(u32, params[1], 0)
     else
         null;
