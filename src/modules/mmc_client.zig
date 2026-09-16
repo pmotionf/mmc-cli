@@ -709,30 +709,52 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
         .execute = &commands.reset_system.impl,
     } });
     errdefer _ = command.registry.orderedRemove("RESET_SYSTEM");
-    try command.registry.put(gpa, "RELEASE_CARRIER", .{
+    try command.registry.put(gpa, "SERVO_OFF", .{
         .executable = .{
-            .name = "RELEASE_CARRIER",
+            .name = "SERVO_OFF",
             .parameters = &[_]command.Command.Executable.Parameter{
                 .{ .name = "Line", .kind = .mmc_client_line },
-                .{ .name = "Driver" },
+                .{ .name = "Axes", .kind = .mmc_client_axis, .optional = true },
             },
-            .short_description = "Release Carrier",
+            .short_description = "Turn servo off to release motor control",
             .long_description = std.fmt.comptimePrint(
-                \\Release motor control of all motor in drivers,
-                \\allowing to move Carrier(s) through external force.
-                \\Carrier stays initialized.
-                \\Optional: Provide Driver to specify selection of Driver.
+                \\Release motor control of all motors in a line, allowing to move
+                \\Carrier(s) through external force. Carrier stays initialized.
+                \\Optional: Provide Axis to specify Carrier to release.
                 \\
-                \\Example: Release Carrier(s) on Line "line1".
-                \\RELEASE_CARRIER line1
+                \\Example: Release Carrier on Line "line1".
+                \\SERVO_OFF line1
                 \\
-                \\Example: Release Carrier(s) on Driver "2" on Line "line1".
-                \\RELEASE_CARRIER line1 2
+                \\Example: Release Carrier on Driver "2" on Line "line1".
+                \\SERVO_OFF line1 2
             , .{}),
-            .execute = &commands.release_carrier.impl,
+            .execute = &commands.servo_off.impl,
         },
     });
-    errdefer _ = command.registry.orderedRemove("RELEASE_CARRIER");
+    errdefer _ = command.registry.orderedRemove("SERVO_OFF");
+    try command.registry.put(gpa, "SERVO_ON", .{
+        .executable = .{
+            .name = "SERVO_ON",
+            .parameters = &[_]command.Command.Executable.Parameter{
+                .{ .name = "Line", .kind = .mmc_client_line },
+                .{ .name = "Axes", .kind = .mmc_client_axis, .optional = true },
+            },
+            .short_description = "Turn servo on to start motor control",
+            .long_description = std.fmt.comptimePrint(
+                \\Start motor control of all motors in a line, prohibiting initialized
+                \\Carrier(s) to be moved by external force. Carrier stays initialized.
+                \\Optional: Provide Axis to specify Carrier to capture.
+                \\
+                \\Example: Capture Carrier on Line "line1".
+                \\SERVO_ON line1
+                \\
+                \\Example: Capture Carrier on Axis "2" on Line "line1".
+                \\SERVO_ON line1 2
+            , .{}),
+            .execute = &commands.servo_on.impl,
+        },
+    });
+    errdefer _ = command.registry.orderedRemove("SERVO_ON");
     try command.registry.put(gpa, "AUTO_INITIALIZE", .{
         .executable = .{
             .name = "AUTO_INITIALIZE",
