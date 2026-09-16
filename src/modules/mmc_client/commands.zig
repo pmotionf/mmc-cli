@@ -1,5 +1,6 @@
 pub const auto_initialize = @import("commands/auto_initialize.zig");
-pub const release_carrier = @import("commands/release_carrier.zig");
+pub const servo_off = @import("commands/servo_off.zig");
+pub const servo_on = @import("commands/servo_on.zig");
 pub const clear_errors = @import("commands/clear_errors.zig");
 pub const clear_carrier_info = @import("commands/clear_carrier_info.zig");
 pub const reset_system = @import("commands/reset_system.zig");
