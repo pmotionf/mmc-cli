@@ -456,25 +456,7 @@ pub fn handler(io: std.Io, ctx: *Prompt) !void {
                         stdout.interface.writeAll(fragment) catch
                             continue :main;
                     } else {
-                        // Check if fragment is a variables
-                        var it = command.variables.iterator();
-                        while (it.next()) |var_entry| {
-                            if (std.mem.eql(
-                                u8,
-                                var_entry.key_ptr.*,
-                                fragment,
-                            )) {
-                                terminal.style.set(&stdout.interface, .{
-                                    .fg = .{ .named = .magenta },
-                                }) catch continue :main;
-                                defer terminal.style.reset(
-                                    &stdout.interface,
-                                ) catch {};
-                                stdout.interface.writeAll(fragment) catch
-                                    continue :main;
-                                break;
-                            }
-                        } else validation: {
+                        validation: {
                             if (ctx.selected_command.len == 0) {
                                 terminal.style.set(&stdout.interface, .{
                                     .fg = .{ .named = .red },
@@ -505,6 +487,7 @@ pub fn handler(io: std.Io, ctx: *Prompt) !void {
                             };
 
                             // Index of current fragment
+                            // Fragment 0 is the command, fragment 1 is argument 0
                             const fragment_id =
                                 std.mem.count(
                                     u8,
@@ -513,10 +496,14 @@ pub fn handler(io: std.Io, ctx: *Prompt) !void {
                                 );
                             // Parameter start at index 1 on command input
                             const param_idx = fragment_id - 1;
-                            const param_end: usize =
-                                if (selected_command.parameters.len > 0) selected_command.parameters.len - 1 else 0;
-                            const is_rest = if (param_end > 0) selected_command.parameters[param_end].rest else false;
-                            if (param_idx >= param_end and !is_rest) {
+                            const params = selected_command.parameters;
+
+                            const has_param = param_idx < params.len;
+                            const has_rest_param =
+                                params.len > 0 and params[params.len - 1].rest;
+
+                            // Too many arguments
+                            if (!has_param and !has_rest_param) {
                                 terminal.style.set(&stdout.interface, .{
                                     .fg = .{ .named = .red },
                                 }) catch continue :main;
@@ -527,22 +514,36 @@ pub fn handler(io: std.Io, ctx: *Prompt) !void {
                                     continue :main;
                                 break :validation;
                             }
-                            const param = if (param_idx >= param_end and is_rest)
-                                selected_command.parameters[param_end]
-                            else
-                                selected_command.parameters[param_idx];
-                            if (param.isValid(fragment)) {
-                                stdout.interface.writeAll(fragment) catch
-                                    continue :main;
-                            } else {
+                            // Check if fragment is a variables
+                            var it = command.variables.iterator();
+                            var is_var = false;
+                            while (it.next()) |var_entry| {
+                                if (std.mem.eql(u8, var_entry.key_ptr.*, fragment)) {
+                                    is_var = true;
+                                    break;
+                                }
+                            }
+                            if (is_var) {
                                 terminal.style.set(&stdout.interface, .{
-                                    .fg = .{ .named = .red },
+                                    .fg = .{ .named = .magenta },
                                 }) catch continue :main;
-                                defer terminal.style.reset(
-                                    &stdout.interface,
-                                ) catch {};
-                                stdout.interface.writeAll(fragment) catch
-                                    continue :main;
+                                defer terminal.style.reset(&stdout.interface) catch {};
+                                stdout.interface.writeAll(fragment) catch continue :main;
+                            } else {
+                                const param = if (has_param)
+                                    selected_command.parameters[param_idx]
+                                else
+                                    selected_command.parameters[selected_command.parameters.len - 1];
+
+                                if (param.isValid(fragment)) {
+                                    stdout.interface.writeAll(fragment) catch continue :main;
+                                } else {
+                                    terminal.style.set(&stdout.interface, .{
+                                        .fg = .{ .named = .red },
+                                    }) catch continue :main;
+                                    defer terminal.style.reset(&stdout.interface) catch {};
+                                    stdout.interface.writeAll(fragment) catch continue :main;
+                                }
                             }
                         }
                     }
