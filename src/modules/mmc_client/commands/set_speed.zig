@@ -7,7 +7,7 @@ pub fn impl(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "set_speed");
     defer tracy_zone.end();
     const line_name: []const u8 = params[0];
-    const carrier_speed: f32 = try std.fmt.parseFloat(f32, params[1]);
+    const carrier_speed = try std.fmt.parseInt(u32, params[1], 0);
     if (carrier_speed <= 0 or carrier_speed > 100) return error.InvalidSpeed;
     // from 0.1 to 6000.0 mm/s
 
