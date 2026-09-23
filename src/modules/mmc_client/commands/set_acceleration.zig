@@ -7,7 +7,7 @@ pub fn impl(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     const tracy_zone = tracy.traceNamed(@src(), "set_acceleration");
     defer tracy_zone.end();
     const line_name: []const u8 = params[0];
-    const carrier_acceleration = try std.fmt.parseFloat(f32, params[1]);
+    const carrier_acceleration = try std.fmt.parseInt(u32, params[1], 0);
     if (carrier_acceleration <= 0.0 or carrier_acceleration > 100)
         return error.InvalidAcceleration;
 
