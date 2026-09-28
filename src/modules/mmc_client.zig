@@ -132,7 +132,8 @@ pub const error_response = struct {
             .COMMAND_REQUEST_ERROR_COMMAND_NOT_FOUND => error.CommandNotFound,
             .COMMAND_REQUEST_ERROR_CARRIER_NOT_FOUND => error.CarrierNotFound,
             .COMMAND_REQUEST_ERROR_OUT_OF_MEMORY => error.ServerRunningOutOfMemory,
-            .COMMAND_REQUEST_ERROR_MAXIMUM_AUTO_INITIALIZE_EXCEEDED => error.MaximumAutoInitializeExceeded,
+            // Temporarily deprecated since API 3.1.0
+            // .COMMAND_REQUEST_ERROR_MAXIMUM_AUTO_INITIALIZE_EXCEEDED => error.MaximumAutoInitializeExceeded,
             .COMMAND_REQUEST_ERROR_CONFLICTING_CARRIER_ID => error.ConflictingCarrierId,
             .COMMAND_REQUEST_ERROR_INVALID_COMMAND => error.InvalidCommand,
             _ => return error.UnexpectedResponse,
@@ -733,38 +734,39 @@ pub fn init(gpa: std.mem.Allocator, _: std.Io, c: Config) !void {
         },
     });
     errdefer _ = command.registry.orderedRemove("RELEASE_CARRIER");
-    try command.registry.put(gpa, "AUTO_INITIALIZE", .{
-        .executable = .{
-            .name = "AUTO_INITIALIZE",
-            .parameters = &[_]command.Command.Executable.Parameter{
-                .{
-                    .name = "Line(s)",
-                    .optional = true,
-                    .kind = .mmc_client_line,
-                },
-            },
-            .short_description = "Initialize all Carriers automatically.",
-            .long_description = std.fmt.comptimePrint(
-                \\Automatically initializes all uninitialized Carriers. This process
-                \\operates on carrier clusters, where a cluster is defined as a group of
-                \\uninitialized Carriers located on adjacent Axis. Each cluster requires
-                \\at least one free Axis to successfully initialize cluster. Multiple
-                \\Line auto initialization is supported (e.g., line1,line2,line3). If
-                \\Line is not provided, auto initializes Carriers on all Lines.
-                \\
-                \\Example: Auto initialize Carrier(s) on all Lines.
-                \\AUTO_INITIALIZE
-                \\
-                \\Example: Auto initialize Carrier(s) on Line "line1".
-                \\AUTO_INITIALIZE line1
-                \\
-                \\Example: Auto initialize Carrier(s) on Line "line1" and "line2".
-                \\AUTO_INITIALIZE line1,line2
-            , .{}),
-            .execute = &commands.auto_initialize.impl,
-        },
-    });
-    errdefer _ = command.registry.orderedRemove("AUTO_INITIALIZE");
+    // Temporarily deprecated since API 3.1.0
+    // try command.registry.put(gpa, "AUTO_INITIALIZE", .{
+    //     .executable = .{
+    //         .name = "AUTO_INITIALIZE",
+    //         .parameters = &[_]command.Command.Executable.Parameter{
+    //             .{
+    //                 .name = "Line(s)",
+    //                 .optional = true,
+    //                 .kind = .mmc_client_line,
+    //             },
+    //         },
+    //         .short_description = "Initialize all Carriers automatically.",
+    //         .long_description = std.fmt.comptimePrint(
+    //             \\Automatically initializes all uninitialized Carriers. This process
+    //             \\operates on carrier clusters, where a cluster is defined as a group of
+    //             \\uninitialized Carriers located on adjacent Axis. Each cluster requires
+    //             \\at least one free Axis to successfully initialize cluster. Multiple
+    //             \\Line auto initialization is supported (e.g., line1,line2,line3). If
+    //             \\Line is not provided, auto initializes Carriers on all Lines.
+    //             \\
+    //             \\Example: Auto initialize Carrier(s) on all Lines.
+    //             \\AUTO_INITIALIZE
+    //             \\
+    //             \\Example: Auto initialize Carrier(s) on Line "line1".
+    //             \\AUTO_INITIALIZE line1
+    //             \\
+    //             \\Example: Auto initialize Carrier(s) on Line "line1" and "line2".
+    //             \\AUTO_INITIALIZE line1,line2
+    //         , .{}),
+    //         .execute = &commands.auto_initialize.impl,
+    //     },
+    // });
+    // errdefer _ = command.registry.orderedRemove("AUTO_INITIALIZE");
     try command.registry.put(gpa, "CALIBRATE", .{
         .executable = .{
             .name = "CALIBRATE",
