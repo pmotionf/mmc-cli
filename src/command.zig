@@ -844,6 +844,13 @@ fn version(_: std.Io, _: std.mem.Allocator, _: [][]const u8) !void {
 fn set(_: std.Io, _: std.mem.Allocator, params: [][]const u8) !void {
     if (!std.ascii.isAlphabetic(params[0][0])) return error.InvalidParameter;
     const name: []const u8 = params[0];
+    for (mmc_client.lines) |line| {
+        if (std.mem.eql(u8, line.name, name)) {
+            std.log.err("\"{s}\" has been used as line name", .{name});
+            // Return an error if variable name is used as line name
+            return error.InvalidVariableName;
+        }
+    }
     const value: []const u8 = params[1];
     var result: []const u8 = &.{};
 
