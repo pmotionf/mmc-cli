@@ -58,10 +58,6 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
         .{ .mode = .stream, .protocol = .tcp },
     );
     errdefer {
-        for (client.lines) |*line| {
-            line.deinit(gpa);
-        }
-        gpa.free(client.lines);
         client.sock.?.close(io);
         client.sock = null;
     }
@@ -147,6 +143,7 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
         client.Line,
         track_config.lines.items.len,
     );
+    @memset(client.lines, std.mem.zeroInit(client.Line, .{}));
     errdefer {
         for (client.lines) |*line| {
             line.deinit(gpa);
@@ -163,6 +160,13 @@ pub fn impl(io: std.Io, gpa: std.mem.Allocator, params: [][]const u8) !void {
             @intCast(idx),
             config,
         );
+        if (command.variables.get(config.name) != null) {
+            std.log.err(
+                "Line \"{s}\" has been used as variable name",
+                .{config.name},
+            );
+            return error.LineNameUsedAsVariable;
+        }
         try client.parameter.value.line.items.insert(config.name);
     }
     // Initialize memory for logging configuration
